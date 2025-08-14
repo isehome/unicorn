@@ -1,1 +1,51 @@
+# macOS
 .DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.next/
+out/
+.vercel/
+
+# Env files
+.env
+.env.*
+
+# Misc
+coverage/
+*.log
+*.tmpcat > .gitignore <<'EOF'
+cat > .gitignore <<'EOF'
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.next/
+out/
+.vercel/
+
+# Env files
+.env
+.env.*
+
+# Misc
+coverage/
+*.log
+*.tmp
