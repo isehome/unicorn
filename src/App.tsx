@@ -6,7 +6,7 @@ import {
   MapPin, Folder, Image, X, ChevronRight, Edit2, Bell,
   Search, Filter, LogIn, LogOut, CheckCircle, Eye, EyeOff,
   Package, Mail, Phone, Building, UserPlus, FolderOpen,
-  Settings, BarChart, Send
+  Settings, BarChart, Send, Save, ExternalLink, Maximize
 } from 'lucide-react';
 
 const App = () => {
@@ -20,6 +20,8 @@ const App = () => {
   const [showResolvedIssues, setShowResolvedIssues] = useState(false);
   const [expandedSections, setExpandedSections] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMyProjects, setViewMyProjects] = useState(true);
+  const [fullscreenImage, setFullscreenImage] = useState(null);
   const fileInputRef = useRef(null);
   const photoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -39,19 +41,49 @@ const App = () => {
       startDate: '2025-01-15',
       endDate: '2025-02-28',
       team: ['John Tech', 'Mike Engineer'],
-      oneDriveFolder: 'https://onedrive.live.com/smith-residence',
-      procurementFile: 'https://onedrive.live.com/smith-residence/procurement.csv',
+      assignedTechnician: 'Current User', // For filtering
+      // Three separate OneDrive links
+      oneDrivePhotos: 'https://onedrive.live.com/smith-residence/photos',
+      oneDriveFiles: 'https://onedrive.live.com/smith-residence/files',
+      oneDriveProcurement: 'https://onedrive.live.com/smith-residence/procurement',
+      // New required fields for PM
+      wiringDiagramUrl: 'https://lucid.app/lucidchart/f0e89b19-d72d-4ab1-8cb9-2712dbca4bc1/edit?invitationId=inv_e5d63790-ba70-4d38-981a-a706a7c2ed13',
+      portalProposalUrl: 'https://portal.company.com/proposals/smith-residence-2025',
       wireDrops: [
         { id: 'W001', uid: 'SM-LR-001', name: 'Living Room TV', location: 'Living Room - North Wall', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W002', uid: 'SM-MB-001', name: 'Master BR AP', location: 'Master Bedroom - Ceiling', type: 'CAT6', prewirePhoto: 'photo1.jpg', installedPhoto: null },
-        { id: 'W003', uid: 'SM-KT-001', name: 'Kitchen Display', location: 'Kitchen - Island', type: 'CAT6', prewirePhoto: 'photo2.jpg', installedPhoto: 'photo3.jpg' },
+        { id: 'W002', uid: 'SM-MB-001', name: 'Master BR AP', location: 'Master Bedroom - Ceiling', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=1', installedPhoto: null },
+        { id: 'W003', uid: 'SM-KT-001', name: 'Kitchen Display', location: 'Kitchen - Island', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=2', installedPhoto: 'https://picsum.photos/400/300?random=3' },
         { id: 'W004', uid: 'SM-OF-001', name: 'Office Desk', location: 'Home Office', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W005', uid: 'SM-GR-001', name: 'Garage Camera', location: 'Garage', type: 'CAT6', prewirePhoto: 'photo4.jpg', installedPhoto: null }
+        { id: 'W005', uid: 'SM-GR-001', name: 'Garage Camera', location: 'Garage', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=4', installedPhoto: null }
       ],
       issues: [],
       files: [],
       photos: [],
       stakeholders: ['john.smith@email.com', 'sarah.pm@company.com']
+    },
+    {
+      id: '2',
+      name: 'Office Complex',
+      client: 'ABC Corp',
+      address: '456 Business Ave, Austin, TX',
+      phase: 'Planning',
+      startDate: '2025-02-01',
+      endDate: '2025-03-15',
+      team: ['Jane Tech', 'Bob Engineer'],
+      assignedTechnician: 'Jane Tech',
+      oneDrivePhotos: 'https://onedrive.live.com/office-complex/photos',
+      oneDriveFiles: 'https://onedrive.live.com/office-complex/files',
+      oneDriveProcurement: 'https://onedrive.live.com/office-complex/procurement',
+      wiringDiagramUrl: 'https://lucid.app/lucidchart/office-complex-diagram',
+      portalProposalUrl: 'https://portal.company.com/proposals/office-complex-2025',
+      wireDrops: [
+        { id: 'O001', uid: 'OC-LB-001', name: 'Lobby Camera', location: 'Main Lobby', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
+        { id: 'O002', uid: 'OC-CR-001', name: 'Conference Room AP', location: 'Conference Room A', type: 'CAT6', prewirePhoto: null, installedPhoto: null }
+      ],
+      issues: [],
+      files: [],
+      photos: [],
+      stakeholders: ['contact@abccorp.com', 'sarah.pm@company.com']
     }
   ]);
 
@@ -81,6 +113,15 @@ const App = () => {
     });
     
     return Math.round(totalProgress / project.wireDrops.length);
+  };
+
+  // Filter projects based on technician view
+  const getFilteredProjects = () => {
+    if (userRole === 'pm') return projects;
+    if (viewMyProjects) {
+      return projects.filter(p => p.assignedTechnician === 'Current User');
+    }
+    return projects;
   };
 
   // Theme
@@ -181,6 +222,272 @@ const App = () => {
     input.click();
   };
 
+  // Open links in new window
+  const openLink = (url) => {
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      alert('No URL configured');
+    }
+  };
+
+  // Fullscreen Image Modal
+  const FullscreenImageModal = () => {
+    if (!fullscreenImage) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+        <div className="relative max-w-full max-h-full">
+          <button 
+            onClick={() => setFullscreenImage(null)}
+            className="absolute top-4 right-4 p-2 bg-black/50 rounded-full text-white z-10"
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={fullscreenImage} 
+            alt="Fullscreen view" 
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Wire Drop Form
+  const WireDropForm = () => {
+    const [formData, setFormData] = useState(
+      selectedWireDrop || {
+        id: '',
+        uid: '',
+        name: '',
+        location: '',
+        type: 'CAT6',
+        prewirePhoto: null,
+        installedPhoto: null
+      }
+    );
+
+    const handleSave = () => {
+      if (!formData.name || !formData.location || !formData.uid) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      setProjects(prev => prev.map(p => {
+        if (p.id === selectedProject.id) {
+          if (selectedWireDrop) {
+            // Edit existing
+            return {
+              ...p,
+              wireDrops: p.wireDrops.map(w => w.id === selectedWireDrop.id ? formData : w)
+            };
+          } else {
+            // Add new
+            const newDrop = { ...formData, id: 'W' + Date.now() };
+            return {
+              ...p,
+              wireDrops: [...(p.wireDrops || []), newDrop]
+            };
+          }
+        }
+        return p;
+      }));
+
+      alert(selectedWireDrop ? 'Wire drop updated!' : 'Wire drop added!');
+      setCurrentView('wireDropList');
+      setSelectedWireDrop(null);
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('wireDropList')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>
+              {selectedWireDrop ? 'Edit Wire Drop' : 'Add Wire Drop'}
+            </h1>
+            <button onClick={handleSave} className={`p-2 ${t.accentText}`}>
+              <Save size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Wire Drop Name *"
+          />
+          
+          <input
+            type="text"
+            value={formData.uid}
+            onChange={(e) => setFormData({...formData, uid: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="UID *"
+          />
+          
+          <input
+            type="text"
+            value={formData.location}
+            onChange={(e) => setFormData({...formData, location: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Location *"
+          />
+          
+          <select
+            value={formData.type}
+            onChange={(e) => setFormData({...formData, type: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+          >
+            <option value="CAT6">CAT6</option>
+            <option value="CAT6A">CAT6A</option>
+            <option value="Fiber">Fiber</option>
+            <option value="Coax">Coax</option>
+            <option value="Power">Power</option>
+          </select>
+        </div>
+      </div>
+    );
+  };
+
+  // Project Form for PM
+  const ProjectForm = () => {
+    const [formData, setFormData] = useState(
+      selectedProject || {
+        name: '',
+        client: '',
+        address: '',
+        phase: 'Planning',
+        startDate: '',
+        endDate: '',
+        wiringDiagramUrl: '',
+        portalProposalUrl: '',
+        oneDrivePhotos: '',
+        oneDriveFiles: '',
+        oneDriveProcurement: '',
+        stakeholders: [],
+        team: [],
+        wireDrops: []
+      }
+    );
+
+    const handleSave = () => {
+      if (!formData.name || !formData.wiringDiagramUrl || !formData.portalProposalUrl) {
+        alert('Please fill in all required fields (Name, Wiring Diagram URL, Portal Proposal URL)');
+        return;
+      }
+
+      if (selectedProject) {
+        // Edit existing
+        setProjects(prev => prev.map(p => p.id === selectedProject.id ? {...formData, id: selectedProject.id} : p));
+        alert('Project updated!');
+      } else {
+        // Add new
+        const newProject = { ...formData, id: Date.now().toString() };
+        setProjects(prev => [...prev, newProject]);
+        alert('Project created!');
+      }
+      
+      setCurrentView('pmDashboard');
+      setSelectedProject(null);
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('pmDashboard')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>
+              {selectedProject ? 'Edit Project' : 'New Project'}
+            </h1>
+            <button onClick={handleSave} className={`p-2 ${t.accentText}`}>
+              <Save size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Project Name *"
+          />
+          
+          <input
+            type="text"
+            value={formData.client}
+            onChange={(e) => setFormData({...formData, client: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Client"
+          />
+          
+          <input
+            type="text"
+            value={formData.address}
+            onChange={(e) => setFormData({...formData, address: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Address"
+          />
+
+          <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>Required Links</h3>
+            <input
+              type="url"
+              value={formData.wiringDiagramUrl}
+              onChange={(e) => setFormData({...formData, wiringDiagramUrl: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="Wiring Diagram URL (Lucid Chart) *"
+            />
+            <input
+              type="url"
+              value={formData.portalProposalUrl}
+              onChange={(e) => setFormData({...formData, portalProposalUrl: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+              placeholder="Portal Proposal URL *"
+            />
+          </div>
+
+          <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>OneDrive Links</h3>
+            <input
+              type="url"
+              value={formData.oneDrivePhotos}
+              onChange={(e) => setFormData({...formData, oneDrivePhotos: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="OneDrive Photos Folder URL"
+            />
+            <input
+              type="url"
+              value={formData.oneDriveFiles}
+              onChange={(e) => setFormData({...formData, oneDriveFiles: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="OneDrive Files Folder URL"
+            />
+            <input
+              type="url"
+              value={formData.oneDriveProcurement}
+              onChange={(e) => setFormData({...formData, oneDriveProcurement: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+              placeholder="OneDrive Procurement Folder URL"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Technician Dashboard
   const TechnicianDashboard = () => (
     <div className={`min-h-screen ${t.bg}`}>
@@ -199,8 +506,17 @@ const App = () => {
         </div>
         
         <div className="flex gap-2">
-          <button className={`px-4 py-2 rounded-lg border ${t.border} ${t.text} font-medium`}>
-            Home
+          <button 
+            onClick={() => setViewMyProjects(true)}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+          >
+            My Projects
+          </button>
+          <button 
+            onClick={() => setViewMyProjects(false)}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+          >
+            All Projects
           </button>
         </div>
       </div>
@@ -225,9 +541,11 @@ const App = () => {
 
       {/* Projects */}
       <div className="px-4 pb-32">
-        <h2 className={`text-lg font-semibold ${t.text} mb-3`}>My projects</h2>
+        <h2 className={`text-lg font-semibold ${t.text} mb-3`}>
+          {viewMyProjects ? 'My projects' : 'All projects'}
+        </h2>
         
-        {projects.map((project) => {
+        {getFilteredProjects().map((project) => {
           const progress = calculateProjectProgress(project);
           const isCheckedIn = activeCheckIns[project.id];
           
@@ -289,7 +607,12 @@ const App = () => {
           People
         </button>
         <button 
-          onClick={() => setCurrentView('wireDropList')}
+          onClick={() => {
+            if (getFilteredProjects().length > 0) {
+              setSelectedProject(getFilteredProjects()[0]);
+              setCurrentView('wireDropList');
+            }
+          }}
           className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
         >
           <Zap size={20} className="mx-auto mb-1" />
@@ -320,11 +643,17 @@ const App = () => {
         {/* Header */}
         <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
           <div className="flex items-center justify-between mb-3">
-            <button onClick={() => setCurrentView('project')} className={`p-2 ${t.text}`}>
+            <button onClick={() => setCurrentView(userRole === 'pm' ? 'pmProjectDetail' : 'project')} className={`p-2 ${t.text}`}>
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Wire Drops</h1>
-            <button onClick={() => setCurrentView('wireDropForm')} className={`p-2 ${t.text}`}>
+            <button 
+              onClick={() => {
+                setSelectedWireDrop(null);
+                setCurrentView('wireDropForm');
+              }}
+              className={`p-2 ${t.text}`}
+            >
               <Plus size={24} />
             </button>
           </div>
@@ -363,12 +692,24 @@ const App = () => {
                     <p className={`font-medium ${t.text}`}>{drop.name}</p>
                     <p className={`text-xs ${t.textSecondary}`}>UID: {drop.uid}</p>
                   </div>
-                  <div className={`px-2 py-1 rounded text-xs font-medium ${
-                    progress === 100 ? 'bg-green-600 text-white' :
-                    progress === 50 ? 'bg-orange-600 text-white' :
-                    'bg-gray-600 text-white'
-                  }`}>
-                    {progress}%
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedWireDrop(drop);
+                        setCurrentView('wireDropForm');
+                      }}
+                      className={`p-1 ${t.surfaceHover} rounded`}
+                    >
+                      <Edit2 size={16} className={t.textSecondary} />
+                    </button>
+                    <div className={`px-2 py-1 rounded text-xs font-medium ${
+                      progress === 100 ? 'bg-green-600 text-white' :
+                      progress === 50 ? 'bg-orange-600 text-white' :
+                      'bg-gray-600 text-white'
+                    }`}>
+                      {progress}%
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
@@ -436,7 +777,12 @@ const App = () => {
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Wire Drop Detail</h1>
-            <button className={`p-2 ${t.text}`}>
+            <button 
+              onClick={() => {
+                setCurrentView('wireDropForm');
+              }}
+              className={`p-2 ${t.text}`}
+            >
               <Edit2 size={20} />
             </button>
           </div>
@@ -479,7 +825,20 @@ const App = () => {
                 Prewire {selectedWireDrop.prewirePhoto && '✓'}
               </h3>
               {selectedWireDrop.prewirePhoto ? (
-                <img src={selectedWireDrop.prewirePhoto} alt="Prewire" className="w-full h-24 object-cover rounded-lg mb-2" />
+                <div className="relative">
+                  <img 
+                    src={selectedWireDrop.prewirePhoto} 
+                    alt="Prewire" 
+                    className="w-full h-24 object-cover rounded-lg mb-2 cursor-pointer" 
+                    onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
+                  />
+                  <button 
+                    onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
+                    className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white"
+                  >
+                    <Maximize size={12} />
+                  </button>
+                </div>
               ) : (
                 <button 
                   onClick={handlePrewirePhoto}
@@ -498,7 +857,20 @@ const App = () => {
                 Installed {selectedWireDrop.installedPhoto && '✓'}
               </h3>
               {selectedWireDrop.installedPhoto ? (
-                <img src={selectedWireDrop.installedPhoto} alt="Installed" className="w-full h-24 object-cover rounded-lg mb-2" />
+                <div className="relative">
+                  <img 
+                    src={selectedWireDrop.installedPhoto} 
+                    alt="Installed" 
+                    className="w-full h-24 object-cover rounded-lg mb-2 cursor-pointer" 
+                    onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
+                  />
+                  <button 
+                    onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
+                    className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white"
+                  >
+                    <Maximize size={12} />
+                  </button>
+                </div>
               ) : (
                 <button 
                   onClick={handleInstalledPhoto}
@@ -611,7 +983,18 @@ const App = () => {
               <div className="grid grid-cols-2 gap-2">
                 {editedIssue.photos.map((photo, idx) => (
                   <div key={idx} className="relative">
-                    <img src={photo} alt={`Issue ${idx + 1}`} className="w-full h-24 object-cover rounded-lg" />
+                    <img 
+                      src={photo} 
+                      alt={`Issue ${idx + 1}`} 
+                      className="w-full h-24 object-cover rounded-lg cursor-pointer" 
+                      onClick={() => setFullscreenImage(photo)}
+                    />
+                    <button 
+                      onClick={() => setFullscreenImage(photo)}
+                      className="absolute top-1 left-1 p-1 bg-black/50 rounded-full text-white"
+                    >
+                      <Maximize size={12} />
+                    </button>
                     <button 
                       onClick={() => {
                         setEditedIssue({
@@ -668,11 +1051,19 @@ const App = () => {
                 <p className={`text-xs ${t.textSecondary} mt-1`}>{contact.company}</p>
               </div>
               <div className="text-right">
-                <a href={`mailto:${contact.email}`} className={`text-xs ${t.textSecondary} block`}>
+                <a 
+                  href={`mailto:${contact.email}`} 
+                  className={`text-xs ${t.textSecondary} block hover:${t.accentText}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Mail size={14} className="inline mr-1" />
                   {contact.email}
                 </a>
-                <a href={`tel:${contact.phone}`} className={`text-xs ${t.textSecondary} block mt-1`}>
+                <a 
+                  href={`tel:${contact.phone}`} 
+                  className={`text-xs ${t.textSecondary} block mt-1 hover:${t.accentText}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <Phone size={14} className="inline mr-1" />
                   {contact.phone}
                 </a>
@@ -730,7 +1121,13 @@ const App = () => {
       <div className="px-4 pb-20">
         <div className="flex items-center justify-between mb-3">
           <h2 className={`text-lg font-semibold ${t.text}`}>Projects</h2>
-          <button className={`p-2 ${t.accentText}`}>
+          <button 
+            onClick={() => {
+              setSelectedProject(null);
+              setCurrentView('projectForm');
+            }}
+            className={`p-2 ${t.accentText}`}
+          >
             <Plus size={20} />
           </button>
         </div>
@@ -791,16 +1188,25 @@ const App = () => {
                     setSelectedProject(project);
                     setCurrentView('pmProjectDetail');
                   }}
-                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
                 >
                   <Edit2 size={16} className="inline mr-1" />
                   Edit
                 </button>
-                <button className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}>
+                <button 
+                  onClick={() => {
+                    // Generate and download report
+                    alert('Report generation would be implemented here');
+                  }}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
+                >
                   <BarChart size={16} className="inline mr-1" />
                   Report
                 </button>
-                <button className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}>
+                <button 
+                  onClick={() => openLink(project.oneDriveFiles)}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
+                >
                   <FolderOpen size={16} className="inline mr-1" />
                   Files
                 </button>
@@ -816,6 +1222,18 @@ const App = () => {
   const PMProjectDetail = () => {
     if (!selectedProject) return null;
 
+    const [editableProject, setEditableProject] = useState(selectedProject);
+
+    const handleSave = () => {
+      setProjects(prev => prev.map(p => p.id === editableProject.id ? editableProject : p));
+      alert('Project updated!');
+      setCurrentView('pmDashboard');
+    };
+
+    const sendWeeklyReport = () => {
+      alert(`Weekly report sent to: ${editableProject.stakeholders?.join(', ')}`);
+    };
+
     return (
       <div className={`min-h-screen ${t.bg}`}>
         {/* Header */}
@@ -825,8 +1243,8 @@ const App = () => {
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Project Details</h1>
-            <button className={`p-2 ${t.accentText}`}>
-              Save
+            <button onClick={handleSave} className={`p-2 ${t.accentText}`}>
+              <Save size={20} />
             </button>
           </div>
         </div>
@@ -838,69 +1256,157 @@ const App = () => {
             <div className="space-y-2">
               <input
                 type="text"
-                value={selectedProject.name}
+                value={editableProject.name}
+                onChange={(e) => setEditableProject({...editableProject, name: e.target.value})}
                 className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
                 placeholder="Project Name"
               />
               <input
                 type="text"
-                value={selectedProject.client}
+                value={editableProject.client}
+                onChange={(e) => setEditableProject({...editableProject, client: e.target.value})}
                 className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
                 placeholder="Client"
               />
               <input
                 type="text"
-                value={selectedProject.address}
+                value={editableProject.address}
+                onChange={(e) => setEditableProject({...editableProject, address: e.target.value})}
                 className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
                 placeholder="Address"
               />
             </div>
           </div>
 
+          {/* Core Links */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>Core Project Links</h3>
+            <div className="space-y-3">
+              <div>
+                <label className={`text-sm ${t.textSecondary} block mb-1`}>Wiring Diagram (Lucid Chart)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editableProject.wiringDiagramUrl}
+                    onChange={(e) => setEditableProject({...editableProject, wiringDiagramUrl: e.target.value})}
+                    className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    placeholder="Lucid Chart URL"
+                  />
+                  <button 
+                    onClick={() => openLink(editableProject.wiringDiagramUrl)}
+                    className={`px-3 py-2 rounded-lg ${t.accent} text-white`}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={`text-sm ${t.textSecondary} block mb-1`}>Portal Proposal</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editableProject.portalProposalUrl}
+                    onChange={(e) => setEditableProject({...editableProject, portalProposalUrl: e.target.value})}
+                    className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    placeholder="Portal Proposal URL"
+                  />
+                  <button 
+                    onClick={() => openLink(editableProject.portalProposalUrl)}
+                    className={`px-3 py-2 rounded-lg ${t.accent} text-white`}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* OneDrive Integration */}
           <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
             <h3 className={`font-medium ${t.text} mb-3`}>OneDrive Integration</h3>
-            <input
-              type="text"
-              value={selectedProject.oneDriveFolder}
-              className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-2`}
-              placeholder="OneDrive Folder URL"
-            />
-            <button className={`w-full py-2 rounded-lg ${t.accent} text-white text-sm`}>
-              <FolderOpen size={16} className="inline mr-2" />
-              Connect OneDrive Folder
-            </button>
+            <div className="space-y-3">
+              <div>
+                <label className={`text-sm ${t.textSecondary} block mb-1`}>Photos Folder</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editableProject.oneDrivePhotos}
+                    onChange={(e) => setEditableProject({...editableProject, oneDrivePhotos: e.target.value})}
+                    className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    placeholder="OneDrive Photos Folder URL"
+                  />
+                  <button 
+                    onClick={() => openLink(editableProject.oneDrivePhotos)}
+                    className={`px-3 py-2 rounded-lg ${t.accent} text-white`}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={`text-sm ${t.textSecondary} block mb-1`}>Files Folder</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editableProject.oneDriveFiles}
+                    onChange={(e) => setEditableProject({...editableProject, oneDriveFiles: e.target.value})}
+                    className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    placeholder="OneDrive Files Folder URL"
+                  />
+                  <button 
+                    onClick={() => openLink(editableProject.oneDriveFiles)}
+                    className={`px-3 py-2 rounded-lg ${t.accent} text-white`}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={`text-sm ${t.textSecondary} block mb-1`}>Procurement Folder</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editableProject.oneDriveProcurement}
+                    onChange={(e) => setEditableProject({...editableProject, oneDriveProcurement: e.target.value})}
+                    className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    placeholder="OneDrive Procurement Folder URL"
+                  />
+                  <button 
+                    onClick={() => openLink(editableProject.oneDriveProcurement)}
+                    className={`px-3 py-2 rounded-lg ${t.accent} text-white`}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Procurement */}
+          {/* Wire Drops Management */}
           <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
-            <h3 className={`font-medium ${t.text} mb-3`}>Procurement</h3>
-            <input
-              type="text"
-              value={selectedProject.procurementFile}
-              className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-2`}
-              placeholder="Procurement CSV File URL"
-            />
-            <button className={`w-full py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}>
-              <Package size={16} className="inline mr-2" />
-              Upload Procurement File
-            </button>
-          </div>
-
-          {/* Wire Drops Import */}
-          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
-            <h3 className={`font-medium ${t.text} mb-3`}>Wire Drops ({selectedProject.wireDrops?.length || 0})</h3>
-            <button className={`w-full py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm mb-2`}>
-              <Upload size={16} className="inline mr-2" />
-              Import Wire Drops CSV
-            </button>
-            <button 
-              onClick={() => setCurrentView('wireDropList')}
-              className={`w-full py-2 rounded-lg ${t.accent} text-white text-sm`}
-            >
-              <Zap size={16} className="inline mr-2" />
-              Manage Wire Drops
-            </button>
+            <h3 className={`font-medium ${t.text} mb-3`}>Wire Drops ({editableProject.wireDrops?.length || 0})</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={() => {
+                  // Import wire drops functionality would go here
+                  alert('Wire drops import functionality would be implemented here');
+                }}
+                className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}
+              >
+                <Upload size={16} className="inline mr-2" />
+                Import CSV
+              </button>
+              <button 
+                onClick={() => {
+                  setSelectedProject(editableProject);
+                  setCurrentView('wireDropList');
+                }}
+                className={`py-2 rounded-lg ${t.accent} text-white text-sm`}
+              >
+                <Zap size={16} className="inline mr-2" />
+                Manage Drops
+              </button>
+            </div>
           </div>
 
           {/* Stakeholder Report */}
@@ -909,15 +1415,30 @@ const App = () => {
             <p className={`text-sm ${t.textSecondary} mb-3`}>
               Weekly report will include project progress, open issues, and completed items.
             </p>
-            <div className="space-y-2">
-              {selectedProject.stakeholders?.map((email, idx) => (
-                <div key={idx} className={`px-3 py-2 rounded-lg ${t.surfaceHover} text-sm ${t.text}`}>
-                  <Mail size={14} className="inline mr-2" />
-                  {email}
+            <div className="space-y-2 mb-3">
+              {editableProject.stakeholders?.map((email, idx) => (
+                <div key={idx} className={`px-3 py-2 rounded-lg ${t.surfaceHover} text-sm ${t.text} flex items-center justify-between`}>
+                  <div className="flex items-center">
+                    <Mail size={14} className="inline mr-2" />
+                    {email}
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const updated = {...editableProject};
+                      updated.stakeholders = updated.stakeholders.filter((_, i) => i !== idx);
+                      setEditableProject(updated);
+                    }}
+                    className="text-red-500"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               ))}
             </div>
-            <button className={`w-full py-2 rounded-lg ${t.accent} text-white text-sm mt-3`}>
+            <button 
+              onClick={sendWeeklyReport}
+              className={`w-full py-2 rounded-lg ${t.accent} text-white text-sm`}
+            >
               <Send size={16} className="inline mr-2" />
               Send Weekly Report Now
             </button>
@@ -966,6 +1487,30 @@ const App = () => {
 
           {/* Sections */}
           <div className="px-4 pb-20">
+            {/* Wiring Diagram */}
+            <button
+              onClick={() => openLink(selectedProject.wiringDiagramUrl)}
+              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
+            >
+              <div className="flex items-center gap-3">
+                <FileText size={20} className={t.textSecondary} />
+                <span className={`font-medium ${t.text}`}>Wiring Diagram</span>
+              </div>
+              <ExternalLink size={20} className={t.textSecondary} />
+            </button>
+
+            {/* Portal Proposal */}
+            <button
+              onClick={() => openLink(selectedProject.portalProposalUrl)}
+              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
+            >
+              <div className="flex items-center gap-3">
+                <FileText size={20} className={t.textSecondary} />
+                <span className={`font-medium ${t.text}`}>Portal Proposal</span>
+              </div>
+              <ExternalLink size={20} className={t.textSecondary} />
+            </button>
+
             {/* Wire Drops */}
             <button
               onClick={() => setCurrentView('wireDropList')}
@@ -1052,16 +1597,29 @@ const App = () => {
             )}
 
             {/* Files */}
-            <button
-              onClick={() => window.open(selectedProject.oneDriveFolder, '_blank')}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <Folder size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Project Files</span>
-              </div>
-              <ChevronRight size={20} className={t.textSecondary} />
-            </button>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <button
+                onClick={() => openLink(selectedProject.oneDrivePhotos)}
+                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+              >
+                <Image size={20} className={`${t.textSecondary} mb-1`} />
+                <span className={`text-xs ${t.text}`}>Photos</span>
+              </button>
+              <button
+                onClick={() => openLink(selectedProject.oneDriveFiles)}
+                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+              >
+                <Folder size={20} className={`${t.textSecondary} mb-1`} />
+                <span className={`text-xs ${t.text}`}>Files</span>
+              </button>
+              <button
+                onClick={() => openLink(selectedProject.oneDriveProcurement)}
+                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+              >
+                <Package size={20} className={`${t.textSecondary} mb-1`} />
+                <span className={`text-xs ${t.text}`}>Procurement</span>
+              </button>
+            </div>
 
             {/* People */}
             <button
@@ -1078,7 +1636,16 @@ const App = () => {
 
           {/* Bottom Actions */}
           <div className={`fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-2 border-t ${t.border} ${t.bgSecondary}`}>
-            <button className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}>
+            <button 
+              onClick={() => {
+                const query = prompt('Search for:');
+                if (query) {
+                  setSearchQuery(query);
+                  setCurrentView('wireDropList');
+                }
+              }}
+              className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+            >
               Search
             </button>
             <button 
@@ -1103,6 +1670,11 @@ const App = () => {
     });
 
     const saveIssue = () => {
+      if (!newIssue.title.trim()) {
+        alert('Please enter an issue title');
+        return;
+      }
+
       const issue = {
         id: 'I' + Date.now(),
         projectId: selectedProject.id,
@@ -1124,7 +1696,7 @@ const App = () => {
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Log Issue</h1>
             <button onClick={saveIssue} className={`p-2 ${t.accentText}`}>
-              Save
+              <Save size={20} />
             </button>
           </div>
         </div>
@@ -1167,6 +1739,39 @@ const App = () => {
             className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border} h-32`}
             placeholder="Notes..."
           />
+
+          {/* Show added photos */}
+          {newIssue.photos.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {newIssue.photos.map((photo, idx) => (
+                <div key={idx} className="relative">
+                  <img 
+                    src={photo} 
+                    alt={`New issue ${idx + 1}`} 
+                    className="w-full h-24 object-cover rounded-lg cursor-pointer" 
+                    onClick={() => setFullscreenImage(photo)}
+                  />
+                  <button 
+                    onClick={() => setFullscreenImage(photo)}
+                    className="absolute top-1 left-1 p-1 bg-black/50 rounded-full text-white"
+                  >
+                    <Maximize size={12} />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      setNewIssue({
+                        ...newIssue, 
+                        photos: newIssue.photos.filter((_, i) => i !== idx)
+                      });
+                    }}
+                    className="absolute top-1 right-1 p-1 bg-red-500 rounded-full"
+                  >
+                    <X size={12} className="text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1204,6 +1809,7 @@ const App = () => {
           {currentView === 'project' && <ProjectDetailView />}
           {currentView === 'wireDropList' && <WireDropListView />}
           {currentView === 'wireDropDetail' && <WireDropDetailView />}
+          {currentView === 'wireDropForm' && <WireDropForm />}
           {currentView === 'issueDetail' && <IssueDetailView />}
           {currentView === 'issueForm' && <IssueForm />}
           {currentView === 'people' && <PeopleView />}
@@ -1213,10 +1819,13 @@ const App = () => {
           {currentView === 'dashboard' && <PMDashboard />}
           {currentView === 'pmDashboard' && <PMDashboard />}
           {currentView === 'pmProjectDetail' && <PMProjectDetail />}
+          {currentView === 'projectForm' && <ProjectForm />}
           {currentView === 'wireDropList' && <WireDropListView />}
+          {currentView === 'wireDropForm' && <WireDropForm />}
         </>
       )}
       {showScanner && <QRScanner />}
+      <FullscreenImageModal />
     </>
   );
 };
