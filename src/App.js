@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import { 
-  Camera, ArrowLeft, Calendar, FileText, Users, Plus, Check,
-  Moon, Sun, Trash2, Download, Upload, ChevronDown,
-  Clock, Zap, AlertCircle, Home, QrCode, MoreVertical,
-  MapPin, Folder, Image, X, ChevronRight, Edit2, Bell,
-  Search, Filter, LogIn, LogOut, CheckCircle, Eye, EyeOff,
-  Package, Mail, Phone, Building, UserPlus, FolderOpen,
-  Settings, BarChart, Send, Save, ExternalLink, Maximize
+  Camera, ArrowLeft, Calendar, FileText, Users, Plus,
+  Moon, Sun, Upload,
+  Zap, AlertCircle, QrCode,
+  Folder, Image, X, ChevronRight, Edit2,
+  Search, Eye, EyeOff,
+  Package, Mail, Phone, UserPlus, FolderOpen,
+  BarChart, Send, Save, ExternalLink, Maximize
 } from 'lucide-react';
 
 const App = () => {
@@ -22,80 +23,74 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMyProjects, setViewMyProjects] = useState(true);
   const [fullscreenImage, setFullscreenImage] = useState(null);
-  const fileInputRef = useRef(null);
-  const photoInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
+  // Supabase test state (non-invasive)
+  const [showTest, setShowTest] = useState(false);
+  const [testTable, setTestTable] = useState(process.env.REACT_APP_SUPABASE_TABLE || '');
+  const [testData, setTestData] = useState(null);
+  const [testError, setTestError] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
   
   // Time tracking state
-  const [timeLogs, setTimeLogs] = useState([]);
+  const [, setTimeLogs] = useState([]);
   const [activeCheckIns, setActiveCheckIns] = useState({});
   
-  // Projects state with wire drops
-  const [projects, setProjects] = useState([
-    {
-      id: '1',
-      name: 'Smith Residence',
-      client: 'John Smith',
-      address: '123 Main St, Austin, TX',
-      phase: 'Install',
-      startDate: '2025-01-15',
-      endDate: '2025-02-28',
-      team: ['John Tech', 'Mike Engineer'],
-      assignedTechnician: 'Current User', // For filtering
-      // Three separate OneDrive links
-      oneDrivePhotos: 'https://onedrive.live.com/smith-residence/photos',
-      oneDriveFiles: 'https://onedrive.live.com/smith-residence/files',
-      oneDriveProcurement: 'https://onedrive.live.com/smith-residence/procurement',
-      // New required fields for PM
-      wiringDiagramUrl: 'https://lucid.app/lucidchart/f0e89b19-d72d-4ab1-8cb9-2712dbca4bc1/edit?invitationId=inv_e5d63790-ba70-4d38-981a-a706a7c2ed13',
-      portalProposalUrl: 'https://portal.company.com/proposals/smith-residence-2025',
-      wireDrops: [
-        { id: 'W001', uid: 'SM-LR-001', name: 'Living Room TV', location: 'Living Room - North Wall', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W002', uid: 'SM-MB-001', name: 'Master BR AP', location: 'Master Bedroom - Ceiling', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=1', installedPhoto: null },
-        { id: 'W003', uid: 'SM-KT-001', name: 'Kitchen Display', location: 'Kitchen - Island', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=2', installedPhoto: 'https://picsum.photos/400/300?random=3' },
-        { id: 'W004', uid: 'SM-OF-001', name: 'Office Desk', location: 'Home Office', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W005', uid: 'SM-GR-001', name: 'Garage Camera', location: 'Garage', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=4', installedPhoto: null }
-      ],
-      issues: [],
-      files: [],
-      photos: [],
-      stakeholders: ['john.smith@email.com', 'sarah.pm@company.com']
-    },
-    {
-      id: '2',
-      name: 'Office Complex',
-      client: 'ABC Corp',
-      address: '456 Business Ave, Austin, TX',
-      phase: 'Planning',
-      startDate: '2025-02-01',
-      endDate: '2025-03-15',
-      team: ['Jane Tech', 'Bob Engineer'],
-      assignedTechnician: 'Jane Tech',
-      oneDrivePhotos: 'https://onedrive.live.com/office-complex/photos',
-      oneDriveFiles: 'https://onedrive.live.com/office-complex/files',
-      oneDriveProcurement: 'https://onedrive.live.com/office-complex/procurement',
-      wiringDiagramUrl: 'https://lucid.app/lucidchart/office-complex-diagram',
-      portalProposalUrl: 'https://portal.company.com/proposals/office-complex-2025',
-      wireDrops: [
-        { id: 'O001', uid: 'OC-LB-001', name: 'Lobby Camera', location: 'Main Lobby', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'O002', uid: 'OC-CR-001', name: 'Conference Room AP', location: 'Conference Room A', type: 'CAT6', prewirePhoto: null, installedPhoto: null }
-      ],
-      issues: [],
-      files: [],
-      photos: [],
-      stakeholders: ['contact@abccorp.com', 'sarah.pm@company.com']
-    }
-  ]);
+  // Projects state (now loaded from Supabase)
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
 
-  // Issues state
-  const [issues, setIssues] = useState([
-    { id: 'I001', projectId: '1', title: 'Wall blocking at entry', status: 'blocked', date: '2025-01-20', notes: 'Need to reroute through ceiling', photos: [] },
-    { id: 'I002', projectId: '1', title: 'Missing CAT6 spool', status: 'open', date: '2025-01-19', notes: 'Order placed, arriving tomorrow', photos: [] },
-    { id: 'I003', projectId: '1', title: 'Conduit too small', status: 'resolved', date: '2025-01-17', notes: 'Replaced with 1.5" conduit', photos: [] }
-  ]);
+  // Map DB row (snake_case) to UI shape (camelCase)
+  const mapProject = (row) => ({
+    id: row.id,
+    name: row.name,
+    client: row.client,
+    address: row.address,
+    phase: row.phase,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    assignedTechnician: row.assigned_technician || null,
+    wiringDiagramUrl: row.wiring_diagram_url,
+    portalProposalUrl: row.portal_proposal_url,
+    oneDrivePhotos: row.one_drive_photos,
+    oneDriveFiles: row.one_drive_files,
+    oneDriveProcurement: row.one_drive_procurement,
+    wireDrops: [] // loaded later per project
+  });
+
+  const loadProjects = async () => {
+    try {
+      setProjectsLoading(true);
+      setProjectsError('');
+      if (!supabase) {
+        setProjectsError('Supabase not configured.');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        setProjectsError(error.message);
+        return;
+      }
+      setProjects((data || []).map(mapProject));
+    } catch (e) {
+      setProjectsError(e.message);
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line
+  }, []);
+
+  // Issues state (now loaded from Supabase)
+  const [issues, setIssues] = useState([]);
 
   // Contacts/People state
-  const [contacts, setContacts] = useState([
+  const [contacts] = useState([
     { id: 'C001', name: 'John Smith', role: 'Client', email: 'john.smith@email.com', phone: '512-555-0100', company: 'Residence' },
     { id: 'C002', name: 'Sarah Johnson', role: 'Project Manager', email: 'sarah.pm@company.com', phone: '512-555-0101', company: 'Intelligent Systems' },
     { id: 'C003', name: 'Mike Engineer', role: 'Lead Technician', email: 'mike@company.com', phone: '512-555-0102', company: 'Intelligent Systems' }
@@ -117,10 +112,7 @@ const App = () => {
 
   // Filter projects based on technician view
   const getFilteredProjects = () => {
-    if (userRole === 'pm') return projects;
-    if (viewMyProjects) {
-      return projects.filter(p => p.assignedTechnician === 'Current User');
-    }
+    // For now, show all projects (assignment optional)
     return projects;
   };
 
@@ -378,26 +370,73 @@ const App = () => {
       }
     );
 
-    const handleSave = () => {
-      if (!formData.name || !formData.wiringDiagramUrl || !formData.portalProposalUrl) {
-        alert('Please fill in all required fields (Name, Wiring Diagram URL, Portal Proposal URL)');
-        return;
-      }
+    const [saving, setSaving] = useState(false)
+    const [saveError, setSaveError] = useState('')
 
-      if (selectedProject) {
-        // Edit existing
-        setProjects(prev => prev.map(p => p.id === selectedProject.id ? {...formData, id: selectedProject.id} : p));
-        alert('Project updated!');
-      } else {
-        // Add new
-        const newProject = { ...formData, id: Date.now().toString() };
-        setProjects(prev => [...prev, newProject]);
-        alert('Project created!');
+    const toDb = (f) => ({
+      name: f.name,
+      client: f.client || null,
+      address: f.address || null,
+      phase: f.phase || null,
+      start_date: f.startDate || null,
+      end_date: f.endDate || null,
+      wiring_diagram_url: f.wiringDiagramUrl || null,
+      portal_proposal_url: f.portalProposalUrl || null,
+      one_drive_photos: f.oneDrivePhotos || null,
+      one_drive_files: f.oneDriveFiles || null,
+      one_drive_procurement: f.oneDriveProcurement || null,
+    })
+
+    const handleSave = async () => {
+      try {
+        setSaving(true)
+        setSaveError('')
+
+        if (!formData.name || !formData.wiringDiagramUrl || !formData.portalProposalUrl) {
+          setSaveError('Please fill in required fields (Name, Wiring Diagram URL, Portal Proposal URL)')
+          return
+        }
+        if (!supabase) {
+          setSaveError('Supabase not configured')
+          return
+        }
+
+        if (selectedProject?.id) {
+          // Update
+          const { data, error } = await supabase
+            .from('projects')
+            .update(toDb(formData))
+            .eq('id', selectedProject.id)
+            .select('*')
+            .single()
+          if (error) { setSaveError(error.message); return }
+          const updated = mapProject(data)
+          setProjects(prev => prev.map(p => p.id === updated.id ? updated : p))
+          setSelectedProject(updated)
+          alert('Project updated!')
+          await loadProjects()
+        } else {
+          // Insert
+          const { data, error } = await supabase
+            .from('projects')
+            .insert([toDb(formData)])
+            .select('*')
+            .single()
+          if (error) { setSaveError(error.message); return }
+          const created = mapProject(data)
+          setProjects(prev => [created, ...prev])
+          setSelectedProject(created)
+          alert('Project created!')
+          await loadProjects()
+        }
+
+        setCurrentView('pmDashboard')
+      } catch (e) {
+        setSaveError(e.message)
+      } finally {
+        setSaving(false)
       }
-      
-      setCurrentView('pmDashboard');
-      setSelectedProject(null);
-    };
+    }
 
     return (
       <div className={`min-h-screen ${t.bg}`}>
@@ -410,13 +449,16 @@ const App = () => {
             <h1 className={`text-lg font-semibold ${t.text}`}>
               {selectedProject ? 'Edit Project' : 'New Project'}
             </h1>
-            <button onClick={handleSave} className={`p-2 ${t.accentText}`}>
+            <button onClick={handleSave} disabled={saving} className={`p-2 ${t.accentText}`}>
               <Save size={20} />
             </button>
           </div>
         </div>
 
         <div className="p-4 space-y-4">
+          {saveError && (
+            <div className="text-red-400 text-sm">{saveError}</div>
+          )}
           <input
             type="text"
             value={formData.name}
@@ -1800,6 +1842,114 @@ const App = () => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  // Test read from Supabase (uses env table or input)
+  const runSupabaseTest = async () => {
+    try {
+      setTestBusy(true)
+      setTestError('')
+      setTestData(null)
+      if (!supabase) {
+        setTestError('Supabase env vars missing. Add REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY to .env and restart dev server.')
+        return
+      }
+      const table = (testTable || '').trim()
+      if (!table) {
+        setTestError('Enter a table name to query')
+        return
+      }
+      const { data, error } = await supabase.from(table).select('*').limit(5)
+      if (error) {
+        setTestError(error.message)
+        return
+      }
+      setTestData(data)
+    } catch (e) {
+      setTestError(e.message)
+    } finally {
+      setTestBusy(false)
+    }
+  }
+
+  // Load wire drops for a project when viewing it
+  const loadWireDrops = async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+      if (error) return;
+      const drops = (data || []).map(row => ({
+        id: row.id,
+        uid: row.uid,
+        name: row.name,
+        location: row.location,
+        type: row.type || 'CAT6',
+        prewirePhoto: row.prewire_photo,
+        installedPhoto: row.installed_photo,
+      }));
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, wireDrops: drops } : p));
+      setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, wireDrops: drops } : prev);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (currentView === 'project' && selectedProject && (!selectedProject.wireDrops || selectedProject.wireDrops.length === 0)) {
+      loadWireDrops(selectedProject.id);
+    }
+    // eslint-disable-next-line
+  }, [currentView, selectedProject?.id]);
+
+  // Load issues for a project when viewing it (with photos)
+  const loadIssues = async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data: issueRows, error: issueErr } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      if (issueErr) return;
+
+      const mapped = (issueRows || []).map(r => ({
+        id: r.id,
+        projectId: r.project_id,
+        title: r.title,
+        status: r.status,
+        date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+        notes: r.notes || '',
+        photos: []
+      }));
+
+      // Load photos for these issues (if any exist)
+      const ids = mapped.map(i => i.id);
+      if (ids.length) {
+        const { data: photoRows, error: photoErr } = await supabase
+          .from('issue_photos')
+          .select('*')
+          .in('issue_id', ids);
+        if (!photoErr && photoRows && photoRows.length) {
+          const byIssue = new Map();
+          for (const r of photoRows) {
+            if (!byIssue.has(r.issue_id)) byIssue.set(r.issue_id, []);
+            byIssue.get(r.issue_id).push(r.url);
+          }
+          mapped.forEach(m => { m.photos = byIssue.get(m.id) || []; });
+        }
+      }
+
+      setIssues(mapped);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (currentView === 'project' && selectedProject) {
+      loadIssues(selectedProject.id);
+    }
+    // eslint-disable-next-line
+  }, [currentView, selectedProject?.id]);
+
   // Main Render
   return (
     <>
@@ -1826,6 +1976,36 @@ const App = () => {
       )}
       {showScanner && <QRScanner />}
       <FullscreenImageModal />
+      {/* Small floating Supabase test widget (local-only helper) */}
+      <div style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 60 }}>
+        {!showTest ? (
+          <button onClick={() => setShowTest(true)} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
+            Test Supabase
+          </button>
+        ) : (
+          <div className={`w-[320px] p-3 rounded-lg ${t.surface} border ${t.border}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className={`${t.text} text-sm font-medium`}>Supabase Test</div>
+              <button onClick={() => setShowTest(false)} className={`${t.textSecondary}`}>✕</button>
+            </div>
+            <input
+              value={testTable}
+              onChange={e => setTestTable(e.target.value)}
+              placeholder="table name (e.g., items)"
+              className={`w-full mb-2 px-2 py-1 rounded border ${t.border} ${t.surfaceHover} ${t.text}`}
+            />
+            <button disabled={testBusy} onClick={runSupabaseTest} className={`w-full mb-2 px-2 py-1 rounded ${t.accent} text-white text-sm`}>
+              {testBusy ? 'Running…' : 'Fetch 5 rows'}
+            </button>
+            {testError && (
+              <div className="text-red-400 text-xs mb-2">Error: {testError}</div>
+            )}
+            {testData && (
+              <pre className={`${t.text} text-[10px] max-h-40 overflow-auto`}>{JSON.stringify(testData, null, 2)}</pre>
+            )}
+          </div>
+        )}
+      </div>
     </>
   );
 };
