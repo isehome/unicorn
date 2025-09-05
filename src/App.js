@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, uploadPublicImage, toThumb, slugifySegment } from './lib/supabase';
+import { graphUploadViaApi } from './lib/onedrive';
+import { enqueueUpload, listUploads, removeUpload } from './lib/offline';
 import { 
   Camera, ArrowLeft, Calendar, FileText, Users, Plus,
   Moon, Sun, Upload,
@@ -23,6 +25,31 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMyProjects, setViewMyProjects] = useState(true);
   const [fullscreenImage, setFullscreenImage] = useState(null);
+  // Process any offline uploads when we come online
+  useEffect(() => {
+    const onOnline = async () => {
+      try {
+        const items = await listUploads()
+        for (const it of items) {
+          try {
+            // Recreate a File from stored parts
+            const file = new File([it.blob], it.filename, { type: it.contentType || 'image/jpeg' })
+            const url = await graphUploadViaApi({ rootUrl: it.rootUrl, subPath: it.subPath, file })
+            if (it.update?.type === 'wire_drop' && it.update?.field && it.update?.id) {
+              await supabase.from('wire_drops').update({ [it.update.field]: url }).eq('id', it.update.id)
+            } else if (it.update?.type === 'issue_photo' && it.update?.issueId) {
+              await supabase.from('issue_photos').insert([{ issue_id: it.update.issueId, url }])
+            }
+            await removeUpload(it.id)
+          } catch (_) {
+            // keep for next round
+          }
+        }
+      } catch (_) {}
+    }
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [])
   // Supabase test state (non-invasive)
   const [showTest, setShowTest] = useState(false);
   const [testTable, setTestTable] = useState(process.env.REACT_APP_SUPABASE_TABLE || '');
@@ -841,40 +868,73 @@ const App = () => {
   const WireDropDetailView = () => {
     if (!selectedWireDrop) return null;
 
-    const handlePrewirePhoto = () => {
-      handlePhotoCapture((url) => {
-        const updatedProjects = projects.map(p => {
-          if (p.id === selectedProject.id) {
-            return {
-              ...p,
-              wireDrops: p.wireDrops.map(d => 
-                d.id === selectedWireDrop.id ? { ...d, prewirePhoto: url } : d
-              )
-            };
+    const handlePrewirePhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const subPath = `wire_drops/${uidSeg}/prewire`
+            if (!navigator.onLine) {
+              // Queue offline
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'prewire_photo', id: selectedWireDrop.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/prewire-${Date.now()}`
+            url = await uploadPublicImage(file, path)
           }
-          return p;
-        });
-        setProjects(updatedProjects);
-        setSelectedWireDrop({ ...selectedWireDrop, prewirePhoto: url });
-      });
+          await supabase.from('wire_drops').update({ prewire_photo: url }).eq('id', selectedWireDrop.id)
+          await loadWireDrops(selectedProject.id)
+          setSelectedWireDrop(prev => prev ? { ...prev, prewirePhoto: url } : prev)
+        } catch (err) {
+          alert(`Upload failed: ${err.message}`)
+        }
+      }
+      input.click()
     };
 
-    const handleInstalledPhoto = () => {
-      handlePhotoCapture((url) => {
-        const updatedProjects = projects.map(p => {
-          if (p.id === selectedProject.id) {
-            return {
-              ...p,
-              wireDrops: p.wireDrops.map(d => 
-                d.id === selectedWireDrop.id ? { ...d, installedPhoto: url } : d
-              )
-            };
+    const handleInstalledPhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const subPath = `wire_drops/${uidSeg}/installed`
+            if (!navigator.onLine) {
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'installed_photo', id: selectedWireDrop.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/installed-${Date.now()}`
+            url = await uploadPublicImage(file, path)
           }
-          return p;
-        });
-        setProjects(updatedProjects);
-        setSelectedWireDrop({ ...selectedWireDrop, installedPhoto: url });
-      });
+          await supabase.from('wire_drops').update({ installed_photo: url }).eq('id', selectedWireDrop.id)
+          await loadWireDrops(selectedProject.id)
+          setSelectedWireDrop(prev => prev ? { ...prev, installedPhoto: url } : prev)
+        } catch (err) {
+          alert(`Upload failed: ${err.message}`)
+        }
+      }
+      input.click()
     };
 
     return (
@@ -936,10 +996,11 @@ const App = () => {
               {selectedWireDrop.prewirePhoto ? (
                 <div className="relative">
                   <img 
-                    src={selectedWireDrop.prewirePhoto} 
+                    src={toThumb(selectedWireDrop.prewirePhoto)} 
                     alt="Prewire" 
-                    className="w-full h-24 object-cover rounded-lg mb-2 cursor-pointer" 
+                    className="w-full h-24 object-contain bg-black/20 rounded-lg mb-2 cursor-pointer" 
                     onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
+                    onError={(e) => { e.currentTarget.src = selectedWireDrop.prewirePhoto; }}
                   />
                   <button 
                     onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
@@ -968,10 +1029,11 @@ const App = () => {
               {selectedWireDrop.installedPhoto ? (
                 <div className="relative">
                   <img 
-                    src={selectedWireDrop.installedPhoto} 
+                    src={toThumb(selectedWireDrop.installedPhoto)} 
                     alt="Installed" 
-                    className="w-full h-24 object-cover rounded-lg mb-2 cursor-pointer" 
+                    className="w-full h-24 object-contain bg-black/20 rounded-lg mb-2 cursor-pointer" 
                     onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
+                    onError={(e) => { e.currentTarget.src = selectedWireDrop.installedPhoto; }}
                   />
                   <button 
                     onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
@@ -1003,6 +1065,40 @@ const App = () => {
     if (!selectedIssue) return null;
 
     const [editedIssue, setEditedIssue] = useState(selectedIssue);
+    const [photoErr, setPhotoErr] = useState('')
+
+    const addIssuePhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          setPhotoErr('')
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const subPath = `issues/${editedIssue.id}`
+            if (!navigator.onLine) {
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'issue_photo', issueId: editedIssue.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const path = `projects/${selectedProject.id}/issues/${editedIssue.id}/photo-${Date.now()}`
+            url = await uploadPublicImage(file, path)
+          }
+          await supabase.from('issue_photos').insert([{ issue_id: editedIssue.id, url }])
+          setIssues(prev => prev.map(i => i.id === editedIssue.id ? { ...i, photos: [...(i.photos||[]), url] } : i))
+          setEditedIssue(prev => ({ ...prev, photos: [...(prev.photos||[]), url] }))
+        } catch (err) {
+          setPhotoErr(err.message)
+        }
+      }
+      input.click()
+    }
 
     const saveIssue = () => {
       setIssues(prev => prev.map(i => i.id === editedIssue.id ? editedIssue : i));
@@ -1079,43 +1175,27 @@ const App = () => {
           {/* Photos */}
           <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
             <h3 className={`font-medium ${t.text} mb-2`}>Photos</h3>
-            <button 
-              onClick={() => handlePhotoCapture((url) => {
-                setEditedIssue({...editedIssue, photos: [...(editedIssue.photos || []), url]});
-              })}
-              className={`w-full py-3 rounded-lg ${t.surfaceHover} ${t.text} mb-3`}
-            >
-              <Camera size={20} className="inline mr-2" />
-              Add Photo
-            </button>
-            {editedIssue.photos?.length > 0 && (
-              <div className="grid grid-cols-2 gap-2">
-                {editedIssue.photos.map((photo, idx) => (
-                  <div key={idx} className="relative">
-                    <img 
-                      src={photo} 
-                      alt={`Issue ${idx + 1}`} 
-                      className="w-full h-24 object-cover rounded-lg cursor-pointer" 
-                      onClick={() => setFullscreenImage(photo)}
-                    />
-                    <button 
-                      onClick={() => setFullscreenImage(photo)}
-                      className="absolute top-1 left-1 p-1 bg-black/50 rounded-full text-white"
-                    >
-                      <Maximize size={12} />
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setEditedIssue({
-                          ...editedIssue, 
-                          photos: editedIssue.photos.filter((_, i) => i !== idx)
-                        });
-                      }}
-                      className="absolute top-1 right-1 p-1 bg-red-500 rounded-full"
-                    >
-                      <X size={12} className="text-white" />
-                    </button>
-                  </div>
+            {photoErr && <div className="text-red-400 text-sm mb-2">{photoErr}</div>}
+            <div className="flex gap-2 mb-3">
+              <button onClick={addIssuePhoto} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
+                <Camera size={16} className="inline mr-1" /> Add Photo
+              </button>
+              <button onClick={async()=>{
+                const url = (prompt('Paste photo URL:')||'').trim();
+                if (!url) return;
+                try {
+                  await supabase.from('issue_photos').insert([{ issue_id: editedIssue.id, url }])
+                  setIssues(prev => prev.map(i => i.id === editedIssue.id ? { ...i, photos: [...(i.photos||[]), url] } : i))
+                  setEditedIssue(prev => ({ ...prev, photos: [...(prev.photos||[]), url] }))
+                } catch (e) { alert(e.message) }
+              }} className={`px-3 py-2 rounded-lg ${t.surface} border ${t.border} ${t.text} text-sm`}>
+                Add URL
+              </button>
+            </div>
+            {(editedIssue.photos?.length>0) && (
+              <div className="flex gap-2 overflow-x-auto">
+                {editedIssue.photos.map((p, idx) => (
+                  <img key={idx} src={toThumb(p)} alt={`issue-${idx}`} className="h-28 w-44 object-contain bg-black/20 rounded-lg cursor-pointer" onClick={() => setFullscreenImage(p)} onError={(e)=>{e.currentTarget.src=p}} />
                 ))}
               </div>
             )}
