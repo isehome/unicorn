@@ -154,3 +154,37 @@ do $$ begin
   end if;
 end $$;
 
+-- Lookup: wire_types
+create table if not exists public.wire_types (
+  id uuid primary key default gen_random_uuid(),
+  name text unique not null,
+  active boolean default true,
+  sort_order int default 0
+);
+
+alter table public.wire_types enable row level security;
+
+do $$ begin
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='wire_types' and policyname='dev_read_all'
+  ) then
+    create policy dev_read_all on public.wire_types
+      for select to anon, authenticated using (true);
+  end if;
+end $$;
+
+-- Dev write policies for inserts/updates during development
+do $$ begin
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='wire_drops' and policyname='dev_insert_all'
+  ) then
+    create policy dev_insert_all on public.wire_drops
+      for insert to anon, authenticated with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='wire_drops' and policyname='dev_update_all'
+  ) then
+    create policy dev_update_all on public.wire_drops
+      for update to anon, authenticated using (true) with check (true);
+  end if;
+end $$;

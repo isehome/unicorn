@@ -38,6 +38,9 @@ const App = () => {
   const [projects, setProjects] = useState([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState('');
+  // Wire types lookup
+  const [wireTypes, setWireTypes] = useState([]);
+  const [wireTypesLoading, setWireTypesLoading] = useState(false);
 
   // Map DB row (snake_case) to UI shape (camelCase)
   const mapProject = (row) => ({
@@ -85,6 +88,28 @@ const App = () => {
     loadProjects();
     // eslint-disable-next-line
   }, []);
+
+  const loadWireTypes = async () => {
+    try {
+      setWireTypesLoading(true);
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('wire_types')
+        .select('*')
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+      if (error) return;
+      if (data && data.length) {
+        setWireTypes(data.map(r => r.name));
+      } else {
+        setWireTypes(['CAT6', 'CAT6A', 'Fiber', 'Coax', 'Power']);
+      }
+    } finally {
+      setWireTypesLoading(false);
+    }
+  };
+
+  useEffect(() => { loadWireTypes(); }, []);
 
   // Issues state (now loaded from Supabase)
   const [issues, setIssues] = useState([]);
@@ -260,35 +285,52 @@ const App = () => {
       }
     );
 
-    const handleSave = () => {
+    const [saveError, setSaveError] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
       if (!formData.name || !formData.location || !formData.uid) {
         alert('Please fill in all required fields');
         return;
       }
 
-      setProjects(prev => prev.map(p => {
-        if (p.id === selectedProject.id) {
-          if (selectedWireDrop) {
-            // Edit existing
-            return {
-              ...p,
-              wireDrops: p.wireDrops.map(w => w.id === selectedWireDrop.id ? formData : w)
-            };
-          } else {
-            // Add new
-            const newDrop = { ...formData, id: 'W' + Date.now() };
-            return {
-              ...p,
-              wireDrops: [...(p.wireDrops || []), newDrop]
-            };
-          }
-        }
-        return p;
-      }));
+      if (!supabase) { setSaveError('Supabase not configured'); return; }
+      try {
+        setSaving(true);
+        setSaveError('');
+        const payload = {
+          project_id: selectedProject.id,
+          uid: formData.uid,
+          name: formData.name,
+          location: formData.location,
+          type: formData.type,
+          prewire_photo: formData.prewirePhoto,
+          installed_photo: formData.installedPhoto,
+        };
 
-      alert(selectedWireDrop ? 'Wire drop updated!' : 'Wire drop added!');
-      setCurrentView('wireDropList');
-      setSelectedWireDrop(null);
+        if (selectedWireDrop?.id) {
+          const { error } = await supabase
+            .from('wire_drops')
+            .update(payload)
+            .eq('id', selectedWireDrop.id);
+          if (error) { setSaveError(error.message); return; }
+          alert('Wire drop updated!');
+        } else {
+          const { error } = await supabase
+            .from('wire_drops')
+            .insert([payload]);
+          if (error) { setSaveError(error.message); return; }
+          alert('Wire drop added!');
+        }
+
+        await loadWireDrops(selectedProject.id);
+        setCurrentView('wireDropList');
+        setSelectedWireDrop(null);
+      } catch (e) {
+        setSaveError(e.message);
+      } finally {
+        setSaving(false);
+      }
     };
 
     return (
@@ -302,13 +344,14 @@ const App = () => {
             <h1 className={`text-lg font-semibold ${t.text}`}>
               {selectedWireDrop ? 'Edit Wire Drop' : 'Add Wire Drop'}
             </h1>
-            <button onClick={handleSave} className={`p-2 ${t.accentText}`}>
+            <button onClick={handleSave} disabled={saving} className={`p-2 ${t.accentText}`}>
               <Save size={20} />
             </button>
           </div>
         </div>
 
         <div className="p-4 space-y-4">
+          {saveError && <div className="text-red-400 text-sm">{saveError}</div>}
           <input
             type="text"
             value={formData.name}
@@ -338,11 +381,9 @@ const App = () => {
             onChange={(e) => setFormData({...formData, type: e.target.value})}
             className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
           >
-            <option value="CAT6">CAT6</option>
-            <option value="CAT6A">CAT6A</option>
-            <option value="Fiber">Fiber</option>
-            <option value="Coax">Coax</option>
-            <option value="Power">Power</option>
+            {(wireTypes.length ? wireTypes : ['CAT6','CAT6A','Fiber','Coax','Power']).map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </select>
         </div>
       </div>
