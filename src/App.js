@@ -376,15 +376,41 @@ const App = () => {
             placeholder="Location *"
           />
           
-          <select
-            value={formData.type}
-            onChange={(e) => setFormData({...formData, type: e.target.value})}
-            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
-          >
-            {(wireTypes.length ? wireTypes : ['CAT6','CAT6A','Fiber','Coax','Power']).map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
+          <div className="flex gap-2">
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({...formData, type: e.target.value})}
+              className={`flex-1 px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            >
+              {(wireTypes.length ? wireTypes : ['CAT6','CAT6A','Fiber','Coax','Power']).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const name = (prompt('New wire type name:') || '').trim()
+                  if (!name) return
+                  if (!supabase) { alert('Supabase not configured'); return }
+                  const { error } = await supabase
+                    .from('wire_types')
+                    .insert([{ name, active: true }])
+                  if (error && !String(error.message).includes('duplicate')) {
+                    alert(`Failed to add type: ${error.message}`)
+                    return
+                  }
+                  await loadWireTypes()
+                  setFormData(prev => ({ ...prev, type: name }))
+                } catch (e) {
+                  alert(`Failed to add type: ${e.message}`)
+                }
+              }}
+              className={`px-3 py-3 rounded-lg ${t.accent} text-white text-sm whitespace-nowrap`}
+            >
+              Add Type
+            </button>
+          </div>
         </div>
       </div>
     );
