@@ -171,6 +171,18 @@ do $$ begin
     create policy dev_read_all on public.wire_types
       for select to anon, authenticated using (true);
   end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='wire_types' and policyname='dev_insert_all'
+  ) then
+    create policy dev_insert_all on public.wire_types
+      for insert to anon, authenticated with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='wire_types' and policyname='dev_update_all'
+  ) then
+    create policy dev_update_all on public.wire_types
+      for update to anon, authenticated using (true) with check (true);
+  end if;
 end $$;
 
 -- Dev write policies for inserts/updates during development
