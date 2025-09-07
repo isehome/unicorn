@@ -50,12 +50,6 @@ const App = () => {
     window.addEventListener('online', onOnline)
     return () => window.removeEventListener('online', onOnline)
   }, [])
-  // Supabase test state (non-invasive)
-  const [showTest, setShowTest] = useState(false);
-  const [testTable, setTestTable] = useState(process.env.REACT_APP_SUPABASE_TABLE || '');
-  const [testData, setTestData] = useState(null);
-  const [testError, setTestError] = useState('');
-  const [testBusy, setTestBusy] = useState(false);
   
   // Time tracking state
   const [, setTimeLogs] = useState([]);
@@ -174,13 +168,13 @@ const App = () => {
       bg: 'bg-black',
       bgSecondary: 'bg-gray-900',
       surface: 'bg-gray-900',
-      surfaceHover: 'bg-gray-800',
-      border: 'border-gray-800',
+      surfaceHover: 'bg-gray-700',
+      border: 'border-gray-600',
       text: 'text-white',
-      textSecondary: 'text-gray-400',
-      textTertiary: 'text-gray-500',
+      textSecondary: 'text-gray-200',
+      textTertiary: 'text-gray-400',
       accent: 'bg-blue-500',
-      accentText: 'text-blue-500',
+      accentText: 'text-blue-400',
       success: 'bg-green-600',
       warning: 'bg-orange-600',
       danger: 'bg-red-600'
@@ -658,7 +652,7 @@ const App = () => {
       </div>
 
       {/* Calendar Widget */}
-      <div className={`m-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+      <div className={`m-4 p-4 rounded-xl ${t.surface} border ${t.border}`} style={{marginBottom: '6rem'}}>
         <div className="flex items-center justify-between mb-3">
           <h2 className={`font-medium ${t.text}`}>Today's Schedule</h2>
           <Calendar size={18} className={t.textSecondary} />
@@ -2017,32 +2011,6 @@ const App = () => {
   };
 
   // Test read from Supabase (uses env table or input)
-  const runSupabaseTest = async () => {
-    try {
-      setTestBusy(true)
-      setTestError('')
-      setTestData(null)
-      if (!supabase) {
-        setTestError('Supabase env vars missing. Add REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY to .env and restart dev server.')
-        return
-      }
-      const table = (testTable || '').trim()
-      if (!table) {
-        setTestError('Enter a table name to query')
-        return
-      }
-      const { data, error } = await supabase.from(table).select('*').limit(5)
-      if (error) {
-        setTestError(error.message)
-        return
-      }
-      setTestData(data)
-    } catch (e) {
-      setTestError(e.message)
-    } finally {
-      setTestBusy(false)
-    }
-  }
 
   // Load wire drops for a project when viewing it
   const loadWireDrops = async (projectId) => {
@@ -2150,36 +2118,6 @@ const App = () => {
       )}
       {showScanner && <QRScanner />}
       <FullscreenImageModal />
-      {/* Small floating Supabase test widget (local-only helper) */}
-      <div style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 60 }}>
-        {!showTest ? (
-          <button onClick={() => setShowTest(true)} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
-            Test Supabase
-          </button>
-        ) : (
-          <div className={`w-[320px] p-3 rounded-lg ${t.surface} border ${t.border}`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className={`${t.text} text-sm font-medium`}>Supabase Test</div>
-              <button onClick={() => setShowTest(false)} className={`${t.textSecondary}`}>✕</button>
-            </div>
-            <input
-              value={testTable}
-              onChange={e => setTestTable(e.target.value)}
-              placeholder="table name (e.g., items)"
-              className={`w-full mb-2 px-2 py-1 rounded border ${t.border} ${t.surfaceHover} ${t.text}`}
-            />
-            <button disabled={testBusy} onClick={runSupabaseTest} className={`w-full mb-2 px-2 py-1 rounded ${t.accent} text-white text-sm`}>
-              {testBusy ? 'Running…' : 'Fetch 5 rows'}
-            </button>
-            {testError && (
-              <div className="text-red-400 text-xs mb-2">Error: {testError}</div>
-            )}
-            {testData && (
-              <pre className={`${t.text} text-[10px] max-h-40 overflow-auto`}>{JSON.stringify(testData, null, 2)}</pre>
-            )}
-          </div>
-        )}
-      </div>
     </>
   );
 };
