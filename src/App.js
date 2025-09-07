@@ -1062,10 +1062,12 @@ const App = () => {
 
   // Issue Detail View
   const IssueDetailView = () => {
-    if (!selectedIssue) return null;
-
-    const [editedIssue, setEditedIssue] = useState(selectedIssue);
+    const [editedIssue, setEditedIssue] = useState(
+      selectedIssue || { id: '', title: '', status: 'open', notes: '', photos: [] }
+    );
     const [photoErr, setPhotoErr] = useState('')
+
+    if (!selectedIssue) return null;
 
     const addIssuePhoto = async () => {
       const input = document.createElement('input')
@@ -1409,9 +1411,16 @@ const App = () => {
 
   // PM Project Detail View
   const PMProjectDetail = () => {
-    if (!selectedProject) return null;
+    const [editableProject, setEditableProject] = useState(
+      selectedProject || {
+        id: '', name: '', client: '', address: '', phase: '',
+        startDate: '', endDate: '', wiringDiagramUrl: '', portalProposalUrl: '',
+        oneDrivePhotos: '', oneDriveFiles: '', oneDriveProcurement: '',
+        stakeholders: [], team: [], wireDrops: []
+      }
+    );
 
-    const [editableProject, setEditableProject] = useState(selectedProject);
+    if (!selectedProject) return null;
 
     const handleSave = () => {
       setProjects(prev => prev.map(p => p.id === editableProject.id ? editableProject : p));
