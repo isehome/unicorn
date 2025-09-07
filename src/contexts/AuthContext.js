@@ -1,52 +1,49 @@
-// components/AuthCallback.js
-import React, { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const AuthCallback = () => {
-  const navigate = useNavigate()
+const AuthContext = createContext()
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const handleAuthCallback = async () => {
+    let mounted = true
+    const init = async () => {
       try {
-        // Handle the OAuth callback
-        const { data, error } = await supabase.auth.getSession()
-        
-        if (error) {
-          console.error('Auth callback error:', error)
-          navigate('/login?error=auth_failed')
-          return
-        }
-
-        if (data.session) {
-          // User is authenticated, redirect to dashboard
-          navigate('/dashboard')
-        } else {
-          // No session, redirect to login
-          navigate('/login')
-        }
-      } catch (error) {
-        console.error('Unexpected error during auth callback:', error)
-        navigate('/login?error=unexpected_error')
+        const { data } = await supabase.auth.getSession()
+        if (!mounted) return
+        setUser(data?.session?.user || null)
+      } finally {
+        if (mounted) setLoading(false)
       }
     }
+    init()
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setUser(session?.user || null)
+    })
+    return () => { mounted = false; sub?.subscription?.unsubscribe?.() }
+  }, [])
 
-    handleAuthCallback()
-  }, [navigate])
+  const login = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'email profile openid',
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
+    if (error) throw error
+  }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-indigo-600 mx-auto"></div>
-        <h2 className="mt-4 text-lg font-medium text-gray-900">
-          Completing authentication...
-        </h2>
-        <p className="mt-2 text-sm text-gray-600">
-          Please wait while we verify your credentials.
-        </p>
-      </div>
-    </div>
-  )
+  const logout = async () => {
+    await supabase.auth.signOut()
+    setUser(null)
+  }
+
+  const value = { user, loading, login, logout }
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-export default AuthCallback
+export const useAuth = () => useContext(AuthContext)
+

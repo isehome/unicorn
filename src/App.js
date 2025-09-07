@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { supabase, uploadPublicImage, toThumb, slugifySegment } from './lib/supabase';
+import { graphUploadViaApi } from './lib/onedrive';
+import { enqueueUpload, listUploads, removeUpload } from './lib/offline';
 import { 
-  Camera, ArrowLeft, Calendar, FileText, Users, Plus, Check,
-  Moon, Sun, Trash2, Download, Upload, ChevronDown,
-  Clock, Zap, AlertCircle, Home, QrCode, MoreVertical,
-  MapPin, Folder, Image, X, ChevronRight, Edit2, Bell,
-  Search, Filter, LogIn, LogOut, CheckCircle, Eye, EyeOff,
-  Package, Mail, Phone, Building, UserPlus, FolderOpen,
-  Settings, BarChart, Send, Save, ExternalLink, Maximize
+  Camera, ArrowLeft, Calendar, FileText, Users, Plus,
+  Moon, Sun, Upload,
+  Zap, AlertCircle, QrCode,
+  Folder, Image, X, ChevronRight, Edit2,
+  Search, Eye, EyeOff,
+  Package, Mail, Phone, UserPlus, FolderOpen,
+  BarChart, Send, Save, ExternalLink, Maximize
 } from 'lucide-react';
 
 const App = () => {
@@ -18,154 +21,128 @@ const App = () => {
   const [selectedWireDrop, setSelectedWireDrop] = useState(null);
   const [showScanner, setShowScanner] = useState(false);
   const [showResolvedIssues, setShowResolvedIssues] = useState(false);
-  const [editableProject, setEditableProject] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMyProjects, setViewMyProjects] = useState(true);
   const [fullscreenImage, setFullscreenImage] = useState(null);
-  const fileInputRef = useRef(null);
-  const photoInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
-  
-  // Wire Drop Form State - moved outside conditional rendering
-  const [wireDropFormData, setWireDropFormData] = useState({
-    id: '',
-    uid: '',
-    name: '',
-    location: '',
-    type: 'CAT6',
-    prewirePhoto: null,
-    installedPhoto: null
-  });
-
-  // Project Form State - moved outside conditional rendering
-  const [projectFormData, setProjectFormData] = useState({
-    name: '',
-    client: '',
-    address: '',
-    phase: 'Planning',
-    startDate: '',
-    endDate: '',
-    wiringDiagramUrl: '',
-    portalProposalUrl: '',
-    oneDrivePhotos: '',
-    oneDriveFiles: '',
-    oneDriveProcurement: '',
-    stakeholders: [],
-    team: [],
-    wireDrops: []
-  });
-
-  // Initialize form data when selections change
+  // Process any offline uploads when we come online
   useEffect(() => {
-    if (selectedWireDrop) {
-      setWireDropFormData(selectedWireDrop);
-    } else {
-      setWireDropFormData({
-        id: '',
-        uid: '',
-        name: '',
-        location: '',
-        type: 'CAT6',
-        prewirePhoto: null,
-        installedPhoto: null
-      });
+    const onOnline = async () => {
+      try {
+        const items = await listUploads()
+        for (const it of items) {
+          try {
+            // Recreate a File from stored parts
+            const file = new File([it.blob], it.filename, { type: it.contentType || 'image/jpeg' })
+            const url = await graphUploadViaApi({ rootUrl: it.rootUrl, subPath: it.subPath, file })
+            if (it.update?.type === 'wire_drop' && it.update?.field && it.update?.id) {
+              await supabase.from('wire_drops').update({ [it.update.field]: url }).eq('id', it.update.id)
+            } else if (it.update?.type === 'issue_photo' && it.update?.issueId) {
+              await supabase.from('issue_photos').insert([{ issue_id: it.update.issueId, url }])
+            }
+            await removeUpload(it.id)
+          } catch (_) {
+            // keep for next round
+          }
+        }
+      } catch (_) {}
     }
-  }, [selectedWireDrop]);
-
-  useEffect(() => {
-    if (selectedProject && currentView === 'projectForm') {
-      setProjectFormData(selectedProject);
-    } else if (!selectedProject && currentView === 'projectForm') {
-      setProjectFormData({
-        name: '',
-        client: '',
-        address: '',
-        phase: 'Planning',
-        startDate: '',
-        endDate: '',
-        wiringDiagramUrl: '',
-        portalProposalUrl: '',
-        oneDrivePhotos: '',
-        oneDriveFiles: '',
-        oneDriveProcurement: '',
-        stakeholders: [],
-        team: [],
-        wireDrops: []
-      });
-    }
-  }, [selectedProject, currentView]);
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [])
+  // Supabase test state (non-invasive)
+  const [showTest, setShowTest] = useState(false);
+  const [testTable, setTestTable] = useState(process.env.REACT_APP_SUPABASE_TABLE || '');
+  const [testData, setTestData] = useState(null);
+  const [testError, setTestError] = useState('');
+  const [testBusy, setTestBusy] = useState(false);
   
   // Time tracking state
-  const [timeLogs, setTimeLogs] = useState([]);
+  const [, setTimeLogs] = useState([]);
   const [activeCheckIns, setActiveCheckIns] = useState({});
   
-  // Projects state with wire drops
-  const [projects, setProjects] = useState([
-    {
-      id: '1',
-      name: 'Smith Residence',
-      client: 'John Smith',
-      address: '123 Main St, Austin, TX',
-      phase: 'Install',
-      startDate: '2025-01-15',
-      endDate: '2025-02-28',
-      team: ['John Tech', 'Mike Engineer'],
-      assignedTechnician: 'Current User', // For filtering
-      // Three separate OneDrive links
-      oneDrivePhotos: 'https://onedrive.live.com/smith-residence/photos',
-      oneDriveFiles: 'https://onedrive.live.com/smith-residence/files',
-      oneDriveProcurement: 'https://onedrive.live.com/smith-residence/procurement',
-      // New required fields for PM
-      wiringDiagramUrl: 'https://lucid.app/lucidchart/f0e89b19-d72d-4ab1-8cb9-2712dbca4bc1/edit?invitationId=inv_e5d63790-ba70-4d38-981a-a706a7c2ed13',
-      portalProposalUrl: 'https://portal.company.com/proposals/smith-residence-2025',
-      wireDrops: [
-        { id: 'W001', uid: 'SM-LR-001', name: 'Living Room TV', location: 'Living Room - North Wall', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W002', uid: 'SM-MB-001', name: 'Master BR AP', location: 'Master Bedroom - Ceiling', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=1', installedPhoto: null },
-        { id: 'W003', uid: 'SM-KT-001', name: 'Kitchen Display', location: 'Kitchen - Island', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=2', installedPhoto: 'https://picsum.photos/400/300?random=3' },
-        { id: 'W004', uid: 'SM-OF-001', name: 'Office Desk', location: 'Home Office', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'W005', uid: 'SM-GR-001', name: 'Garage Camera', location: 'Garage', type: 'CAT6', prewirePhoto: 'https://picsum.photos/400/300?random=4', installedPhoto: null }
-      ],
-      issues: [],
-      files: [],
-      photos: [],
-      stakeholders: ['john.smith@email.com', 'sarah.pm@company.com']
-    },
-    {
-      id: '2',
-      name: 'Office Complex',
-      client: 'ABC Corp',
-      address: '456 Business Ave, Austin, TX',
-      phase: 'Planning',
-      startDate: '2025-02-01',
-      endDate: '2025-03-15',
-      team: ['Jane Tech', 'Bob Engineer'],
-      assignedTechnician: 'Jane Tech',
-      oneDrivePhotos: 'https://onedrive.live.com/office-complex/photos',
-      oneDriveFiles: 'https://onedrive.live.com/office-complex/files',
-      oneDriveProcurement: 'https://onedrive.live.com/office-complex/procurement',
-      wiringDiagramUrl: 'https://lucid.app/lucidchart/office-complex-diagram',
-      portalProposalUrl: 'https://portal.company.com/proposals/office-complex-2025',
-      wireDrops: [
-        { id: 'O001', uid: 'OC-LB-001', name: 'Lobby Camera', location: 'Main Lobby', type: 'CAT6', prewirePhoto: null, installedPhoto: null },
-        { id: 'O002', uid: 'OC-CR-001', name: 'Conference Room AP', location: 'Conference Room A', type: 'CAT6', prewirePhoto: null, installedPhoto: null }
-      ],
-      issues: [],
-      files: [],
-      photos: [],
-      stakeholders: ['contact@abccorp.com', 'sarah.pm@company.com']
-    }
-  ]);
+  // Projects state (now loaded from Supabase)
+  const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
+  const [projectsError, setProjectsError] = useState('');
+  // Wire types lookup
+  const [wireTypes, setWireTypes] = useState([]);
+  const [wireTypesLoading, setWireTypesLoading] = useState(false);
 
-  // Issues state
-  const [issues, setIssues] = useState([
-    { id: 'I001', projectId: '1', title: 'Wall blocking at entry', status: 'blocked', date: '2025-01-20', notes: 'Need to reroute through ceiling', photos: [] },
-    { id: 'I002', projectId: '1', title: 'Missing CAT6 spool', status: 'open', date: '2025-01-19', notes: 'Order placed, arriving tomorrow', photos: [] },
-    { id: 'I003', projectId: '1', title: 'Conduit too small', status: 'resolved', date: '2025-01-17', notes: 'Replaced with 1.5" conduit', photos: [] }
-  ]);
+  // Map DB row (snake_case) to UI shape (camelCase)
+  const mapProject = (row) => ({
+    id: row.id,
+    name: row.name,
+    client: row.client,
+    address: row.address,
+    phase: row.phase,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    assignedTechnician: row.assigned_technician || null,
+    wiringDiagramUrl: row.wiring_diagram_url,
+    portalProposalUrl: row.portal_proposal_url,
+    oneDrivePhotos: row.one_drive_photos,
+    oneDriveFiles: row.one_drive_files,
+    oneDriveProcurement: row.one_drive_procurement,
+    wireDrops: [] // loaded later per project
+  });
+
+  const loadProjects = async () => {
+    try {
+      setProjectsLoading(true);
+      setProjectsError('');
+      if (!supabase) {
+        setProjectsError('Supabase not configured.');
+        return;
+      }
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        setProjectsError(error.message);
+        return;
+      }
+      setProjects((data || []).map(mapProject));
+    } catch (e) {
+      setProjectsError(e.message);
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line
+  }, []);
+
+  const loadWireTypes = async () => {
+    try {
+      setWireTypesLoading(true);
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('wire_types')
+        .select('*')
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+      if (error) return;
+      if (data && data.length) {
+        setWireTypes(data.map(r => r.name));
+      } else {
+        setWireTypes(['CAT6', 'CAT6A', 'Fiber', 'Coax', 'Power']);
+      }
+    } finally {
+      setWireTypesLoading(false);
+    }
+  };
+
+  useEffect(() => { loadWireTypes(); }, []);
+
+  // Issues state (now loaded from Supabase)
+  const [issues, setIssues] = useState([]);
 
   // Contacts/People state
-  const [contacts, setContacts] = useState([
+  const [contacts] = useState([
     { id: 'C001', name: 'John Smith', role: 'Client', email: 'john.smith@email.com', phone: '512-555-0100', company: 'Residence' },
     { id: 'C002', name: 'Sarah Johnson', role: 'Project Manager', email: 'sarah.pm@company.com', phone: '512-555-0101', company: 'Intelligent Systems' },
     { id: 'C003', name: 'Mike Engineer', role: 'Lead Technician', email: 'mike@company.com', phone: '512-555-0102', company: 'Intelligent Systems' }
@@ -187,10 +164,7 @@ const App = () => {
 
   // Filter projects based on technician view
   const getFilteredProjects = () => {
-    if (userRole === 'pm') return projects;
-    if (viewMyProjects) {
-      return projects.filter(p => p.assignedTechnician === 'Current User');
-    }
+    // For now, show all projects (assignment optional)
     return projects;
   };
 
@@ -301,10 +275,6 @@ const App = () => {
     }
   };
 
-  const toggleSection = (section) => {
-    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
-  };
-
   // Fullscreen Image Modal
   const FullscreenImageModal = () => {
     if (!fullscreenImage) return null;
@@ -330,35 +300,64 @@ const App = () => {
 
   // Wire Drop Form
   const WireDropForm = () => {
-    const handleSave = () => {
-      if (!wireDropFormData.name || !wireDropFormData.location || !wireDropFormData.uid) {
+    const [formData, setFormData] = useState(
+      selectedWireDrop || {
+        id: '',
+        uid: '',
+        name: '',
+        location: '',
+        type: 'CAT6',
+        prewirePhoto: null,
+        installedPhoto: null
+      }
+    );
+
+    const [saveError, setSaveError] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+      if (!formData.name || !formData.location || !formData.uid) {
         alert('Please fill in all required fields');
         return;
       }
 
-      setProjects(prev => prev.map(p => {
-        if (p.id === selectedProject.id) {
-          if (selectedWireDrop) {
-            // Edit existing
-            return {
-              ...p,
-              wireDrops: p.wireDrops.map(w => w.id === selectedWireDrop.id ? wireDropFormData : w)
-            };
-          } else {
-            // Add new
-            const newDrop = { ...wireDropFormData, id: 'W' + Date.now() };
-            return {
-              ...p,
-              wireDrops: [...(p.wireDrops || []), newDrop]
-            };
-          }
-        }
-        return p;
-      }));
+      if (!supabase) { setSaveError('Supabase not configured'); return; }
+      try {
+        setSaving(true);
+        setSaveError('');
+        const payload = {
+          project_id: selectedProject.id,
+          uid: formData.uid,
+          name: formData.name,
+          location: formData.location,
+          type: formData.type,
+          prewire_photo: formData.prewirePhoto,
+          installed_photo: formData.installedPhoto,
+        };
 
-      alert(selectedWireDrop ? 'Wire drop updated!' : 'Wire drop added!');
-      setCurrentView('wireDropList');
-      setSelectedWireDrop(null);
+        if (selectedWireDrop?.id) {
+          const { error } = await supabase
+            .from('wire_drops')
+            .update(payload)
+            .eq('id', selectedWireDrop.id);
+          if (error) { setSaveError(error.message); return; }
+          alert('Wire drop updated!');
+        } else {
+          const { error } = await supabase
+            .from('wire_drops')
+            .insert([payload]);
+          if (error) { setSaveError(error.message); return; }
+          alert('Wire drop added!');
+        }
+
+        await loadWireDrops(selectedProject.id);
+        setCurrentView('wireDropList');
+        setSelectedWireDrop(null);
+      } catch (e) {
+        setSaveError(e.message);
+      } finally {
+        setSaving(false);
+      }
     };
 
     return (
@@ -367,6 +366,1078 @@ const App = () => {
         <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
           <div className="flex items-center justify-between">
             <button onClick={() => setCurrentView('wireDropList')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>
+              {selectedWireDrop ? 'Edit Wire Drop' : 'Add Wire Drop'}
+            </h1>
+            <button onClick={handleSave} disabled={saving} className={`p-2 ${t.accentText}`}>
+              <Save size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {saveError && <div className="text-red-400 text-sm">{saveError}</div>}
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Wire Drop Name *"
+          />
+          
+          <input
+            type="text"
+            value={formData.uid}
+            onChange={(e) => setFormData({...formData, uid: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="UID *"
+          />
+          
+          <input
+            type="text"
+            value={formData.location}
+            onChange={(e) => setFormData({...formData, location: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Location *"
+          />
+          
+          <div className="flex gap-2">
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({...formData, type: e.target.value})}
+              className={`flex-1 px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            >
+              {(wireTypes.length ? wireTypes : ['CAT6','CAT6A','Fiber','Coax','Power']).map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const name = (prompt('New wire type name:') || '').trim()
+                  if (!name) return
+                  if (!supabase) { alert('Supabase not configured'); return }
+                  const { error } = await supabase
+                    .from('wire_types')
+                    .insert([{ name, active: true }])
+                  if (error && !String(error.message).includes('duplicate')) {
+                    alert(`Failed to add type: ${error.message}`)
+                    return
+                  }
+                  await loadWireTypes()
+                  setFormData(prev => ({ ...prev, type: name }))
+                } catch (e) {
+                  alert(`Failed to add type: ${e.message}`)
+                }
+              }}
+              className={`px-3 py-3 rounded-lg ${t.accent} text-white text-sm whitespace-nowrap`}
+            >
+              Add Type
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Project Form for PM
+  const ProjectForm = () => {
+    const [formData, setFormData] = useState(
+      selectedProject || {
+        name: '',
+        client: '',
+        address: '',
+        phase: 'Planning',
+        startDate: '',
+        endDate: '',
+        wiringDiagramUrl: '',
+        portalProposalUrl: '',
+        oneDrivePhotos: '',
+        oneDriveFiles: '',
+        oneDriveProcurement: '',
+        stakeholders: [],
+        team: [],
+        wireDrops: []
+      }
+    );
+
+    const [saving, setSaving] = useState(false)
+    const [saveError, setSaveError] = useState('')
+
+    const toDb = (f) => ({
+      name: f.name,
+      client: f.client || null,
+      address: f.address || null,
+      phase: f.phase || null,
+      start_date: f.startDate || null,
+      end_date: f.endDate || null,
+      wiring_diagram_url: f.wiringDiagramUrl || null,
+      portal_proposal_url: f.portalProposalUrl || null,
+      one_drive_photos: f.oneDrivePhotos || null,
+      one_drive_files: f.oneDriveFiles || null,
+      one_drive_procurement: f.oneDriveProcurement || null,
+    })
+
+    const handleSave = async () => {
+      try {
+        setSaving(true)
+        setSaveError('')
+
+        if (!formData.name || !formData.wiringDiagramUrl || !formData.portalProposalUrl) {
+          setSaveError('Please fill in required fields (Name, Wiring Diagram URL, Portal Proposal URL)')
+          return
+        }
+        if (!supabase) {
+          setSaveError('Supabase not configured')
+          return
+        }
+
+        if (selectedProject?.id) {
+          // Update
+          const { data, error } = await supabase
+            .from('projects')
+            .update(toDb(formData))
+            .eq('id', selectedProject.id)
+            .select('*')
+            .single()
+          if (error) { setSaveError(error.message); return }
+          const updated = mapProject(data)
+          setProjects(prev => prev.map(p => p.id === updated.id ? updated : p))
+          setSelectedProject(updated)
+          alert('Project updated!')
+          await loadProjects()
+        } else {
+          // Insert
+          const { data, error } = await supabase
+            .from('projects')
+            .insert([toDb(formData)])
+            .select('*')
+            .single()
+          if (error) { setSaveError(error.message); return }
+          const created = mapProject(data)
+          setProjects(prev => [created, ...prev])
+          setSelectedProject(created)
+          alert('Project created!')
+          await loadProjects()
+        }
+
+        setCurrentView('pmDashboard')
+      } catch (e) {
+        setSaveError(e.message)
+      } finally {
+        setSaving(false)
+      }
+    }
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('pmDashboard')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>
+              {selectedProject ? 'Edit Project' : 'New Project'}
+            </h1>
+            <button onClick={handleSave} disabled={saving} className={`p-2 ${t.accentText}`}>
+              <Save size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {saveError && (
+            <div className="text-red-400 text-sm">{saveError}</div>
+          )}
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Project Name *"
+          />
+          
+          <input
+            type="text"
+            value={formData.client}
+            onChange={(e) => setFormData({...formData, client: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Client"
+          />
+          
+          <input
+            type="text"
+            value={formData.address}
+            onChange={(e) => setFormData({...formData, address: e.target.value})}
+            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            placeholder="Address"
+          />
+
+          <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>Required Links</h3>
+            <input
+              type="url"
+              value={formData.wiringDiagramUrl}
+              onChange={(e) => setFormData({...formData, wiringDiagramUrl: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="Wiring Diagram URL (Lucid Chart) *"
+            />
+            <input
+              type="url"
+              value={formData.portalProposalUrl}
+              onChange={(e) => setFormData({...formData, portalProposalUrl: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+              placeholder="Portal Proposal URL *"
+            />
+          </div>
+
+          <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>OneDrive Links</h3>
+            <input
+              type="url"
+              value={formData.oneDrivePhotos}
+              onChange={(e) => setFormData({...formData, oneDrivePhotos: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="OneDrive Photos Folder URL"
+            />
+            <input
+              type="url"
+              value={formData.oneDriveFiles}
+              onChange={(e) => setFormData({...formData, oneDriveFiles: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} mb-3`}
+              placeholder="OneDrive Files Folder URL"
+            />
+            <input
+              type="url"
+              value={formData.oneDriveProcurement}
+              onChange={(e) => setFormData({...formData, oneDriveProcurement: e.target.value})}
+              className={`w-full px-3 py-3 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+              placeholder="OneDrive Procurement Folder URL"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Technician Dashboard
+  const TechnicianDashboard = () => (
+    <div className={`min-h-screen ${t.bg}`}>
+      {/* Header */}
+      <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+        <div className="flex items-center justify-between mb-3">
+          <h1 className={`text-lg font-semibold ${t.text}`}>Technician Dashboard</h1>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setUserRole('pm')} className={`p-2 ${t.accentText} text-sm`}>
+              Switch to PM
+            </button>
+            <button onClick={() => setDarkMode(!darkMode)} className={`p-2 ${t.text}`}>
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setViewMyProjects(true)}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+          >
+            My Projects
+          </button>
+          <button 
+            onClick={() => setViewMyProjects(false)}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+          >
+            All Projects
+          </button>
+        </div>
+      </div>
+
+      {/* Calendar Widget */}
+      <div className={`m-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className={`font-medium ${t.text}`}>Today's Schedule</h2>
+          <Calendar size={18} className={t.textSecondary} />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className={`w-2 h-2 rounded-full ${t.success}`}></div>
+            <span className={`text-sm ${t.text}`}>9:00 AM - Smith Residence</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`w-2 h-2 rounded-full ${t.warning}`}></div>
+            <span className={`text-sm ${t.text}`}>2:00 PM - Office Complex QC</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Projects */}
+      <div className="px-4 pb-32">
+        <h2 className={`text-lg font-semibold ${t.text} mb-3`}>
+          {viewMyProjects ? 'My projects' : 'All projects'}
+        </h2>
+        
+        {getFilteredProjects().map((project) => {
+          const progress = calculateProjectProgress(project);
+          const isCheckedIn = activeCheckIns[project.id];
+          
+          return (
+            <div key={project.id} className={`mb-3 rounded-xl ${t.surface} border ${t.border} overflow-hidden`}>
+              {/* Progress Bar */}
+              <div className="relative h-14">
+                <div 
+                  className={`absolute inset-0 ${
+                    progress > 70 ? t.success : 
+                    progress > 40 ? t.warning : 
+                    t.danger
+                  } opacity-90`}
+                  style={{ width: `${progress}%` }}
+                ></div>
+                <div className={`absolute inset-0 flex items-center justify-center font-semibold ${t.text}`}>
+                  {project.name} - {progress}%
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="p-3 grid grid-cols-3 gap-2">
+                <button 
+                  onClick={() => {
+                    setSelectedProject(project);
+                    setCurrentView('project');
+                  }}
+                  className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+                >
+                  OPEN
+                </button>
+                <button 
+                  onClick={() => handleCheckIn(project.id)}
+                  disabled={isCheckedIn}
+                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700' : t.surfaceHover} ${t.text} font-medium`}
+                >
+                  {isCheckedIn ? '✓ Checked In' : 'Check In'}
+                </button>
+                <button 
+                  onClick={() => handleCheckOut(project.id)}
+                  disabled={!isCheckedIn}
+                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : t.surfaceHover} ${t.text} font-medium`}
+                >
+                  Check Out
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className={`fixed bottom-0 left-0 right-0 p-4 grid grid-cols-3 gap-2 border-t ${t.border} ${t.bgSecondary}`}>
+        <button 
+          onClick={() => setCurrentView('people')}
+          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+        >
+          <Users size={20} className="mx-auto mb-1" />
+          People
+        </button>
+        <button 
+          onClick={() => {
+            if (getFilteredProjects().length > 0) {
+              setSelectedProject(getFilteredProjects()[0]);
+              setCurrentView('wireDropList');
+            }
+          }}
+          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+        >
+          <Zap size={20} className="mx-auto mb-1" />
+          Wire Drops
+        </button>
+        <button 
+          onClick={() => setShowScanner(true)}
+          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+        >
+          <QrCode size={20} className="mx-auto mb-1" />
+          Scan Tag
+        </button>
+      </div>
+    </div>
+  );
+
+  // Wire Drop List View (searchable)
+  const WireDropListView = () => {
+    const filteredDrops = selectedProject?.wireDrops.filter(drop => 
+      drop.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      drop.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      drop.uid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      drop.type.toLowerCase().includes(searchQuery.toLowerCase())
+    ) || [];
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setCurrentView(userRole === 'pm' ? 'pmProjectDetail' : 'project')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>Wire Drops</h1>
+            <button 
+              onClick={() => {
+                setSelectedWireDrop(null);
+                setCurrentView('wireDropForm');
+              }}
+              className={`p-2 ${t.text}`}
+            >
+              <Plus size={24} />
+            </button>
+          </div>
+          
+          {/* Search */}
+          <div className="relative">
+            <Search size={20} className={`absolute left-3 top-3 ${t.textSecondary}`} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, location, UID, or type..."
+              className={`w-full pl-10 pr-4 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
+            />
+          </div>
+        </div>
+
+        {/* Wire Drop List */}
+        <div className="p-4">
+          {filteredDrops.map(drop => {
+            const prewireComplete = !!drop.prewirePhoto;
+            const installComplete = !!drop.installedPhoto;
+            const progress = (prewireComplete ? 50 : 0) + (installComplete ? 50 : 0);
+            
+            return (
+              <button
+                key={drop.id}
+                onClick={() => {
+                  setSelectedWireDrop(drop);
+                  setCurrentView('wireDropDetail');
+                }}
+                className={`w-full mb-3 p-4 rounded-xl ${t.surface} border ${t.border} text-left`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <p className={`font-medium ${t.text}`}>{drop.name}</p>
+                    <p className={`text-xs ${t.textSecondary}`}>UID: {drop.uid}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedWireDrop(drop);
+                        setCurrentView('wireDropForm');
+                      }}
+                      className={`p-1 ${t.surfaceHover} rounded`}
+                    >
+                      <Edit2 size={16} className={t.textSecondary} />
+                    </button>
+                    <div className={`px-2 py-1 rounded text-xs font-medium ${
+                      progress === 100 ? 'bg-green-600 text-white' :
+                      progress === 50 ? 'bg-orange-600 text-white' :
+                      'bg-gray-600 text-white'
+                    }`}>
+                      {progress}%
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <p className={`text-sm ${t.textSecondary}`}>{drop.location}</p>
+                  <p className={`text-sm ${t.textSecondary}`}>{drop.type}</p>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  {prewireComplete && <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded">Prewired</span>}
+                  {installComplete && <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Installed</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Wire Drop Detail View
+  const WireDropDetailView = () => {
+    if (!selectedWireDrop) return null;
+
+    const handlePrewirePhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const subPath = `wire_drops/${uidSeg}/prewire`
+            if (!navigator.onLine) {
+              // Queue offline
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'prewire_photo', id: selectedWireDrop.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/prewire-${Date.now()}`
+            url = await uploadPublicImage(file, path)
+          }
+          await supabase.from('wire_drops').update({ prewire_photo: url }).eq('id', selectedWireDrop.id)
+          await loadWireDrops(selectedProject.id)
+          setSelectedWireDrop(prev => prev ? { ...prev, prewirePhoto: url } : prev)
+        } catch (err) {
+          alert(`Upload failed: ${err.message}`)
+        }
+      }
+      input.click()
+    };
+
+    const handleInstalledPhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const subPath = `wire_drops/${uidSeg}/installed`
+            if (!navigator.onLine) {
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'installed_photo', id: selectedWireDrop.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const uidSeg = slugifySegment(selectedWireDrop.uid)
+            const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/installed-${Date.now()}`
+            url = await uploadPublicImage(file, path)
+          }
+          await supabase.from('wire_drops').update({ installed_photo: url }).eq('id', selectedWireDrop.id)
+          await loadWireDrops(selectedProject.id)
+          setSelectedWireDrop(prev => prev ? { ...prev, installedPhoto: url } : prev)
+        } catch (err) {
+          alert(`Upload failed: ${err.message}`)
+        }
+      }
+      input.click()
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('wireDropList')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>Wire Drop Detail</h1>
+            <button 
+              onClick={() => {
+                setCurrentView('wireDropForm');
+              }}
+              className={`p-2 ${t.text}`}
+            >
+              <Edit2 size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {/* Wire Info */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <p className={`text-xs ${t.textSecondary}`}>Name</p>
+                <p className={`font-medium ${t.text}`}>{selectedWireDrop.name}</p>
+              </div>
+              <div>
+                <p className={`text-xs ${t.textSecondary}`}>UID</p>
+                <p className={`font-medium ${t.text}`}>{selectedWireDrop.uid}</p>
+              </div>
+              <div>
+                <p className={`text-xs ${t.textSecondary}`}>Location</p>
+                <p className={`font-medium ${t.text}`}>{selectedWireDrop.location}</p>
+              </div>
+              <div>
+                <p className={`text-xs ${t.textSecondary}`}>Type</p>
+                <p className={`font-medium ${t.text}`}>{selectedWireDrop.type}</p>
+              </div>
+            </div>
+            
+            {/* QR Code */}
+            <div className="flex justify-center">
+              <div className="w-32 h-32 bg-white rounded-lg flex items-center justify-center">
+                <QrCode size={60} className="text-gray-800" />
+              </div>
+            </div>
+          </div>
+
+          {/* Status Cards */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className={`p-4 rounded-xl ${selectedWireDrop.prewirePhoto ? 'bg-yellow-600' : t.surface} border ${t.border}`}>
+              <h3 className={`font-medium mb-2 ${selectedWireDrop.prewirePhoto ? 'text-white' : t.text}`}>
+                Prewire {selectedWireDrop.prewirePhoto && '✓'}
+              </h3>
+              {selectedWireDrop.prewirePhoto ? (
+                <div className="relative">
+                  <img 
+                    src={toThumb(selectedWireDrop.prewirePhoto)} 
+                    alt="Prewire" 
+                    className="w-full h-24 object-contain bg-black/20 rounded-lg mb-2 cursor-pointer" 
+                    onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
+                    onError={(e) => { e.currentTarget.src = selectedWireDrop.prewirePhoto; }}
+                  />
+                  <button 
+                    onClick={() => setFullscreenImage(selectedWireDrop.prewirePhoto)}
+                    className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white"
+                  >
+                    <Maximize size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handlePrewirePhoto}
+                  className={`w-full h-24 rounded-lg ${t.surfaceHover} flex items-center justify-center`}
+                >
+                  <Camera size={24} className={t.textTertiary} />
+                </button>
+              )}
+              <p className={`text-xs ${selectedWireDrop.prewirePhoto ? 'text-white' : t.textSecondary}`}>
+                {selectedWireDrop.prewirePhoto ? 'Photo confirmed' : 'Add photo to confirm'}
+              </p>
+            </div>
+            
+            <div className={`p-4 rounded-xl ${selectedWireDrop.installedPhoto ? 'bg-green-600' : t.surface} border ${t.border}`}>
+              <h3 className={`font-medium mb-2 ${selectedWireDrop.installedPhoto ? 'text-white' : t.text}`}>
+                Installed {selectedWireDrop.installedPhoto && '✓'}
+              </h3>
+              {selectedWireDrop.installedPhoto ? (
+                <div className="relative">
+                  <img 
+                    src={toThumb(selectedWireDrop.installedPhoto)} 
+                    alt="Installed" 
+                    className="w-full h-24 object-contain bg-black/20 rounded-lg mb-2 cursor-pointer" 
+                    onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
+                    onError={(e) => { e.currentTarget.src = selectedWireDrop.installedPhoto; }}
+                  />
+                  <button 
+                    onClick={() => setFullscreenImage(selectedWireDrop.installedPhoto)}
+                    className="absolute top-1 right-1 p-1 bg-black/50 rounded-full text-white"
+                  >
+                    <Maximize size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleInstalledPhoto}
+                  className={`w-full h-24 rounded-lg ${t.surfaceHover} flex items-center justify-center`}
+                >
+                  <Camera size={24} className={t.textTertiary} />
+                </button>
+              )}
+              <p className={`text-xs ${selectedWireDrop.installedPhoto ? 'text-white' : t.textSecondary}`}>
+                {selectedWireDrop.installedPhoto ? 'Photo confirmed' : 'Add photo to confirm'}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Issue Detail View
+  const IssueDetailView = () => {
+    const [editedIssue, setEditedIssue] = useState(
+      selectedIssue || { id: '', title: '', status: 'open', notes: '', photos: [] }
+    );
+    const [photoErr, setPhotoErr] = useState('')
+
+    if (!selectedIssue) return null;
+
+    const addIssuePhoto = async () => {
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.capture = 'environment'
+      input.onchange = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+          setPhotoErr('')
+          let url
+          if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+            const subPath = `issues/${editedIssue.id}`
+            if (!navigator.onLine) {
+              await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'issue_photo', issueId: editedIssue.id } })
+              url = URL.createObjectURL(file)
+            } else {
+              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+            }
+          } else {
+            const path = `projects/${selectedProject.id}/issues/${editedIssue.id}/photo-${Date.now()}`
+            url = await uploadPublicImage(file, path)
+          }
+          await supabase.from('issue_photos').insert([{ issue_id: editedIssue.id, url }])
+          setIssues(prev => prev.map(i => i.id === editedIssue.id ? { ...i, photos: [...(i.photos||[]), url] } : i))
+          setEditedIssue(prev => ({ ...prev, photos: [...(prev.photos||[]), url] }))
+        } catch (err) {
+          setPhotoErr(err.message)
+        }
+      }
+      input.click()
+    }
+
+    const saveIssue = () => {
+      setIssues(prev => prev.map(i => i.id === editedIssue.id ? editedIssue : i));
+      alert('Issue updated!');
+      setCurrentView('project');
+    };
+
+    const markResolved = () => {
+      const updated = { ...editedIssue, status: 'resolved' };
+      setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
+      alert('Issue marked as resolved!');
+      setCurrentView('project');
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('project')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>Issue Detail</h1>
+            <button onClick={saveIssue} className={`p-2 ${t.accentText}`}>
+              Save
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {/* Issue Title */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <input
+              type="text"
+              value={editedIssue.title}
+              onChange={(e) => setEditedIssue({...editedIssue, title: e.target.value})}
+              className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} font-medium`}
+            />
+          </div>
+
+          {/* Status */}
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <button
+              onClick={() => setEditedIssue({...editedIssue, status: 'open'})}
+              className={`py-3 rounded-lg ${editedIssue.status === 'open' ? 'bg-orange-600 text-white' : `${t.surface} ${t.text}`} font-medium`}
+            >
+              Open
+            </button>
+            <button
+              onClick={() => setEditedIssue({...editedIssue, status: 'blocked'})}
+              className={`py-3 rounded-lg ${editedIssue.status === 'blocked' ? 'bg-red-600 text-white' : `${t.surface} ${t.text}`} font-medium`}
+            >
+              Blocked
+            </button>
+            <button
+              onClick={() => setEditedIssue({...editedIssue, status: 'resolved'})}
+              className={`py-3 rounded-lg ${editedIssue.status === 'resolved' ? 'bg-green-600 text-white' : `${t.surface} ${t.text}`} font-medium`}
+            >
+              Resolved
+            </button>
+          </div>
+
+          {/* Notes */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-2`}>Notes</h3>
+            <textarea
+              value={editedIssue.notes}
+              onChange={(e) => setEditedIssue({...editedIssue, notes: e.target.value})}
+              className={`w-full px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border} h-32`}
+              placeholder="Enter notes..."
+            />
+          </div>
+
+          {/* Photos */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-2`}>Photos</h3>
+            {photoErr && <div className="text-red-400 text-sm mb-2">{photoErr}</div>}
+            <div className="flex gap-2 mb-3">
+              <button onClick={addIssuePhoto} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
+                <Camera size={16} className="inline mr-1" /> Add Photo
+              </button>
+              <button onClick={async()=>{
+                const url = (prompt('Paste photo URL:')||'').trim();
+                if (!url) return;
+                try {
+                  await supabase.from('issue_photos').insert([{ issue_id: editedIssue.id, url }])
+                  setIssues(prev => prev.map(i => i.id === editedIssue.id ? { ...i, photos: [...(i.photos||[]), url] } : i))
+                  setEditedIssue(prev => ({ ...prev, photos: [...(prev.photos||[]), url] }))
+                } catch (e) { alert(e.message) }
+              }} className={`px-3 py-2 rounded-lg ${t.surface} border ${t.border} ${t.text} text-sm`}>
+                Add URL
+              </button>
+            </div>
+            {(editedIssue.photos?.length>0) && (
+              <div className="flex gap-2 overflow-x-auto">
+                {editedIssue.photos.map((p, idx) => (
+                  <img key={idx} src={toThumb(p)} alt={`issue-${idx}`} className="h-28 w-44 object-contain bg-black/20 rounded-lg cursor-pointer" onClick={() => setFullscreenImage(p)} onError={(e)=>{e.currentTarget.src=p}} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Action Button */}
+          <button
+            onClick={markResolved}
+            disabled={editedIssue.status === 'resolved'}
+            className={`w-full py-3 rounded-lg ${editedIssue.status === 'resolved' ? 'bg-gray-600' : 'bg-green-600'} text-white font-medium`}
+          >
+            {editedIssue.status === 'resolved' ? 'Already Resolved' : 'Mark as Resolved'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // People/Contacts View
+  const PeopleView = () => (
+    <div className={`min-h-screen ${t.bg}`}>
+      {/* Header */}
+      <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+        <div className="flex items-center justify-between">
+          <button onClick={() => setCurrentView('dashboard')} className={`p-2 ${t.text}`}>
+            <ArrowLeft size={24} />
+          </button>
+          <h1 className={`text-lg font-semibold ${t.text}`}>People</h1>
+          <button className={`p-2 ${t.text}`}>
+            <UserPlus size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {contacts.map(contact => (
+          <div key={contact.id} className={`mb-3 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className={`font-medium ${t.text}`}>{contact.name}</p>
+                <p className={`text-sm ${t.accentText}`}>{contact.role}</p>
+                <p className={`text-xs ${t.textSecondary} mt-1`}>{contact.company}</p>
+              </div>
+              <div className="text-right">
+                <a 
+                  href={`mailto:${contact.email}`} 
+                  className={`text-xs ${t.textSecondary} block hover:${t.accentText}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Mail size={14} className="inline mr-1" />
+                  {contact.email}
+                </a>
+                <a 
+                  href={`tel:${contact.phone}`} 
+                  className={`text-xs ${t.textSecondary} block mt-1 hover:${t.accentText}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Phone size={14} className="inline mr-1" />
+                  {contact.phone}
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // PM Dashboard
+  const PMDashboard = () => (
+    <div className={`min-h-screen ${t.bg}`}>
+      {/* Header */}
+      <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+        <div className="flex items-center justify-between">
+          <h1 className={`text-lg font-semibold ${t.text}`}>Project Manager Dashboard</h1>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setUserRole('technician')} className={`p-2 ${t.accentText} text-sm`}>
+              Switch to Tech
+            </button>
+            <button onClick={() => setDarkMode(!darkMode)} className={`p-2 ${t.text}`}>
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="p-4 grid grid-cols-2 gap-3">
+        <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+          <p className={`text-xs ${t.textSecondary}`}>Active Projects</p>
+          <p className={`text-2xl font-bold ${t.text}`}>{projects.length}</p>
+        </div>
+        <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+          <p className={`text-xs ${t.textSecondary}`}>Total Wire Drops</p>
+          <p className={`text-2xl font-bold ${t.text}`}>
+            {projects.reduce((sum, p) => sum + (p.wireDrops?.length || 0), 0)}
+          </p>
+        </div>
+        <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+          <p className={`text-xs ${t.textSecondary}`}>Open Issues</p>
+          <p className={`text-2xl font-bold ${t.text}`}>
+            {issues.filter(i => i.status !== 'resolved').length}
+          </p>
+        </div>
+        <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+          <p className={`text-xs ${t.textSecondary}`}>Team Members</p>
+          <p className={`text-2xl font-bold ${t.text}`}>6</p>
+        </div>
+      </div>
+
+      {/* Projects List */}
+      <div className="px-4 pb-20">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className={`text-lg font-semibold ${t.text}`}>Projects</h2>
+          <button 
+            onClick={() => {
+              setSelectedProject(null);
+              setCurrentView('projectForm');
+            }}
+            className={`p-2 ${t.accentText}`}
+          >
+            <Plus size={20} />
+          </button>
+        </div>
+        
+        {projects.map(project => {
+          const progress = calculateProjectProgress(project);
+          const openIssues = issues.filter(i => i.projectId === project.id && i.status !== 'resolved').length;
+          
+          return (
+            <div key={project.id} className={`mb-3 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className={`font-medium ${t.text}`}>{project.name}</p>
+                  <p className={`text-sm ${t.textSecondary}`}>{project.client}</p>
+                  <p className={`text-xs ${t.textSecondary}`}>{project.address}</p>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                  progress === 100 ? 'bg-green-600 text-white' :
+                  progress > 50 ? 'bg-orange-600 text-white' :
+                  'bg-red-600 text-white'
+                }`}>
+                  {progress}%
+                </div>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="h-2 bg-gray-700 rounded-full mb-3">
+                <div 
+                  className={`h-full rounded-full ${
+                    progress > 70 ? t.success : 
+                    progress > 40 ? t.warning : 
+                    t.danger
+                  }`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              
+              {/* Quick Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className={`p-2 rounded-lg ${t.surfaceHover} text-center`}>
+                  <p className={`text-xs ${t.textSecondary}`}>Wire Drops</p>
+                  <p className={`font-medium ${t.text}`}>{project.wireDrops?.length || 0}</p>
+                </div>
+                <div className={`p-2 rounded-lg ${t.surfaceHover} text-center`}>
+                  <p className={`text-xs ${t.textSecondary}`}>Issues</p>
+                  <p className={`font-medium ${openIssues > 0 ? 'text-red-500' : t.text}`}>{openIssues}</p>
+                </div>
+                <div className={`p-2 rounded-lg ${t.surfaceHover} text-center`}>
+                  <p className={`text-xs ${t.textSecondary}`}>Team</p>
+                  <p className={`font-medium ${t.text}`}>{project.team?.length || 0}</p>
+                </div>
+              </div>
+              
+              {/* Actions */}
+              <div className="grid grid-cols-3 gap-2">
+                <button 
+                  onClick={() => {
+                    setSelectedProject(project);
+                    setCurrentView('pmProjectDetail');
+                  }}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
+                >
+                  <Edit2 size={16} className="inline mr-1" />
+                  Edit
+                </button>
+                <button 
+                  onClick={() => {
+                    // Generate and download report
+                    alert('Report generation would be implemented here');
+                  }}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
+                >
+                  <BarChart size={16} className="inline mr-1" />
+                  Report
+                </button>
+                <button 
+                  onClick={() => openLink(project.oneDriveFiles)}
+                  className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm hover:${t.accentText}`}
+                >
+                  <FolderOpen size={16} className="inline mr-1" />
+                  Files
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // PM Project Detail View
+  const PMProjectDetail = () => {
+    const [editableProject, setEditableProject] = useState(
+      selectedProject || {
+        id: '', name: '', client: '', address: '', phase: '',
+        startDate: '', endDate: '', wiringDiagramUrl: '', portalProposalUrl: '',
+        oneDrivePhotos: '', oneDriveFiles: '', oneDriveProcurement: '',
+        stakeholders: [], team: [], wireDrops: []
+      }
+    );
+
+    if (!selectedProject) return null;
+
+    const handleSave = () => {
+      setProjects(prev => prev.map(p => p.id === editableProject.id ? editableProject : p));
+      alert('Project updated!');
+      setCurrentView('pmDashboard');
+    };
+
+    const sendWeeklyReport = () => {
+      alert(`Weekly report sent to: ${editableProject.stakeholders?.join(', ')}`);
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('pmDashboard')} className={`p-2 ${t.text}`}>
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Project Details</h1>
@@ -787,16 +1858,15 @@ const App = () => {
     </div>
   );
 
-  // Issue Form State - moved outside
-  const [newIssue, setNewIssue] = useState({
-    title: '',
-    status: 'open',
-    notes: '',
-    photos: []
-  });
-
   // Issue Form (simplified)
   const IssueForm = () => {
+    const [newIssue, setNewIssue] = useState({
+      title: '',
+      status: 'open',
+      notes: '',
+      photos: []
+    });
+
     const saveIssue = () => {
       if (!newIssue.title.trim()) {
         alert('Please enter an issue title');
@@ -811,7 +1881,6 @@ const App = () => {
       };
       setIssues(prev => [...prev, issue]);
       alert('Issue created!');
-      setNewIssue({ title: '', status: 'open', notes: '', photos: [] }); // Reset form
       setCurrentView('project');
     };
 
@@ -925,6 +1994,118 @@ const App = () => {
     </div>
   );
 
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Test read from Supabase (uses env table or input)
+  const runSupabaseTest = async () => {
+    try {
+      setTestBusy(true)
+      setTestError('')
+      setTestData(null)
+      if (!supabase) {
+        setTestError('Supabase env vars missing. Add REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY to .env and restart dev server.')
+        return
+      }
+      const table = (testTable || '').trim()
+      if (!table) {
+        setTestError('Enter a table name to query')
+        return
+      }
+      const { data, error } = await supabase.from(table).select('*').limit(5)
+      if (error) {
+        setTestError(error.message)
+        return
+      }
+      setTestData(data)
+    } catch (e) {
+      setTestError(e.message)
+    } finally {
+      setTestBusy(false)
+    }
+  }
+
+  // Load wire drops for a project when viewing it
+  const loadWireDrops = async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+      if (error) return;
+      const drops = (data || []).map(row => ({
+        id: row.id,
+        uid: row.uid,
+        name: row.name,
+        location: row.location,
+        type: row.type || 'CAT6',
+        prewirePhoto: row.prewire_photo,
+        installedPhoto: row.installed_photo,
+      }));
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, wireDrops: drops } : p));
+      setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, wireDrops: drops } : prev);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (currentView === 'project' && selectedProject && (!selectedProject.wireDrops || selectedProject.wireDrops.length === 0)) {
+      loadWireDrops(selectedProject.id);
+    }
+    // eslint-disable-next-line
+  }, [currentView, selectedProject?.id]);
+
+  // Load issues for a project when viewing it (with photos)
+  const loadIssues = async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data: issueRows, error: issueErr } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      if (issueErr) return;
+
+      const mapped = (issueRows || []).map(r => ({
+        id: r.id,
+        projectId: r.project_id,
+        title: r.title,
+        status: r.status,
+        date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+        notes: r.notes || '',
+        photos: []
+      }));
+
+      // Load photos for these issues (if any exist)
+      const ids = mapped.map(i => i.id);
+      if (ids.length) {
+        const { data: photoRows, error: photoErr } = await supabase
+          .from('issue_photos')
+          .select('*')
+          .in('issue_id', ids);
+        if (!photoErr && photoRows && photoRows.length) {
+          const byIssue = new Map();
+          for (const r of photoRows) {
+            if (!byIssue.has(r.issue_id)) byIssue.set(r.issue_id, []);
+            byIssue.get(r.issue_id).push(r.url);
+          }
+          mapped.forEach(m => { m.photos = byIssue.get(m.id) || []; });
+        }
+      }
+
+      setIssues(mapped);
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    if (currentView === 'project' && selectedProject) {
+      loadIssues(selectedProject.id);
+    }
+    // eslint-disable-next-line
+  }, [currentView, selectedProject?.id]);
+
   // Main Render
   return (
     <>
@@ -951,6 +2132,36 @@ const App = () => {
       )}
       {showScanner && <QRScanner />}
       <FullscreenImageModal />
+      {/* Small floating Supabase test widget (local-only helper) */}
+      <div style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 60 }}>
+        {!showTest ? (
+          <button onClick={() => setShowTest(true)} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
+            Test Supabase
+          </button>
+        ) : (
+          <div className={`w-[320px] p-3 rounded-lg ${t.surface} border ${t.border}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className={`${t.text} text-sm font-medium`}>Supabase Test</div>
+              <button onClick={() => setShowTest(false)} className={`${t.textSecondary}`}>✕</button>
+            </div>
+            <input
+              value={testTable}
+              onChange={e => setTestTable(e.target.value)}
+              placeholder="table name (e.g., items)"
+              className={`w-full mb-2 px-2 py-1 rounded border ${t.border} ${t.surfaceHover} ${t.text}`}
+            />
+            <button disabled={testBusy} onClick={runSupabaseTest} className={`w-full mb-2 px-2 py-1 rounded ${t.accent} text-white text-sm`}>
+              {testBusy ? 'Running…' : 'Fetch 5 rows'}
+            </button>
+            {testError && (
+              <div className="text-red-400 text-xs mb-2">Error: {testError}</div>
+            )}
+            {testData && (
+              <pre className={`${t.text} text-[10px] max-h-40 overflow-auto`}>{JSON.stringify(testData, null, 2)}</pre>
+            )}
+          </div>
+        )}
+      </div>
     </>
   );
 };
