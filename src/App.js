@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { supabase, uploadPublicImage, toThumb, slugifySegment } from './lib/supabase';
 import { graphUploadViaApi } from './lib/onedrive';
 import { enqueueUpload, listUploads, removeUpload } from './lib/offline';
+import { compressImage } from './lib/images';
 import { 
   Camera, ArrowLeft, Calendar, FileText, Users, Plus,
   Moon, Sun, Upload,
