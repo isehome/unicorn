@@ -874,9 +874,10 @@ const App = () => {
       input.accept = 'image/*'
       input.capture = 'environment'
       input.onchange = async (e) => {
-        const file = e.target.files?.[0]
+        let file = e.target.files?.[0]
         if (!file) return
         try {
+          file = await compressImage(file)
           let url
           if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
             const uidSeg = slugifySegment(selectedWireDrop.uid)
@@ -886,7 +887,12 @@ const App = () => {
               await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'prewire_photo', id: selectedWireDrop.id } })
               url = URL.createObjectURL(file)
             } else {
-              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              try {
+                url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              } catch (e) {
+                const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/prewire-${Date.now()}`
+                url = await uploadPublicImage(file, path)
+              }
             }
           } else {
             const uidSeg = slugifySegment(selectedWireDrop.uid)
@@ -909,9 +915,10 @@ const App = () => {
       input.accept = 'image/*'
       input.capture = 'environment'
       input.onchange = async (e) => {
-        const file = e.target.files?.[0]
+        let file = e.target.files?.[0]
         if (!file) return
         try {
+          file = await compressImage(file)
           let url
           if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
             const uidSeg = slugifySegment(selectedWireDrop.uid)
@@ -920,7 +927,12 @@ const App = () => {
               await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'wire_drop', field: 'installed_photo', id: selectedWireDrop.id } })
               url = URL.createObjectURL(file)
             } else {
-              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              try {
+                url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              } catch (e) {
+                const path = `projects/${selectedProject.id}/wire_drops/${uidSeg}/installed-${Date.now()}`
+                url = await uploadPublicImage(file, path)
+              }
             }
           } else {
             const uidSeg = slugifySegment(selectedWireDrop.uid)
@@ -1075,9 +1087,10 @@ const App = () => {
       input.accept = 'image/*'
       input.capture = 'environment'
       input.onchange = async (e) => {
-        const file = e.target.files?.[0]
+        let file = e.target.files?.[0]
         if (!file) return
         try {
+          file = await compressImage(file)
           setPhotoErr('')
           let url
           if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
@@ -1086,7 +1099,12 @@ const App = () => {
               await enqueueUpload({ rootUrl: selectedProject.oneDrivePhotos, subPath, filename: file.name, contentType: file.type, blob: file, update: { type: 'issue_photo', issueId: editedIssue.id } })
               url = URL.createObjectURL(file)
             } else {
-              url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              try {
+                url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file })
+              } catch (e) {
+                const path = `projects/${selectedProject.id}/issues/${editedIssue.id}/photo-${Date.now()}`
+                url = await uploadPublicImage(file, path)
+              }
             }
           } else {
             const path = `projects/${selectedProject.id}/issues/${editedIssue.id}/photo-${Date.now()}`
