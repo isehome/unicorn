@@ -29,7 +29,8 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'azure',
       options: {
-        scopes: 'email profile openid',
+        // Request Graph scopes for Calendar (and keep basic identity)
+        scopes: 'openid profile email offline_access Calendars.Read',
         redirectTo: `${window.location.origin}/auth/callback`
       }
     })
@@ -46,4 +47,3 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
-

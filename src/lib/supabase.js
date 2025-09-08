@@ -59,7 +59,8 @@ export const signInWithMicrosoft = async () => {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'azure',
     options: {
-      scopes: 'email profile openid',
+      // Include Calendars.Read so we can read the user's calendar
+      scopes: 'openid profile email offline_access Calendars.Read',
       redirectTo: `${window.location.origin}/auth/callback`
     }
   })
@@ -102,4 +103,3 @@ export const deleteData = async (table, id) => {
   if (error) throw error
   return data
 }
-
