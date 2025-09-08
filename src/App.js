@@ -26,6 +26,52 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMyProjects, setViewMyProjects] = useState(true);
   const [fullscreenImage, setFullscreenImage] = useState(null);
+  // Microsoft Calendar state
+  const [events, setEvents] = useState([])
+  const [eventsError, setEventsError] = useState('')
+
+  const isoDayRange = () => {
+    const start = new Date()
+    start.setHours(0,0,0,0)
+    const end = new Date()
+    end.setHours(23,59,59,999)
+    return { start: start.toISOString(), end: end.toISOString() }
+  }
+
+  const loadTodayEvents = async () => {
+    try {
+      setEventsError('')
+      const { data: sessionData } = await supabase.auth.getSession()
+      const access = sessionData?.session?.provider_token
+      if (!access) {
+        // Missing Graph token — likely scopes not granted yet
+        return
+      }
+      const { start, end } = isoDayRange()
+      const url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$orderby=start/dateTime&$top=5`
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${access}` }
+      })
+      if (!resp.ok) {
+        const text = await resp.text()
+        setEventsError(text)
+        return
+      }
+      const json = await resp.json()
+      const mapped = (json.value || []).map(ev => ({
+        id: ev.id,
+        subject: ev.subject || 'Event',
+        start: ev.start?.dateTime,
+        end: ev.end?.dateTime,
+        location: ev.location?.displayName || ''
+      }))
+      setEvents(mapped)
+    } catch (e) {
+      setEventsError(e.message)
+    }
+  }
+
+  useEffect(() => { loadTodayEvents() }, [])
   // Process any offline uploads when we come online
   useEffect(() => {
     const onOnline = async () => {
@@ -639,34 +685,39 @@ const App = () => {
         <div className="flex gap-2">
           <button 
             onClick={() => setViewMyProjects(true)}
-            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : 'text-black bg-gray-200'} font-medium`}
           >
             My Projects
           </button>
           <button 
             onClick={() => setViewMyProjects(false)}
-            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : t.text} font-medium`}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : 'text-black bg-gray-200'} font-medium`}
           >
             All Projects
           </button>
         </div>
       </div>
 
-      {/* Calendar Widget */}
+      {/* Calendar Widget (Microsoft Graph) */}
       <div className={`m-4 p-4 rounded-xl ${t.surface} border ${t.border}`} style={{marginBottom: '6rem'}}>
         <div className="flex items-center justify-between mb-3">
           <h2 className={`font-medium ${t.text}`}>Today's Schedule</h2>
-          <Calendar size={18} className={t.textSecondary} />
+          <button onClick={loadTodayEvents} className={`px-2 py-1 rounded ${t.surfaceHover} text-black text-xs border ${t.border}`}>
+            <Calendar size={16} className="inline mr-1" /> Refresh
+          </button>
         </div>
+        {eventsError && <div className="text-xs text-red-400 mb-2">{eventsError}</div>}
         <div className="space-y-2">
-          <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${t.success}`}></div>
-            <span className={`text-sm ${t.text}`}>9:00 AM - Smith Residence</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${t.warning}`}></div>
-            <span className={`text-sm ${t.text}`}>2:00 PM - Office Complex QC</span>
-          </div>
+          {events.length === 0 ? (
+            <div className={`text-sm ${t.textSecondary}`}>No events today</div>
+          ) : (
+            events.map(ev => (
+              <div key={ev.id} className="flex items-center gap-3">
+                <div className={`w-2 h-2 rounded-full ${t.success}`}></div>
+                <span className={`text-sm ${t.text}`}>{new Date(ev.start).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})} - {ev.subject}</span>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -704,21 +755,21 @@ const App = () => {
                     setSelectedProject(project);
                     setCurrentView('project');
                   }}
-                  className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+                  className={`py-3 rounded-lg ${t.surfaceHover} text-black font-medium`}
                 >
                   OPEN
                 </button>
                 <button 
                   onClick={() => handleCheckIn(project.id)}
                   disabled={isCheckedIn}
-                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700' : t.surfaceHover} ${t.text} font-medium`}
+                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700 text-white' : `${t.surfaceHover} text-black`} font-medium`}
                 >
                   {isCheckedIn ? '✓ Checked In' : 'Check In'}
                 </button>
                 <button 
                   onClick={() => handleCheckOut(project.id)}
                   disabled={!isCheckedIn}
-                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : t.surfaceHover} ${t.text} font-medium`}
+                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : `${t.surfaceHover} text-black`} font-medium`}
                 >
                   Check Out
                 </button>
