@@ -1332,7 +1332,7 @@ const App = () => {
       setContacts(prev => prev.map(x => x.id === c.id ? { ...x, report: !c.report } : x))
     }
     const remove = async (c) => {
-      if (!confirm('Delete contact?')) return
+      if (!window.confirm('Delete contact?')) return
       const { error } = await supabase.from('contacts').delete().eq('id', c.id)
       if (error) return alert(error.message)
       setContacts(prev => prev.filter(x => x.id !== c.id))
