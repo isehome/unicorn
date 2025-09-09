@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuth } from './contexts/AuthContext';
 import { supabase, uploadPublicImage, toThumb, slugifySegment } from './lib/supabase';
 import { graphUploadViaApi } from './lib/onedrive';
 import { enqueueUpload, listUploads, removeUpload } from './lib/offline';
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 
 const App = () => {
+  const { user } = useAuth();
   const [darkMode, setDarkMode] = useState(true);
   const [currentView, setCurrentView] = useState('dashboard');
   const [userRole, setUserRole] = useState('technician'); // 'technician' or 'pm'
@@ -29,6 +31,7 @@ const App = () => {
   // Microsoft Calendar state
   const [events, setEvents] = useState([])
   const [eventsError, setEventsError] = useState('')
+  const [calendarReady, setCalendarReady] = useState(false)
 
   const isoDayRange = () => {
     const start = new Date()
@@ -43,14 +46,16 @@ const App = () => {
       setEventsError('')
       const { data: sessionData } = await supabase.auth.getSession()
       const access = sessionData?.session?.provider_token
-      if (!access) {
-        // Missing Graph token — likely scopes not granted yet
-        return
-      }
+      if (!access) { setCalendarReady(false); return }
+      setCalendarReady(true)
       const { start, end } = isoDayRange()
       const url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(end)}&$orderby=start/dateTime&$top=5`
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
       const resp = await fetch(url, {
-        headers: { Authorization: `Bearer ${access}` }
+        headers: { 
+          Authorization: `Bearer ${access}`,
+          'Prefer': `outlook.timezone="${tz}"`
+        }
       })
       if (!resp.ok) {
         const text = await resp.text()
@@ -178,16 +183,23 @@ const App = () => {
   };
 
   useEffect(() => { loadWireTypes(); }, []);
+  useEffect(() => { if (selectedProject?.id) loadContacts(selectedProject.id) }, [selectedProject?.id])
 
   // Issues state (now loaded from Supabase)
   const [issues, setIssues] = useState([]);
 
-  // Contacts/People state
-  const [contacts] = useState([
-    { id: 'C001', name: 'John Smith', role: 'Client', email: 'john.smith@email.com', phone: '512-555-0100', company: 'Residence' },
-    { id: 'C002', name: 'Sarah Johnson', role: 'Project Manager', email: 'sarah.pm@company.com', phone: '512-555-0101', company: 'Intelligent Systems' },
-    { id: 'C003', name: 'Mike Engineer', role: 'Lead Technician', email: 'mike@company.com', phone: '512-555-0102', company: 'Intelligent Systems' }
-  ]);
+  // Contacts/People state (from Supabase)
+  const [contacts, setContacts] = useState([]);
+  const loadContacts = async (projectId) => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true })
+      if (!error) setContacts(data || [])
+    } catch (_) {}
+  }
 
   // Calculate project progress based on wire drops
   const calculateProjectProgress = (project) => {
@@ -671,8 +683,14 @@ const App = () => {
       {/* Header */}
       <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
         <div className="flex items-center justify-between mb-3">
-          <h1 className={`text-lg font-semibold ${t.text}`}>Technician Dashboard</h1>
           <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="IS" className="h-5 w-auto" onError={(e)=>{e.currentTarget.style.display='none'}} />
+            <h1 className={`text-lg font-semibold ${t.text}`}>Technician Dashboard</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {user && (
+              <span className={`hidden sm:block text-xs ${t.textSecondary}`}>Hi, {user.user_metadata?.full_name || user.email}</span>
+            )}
             <button onClick={() => setUserRole('pm')} className={`p-2 ${t.accentText} text-sm`}>
               Switch to PM
             </button>
@@ -706,6 +724,22 @@ const App = () => {
             <Calendar size={16} className="inline mr-1" /> Refresh
           </button>
         </div>
+        {(!calendarReady) && (
+          <div className="flex items-center justify-between mb-2">
+            <div className={`text-xs ${t.textSecondary}`}>Connect your Microsoft Calendar</div>
+            <button
+              onClick={async()=>{
+                await supabase.auth.signInWithOAuth({
+                  provider: 'azure',
+                  options: { scopes: 'openid profile email offline_access Calendars.Read', redirectTo: `${window.location.origin}/auth/callback` }
+                })
+              }}
+              className={`px-2 py-1 rounded ${t.accent} text-white text-xs`}
+            >
+              Connect
+            </button>
+          </div>
+        )}
         {eventsError && <div className="text-xs text-red-400 mb-2">{eventsError}</div>}
         <div className="space-y-2">
           {events.length === 0 ? (
@@ -780,10 +814,10 @@ const App = () => {
       </div>
 
       {/* Bottom Navigation */}
-      <div className={`fixed bottom-0 left-0 right-0 p-4 grid grid-cols-3 gap-2 border-t ${t.border} ${t.bgSecondary}`}>
+      <div className={`fixed bottom-0 left-0 right-0 px-3 py-2 grid grid-cols-3 gap-2 border-t ${t.border} ${t.bgSecondary}`} style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)'}}>
         <button 
           onClick={() => setCurrentView('people')}
-          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
         >
           <Users size={20} className="mx-auto mb-1" />
           People
@@ -795,14 +829,14 @@ const App = () => {
               setCurrentView('wireDropList');
             }
           }}
-          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
         >
           <Zap size={20} className="mx-auto mb-1" />
           Wire Drops
         </button>
         <button 
           onClick={() => setShowScanner(true)}
-          className={`py-4 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
         >
           <QrCode size={20} className="mx-auto mb-1" />
           Scan Tag
@@ -1281,54 +1315,73 @@ const App = () => {
   };
 
   // People/Contacts View
-  const PeopleView = () => (
-    <div className={`min-h-screen ${t.bg}`}>
-      {/* Header */}
-      <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => setCurrentView('dashboard')} className={`p-2 ${t.text}`}>
-            <ArrowLeft size={24} />
-          </button>
-          <h1 className={`text-lg font-semibold ${t.text}`}>People</h1>
-          <button className={`p-2 ${t.text}`}>
-            <UserPlus size={20} />
-          </button>
-        </div>
-      </div>
+  const PeopleView = () => {
+    const [form, setForm] = useState({ name:'', role:'', email:'', phone:'', company:'', report:false })
 
-      <div className="p-4">
-        {contacts.map(contact => (
-          <div key={contact.id} className={`mb-3 p-4 rounded-xl ${t.surface} border ${t.border}`}>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className={`font-medium ${t.text}`}>{contact.name}</p>
-                <p className={`text-sm ${t.accentText}`}>{contact.role}</p>
-                <p className={`text-xs ${t.textSecondary} mt-1`}>{contact.company}</p>
-              </div>
-              <div className="text-right">
-                <a 
-                  href={`mailto:${contact.email}`} 
-                  className={`text-xs ${t.textSecondary} block hover:${t.accentText}`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Mail size={14} className="inline mr-1" />
-                  {contact.email}
-                </a>
-                <a 
-                  href={`tel:${contact.phone}`} 
-                  className={`text-xs ${t.textSecondary} block mt-1 hover:${t.accentText}`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Phone size={14} className="inline mr-1" />
-                  {contact.phone}
-                </a>
-              </div>
+    const add = async () => {
+      if (!selectedProject?.id || !form.name) return alert('Name required')
+      const payload = { ...form, project_id: selectedProject.id }
+      const { error, data } = await supabase.from('contacts').insert([payload]).select('*').single()
+      if (error) return alert(error.message)
+      setContacts(prev => [...prev, data])
+      setForm({ name:'', role:'', email:'', phone:'', company:'', report:false })
+    }
+    const toggleReport = async (c) => {
+      const { error } = await supabase.from('contacts').update({ report: !c.report }).eq('id', c.id)
+      if (error) return alert(error.message)
+      setContacts(prev => prev.map(x => x.id === c.id ? { ...x, report: !c.report } : x))
+    }
+    const remove = async (c) => {
+      if (!confirm('Delete contact?')) return
+      const { error } = await supabase.from('contacts').delete().eq('id', c.id)
+      if (error) return alert(error.message)
+      setContacts(prev => prev.filter(x => x.id !== c.id))
+    }
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('project')} className={`p-2 ${t.text}`}>
+              <ArrowLeft size={24} />
+            </button>
+            <h1 className={`text-lg font-semibold ${t.text}`}>People</h1>
+            <div />
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Add form */}
+          <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <div className="grid grid-cols-2 gap-2">
+              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Name*" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
+              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Role" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} />
+              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
+              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} />
+              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Company" value={form.company} onChange={e=>setForm({...form,company:e.target.value})} />
+              <label className={`text-sm ${t.text}`}><input type="checkbox" className="mr-2" checked={form.report} onChange={e=>setForm({...form,report:e.target.checked})} />Report</label>
+            </div>
+            <div className="mt-3 text-right">
+              <button onClick={add} className={`px-3 py-2 rounded ${t.accent} text-white`}>Add Person</button>
             </div>
           </div>
-        ))}
+
+          {/* List */}
+          {contacts.map(c => (
+            <div key={c.id} className={`p-3 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}>
+              <div>
+                <div className={`${t.text} font-medium`}>{c.name}</div>
+                <div className={`text-xs ${t.textSecondary}`}>{c.role || ''} {c.company ? `· ${c.company}` : ''}</div>
+                <div className={`text-xs ${t.textSecondary}`}>{c.email || ''} {c.phone ? `· ${c.phone}` : ''}</div>
+                <label className={`text-xs ${t.text}`}><input type="checkbox" className="mr-1" checked={!!c.report} onChange={()=>toggleReport(c)} /> Report recipient</label>
+              </div>
+              <button onClick={()=>remove(c)} className="text-red-400 text-sm">Delete</button>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    )
+  }
 
   // PM Dashboard
   const PMDashboard = () => (
@@ -1774,7 +1827,7 @@ const App = () => {
             </button>
 
             {/* Wire Drops */}
-            <button
+            <button 
               onClick={() => setCurrentView('wireDropList')}
               className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
             >

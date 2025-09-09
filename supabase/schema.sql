@@ -67,6 +67,7 @@ create table if not exists public.contacts (
   email text,
   phone text,
   company text,
+  report boolean default false,
   created_at timestamptz default now()
 );
 
@@ -135,6 +136,24 @@ do $$ begin
   ) then
     create policy dev_read_all on public.contacts
       for select to anon, authenticated using (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='contacts' and policyname='dev_insert_all'
+  ) then
+    create policy dev_insert_all on public.contacts
+      for insert to anon, authenticated with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='contacts' and policyname='dev_update_all'
+  ) then
+    create policy dev_update_all on public.contacts
+      for update to anon, authenticated using (true) with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname='public' and tablename='contacts' and policyname='dev_delete_all'
+  ) then
+    create policy dev_delete_all on public.contacts
+      for delete to authenticated using (true);
   end if;
 
   -- time_logs
