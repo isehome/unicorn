@@ -149,7 +149,12 @@ const App = () => {
         setProjectsError(error.message);
         return;
       }
-      setProjects((data || []).map(mapProject));
+      const mapped = (data || []).map(mapProject)
+      setProjects(mapped);
+      // Prefetch wire drops so progress bars are correct on dashboard
+      try {
+        await Promise.all((mapped || []).map(p => loadWireDrops(p.id)))
+      } catch (_) {}
     } catch (e) {
       setProjectsError(e.message);
     } finally {
@@ -789,21 +794,21 @@ const App = () => {
                     setSelectedProject(project);
                     setCurrentView('project');
                   }}
-                  className={`py-3 rounded-lg ${t.surfaceHover} text-black font-medium`}
+                  className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium`}
                 >
                   OPEN
                 </button>
                 <button 
                   onClick={() => handleCheckIn(project.id)}
                   disabled={isCheckedIn}
-                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700 text-white' : `${t.surfaceHover} text-black`} font-medium`}
+                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700 text-white' : `${t.surfaceHover} text-white`} font-medium`}
                 >
                   {isCheckedIn ? '✓ Checked In' : 'Check In'}
                 </button>
                 <button 
                   onClick={() => handleCheckOut(project.id)}
                   disabled={!isCheckedIn}
-                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : `${t.surfaceHover} text-black`} font-medium`}
+                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : `${t.surfaceHover} text-white`} font-medium`}
                 >
                   Check Out
                 </button>
@@ -1317,6 +1322,16 @@ const App = () => {
   // People/Contacts View
   const PeopleView = () => {
     const [form, setForm] = useState({ name:'', role:'', email:'', phone:'', company:'', report:false })
+    const [roleOptions, setRoleOptions] = useState([])
+    const [search, setSearch] = useState('')
+
+    useEffect(() => {
+      const loadRoles = async () => {
+        const { data, error } = await supabase.from('roles').select('*').eq('active', true).order('sort_order', {ascending:true})
+        if (!error) setRoleOptions((data||[]).map(r => r.name))
+      }
+      loadRoles()
+    }, [])
 
     const add = async () => {
       if (!selectedProject?.id || !form.name) return alert('Name required')
@@ -1355,7 +1370,20 @@ const App = () => {
           <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
             <div className="grid grid-cols-2 gap-2">
               <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Name*" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
-              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Role" value={form.role} onChange={e=>setForm({...form,role:e.target.value})} />
+              <div className="flex gap-2">
+                <select className={`flex-1 px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
+                  <option value="">Role</option>
+                  {roleOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+                <button className={`px-2 rounded ${t.accent} text-white`} type="button" onClick={async()=>{
+                  const name = (prompt('New role name:')||'').trim();
+                  if (!name) return;
+                  const { error } = await supabase.from('roles').insert([{ name }])
+                  if (error) return alert(error.message)
+                  setRoleOptions(prev => [...new Set([...prev, name])])
+                  setForm({...form, role: name})
+                }}>+ Role</button>
+              </div>
               <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
               <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} />
               <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Company" value={form.company} onChange={e=>setForm({...form,company:e.target.value})} />
@@ -1366,8 +1394,14 @@ const App = () => {
             </div>
           </div>
 
+          {/* Search */}
+          <div className="relative mb-2">
+            <Search size={18} className={`absolute left-3 top-2.5 ${t.textSecondary}`} />
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search people..." className={`w-full pl-9 pr-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} />
+          </div>
+
           {/* List */}
-          {contacts.map(c => (
+          {contacts.filter(c => (c.name||'').toLowerCase().includes(search.toLowerCase()) || (c.email||'').toLowerCase().includes(search.toLowerCase()) || (c.role||'').toLowerCase().includes(search.toLowerCase())).map(c => (
             <div key={c.id} className={`p-3 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}>
               <div>
                 <div className={`${t.text} font-medium`}>{c.name}</div>
@@ -1546,7 +1580,11 @@ const App = () => {
     };
 
     const sendWeeklyReport = () => {
-      alert(`Weekly report sent to: ${editableProject.stakeholders?.join(', ')}`);
+      const recipients = (contacts || []).filter(c => c.report && c.email).map(c => c.email)
+      if (!recipients.length) return alert('No report recipients configured in People')
+      const subject = encodeURIComponent(`Project Report - ${editableProject?.name || ''} - ${new Date().toLocaleDateString()}`)
+      const body = encodeURIComponent(`Summary for ${editableProject?.name || ''}\n\nOpen issues: ${(issues||[]).filter(i=>i.projectId===editableProject?.id && i.status!=='resolved').length}\n\nSent from Unicorn App`)
+      window.location.href = `mailto:${recipients.join(',')}?subject=${subject}&body=${body}`
     };
 
     return (
