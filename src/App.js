@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { supabase, uploadPublicImage, toThumb, slugifySegment } from './lib/supabase';
 import { graphUploadViaApi } from './lib/onedrive';
@@ -10,9 +10,101 @@ import {
   Zap, AlertCircle, QrCode,
   Folder, Image, X, ChevronRight, Edit2,
   Search, Eye, EyeOff,
-  Package, Mail, Phone, UserPlus, FolderOpen,
-  BarChart, Send, Save, ExternalLink, Maximize
+  Package, Mail, FolderOpen,
+  BarChart, Send, Save, ExternalLink, Maximize,
+  ListTodo, CheckSquare, Square, Trash2,
+  Phone, MapPin, ChevronDown
 } from 'lucide-react';
+import QRCode from 'qrcode';
+import RichContactCard from './components/RichContactCard';
+
+const generateWireDropUid = () => {
+  let raw = '';
+  const hasWindow = typeof window !== 'undefined';
+  if (hasWindow && window.crypto?.randomUUID) {
+    raw = window.crypto.randomUUID();
+  } else if (hasWindow && window.crypto?.getRandomValues) {
+    const array = new Uint32Array(4);
+    window.crypto.getRandomValues(array);
+    raw = Array.from(array).map((v) => v.toString(16).padStart(8, '0')).join('');
+  } else {
+    raw = `${Date.now()}-${Math.random()}`;
+  }
+  raw = raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return `WD-${raw.slice(0, 12)}`;
+};
+
+const splitCsvLine = (line = '') => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
+const parseWireDropCsv = (text) => {
+  const lines = (text || '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+  if (!lines.length) return [];
+  const headers = splitCsvLine(lines[0]).map(h => h.toLowerCase());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const values = splitCsvLine(lines[i]);
+    if (values.length === 1 && !values[0]) continue;
+    const record = {};
+    headers.forEach((header, idx) => {
+      record[header] = values[idx] || '';
+    });
+    rows.push(record);
+  }
+  return rows;
+};
+
+const splitName = (fullName = '') => {
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first: '', last: '' };
+  if (parts.length === 1) return { first: parts[0], last: '' };
+  return {
+    first: parts[0],
+    last: parts.slice(1).join(' ')
+  };
+};
+
+const getDisplayName = (contact = {}) => {
+  const first = contact.first_name?.trim();
+  const last = contact.last_name?.trim();
+  if (first || last) return [first, last].filter(Boolean).join(' ').trim();
+  return (contact.name || '').trim() || (contact.email || '').trim() || 'Contact';
+};
+
+const getInitialContactForm = () => ({
+  firstName: '',
+  lastName: '',
+  role: '',
+  email: '',
+  phone: '',
+  address: '',
+  company: '',
+  report: false
+});
 
 const App = () => {
   const { user } = useAuth();
@@ -28,6 +120,8 @@ const App = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMyProjects, setViewMyProjects] = useState(true);
   const [fullscreenImage, setFullscreenImage] = useState(null);
+  const [pendingSection, setPendingSection] = useState(null);
+  const selectedProjectId = selectedProject?.id;
   // Microsoft Calendar state
   const [events, setEvents] = useState([])
   const [eventsError, setEventsError] = useState('')
@@ -41,7 +135,7 @@ const App = () => {
     return { start: start.toISOString(), end: end.toISOString() }
   }
 
-  const loadTodayEvents = async () => {
+  const loadTodayEvents = useCallback(async () => {
     try {
       setEventsError('')
       const { data: sessionData } = await supabase.auth.getSession()
@@ -74,9 +168,9 @@ const App = () => {
     } catch (e) {
       setEventsError(e.message)
     }
-  }
+  }, [])
 
-  useEffect(() => { loadTodayEvents() }, [])
+  useEffect(() => { loadTodayEvents() }, [loadTodayEvents])
   // Process any offline uploads when we come online
   useEffect(() => {
     const onOnline = async () => {
@@ -109,14 +203,14 @@ const App = () => {
   
   // Projects state (now loaded from Supabase)
   const [projects, setProjects] = useState([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
-  const [projectsError, setProjectsError] = useState('');
   // Wire types lookup
   const [wireTypes, setWireTypes] = useState([]);
-  const [wireTypesLoading, setWireTypesLoading] = useState(false);
+  const [stakeholderRoles, setStakeholderRoles] = useState([]);
+  const [stakeholderDefaults, setStakeholderDefaults] = useState([]);
+  const [projectStakeholders, setProjectStakeholders] = useState({});
 
   // Map DB row (snake_case) to UI shape (camelCase)
-  const mapProject = (row) => ({
+  const mapProject = useCallback((row) => ({
     id: row.id,
     name: row.name,
     client: row.client,
@@ -130,46 +224,12 @@ const App = () => {
     oneDrivePhotos: row.one_drive_photos,
     oneDriveFiles: row.one_drive_files,
     oneDriveProcurement: row.one_drive_procurement,
-    wireDrops: [] // loaded later per project
-  });
-
-  const loadProjects = async () => {
-    try {
-      setProjectsLoading(true);
-      setProjectsError('');
-      if (!supabase) {
-        setProjectsError('Supabase not configured.');
-        return;
-      }
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) {
-        setProjectsError(error.message);
-        return;
-      }
-      const mapped = (data || []).map(mapProject)
-      setProjects(mapped);
-      // Prefetch wire drops so progress bars are correct on dashboard
-      try {
-        await Promise.all((mapped || []).map(p => loadWireDrops(p.id)))
-      } catch (_) {}
-    } catch (e) {
-      setProjectsError(e.message);
-    } finally {
-      setProjectsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadProjects();
-    // eslint-disable-next-line
-  }, []);
+    wireDrops: [],
+    todos: []
+  }), []);
 
   const loadWireTypes = async () => {
     try {
-      setWireTypesLoading(true);
       if (!supabase) return;
       const { data, error } = await supabase
         .from('wire_types')
@@ -182,29 +242,525 @@ const App = () => {
       } else {
         setWireTypes(['CAT6', 'CAT6A', 'Fiber', 'Coax', 'Power']);
       }
-    } finally {
-      setWireTypesLoading(false);
-    }
+    } catch (_) {}
   };
 
   useEffect(() => { loadWireTypes(); }, []);
-  useEffect(() => { if (selectedProject?.id) loadContacts(selectedProject.id) }, [selectedProject?.id])
-
   // Issues state (now loaded from Supabase)
   const [issues, setIssues] = useState([]);
 
   // Contacts/People state (from Supabase)
   const [contacts, setContacts] = useState([]);
-  const loadContacts = async (projectId) => {
+  const [contactsTableSupportsProject, setContactsTableSupportsProject] = useState(true);
+  const [allContacts, setAllContacts] = useState([]);
+  const [contactIssueMap, setContactIssueMap] = useState({});
+
+  const loadContacts = useCallback(async (projectId) => {
+    if (!supabase) return [];
+    try {
+      let query = supabase
+        .from('contacts')
+        .select('*');
+      if (projectId && contactsTableSupportsProject) {
+        query = query.eq('project_id', projectId);
+      }
+      const { data, error } = await query.order('created_at', { ascending: true });
+      if (error) {
+        const message = String(error.message || '').toLowerCase();
+        if (message.includes('project_id')) {
+          setContactsTableSupportsProject(false);
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('contacts')
+            .select('*')
+            .order('created_at', { ascending: true });
+          if (fallbackError) throw fallbackError;
+          const rows = fallbackData ? fallbackData.sort((a, b) => (a.name || '').localeCompare(b.name || '')) : [];
+          setContacts(rows);
+          return rows;
+        }
+        throw error;
+      }
+      const rows = data ? data.sort((a, b) => (a.name || '').localeCompare(b.name || '')) : [];
+      setContacts(rows);
+      return rows;
+    } catch (err) {
+      console.error('loadContacts failed', err);
+      return [];
+    }
+  }, [contactsTableSupportsProject, supabase]);
+
+  // Load all contacts across all projects for global search/assignment
+  const loadAllContacts = useCallback(async () => {
+    if (!supabase) return [];
     try {
       const { data, error } = await supabase
         .from('contacts')
+        .select('*');
+      if (error) throw error;
+      const rows = (data || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      setAllContacts(rows);
+      return rows;
+    } catch (err) {
+      console.error('loadAllContacts failed', err);
+      return [];
+    }
+  }, []);
+
+  useEffect(() => { loadAllContacts(); }, [loadAllContacts]);
+
+  const loadContactIssues = useCallback(async (projectId) => {
+    try {
+      if (!supabase || !projectId) return;
+      const { data, error } = await supabase
+        .from('issue_contacts')
+        .select('id, issue_id, contact_id, issues(title, status), project_id')
+        .eq('project_id', projectId);
+      if (error) return;
+      const map = {};
+      (data || []).forEach(row => {
+        const issueInfo = row.issues || {};
+        if (!map[row.contact_id]) map[row.contact_id] = [];
+        map[row.contact_id].push({
+          assignmentId: row.id,
+          issueId: row.issue_id,
+          title: issueInfo.title || 'Issue',
+          status: issueInfo.status || 'open'
+        });
+      });
+      setContactIssueMap(map);
+    } catch (_) {}
+  }, []);
+
+  const loadStakeholderRoles = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('stakeholder_roles')
+        .select('*')
+        .order('category', { ascending: true })
+        .order('name', { ascending: true });
+      if (error) throw error;
+      setStakeholderRoles(data || []);
+    } catch (err) {
+      console.error('loadStakeholderRoles failed', err);
+    }
+  }, []);
+
+  const loadStakeholderDefaults = useCallback(async () => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase
+        .from('stakeholder_defaults')
+        .select('*');
+      if (error) throw error;
+      setStakeholderDefaults(data || []);
+    } catch (err) {
+      console.error('loadStakeholderDefaults failed', err);
+    }
+  }, []);
+
+  const ensureProjectContact = useCallback(async ({ projectId, roleId, fullName, email, isInternal = false, isPrimary = false }) => {
+    if (!supabase) return null;
+    const trimmedEmail = (email || '').trim();
+    try {
+      let existing = null;
+      if (trimmedEmail) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('email', trimmedEmail)
+          .maybeSingle();
+        if (!error) existing = data;
+      }
+
+      if (!existing && fullName) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('name', fullName)
+          .maybeSingle();
+        if (!error) existing = data;
+      }
+
+      if (!existing) {
+        const payload = {
+          name: fullName || trimmedEmail || 'Stakeholder',
+          email: trimmedEmail || null,
+          role: null,
+          report: false,
+          stakeholder_role_id: roleId,
+          is_internal: isInternal,
+          is_primary: isPrimary
+        };
+        const { data, error } = await supabase
+          .from('contacts')
+          .insert([payload])
+          .select('*')
+          .single();
+        if (error) throw error;
+        existing = data;
+      } else {
+        const updates = {
+          stakeholder_role_id: roleId,
+          is_internal: isInternal,
+          is_primary: isPrimary || existing.is_primary
+        };
+        if (fullName && fullName.trim() && fullName !== existing.name) updates.name = fullName.trim();
+        if (trimmedEmail && trimmedEmail !== existing.email) updates.email = trimmedEmail;
+        const { data, error } = await supabase
+          .from('contacts')
+          .update(updates)
+          .eq('id', existing.id)
+          .select('*')
+          .single();
+        if (error) throw error;
+        existing = data;
+      }
+
+      await loadContacts(projectId || null);
+      await loadAllContacts();
+      return existing;
+    } catch (err) {
+      console.error('ensureProjectContact failed', err);
+      return null;
+    }
+  }, [loadContacts, loadAllContacts, supabase]);
+
+  const loadProjectStakeholders = useCallback(async (projectId) => {
+    if (!supabase || !projectId) return;
+    try {
+      const [{ data: internalRows, error: internalErr }, { data: externalRows, error: externalErr }] = await Promise.all([
+        supabase
+          .from('project_internal_stakeholders')
+          .select('id, project_id, role_id, full_name, email, profile_id, is_primary, created_at')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('project_external_stakeholders')
+          .select('id, project_id, role_id, contact_id, is_primary, created_at, contacts(*), stakeholder_roles(*)')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true })
+      ]);
+
+      if (internalErr) throw internalErr;
+      if (externalErr) throw externalErr;
+
+      const contactsForProject = allContacts;
+      const internal = (internalRows || []).map(row => {
+        const role = stakeholderRoles.find(r => r.id === row.role_id) || null;
+        const contactMatch = contactsForProject.find(c => {
+          if (!row.email || !c.email) return false;
+          return c.email.toLowerCase() === row.email.toLowerCase();
+        });
+        return {
+          id: row.id,
+          roleId: row.role_id,
+          role,
+          fullName: row.full_name,
+          email: row.email,
+          isPrimary: row.is_primary,
+          profileId: row.profile_id,
+          contactId: contactMatch?.id || null,
+          contact: contactMatch || null
+        };
+      });
+
+      const external = (externalRows || []).map(row => ({
+        id: row.id,
+        roleId: row.role_id,
+        role: row.stakeholder_roles || null,
+        contactId: row.contact_id,
+        isPrimary: row.is_primary,
+        contact: row.contacts || null
+      }));
+
+      setProjectStakeholders(prev => ({ ...prev, [projectId]: { internal, external } }));
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, internalStakeholders: internal, externalStakeholders: external } : p));
+      setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, internalStakeholders: internal, externalStakeholders: external } : prev);
+    } catch (err) {
+      console.error('loadProjectStakeholders failed', err);
+    }
+  }, [stakeholderRoles, allContacts, supabase]);
+
+  const applyDefaultStakeholders = useCallback(async (projectId) => {
+    if (!supabase || !projectId) return;
+    try {
+      let defaults = stakeholderDefaults;
+      if (!defaults.length) {
+        const { data, error } = await supabase.from('stakeholder_defaults').select('*');
+        if (error) throw error;
+        defaults = data || [];
+        setStakeholderDefaults(defaults);
+      }
+
+      for (const def of defaults) {
+        if (!def?.role_id) continue;
+        const role = stakeholderRoles.find(r => r.id === def.role_id);
+        if (!role) continue;
+
+        if (def.is_internal) {
+          await supabase
+            .from('project_internal_stakeholders')
+            .upsert([{
+              project_id: projectId,
+              role_id: def.role_id,
+              full_name: def.full_name,
+              email: def.email,
+              profile_id: def.profile_id || null,
+              is_primary: true
+            }], { onConflict: 'project_id,role_id' });
+
+          await ensureProjectContact({
+            projectId,
+            roleId: def.role_id,
+            fullName: def.full_name,
+            email: def.email,
+            isInternal: true,
+            isPrimary: true
+          });
+        } else {
+          const contact = await ensureProjectContact({
+            projectId,
+            roleId: def.role_id,
+            fullName: def.full_name,
+            email: def.email,
+            isInternal: false,
+            isPrimary: true
+          });
+          if (contact?.id) {
+            await supabase
+              .from('project_external_stakeholders')
+              .upsert([{
+                project_id: projectId,
+                contact_id: contact.id,
+                role_id: def.role_id,
+                is_primary: true
+              }], { onConflict: 'project_id,contact_id,role_id' });
+          }
+        }
+      }
+
+      await loadProjectStakeholders(projectId);
+      await loadContactIssues(projectId);
+    } catch (err) {
+      console.error('applyDefaultStakeholders failed', err);
+    }
+  }, [stakeholderDefaults, stakeholderRoles, ensureProjectContact, loadProjectStakeholders, loadContactIssues]);
+
+  useEffect(() => {
+    loadStakeholderRoles();
+    loadStakeholderDefaults();
+  }, [loadStakeholderRoles, loadStakeholderDefaults]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      const fetchCurrent = async () => {
+        const [contactRows] = await Promise.all([
+          loadContacts(selectedProjectId),
+          loadProjectStakeholders(selectedProjectId)
+        ]);
+        if (contactRows?.length) {
+          setContacts(contactRows)
+        }
+        await loadContactIssues(selectedProjectId);
+      };
+      fetchCurrent();
+    }
+  }, [selectedProjectId, loadContacts, loadContactIssues, loadProjectStakeholders]);
+
+  // Load wire drops for a project when viewing it
+  const loadWireDrops = useCallback(async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('wire_drops')
         .select('*')
         .eq('project_id', projectId)
-        .order('created_at', { ascending: true })
-      if (!error) setContacts(data || [])
+        .order('created_at', { ascending: true });
+      if (error) return;
+      const drops = (data || []).map(row => ({
+        id: row.id,
+        uid: (row.uid || '').toUpperCase(),
+        name: row.name,
+        location: row.location,
+        type: row.type || 'CAT6',
+        prewirePhoto: row.prewire_photo,
+        installedPhoto: row.installed_photo,
+      }));
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, wireDrops: drops } : p));
+      setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, wireDrops: drops } : prev);
     } catch (_) {}
-  }
+  }, []);
+
+  useEffect(() => {
+    if (currentView === 'project' && selectedProject && selectedProjectId && (!selectedProject.wireDrops || selectedProject.wireDrops.length === 0)) {
+      loadWireDrops(selectedProjectId);
+      loadProjectStakeholders(selectedProjectId);
+    }
+  }, [currentView, selectedProject, selectedProjectId, loadWireDrops, loadProjectStakeholders]);
+
+  const loadProjects = async () => {
+    try {
+      if (!supabase) {
+        return;
+      }
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) {
+        return;
+      }
+      const mapped = (data || []).map(mapProject);
+      setProjects(mapped);
+      // Prefetch wire drops so progress bars are correct on dashboard
+      try {
+        await Promise.all((mapped || []).map(p => loadWireDrops(p.id)));
+      } catch (_) {}
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    loadProjects();
+    // eslint-disable-next-line
+  }, []);
+
+  // Load issues for a project when viewing it (with photos)
+  const loadIssues = useCallback(async (projectId) => {
+    try {
+      if (!supabase) return;
+      const { data: issueRows, error: issueErr } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      if (issueErr) return;
+
+      const mapped = (issueRows || []).map(r => ({
+        id: r.id,
+        projectId: r.project_id,
+        title: r.title,
+        status: r.status,
+        date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
+        notes: r.notes || '',
+        photos: [],
+        assignees: []
+      }));
+
+      // Load photos for these issues (if any exist)
+      const ids = mapped.map(i => i.id);
+      if (ids.length) {
+        const { data: photoRows, error: photoErr } = await supabase
+          .from('issue_photos')
+          .select('*')
+          .in('issue_id', ids);
+        if (!photoErr && photoRows && photoRows.length) {
+          const byIssue = new Map();
+          for (const r of photoRows) {
+            if (!byIssue.has(r.issue_id)) byIssue.set(r.issue_id, []);
+            byIssue.get(r.issue_id).push(r.url);
+          }
+          mapped.forEach(m => { m.photos = byIssue.get(m.id) || []; });
+        }
+      }
+
+      if (ids.length) {
+        const { data: assignmentRows, error: assignmentErr } = await supabase
+          .from('issue_contacts')
+          .select('id, issue_id, contact_id, contacts(*)')
+          .in('issue_id', ids);
+        if (!assignmentErr && assignmentRows && assignmentRows.length) {
+          const byIssue = new Map();
+          assignmentRows.forEach(row => {
+            if (!byIssue.has(row.issue_id)) byIssue.set(row.issue_id, []);
+            const contact = row.contacts || null;
+            const role = contact?.stakeholder_role_id ? stakeholderRoles.find(r => r.id === contact.stakeholder_role_id) : null;
+            byIssue.get(row.issue_id).push({
+              id: row.id,
+              contactId: row.contact_id,
+              contact,
+              role
+            });
+          });
+          mapped.forEach(m => { m.assignees = byIssue.get(m.id) || []; });
+        }
+      }
+
+      setIssues(mapped);
+      if (projectId === selectedProject?.id) {
+        await loadContactIssues(projectId);
+      }
+    } catch (_) {}
+  }, [selectedProject?.id, loadContactIssues, stakeholderRoles]);
+
+  useEffect(() => {
+    if ((currentView === 'project' || currentView === 'people' || currentView === 'issueForm' || currentView === 'issueDetail') && selectedProjectId) {
+      loadIssues(selectedProjectId);
+    }
+  }, [currentView, selectedProjectId, loadIssues]);
+
+  const openWireDropByUid = useCallback(async (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      alert('No UID provided');
+      return false;
+    }
+    if (!supabase) {
+      alert('Supabase not configured');
+      return false;
+    }
+
+    const uid = raw.toUpperCase();
+
+    try {
+      const { data: dropRow, error } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('uid', uid)
+        .single();
+      if (error) throw error;
+
+      let projectRecord = projects.find(p => p.id === dropRow.project_id);
+      if (!projectRecord) {
+        const { data: projectRow, error: projectErr } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', dropRow.project_id)
+          .single();
+        if (projectErr) throw projectErr;
+        projectRecord = mapProject(projectRow);
+        setProjects(prev => {
+          const exists = prev.some(p => p.id === projectRecord.id);
+          return exists ? prev : [projectRecord, ...prev];
+        });
+      }
+
+      await loadWireDrops(dropRow.project_id);
+      await loadIssues(dropRow.project_id);
+      setSelectedProject(prev => (
+        prev && prev.id === dropRow.project_id
+          ? prev
+          : projectRecord || prev
+      ));
+      setSelectedWireDrop({
+        id: dropRow.id,
+        uid: (dropRow.uid || '').toUpperCase(),
+        name: dropRow.name,
+        location: dropRow.location,
+        type: dropRow.type || 'CAT6',
+        prewirePhoto: dropRow.prewire_photo,
+        installedPhoto: dropRow.installed_photo
+      });
+      setPendingSection(null);
+      setCurrentView('wireDropDetail');
+      setShowScanner(false);
+      return true;
+    } catch (err) {
+      console.error('Failed to open wire drop by UID', err);
+      alert(err.message || 'Wire drop not found');
+      return false;
+    }
+  }, [projects, mapProject, loadWireDrops, loadIssues]);
 
   // Calculate project progress based on wire drops
   const calculateProjectProgress = (project) => {
@@ -232,16 +788,18 @@ const App = () => {
       bg: 'bg-black',
       bgSecondary: 'bg-gray-900',
       surface: 'bg-gray-900',
-      surfaceHover: 'bg-gray-700',
-      border: 'border-gray-600',
+      surfaceHover: 'bg-gray-800',
+      border: 'border-gray-800',
       text: 'text-white',
-      textSecondary: 'text-gray-200',
-      textTertiary: 'text-gray-400',
+      textSecondary: 'text-white',
+      textTertiary: 'text-white',
       accent: 'bg-blue-500',
-      accentText: 'text-blue-400',
+      accentText: 'text-white',
       success: 'bg-green-600',
       warning: 'bg-orange-600',
-      danger: 'bg-red-600'
+      danger: 'bg-red-600',
+      mutedBg: 'bg-gray-800',
+      mutedText: 'text-white'
     },
     light: {
       bg: 'bg-gray-50',
@@ -256,7 +814,9 @@ const App = () => {
       accentText: 'text-blue-500',
       success: 'bg-green-500',
       warning: 'bg-orange-500',
-      danger: 'bg-red-500'
+      danger: 'bg-red-500',
+      mutedBg: 'bg-gray-200',
+      mutedText: 'text-gray-700'
     }
   };
 
@@ -318,7 +878,7 @@ const App = () => {
       const file = e.target.files[0];
       if (file) {
         const url = URL.createObjectURL(file);
-        callback(url);
+        callback({ file, preview: url });
       }
     };
     input.click();
@@ -326,11 +886,13 @@ const App = () => {
 
   // Open links in new window
   const openLink = (url) => {
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } else {
+    const raw = typeof url === 'string' ? url.trim() : '';
+    if (!raw) {
       alert('No URL configured');
+      return;
     }
+    const target = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    window.open(target, '_blank', 'noopener,noreferrer');
   };
 
   // Fullscreen Image Modal
@@ -358,23 +920,45 @@ const App = () => {
 
   // Wire Drop Form
   const WireDropForm = () => {
-    const [formData, setFormData] = useState(
-      selectedWireDrop || {
-        id: '',
-        uid: '',
-        name: '',
-        location: '',
-        type: 'CAT6',
-        prewirePhoto: null,
-        installedPhoto: null
-      }
-    );
+    const [formData, setFormData] = useState(() => ({
+      id: selectedWireDrop?.id || '',
+      uid: (selectedWireDrop?.uid || generateWireDropUid()).toUpperCase(),
+      name: selectedWireDrop?.name || '',
+      location: selectedWireDrop?.location || '',
+      type: selectedWireDrop?.type || 'CAT6',
+      prewirePhoto: selectedWireDrop?.prewirePhoto || null,
+      installedPhoto: selectedWireDrop?.installedPhoto || null
+    }));
 
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
 
+    useEffect(() => {
+      if (selectedWireDrop) {
+        setFormData({
+          id: selectedWireDrop.id || '',
+          uid: (selectedWireDrop.uid || generateWireDropUid()).toUpperCase(),
+          name: selectedWireDrop.name || '',
+          location: selectedWireDrop.location || '',
+          type: selectedWireDrop.type || 'CAT6',
+          prewirePhoto: selectedWireDrop.prewirePhoto || null,
+          installedPhoto: selectedWireDrop.installedPhoto || null
+        });
+      } else {
+        setFormData({
+          id: '',
+          uid: generateWireDropUid(),
+          name: '',
+          location: '',
+          type: 'CAT6',
+          prewirePhoto: null,
+          installedPhoto: null
+        });
+      }
+    }, [selectedWireDrop]);
+
     const handleSave = async () => {
-      if (!formData.name || !formData.location || !formData.uid) {
+      if (!formData.name.trim() || !formData.location.trim() || !formData.uid.trim()) {
         alert('Please fill in all required fields');
         return;
       }
@@ -383,11 +967,12 @@ const App = () => {
       try {
         setSaving(true);
         setSaveError('');
+        const normalizedUid = formData.uid.trim().toUpperCase();
         const payload = {
           project_id: selectedProject.id,
-          uid: formData.uid,
-          name: formData.name,
-          location: formData.location,
+          uid: normalizedUid,
+          name: formData.name.trim(),
+          location: formData.location.trim(),
           type: formData.type,
           prewire_photo: formData.prewirePhoto,
           installed_photo: formData.installedPhoto,
@@ -398,13 +983,34 @@ const App = () => {
             .from('wire_drops')
             .update(payload)
             .eq('id', selectedWireDrop.id);
-          if (error) { setSaveError(error.message); return; }
+          if (error) {
+            const message = String(error.message || '').toLowerCase();
+            if (message.includes('duplicate')) {
+              setSaveError('UID already exists. Please generate a new one.');
+            } else {
+              setSaveError(error.message);
+            }
+            return;
+          }
           alert('Wire drop updated!');
         } else {
-          const { error } = await supabase
+          const { data, error } = await supabase
             .from('wire_drops')
-            .insert([payload]);
-          if (error) { setSaveError(error.message); return; }
+            .insert([payload])
+            .select('*')
+            .single();
+          if (error) {
+            const message = String(error.message || '').toLowerCase();
+            if (message.includes('duplicate')) {
+              setSaveError('UID already exists. Generate a new UID and try again.');
+            } else {
+              setSaveError(error.message);
+            }
+            return;
+          }
+          if (data) {
+            setFormData(prev => ({ ...prev, id: data.id }));
+          }
           alert('Wire drop added!');
         }
 
@@ -445,13 +1051,10 @@ const App = () => {
             placeholder="Wire Drop Name *"
           />
           
-          <input
-            type="text"
-            value={formData.uid}
-            onChange={(e) => setFormData({...formData, uid: e.target.value})}
-            className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border}`}
-            placeholder="UID *"
-          />
+          <div>
+            <label className={`text-xs ${t.textSecondary} block mb-1`}>UID</label>
+            <div className={`w-full px-3 py-3 rounded-lg ${t.surface} ${t.text} border ${t.border} text-sm`}>{formData.uid}</div>
+          </div>
           
           <input
             type="text"
@@ -576,6 +1179,8 @@ const App = () => {
             .single()
           if (error) { setSaveError(error.message); return }
           const created = mapProject(data)
+          await applyDefaultStakeholders(created.id)
+          await loadProjectStakeholders(created.id)
           setProjects(prev => [created, ...prev])
           setSelectedProject(created)
           alert('Project created!')
@@ -708,13 +1313,13 @@ const App = () => {
         <div className="flex gap-2">
           <button 
             onClick={() => setViewMyProjects(true)}
-            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : 'text-black bg-gray-200'} font-medium`}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${viewMyProjects ? `${t.accent} text-white` : `${t.mutedBg} ${t.mutedText}`} font-medium`}
           >
             My Projects
           </button>
           <button 
             onClick={() => setViewMyProjects(false)}
-            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : 'text-black bg-gray-200'} font-medium`}
+            className={`px-4 py-2 rounded-lg border ${t.border} ${!viewMyProjects ? `${t.accent} text-white` : `${t.mutedBg} ${t.mutedText}`} font-medium`}
           >
             All Projects
           </button>
@@ -725,7 +1330,7 @@ const App = () => {
       <div className={`m-4 p-4 rounded-xl ${t.surface} border ${t.border}`} style={{marginBottom: '6rem'}}>
         <div className="flex items-center justify-between mb-3">
           <h2 className={`font-medium ${t.text}`}>Today's Schedule</h2>
-          <button onClick={loadTodayEvents} className={`px-2 py-1 rounded ${t.surfaceHover} text-black text-xs border ${t.border}`}>
+          <button onClick={loadTodayEvents} className={`px-2 py-1 rounded ${t.surfaceHover} ${t.text} text-xs border ${t.border}`}>
             <Calendar size={16} className="inline mr-1" /> Refresh
           </button>
         </div>
@@ -736,7 +1341,7 @@ const App = () => {
               onClick={async()=>{
                 await supabase.auth.signInWithOAuth({
                   provider: 'azure',
-                  options: { scopes: 'openid profile email offline_access Calendars.Read', redirectTo: `${window.location.origin}/auth/callback` }
+                  options: { scopes: 'openid profile email offline_access Calendars.Read Contacts.Read', redirectTo: `${window.location.origin}/auth/callback` }
                 })
               }}
               className={`px-2 py-1 rounded ${t.accent} text-white text-xs`}
@@ -788,29 +1393,39 @@ const App = () => {
               </div>
               
               {/* Action Buttons */}
-              <div className="p-3 grid grid-cols-3 gap-2">
+              <div className="p-3 flex gap-2">
                 <button 
                   onClick={() => {
                     setSelectedProject(project);
                     setCurrentView('project');
                   }}
-                  className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium`}
+                  className={`flex-1 py-2 px-2 rounded-lg ${t.surfaceHover} ${t.text} font-medium text-xs sm:text-sm leading-tight`}
                 >
                   OPEN
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedProject(project);
+                    setPendingSection('issues');
+                    setCurrentView('project');
+                  }}
+                  className={`flex-1 py-2 px-2 rounded-lg ${t.surfaceHover} ${t.text} font-medium text-xs sm:text-sm leading-tight`}
+                >
+                  ISSUES
                 </button>
                 <button 
                   onClick={() => handleCheckIn(project.id)}
                   disabled={isCheckedIn}
-                  className={`py-3 rounded-lg ${isCheckedIn ? 'bg-green-700 text-white' : `${t.surfaceHover} text-white`} font-medium`}
+                  className={`flex-1 py-2 px-2 rounded-lg ${isCheckedIn ? 'bg-green-700 text-white' : `${t.surfaceHover} ${t.text}`} font-medium text-xs sm:text-sm leading-tight`}
                 >
-                  {isCheckedIn ? '✓ Checked In' : 'Check In'}
+                  {isCheckedIn ? '✓ IN' : 'CHECK IN'}
                 </button>
                 <button 
                   onClick={() => handleCheckOut(project.id)}
                   disabled={!isCheckedIn}
-                  className={`py-3 rounded-lg ${!isCheckedIn ? 'opacity-50' : `${t.surfaceHover} text-white`} font-medium`}
+                  className={`flex-1 py-2 px-2 rounded-lg ${t.surfaceHover} ${t.text} font-medium text-xs sm:text-sm leading-tight ${!isCheckedIn ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  Check Out
+                  CHECK OUT
                 </button>
               </div>
             </div>
@@ -819,29 +1434,31 @@ const App = () => {
       </div>
 
       {/* Bottom Navigation */}
-      <div className={`fixed bottom-0 left-0 right-0 px-3 py-2 grid grid-cols-3 gap-2 border-t ${t.border} ${t.bgSecondary}`} style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)'}}>
+      <div className={`fixed bottom-0 left-0 right-0 px-3 py-2 flex gap-2 border-t ${t.border} ${t.bgSecondary}`} style={{paddingBottom: 'calc(env(safe-area-inset-bottom) + 10px)'}}>
         <button 
           onClick={() => setCurrentView('people')}
-          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
+          className={`flex-1 py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
         >
           <Users size={20} className="mx-auto mb-1" />
           People
         </button>
         <button 
           onClick={() => {
-            if (getFilteredProjects().length > 0) {
-              setSelectedProject(getFilteredProjects()[0]);
-              setCurrentView('wireDropList');
+            const projectsForView = getFilteredProjects();
+            if (projectsForView.length > 0) {
+              setSelectedProject(projectsForView[0]);
+              setPendingSection('wireDrops');
+              setCurrentView('project');
             }
           }}
-          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
+          className={`flex-1 py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
         >
           <Zap size={20} className="mx-auto mb-1" />
           Wire Drops
         </button>
         <button 
           onClick={() => setShowScanner(true)}
-          className={`py-3 rounded-lg ${t.surfaceHover} text-white font-medium w-full`}
+          className={`flex-1 py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
         >
           <QrCode size={20} className="mx-auto mb-1" />
           Scan Tag
@@ -951,6 +1568,32 @@ const App = () => {
 
   // Wire Drop Detail View
   const WireDropDetailView = () => {
+    const [qrDataUrl, setQrDataUrl] = useState('');
+    const [qrError, setQrError] = useState('');
+
+    useEffect(() => {
+      let cancelled = false;
+      const generate = async () => {
+        try {
+          if (!selectedWireDrop?.uid) {
+            setQrDataUrl('');
+            return;
+          }
+          const dataUrl = await QRCode.toDataURL(selectedWireDrop.uid, { margin: 1, scale: 6 });
+          if (!cancelled) {
+            setQrDataUrl(dataUrl);
+            setQrError('');
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setQrError(err.message || 'Unable to generate QR code');
+          }
+        }
+      };
+      generate();
+      return () => { cancelled = true; };
+    }, [selectedWireDrop]);
+
     if (!selectedWireDrop) return null;
 
     const handlePrewirePhoto = async () => {
@@ -1077,9 +1720,40 @@ const App = () => {
             </div>
             
             {/* QR Code */}
-            <div className="flex justify-center">
-              <div className="w-32 h-32 bg-white rounded-lg flex items-center justify-center">
-                <QrCode size={60} className="text-gray-800" />
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-36 h-36 bg-white rounded-lg flex items-center justify-center p-2">
+                {qrDataUrl ? (
+                  <img src={qrDataUrl} alt={`QR for ${selectedWireDrop.uid}`} className="w-full h-full object-contain" />
+                ) : (
+                  <QrCode size={72} className="text-gray-800" />
+                )}
+              </div>
+              {qrError && <span className="text-xs text-red-400">{qrError}</span>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard?.writeText(selectedWireDrop.uid).catch(() => {});
+                    alert('UID copied to clipboard');
+                  }}
+                  className={`px-3 py-1 rounded ${t.surfaceHover} ${t.text} text-xs`}
+                >
+                  Copy UID
+                </button>
+                <button
+                  onClick={() => {
+                    if (!qrDataUrl) return;
+                    const link = document.createElement('a');
+                    link.href = qrDataUrl;
+                    link.download = `${selectedWireDrop.uid}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  disabled={!qrDataUrl}
+                  className={`px-3 py-1 rounded ${t.surfaceHover} ${t.text} text-xs ${!qrDataUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  Download QR
+                </button>
               </div>
             </div>
           </div>
@@ -1160,9 +1834,11 @@ const App = () => {
   // Issue Detail View
   const IssueDetailView = () => {
     const [editedIssue, setEditedIssue] = useState(
-      selectedIssue || { id: '', title: '', status: 'open', notes: '', photos: [] }
+      selectedIssue || { id: '', title: '', status: 'open', notes: '', photos: [], assignees: [] }
     );
     const [photoErr, setPhotoErr] = useState('')
+    const [saveErr, setSaveErr] = useState('')
+    const [savingIssue, setSavingIssue] = useState(false)
 
     if (!selectedIssue) return null;
 
@@ -1205,17 +1881,41 @@ const App = () => {
       input.click()
     }
 
-    const saveIssue = () => {
-      setIssues(prev => prev.map(i => i.id === editedIssue.id ? editedIssue : i));
-      alert('Issue updated!');
-      setCurrentView('project');
+    const persistIssue = async (updates, successMessage) => {
+      if (!supabase) { setSaveErr('Supabase not configured'); return; }
+      if (!editedIssue?.id) { setSaveErr('Issue missing identifier'); return; }
+      try {
+        setSavingIssue(true);
+        setSaveErr('');
+        const { error } = await supabase
+          .from('issues')
+          .update(updates)
+          .eq('id', editedIssue.id);
+        if (error) throw error;
+        setEditedIssue(prev => ({ ...prev, ...updates }));
+        if (selectedProject?.id) {
+          await loadIssues(selectedProject.id);
+          await loadContactIssues(selectedProject.id);
+        }
+        alert(successMessage);
+        setCurrentView('project');
+      } catch (err) {
+        setSaveErr(err.message || 'Unable to update issue');
+      } finally {
+        setSavingIssue(false);
+      }
     };
 
-    const markResolved = () => {
-      const updated = { ...editedIssue, status: 'resolved' };
-      setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
-      alert('Issue marked as resolved!');
-      setCurrentView('project');
+    const saveIssue = async () => {
+      await persistIssue({
+        title: editedIssue.title,
+        status: editedIssue.status,
+        notes: editedIssue.notes
+      }, 'Issue updated!');
+    };
+
+    const markResolved = async () => {
+      await persistIssue({ status: 'resolved' }, 'Issue marked as resolved!');
     };
 
     return (
@@ -1227,13 +1927,14 @@ const App = () => {
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Issue Detail</h1>
-            <button onClick={saveIssue} className={`p-2 ${t.accentText}`}>
+            <button onClick={saveIssue} disabled={savingIssue} className={`p-2 ${t.accentText} ${savingIssue ? 'opacity-50 cursor-wait' : ''}`}>
               Save
             </button>
           </div>
         </div>
 
         <div className="p-4">
+          {saveErr && <div className="text-sm text-red-400 mb-3">{saveErr}</div>}
           {/* Issue Title */}
           <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
             <input
@@ -1266,6 +1967,25 @@ const App = () => {
             </button>
           </div>
 
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-2`}>Assigned Stakeholders</h3>
+            {editedIssue.assignees && editedIssue.assignees.length ? (
+              <div className="space-y-2">
+                {editedIssue.assignees.map(assign => (
+                  <div key={assign.id} className={`text-sm ${t.text}`}>
+                    <div className="font-medium">{assign.contact?.name || assign.contact?.email || 'Stakeholder'}</div>
+                    <div className={`text-xs ${t.textSecondary}`}>
+                      {assign.role?.name ? assign.role.name : '—'}
+                      {assign.contact?.email ? ` · ${assign.contact.email}` : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className={`text-sm ${t.textSecondary}`}>No stakeholders tagged on this issue.</p>
+            )}
+          </div>
+
           {/* Notes */}
           <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
             <h3 className={`font-medium ${t.text} mb-2`}>Notes</h3>
@@ -1285,17 +2005,6 @@ const App = () => {
               <button onClick={addIssuePhoto} className={`px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}>
                 <Camera size={16} className="inline mr-1" /> Add Photo
               </button>
-              <button onClick={async()=>{
-                const url = (prompt('Paste photo URL:')||'').trim();
-                if (!url) return;
-                try {
-                  await supabase.from('issue_photos').insert([{ issue_id: editedIssue.id, url }])
-                  setIssues(prev => prev.map(i => i.id === editedIssue.id ? { ...i, photos: [...(i.photos||[]), url] } : i))
-                  setEditedIssue(prev => ({ ...prev, photos: [...(prev.photos||[]), url] }))
-                } catch (e) { alert(e.message) }
-              }} className={`px-3 py-2 rounded-lg ${t.surface} border ${t.border} ${t.text} text-sm`}>
-                Add URL
-              </button>
             </div>
             {(editedIssue.photos?.length>0) && (
               <div className="flex gap-2 overflow-x-auto">
@@ -1309,8 +2018,8 @@ const App = () => {
           {/* Action Button */}
           <button
             onClick={markResolved}
-            disabled={editedIssue.status === 'resolved'}
-            className={`w-full py-3 rounded-lg ${editedIssue.status === 'resolved' ? 'bg-gray-600' : 'bg-green-600'} text-white font-medium`}
+            disabled={editedIssue.status === 'resolved' || savingIssue}
+            className={`w-full py-3 rounded-lg ${editedIssue.status === 'resolved' ? 'bg-gray-600' : 'bg-green-600'} text-white font-medium ${savingIssue ? 'opacity-50 cursor-wait' : ''}`}
           >
             {editedIssue.status === 'resolved' ? 'Already Resolved' : 'Mark as Resolved'}
           </button>
@@ -1321,9 +2030,40 @@ const App = () => {
 
   // People/Contacts View
   const PeopleView = () => {
-    const [form, setForm] = useState({ name:'', role:'', email:'', phone:'', company:'', report:false })
+    const [form, setForm] = useState(getInitialContactForm())
     const [roleOptions, setRoleOptions] = useState([])
     const [search, setSearch] = useState('')
+    const [issueSelections, setIssueSelections] = useState({})
+    const [importingContacts, setImportingContacts] = useState(false)
+    const [importError, setImportError] = useState('')
+    const [internalSearch, setInternalSearch] = useState({})
+    const [externalSearch, setExternalSearch] = useState({})
+    const [internalPickerOpen, setInternalPickerOpen] = useState({})
+    const [externalPickerOpen, setExternalPickerOpen] = useState({})
+    const [showAddContactForm, setShowAddContactForm] = useState(false)
+    const [showContactList, setShowContactList] = useState(false)
+
+    const projectIssues = issues.filter(i => i.projectId === selectedProject?.id)
+    const projectId = selectedProject?.id
+    const stakeholderBundle = (projectId && projectStakeholders[projectId]) || { internal: [], external: [] }
+    const internalAssignments = stakeholderBundle.internal || []
+    const externalAssignments = stakeholderBundle.external || []
+    const companyDefaultRoleNames = new Set(['Engineering', 'Accounting', 'Procurement'])
+    const internalRoles = stakeholderRoles.filter(role => role.category === 'internal')
+    const companyDefaultRoles = internalRoles.filter(role => companyDefaultRoleNames.has(role.name))
+    const projectInternalRoles = internalRoles.filter(role => !companyDefaultRoleNames.has(role.name))
+    const externalRoles = stakeholderRoles.filter(role => role.category === 'external')
+    const defaultsByRole = stakeholderDefaults.reduce((acc, entry) => {
+      if (!acc[entry.role_id]) acc[entry.role_id] = []
+      acc[entry.role_id].push(entry)
+      return acc
+    }, {})
+    const formatContactName = (contact) => contact?.name || contact?.email || 'Contact'
+    const refreshStakeholders = async () => {
+      if (!projectId) return
+      await loadProjectStakeholders(projectId)
+      await loadContactIssues(projectId)
+    }
 
     useEffect(() => {
       const loadRoles = async () => {
@@ -1333,24 +2073,430 @@ const App = () => {
       loadRoles()
     }, [])
 
+    useEffect(() => {
+      setIssueSelections({})
+    }, [projectId])
+
+    const assignIssueToContact = async (contactId, issueId) => {
+      if (!issueId || !contactId || !selectedProject?.id) return
+      try {
+        const { error } = await supabase
+          .from('issue_contacts')
+          .insert([{ project_id: selectedProject.id, issue_id: issueId, contact_id: contactId }])
+        if (error) {
+          const message = String(error.message || '')
+          if (message.toLowerCase().includes('duplicate')) {
+            alert('This person is already tagged on that issue.')
+          } else {
+            alert(message)
+          }
+          return
+        }
+        await loadContactIssues(selectedProject.id)
+      } catch (err) {
+        alert(err.message)
+      } finally {
+        setIssueSelections(prev => ({ ...prev, [contactId]: '' }))
+      }
+    }
+
+    const unassignIssueFromContact = async (assignmentId) => {
+      if (!assignmentId) return
+      try {
+        const { error } = await supabase
+          .from('issue_contacts')
+          .delete()
+          .eq('id', assignmentId)
+        if (error) {
+          alert(error.message)
+          return
+        }
+        if (selectedProject?.id) await loadContactIssues(selectedProject.id)
+      } catch (err) {
+        alert(err.message)
+      }
+    }
+
+    const updateContact = async (updated) => {
+      if (!updated?.id) {
+        alert('Cannot update this contact because it is not linked to a contact record yet. Assign an existing contact or create a new one first.')
+        return
+      }
+      try {
+        const payload = {
+          name: (updated.name || '').trim() || null,
+          email: (updated.email || '').trim() || null,
+          phone: (updated.phone || '').trim() || null,
+          address: (updated.address || '').trim() || null,
+          company: (updated.company || '').trim() || null,
+          role: (updated.role || '').trim() || null,
+        }
+        const { data, error } = await supabase
+          .from('contacts')
+          .update(payload)
+          .eq('id', updated.id)
+          .select('*')
+          .single()
+        if (error) throw error
+        const row = data
+        setContacts(prev => prev.map(c => c.id === row.id ? row : c))
+        setAllContacts(prev => prev.map(c => c.id === row.id ? row : c))
+      } catch (err) {
+        alert(err.message || 'Unable to update contact')
+      }
+    }
+
     const add = async () => {
-      if (!selectedProject?.id || !form.name) return alert('Name required')
-      const payload = { ...form, project_id: selectedProject.id }
+      if (!projectId) {
+        alert('Select a project first.');
+        return;
+      }
+      const first = form.firstName.trim();
+      const last = form.lastName.trim();
+      const email = form.email.trim();
+      if (!first && !last && !email) {
+        alert('Provide a name or email for the contact.');
+        return;
+      }
+      const fullName = [first, last].filter(Boolean).join(' ').trim();
+      const payload = {
+        first_name: first || null,
+        last_name: last || null,
+        name: fullName || email || 'Contact',
+        role: form.role || null,
+        email: email || null,
+        phone: form.phone.trim() || null,
+        company: form.company.trim() || null,
+        address: form.address.trim() || null,
+        report: form.report
+      };
       const { error, data } = await supabase.from('contacts').insert([payload]).select('*').single()
       if (error) return alert(error.message)
-      setContacts(prev => [...prev, data])
-      setForm({ name:'', role:'', email:'', phone:'', company:'', report:false })
+      setContacts(prev => {
+        const next = [...prev, data]
+        next.sort((a,b) => (a.name||'').localeCompare(b.name||''))
+        return next
+      })
+      setAllContacts(prev => {
+        const next = [...prev, data]
+        next.sort((a,b) => (a.name||'').localeCompare(b.name||''))
+        return next
+      })
+      setContactIssueMap(prev => ({ ...prev, [data.id]: [] }))
+      setForm(getInitialContactForm())
+      setShowAddContactForm(false)
+      if (!showContactList) setShowContactList(true)
     }
     const toggleReport = async (c) => {
       const { error } = await supabase.from('contacts').update({ report: !c.report }).eq('id', c.id)
       if (error) return alert(error.message)
       setContacts(prev => prev.map(x => x.id === c.id ? { ...x, report: !c.report } : x))
+      setAllContacts(prev => prev.map(x => x.id === c.id ? { ...x, report: !c.report } : x))
     }
     const remove = async (c) => {
       if (!window.confirm('Delete contact?')) return
       const { error } = await supabase.from('contacts').delete().eq('id', c.id)
       if (error) return alert(error.message)
       setContacts(prev => prev.filter(x => x.id !== c.id))
+      setAllContacts(prev => prev.filter(x => x.id !== c.id))
+      setIssueSelections(prev => {
+        const next = { ...prev }
+        delete next[c.id]
+        return next
+      })
+      setContactIssueMap(prev => {
+        const next = { ...prev }
+        delete next[c.id]
+        return next
+      })
+      if (selectedProject?.id) await loadContactIssues(selectedProject.id)
+    }
+
+    const handleAddDefault = async (role) => {
+      if (!supabase) return
+      const emailInput = (prompt(`Default email for ${role.name}?`, '') || '').trim()
+      if (!emailInput) return
+      const nameInput = (prompt(`Display name for ${role.name}`, '') || '').trim()
+      try {
+        const { error } = await supabase
+          .from('stakeholder_defaults')
+          .insert([{ role_id: role.id, email: emailInput, full_name: nameInput || null, is_internal: role.category === 'internal' }])
+        if (error) throw error
+        await loadStakeholderDefaults()
+        if (projectId && window.confirm('Apply this default to the current project now?')) {
+          await applyDefaultStakeholders(projectId)
+        }
+      } catch (err) {
+        alert(err.message || 'Unable to add default')
+      }
+    }
+
+    const handleRemoveDefault = async (defaultId) => {
+      if (!window.confirm('Remove this default stakeholder?')) return
+      const { error } = await supabase.from('stakeholder_defaults').delete().eq('id', defaultId)
+      if (error) return alert(error.message)
+      await loadStakeholderDefaults()
+    }
+
+    const toggleRoleAutoIssue = async (role) => {
+      const { error } = await supabase
+        .from('stakeholder_roles')
+        .update({ auto_issue_default: !role.auto_issue_default })
+        .eq('id', role.id)
+      if (error) return alert(error.message)
+      await loadStakeholderRoles()
+    }
+
+    const handleAssignInternal = async (role, contactId) => {
+      if (!projectId || !contactId) return
+      const contact = allContacts.find(c => c.id === contactId)
+      if (!contact) return
+      try {
+        await supabase
+          .from('contacts')
+          .update({ stakeholder_role_id: role.id, is_internal: true, is_primary: true })
+          .eq('id', contact.id)
+
+        setAllContacts(prev => {
+          const updated = { ...contact, stakeholder_role_id: role.id, is_internal: true, is_primary: true }
+          const exists = prev.some(c => c.id === contact.id)
+          const next = exists ? prev.map(c => c.id === contact.id ? updated : c) : [...prev, updated]
+          next.sort((a,b) => (a.name||'').localeCompare(b.name||''))
+          return next
+        })
+
+        setContacts(prev => {
+          const updated = { ...contact, stakeholder_role_id: role.id, is_internal: true, is_primary: true }
+          const exists = prev.some(c => c.id === contact.id)
+          const next = exists ? prev.map(c => c.id === contact.id ? updated : c) : [...prev, updated]
+          next.sort((a,b) => (a.name||'').localeCompare(b.name||''))
+          return next
+        })
+
+        const { error } = await supabase
+          .from('project_internal_stakeholders')
+          .upsert([{
+            project_id: projectId,
+            role_id: role.id,
+            full_name: contact.name || contact.email || null,
+            email: contact.email || null,
+            profile_id: null,
+            is_primary: true
+          }], { onConflict: 'project_id,role_id' })
+        if (error) throw error
+
+        await refreshStakeholders()
+        setInternalPickerOpen(prev => ({ ...prev, [role.id]: false }))
+        setInternalSearch(prev => ({ ...prev, [role.id]: '' }))
+      } catch (err) {
+        alert(err.message || 'Unable to assign stakeholder')
+      }
+    }
+
+    const handleCreateInternal = async (role, assignment) => {
+      if (!projectId) return
+      const nameInput = prompt(`Full name for ${role.name}`, assignment?.fullName || assignment?.contact?.name || '')
+      if (nameInput === null) return
+      const emailInput = prompt(`Email for ${role.name}`, assignment?.email || assignment?.contact?.email || '')
+      if (emailInput === null) return
+      const trimmedName = nameInput.trim()
+      const trimmedEmail = emailInput.trim()
+      try {
+        const { error } = await supabase
+          .from('project_internal_stakeholders')
+          .upsert([{
+            project_id: projectId,
+            role_id: role.id,
+            full_name: trimmedName || null,
+            email: trimmedEmail || null,
+            profile_id: assignment?.profileId || null,
+            is_primary: assignment?.isPrimary ?? true
+          }], { onConflict: 'project_id,role_id' })
+        if (error) throw error
+        await ensureProjectContact({
+          projectId,
+          roleId: role.id,
+          fullName: trimmedName,
+          email: trimmedEmail,
+          isInternal: true,
+          isPrimary: assignment?.isPrimary ?? true
+        })
+        await refreshStakeholders()
+      } catch (err) {
+        alert(err.message || 'Unable to update stakeholder')
+      }
+    }
+
+    const handleRemoveInternal = async (assignment) => {
+      if (!projectId || !assignment?.id) return
+      if (!window.confirm('Remove this internal stakeholder?')) return
+      const { error } = await supabase.from('project_internal_stakeholders').delete().eq('id', assignment.id)
+      if (error) return alert(error.message)
+      if (assignment.contactId) {
+        await supabase
+          .from('contacts')
+          .update({ stakeholder_role_id: null, is_internal: false, is_primary: false })
+          .eq('id', assignment.contactId)
+      }
+      await refreshStakeholders()
+    }
+
+    const handleToggleInternalPrimary = async (assignment) => {
+      if (!projectId || !assignment?.id) return
+      const nextValue = !assignment.isPrimary
+      const { error } = await supabase
+        .from('project_internal_stakeholders')
+        .update({ is_primary: nextValue })
+        .eq('id', assignment.id)
+      if (error) return alert(error.message)
+      if (assignment.contactId) {
+        await supabase
+          .from('contacts')
+          .update({ is_primary: nextValue })
+          .eq('id', assignment.contactId)
+      }
+      await refreshStakeholders()
+    }
+
+    const handleAssignExternal = async (role, contactId) => {
+      if (!projectId || !contactId) return
+      try {
+        const { error } = await supabase
+          .from('project_external_stakeholders')
+          .upsert([{
+            project_id: projectId,
+            contact_id: contactId,
+            role_id: role.id,
+            is_primary: false
+          }], { onConflict: 'project_id,contact_id,role_id' })
+        if (error) throw error
+        await refreshStakeholders()
+        setExternalPickerOpen(prev => ({ ...prev, [role.id]: false }))
+        setExternalSearch(prev => ({ ...prev, [role.id]: '' }))
+      } catch (err) {
+        alert(err.message || 'Unable to assign stakeholder')
+      }
+    }
+
+    const handleRemoveExternal = async (assignment) => {
+      if (!projectId || !assignment?.id) return
+      if (!window.confirm('Remove this external stakeholder?')) return
+      const { error } = await supabase
+        .from('project_external_stakeholders')
+        .delete()
+        .eq('id', assignment.id)
+      if (error) return alert(error.message)
+      await refreshStakeholders()
+    }
+
+    const handleToggleExternalPrimary = async (assignment) => {
+      if (!projectId || !assignment?.id) return
+      const nextValue = !assignment.isPrimary
+      const { error } = await supabase
+        .from('project_external_stakeholders')
+        .update({ is_primary: nextValue })
+        .eq('id', assignment.id)
+      if (error) return alert(error.message)
+      if (assignment.contactId) {
+        await supabase
+          .from('contacts')
+          .update({ is_primary: nextValue, stakeholder_role_id: assignment.roleId })
+          .eq('id', assignment.contactId)
+      }
+      await refreshStakeholders()
+    }
+
+    const importFromMicrosoft = async () => {
+      if (!projectId) { alert('Select a project first.'); return; }
+      try {
+        setImportingContacts(true)
+        setImportError('')
+        const { data: sessionData } = await supabase.auth.getSession()
+        const access = sessionData?.session?.provider_token
+        if (!access) {
+          setImportingContacts(false)
+          alert('Connect your Microsoft account to import contacts.')
+          return
+        }
+
+        const existingEmails = new Set(
+          contacts
+            .map(c => (c.email || '').toLowerCase())
+            .filter(Boolean)
+        )
+
+        let nextLink = 'https://graph.microsoft.com/v1.0/me/contacts?$top=200'
+        const collected = []
+        while (nextLink && collected.length < 400) {
+          const resp = await fetch(nextLink, {
+            headers: {
+              Authorization: `Bearer ${access}`
+            }
+          })
+          if (!resp.ok) {
+            const text = await resp.text()
+            throw new Error(text || 'Failed to fetch contacts from Microsoft')
+          }
+          const json = await resp.json()
+          const batch = Array.isArray(json.value) ? json.value : []
+          collected.push(...batch)
+          nextLink = json['@odata.nextLink'] || null
+        }
+
+        const payloads = []
+        const dedupe = new Set(existingEmails)
+
+        collected.forEach(item => {
+          const name = (item.displayName || '').trim()
+          const email = (item.emailAddresses?.[0]?.address || '').trim()
+          const emailKey = email.toLowerCase()
+          if (!name && !email) return
+          if (email && dedupe.has(emailKey)) return
+          if (email) dedupe.add(emailKey)
+          const phone = item.mobilePhone || item.businessPhones?.[0] || item.homePhones?.[0] || ''
+          const role = item.jobTitle || ''
+          const company = item.companyName || ''
+          payloads.push({
+            name: name || email || 'Contact',
+            email: email || null,
+            phone,
+            role,
+            company,
+            report: false
+          })
+        })
+
+        if (!payloads.length) {
+          alert('No new contacts to import.')
+          return
+        }
+
+        const { data, error } = await supabase
+          .from('contacts')
+          .insert(payloads)
+          .select('*')
+        if (error) throw error
+
+        const inserted = data || []
+        if (inserted.length) {
+          setContacts(prev => [...prev, ...inserted])
+          setAllContacts(prev => {
+            const next = [...prev, ...inserted]
+            next.sort((a,b) => (a.name||'').localeCompare(b.name||''))
+            return next
+          })
+          setContactIssueMap(prev => {
+            const map = { ...prev }
+            inserted.forEach(row => { map[row.id] = [] })
+            return map
+          })
+          alert(`Imported ${inserted.length} contact${inserted.length === 1 ? '' : 's'} from Microsoft`)
+        }
+      } catch (err) {
+        setImportError(err.message || 'Failed to import Microsoft contacts')
+      } finally {
+        setImportingContacts(false)
+      }
     }
 
     return (
@@ -1361,57 +2507,419 @@ const App = () => {
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>People</h1>
-            <div />
+            <div className="w-10" />
           </div>
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Add form */}
+          {importError && <div className="text-sm text-red-400">{importError}</div>}
+
+          {/* Stakeholder defaults */}
           <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
-            <div className="grid grid-cols-2 gap-2">
-              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Name*" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} />
-              <div className="flex gap-2">
-                <select className={`flex-1 px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
-                  <option value="">Role</option>
-                  {roleOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-                <button className={`px-2 rounded ${t.accent} text-white`} type="button" onClick={async()=>{
-                  const name = (prompt('New role name:')||'').trim();
-                  if (!name) return;
-                  const { error } = await supabase.from('roles').insert([{ name }])
-                  if (error) return alert(error.message)
-                  setRoleOptions(prev => [...new Set([...prev, name])])
-                  setForm({...form, role: name})
-                }}>+ Role</button>
-              </div>
-              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
-              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} />
-              <input className={`px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} placeholder="Company" value={form.company} onChange={e=>setForm({...form,company:e.target.value})} />
-              <label className={`text-sm ${t.text}`}><input type="checkbox" className="mr-2" checked={form.report} onChange={e=>setForm({...form,report:e.target.checked})} />Report</label>
-            </div>
-            <div className="mt-3 text-right">
-              <button onClick={add} className={`px-3 py-2 rounded ${t.accent} text-white`}>Add Person</button>
-            </div>
-          </div>
-
-          {/* Search */}
-          <div className="relative mb-2">
-            <Search size={18} className={`absolute left-3 top-2.5 ${t.textSecondary}`} />
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search people..." className={`w-full pl-9 pr-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} />
-          </div>
-
-          {/* List */}
-          {contacts.filter(c => (c.name||'').toLowerCase().includes(search.toLowerCase()) || (c.email||'').toLowerCase().includes(search.toLowerCase()) || (c.role||'').toLowerCase().includes(search.toLowerCase())).map(c => (
-            <div key={c.id} className={`p-3 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}>
+            <h3 className={`font-medium ${t.text} mb-3`}>Company Defaults</h3>
+            <div className="space-y-3">
               <div>
-                <div className={`${t.text} font-medium`}>{c.name}</div>
-                <div className={`text-xs ${t.textSecondary}`}>{c.role || ''} {c.company ? `· ${c.company}` : ''}</div>
-                <div className={`text-xs ${t.textSecondary}`}>{c.email || ''} {c.phone ? `· ${c.phone}` : ''}</div>
-                <label className={`text-xs ${t.text}`}><input type="checkbox" className="mr-1" checked={!!c.report} onChange={()=>toggleReport(c)} /> Report recipient</label>
+                <h4 className={`text-sm font-semibold ${t.text} mb-2`}>Engineering · Accounting · Procurement</h4>
+                {companyDefaultRoles.length === 0 && <p className={`text-xs ${t.textSecondary}`}>No company default roles configured.</p>}
+                {companyDefaultRoles.map(role => {
+                  const defaults = defaultsByRole[role.id] || []
+                  return (
+                    <div key={role.id} className={`mb-3 p-3 rounded-lg ${t.surfaceHover}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className={`font-medium ${t.text}`}>{role.name}</p>
+                          {role.description && <p className={`text-xs ${t.textSecondary}`}>{role.description}</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" className={`px-2 py-1 text-xs rounded ${role.auto_issue_default ? 'bg-blue-600 text-white' : `${t.surface} ${t.text}`}`} onClick={() => toggleRoleAutoIssue(role)}>
+                            {role.auto_issue_default ? 'Required' : 'Require'}
+                          </button>
+                          <button type="button" className={`px-2 py-1 text-xs rounded ${t.surface} ${t.text}`} onClick={() => handleAddDefault(role)}>
+                            Add
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {defaults.length === 0 && <p className={`text-xs ${t.textSecondary}`}>No defaults configured.</p>}
+                        {defaults.map(def => (
+                          <div key={def.id} className="flex items-center justify-between text-xs gap-2">
+                            <div className={`${t.text}`}>{def.full_name || def.email || 'Stakeholder'} {def.email && <span className={`text-xs ${t.textSecondary}`}>({def.email})</span>}</div>
+                            <button type="button" className={`px-2 py-0.5 rounded ${t.surfaceHover} ${t.text}`} onClick={() => handleRemoveDefault(def.id)}>Remove</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <button onClick={()=>remove(c)} className="text-red-400 text-sm">Delete</button>
+              <div>
+                <h4 className={`text-sm font-semibold ${t.text} mb-1`}>External</h4>
+                <p className={`text-xs ${t.textSecondary}`}>External stakeholders are configured per project.</p>
+              </div>
             </div>
-          ))}
+          </div>
+
+          {projectId && (
+            <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className={`font-medium ${t.text}`}>Project Contacts</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContactForm(prev => !prev)}
+                    className={`px-3 py-1 text-xs rounded ${t.surfaceHover} ${t.text} border ${t.border}`}
+                  >
+                    {showAddContactForm ? 'Hide Form' : 'Add Contact'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowContactList(prev => {
+                      const next = !prev;
+                      if (!next) setSearch('');
+                      return next;
+                    })}
+                    className={`px-3 py-1 text-xs rounded ${t.surfaceHover} ${t.text} border ${t.border}`}
+                  >
+                    {showContactList ? 'Hide Contacts' : 'View Contacts'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={importFromMicrosoft}
+                    disabled={importingContacts}
+                    className={`px-3 py-1 text-xs rounded ${t.surfaceHover} ${t.text} border ${t.border} ${importingContacts ? 'opacity-50 cursor-wait' : ''}`}
+                  >
+                    {importingContacts ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+              </div>
+
+              {showAddContactForm && (
+                <div className={`p-3 rounded-lg ${t.surfaceHover} space-y-2`}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="First name" value={form.firstName} onChange={e=>setForm({...form, firstName: e.target.value})} />
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="Last name" value={form.lastName} onChange={e=>setForm({...form, lastName: e.target.value})} />
+                    <div className="flex gap-2">
+                      <select className={`flex-1 px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
+                        <option value="">Role</option>
+                        {roleOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                      <button className={`px-2 rounded ${t.accent} text-white`} type="button" onClick={async()=>{
+                        const name = (prompt('New role name:')||'').trim();
+                        if (!name) return;
+                        const { error } = await supabase.from('roles').insert([{ name }])
+                        if (error) return alert(error.message)
+                        setRoleOptions(prev => [...new Set([...prev, name])])
+                        setForm({...form, role: name})
+                      }}>+ Role</button>
+                    </div>
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} />
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="Phone" value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})} />
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="Company" value={form.company} onChange={e=>setForm({...form,company:e.target.value})} />
+                    <input className={`px-3 py-2 rounded ${t.surface} ${t.text} border ${t.border}`} placeholder="Address" value={form.address} onChange={e=>setForm({...form,address:e.target.value})} />
+                    <label className={`text-sm ${t.text}`}><input type="checkbox" className="mr-2" checked={form.report} onChange={e=>setForm({...form,report:e.target.checked})} />Report</label>
+                  </div>
+                  <div className="text-right">
+                    <button onClick={add} className={`px-3 py-2 rounded ${t.accent} text-white`}>Save Contact</button>
+                  </div>
+                </div>
+              )}
+
+              {showContactList && (
+                <div className="mt-3 space-y-3">
+                  <div className="relative">
+                    <Search size={18} className={`absolute left-3 top-2.5 ${t.textSecondary}`} />
+                    <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search contacts..." className={`w-full pl-9 pr-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`} />
+                  </div>
+
+                  {contacts
+                    .filter(c => (c.name||'').toLowerCase().includes(search.toLowerCase()) || (c.email||'').toLowerCase().includes(search.toLowerCase()) || (c.role||'').toLowerCase().includes(search.toLowerCase()))
+                    .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+                    .map(c => {
+                      const stakeholderRole = c.stakeholder_role_id ? stakeholderRoles.find(role => role.id === c.stakeholder_role_id) : null;
+                      const taggedIssues = contactIssueMap[c.id] || [];
+                      return (
+                        <div key={c.id} className="space-y-2">
+                          <RichContactCard
+                            contact={c}
+                            theme={t}
+                            stakeholderRole={stakeholderRole}
+                            onRemove={() => remove(c)}
+                            onUpdateContact={updateContact}
+                          />
+
+                          {taggedIssues.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                              {taggedIssues.map(tag => (
+                                <span key={tag.assignmentId} className="text-xs bg-indigo-600/20 text-indigo-200 px-2 py-1 rounded-full flex items-center gap-1">
+                                  {tag.title}
+                                  <button
+                                    onClick={() => unassignIssueFromContact(tag.assignmentId)}
+                                    className="hover:text-white"
+                                    title="Remove tag"
+                                  >
+                                    <X size={12} />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <select
+                              className={`px-3 py-1 rounded ${t.surfaceHover} ${t.text} border ${t.border} text-xs`}
+                              value={issueSelections[c.id] || ''}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setIssueSelections(prev => ({ ...prev, [c.id]: value }));
+                                if (value) assignIssueToContact(c.id, value);
+                              }}
+                            >
+                              <option value="">Tag on issue...</option>
+                              {projectIssues.length === 0 && <option value="" disabled>No issues yet</option>}
+                              {projectIssues.map(issue => (
+                                <option key={issue.id} value={issue.id}>{issue.title} ({issue.status})</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {projectId && (
+            <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+              <h3 className={`font-medium ${t.text} mb-3`}>Internal Stakeholders</h3>
+              {projectInternalRoles.length === 0 && <p className={`text-sm ${t.textSecondary}`}>No project roles configured.</p>}
+              {projectInternalRoles.map(role => {
+                const assignment = internalAssignments.find(item => item.roleId === role.id)
+                const internalFilter = (internalSearch[role.id] || '').toLowerCase().trim()
+                const availableInternalContacts = allContacts
+                  .filter(c => !internalAssignments.some(a => a.contactId === c.id))
+                  .filter(c => {
+                    if (!internalFilter) return true
+                    const target = `${c.name || ''} ${c.email || ''}`.toLowerCase()
+                    return target.includes(internalFilter)
+                  })
+                  .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+
+                const contactForCard = assignment
+                  ? assignment.contact || {
+                      id: assignment.contactId || undefined,
+                      name: assignment.fullName || assignment.email || 'Stakeholder',
+                      email: assignment.email || assignment.contact?.email || null,
+                      phone: assignment.contact?.phone || null,
+                      company: assignment.contact?.company || null,
+                      address: assignment.contact?.address || null,
+                      role: assignment.contact?.role || role.name,
+                      is_internal: true,
+                      is_primary: assignment.isPrimary
+                    }
+                  : null
+
+                return (
+                  <div key={role.id} className={`mb-3 p-3 rounded-lg ${t.surfaceHover}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-medium ${t.text}`}>{role.name}</p>
+                        <p className={`text-xs ${t.textSecondary}`}>
+                          {assignment ? (contactForCard?.email || contactForCard?.name || 'Stakeholder') : 'No one assigned yet.'}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" className={`px-2 py-1 text-xs rounded ${t.surface} ${t.text}`} onClick={() => handleCreateInternal(role, assignment)}>
+                          {assignment ? 'Edit' : 'New Contact'}
+                        </button>
+                        {assignment && (
+                          <button type="button" className={`px-2 py-1 text-xs rounded ${t.surface} ${t.text}`} onClick={() => handleRemoveInternal(assignment)}>Remove</button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      <button
+                        type="button"
+                        className={`w-full px-2 py-1 text-xs rounded ${t.surface} ${t.text} border ${t.border}`}
+                        onClick={() => setInternalPickerOpen(prev => {
+                          const nextOpen = !prev[role.id];
+                          if (!nextOpen) {
+                            setInternalSearch(searchPrev => ({ ...searchPrev, [role.id]: '' }));
+                          }
+                          return { ...prev, [role.id]: nextOpen };
+                        })}
+                      >
+                        {internalPickerOpen[role.id] ? 'Hide team list' : 'Assign existing contact'}
+                      </button>
+                      {internalPickerOpen[role.id] && (
+                        <>
+                          <input
+                            type="text"
+                            value={internalSearch[role.id] || ''}
+                            onChange={(e) => setInternalSearch(prev => ({ ...prev, [role.id]: e.target.value }))}
+                            placeholder="Search team members"
+                            className={`w-full px-2 py-1 text-xs mb-2 rounded ${t.surface} ${t.text} border ${t.border}`}
+                          />
+                          <div className="max-h-40 overflow-y-auto space-y-1">
+                            {availableInternalContacts.length === 0 ? (
+                              <p className={`text-xs ${t.textSecondary}`}>No matching contacts.</p>
+                            ) : (
+                              availableInternalContacts.map(contact => (
+                                <button
+                                  key={contact.id}
+                                  type="button"
+                                  onClick={() => handleAssignInternal(role, contact.id)}
+                                  className={`w-full text-left px-2 py-1 text-xs rounded ${t.surface} ${t.text} border border-transparent hover:border-blue-500`}
+                                >
+                                  {contact.name || contact.email || 'Contact'}
+                                  {contact.email ? ` (${contact.email})` : ''}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {assignment && contactForCard && (
+                        <div className="space-y-2">
+                          <RichContactCard
+                            contact={contactForCard}
+                            theme={t}
+                            stakeholderRole={role}
+                            onRemove={() => handleRemoveInternal(assignment)}
+                            onUpdateContact={contactForCard.id ? updateContact : undefined}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              className={`px-3 py-1 text-xs rounded ${assignment.isPrimary ? 'bg-green-600 text-white' : `${t.surface} ${t.text}`}`}
+                              onClick={() => handleToggleInternalPrimary(assignment)}
+                            >
+                              {assignment.isPrimary ? 'Primary' : 'Make Primary'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {projectId && (
+            <div className={`p-4 rounded-xl ${t.surface} border ${t.border}`}>
+              <h3 className={`font-medium ${t.text} mb-3`}>External Stakeholders</h3>
+              {externalRoles.length === 0 && <p className={`text-sm ${t.textSecondary}`}>No external roles configured.</p>}
+              {externalRoles.map(role => {
+                const assignments = externalAssignments.filter(item => item.roleId === role.id)
+                const externalFilter = (externalSearch[role.id] || '').toLowerCase().trim()
+                const availableContacts = allContacts
+                  .filter(c => !assignments.some(a => a.contactId === c.id))
+                  .filter(c => {
+                    if (!externalFilter) return true
+                    const target = `${c.name || ''} ${c.email || ''}`.toLowerCase()
+                    return target.includes(externalFilter)
+                  })
+                  .sort((a,b) => (a.name||'').localeCompare(b.name||''))
+
+                return (
+                  <div key={role.id} className={`mb-3 p-3 rounded-lg ${t.surfaceHover}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className={`font-medium ${t.text}`}>{role.name}</p>
+                        {assignments.length === 0 && <p className={`text-xs ${t.textSecondary}`}>No contacts assigned.</p>}
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          className={`px-2 py-1 text-xs rounded ${t.surface} ${t.text} border ${t.border}`}
+                          onClick={() => setExternalPickerOpen(prev => {
+                            const nextOpen = !prev[role.id];
+                            if (!nextOpen) {
+                              setExternalSearch(searchPrev => ({ ...searchPrev, [role.id]: '' }));
+                            }
+                            return { ...prev, [role.id]: nextOpen };
+                          })}
+                        >
+                          {externalPickerOpen[role.id] ? 'Hide contact list' : 'Assign existing contact'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {externalPickerOpen[role.id] && (
+                      <div className="mt-2 space-y-2">
+                        <input
+                          type="text"
+                          value={externalSearch[role.id] || ''}
+                          onChange={(e) => setExternalSearch(prev => ({ ...prev, [role.id]: e.target.value }))}
+                          placeholder="Search contacts"
+                          className={`w-full px-2 py-1 text-xs rounded ${t.surface} ${t.text} border ${t.border}`}
+                        />
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {availableContacts.length === 0 ? (
+                            <p className={`text-xs ${t.textSecondary}`}>No matching contacts.</p>
+                          ) : (
+                            availableContacts.map(contact => (
+                              <button
+                                key={contact.id}
+                                type="button"
+                                onClick={() => handleAssignExternal(role, contact.id)}
+                                className={`block w-full text-left px-2 py-1 text-xs rounded ${t.surface} ${t.text} border border-transparent hover:border-blue-500`}
+                              >
+                                {formatContactName(contact)}{contact.email ? ` (${contact.email})` : ''}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {assignments.length > 0 && (
+                      <div className="mt-3 space-y-3">
+                        {assignments.map(assignment => {
+                          const contactForCard = assignment.contact || {
+                            id: assignment.contactId || undefined,
+                            name: assignment.contact?.name || assignment.contact?.email || 'Stakeholder',
+                            email: assignment.contact?.email || null,
+                            phone: assignment.contact?.phone || null,
+                            address: assignment.contact?.address || null,
+                            company: assignment.contact?.company || null,
+                            role: assignment.contact?.role || role.name,
+                            is_internal: false,
+                            is_primary: assignment.isPrimary
+                          }
+
+                          return (
+                            <div key={assignment.id} className="space-y-2">
+                              <RichContactCard
+                                contact={contactForCard}
+                                theme={t}
+                                stakeholderRole={role}
+                                onRemove={() => handleRemoveExternal(assignment)}
+                                onUpdateContact={contactForCard.id ? updateContact : undefined}
+                              />
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className={`px-3 py-1 text-xs rounded ${assignment.isPrimary ? 'bg-green-600 text-white' : `${t.surface} ${t.text}`}`}
+                                  onClick={() => handleToggleExternalPrimary(assignment)}
+                                >
+                                  {assignment.isPrimary ? 'Primary' : 'Make Primary'}
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
         </div>
       </div>
     )
@@ -1570,6 +3078,9 @@ const App = () => {
         stakeholders: [], team: [], wireDrops: []
       }
     );
+    const [importingDrops, setImportingDrops] = useState(false);
+    const [importSummary, setImportSummary] = useState(null);
+    const [importError, setImportError] = useState('');
 
     if (!selectedProject) return null;
 
@@ -1585,6 +3096,88 @@ const App = () => {
       const subject = encodeURIComponent(`Project Report - ${editableProject?.name || ''} - ${new Date().toLocaleDateString()}`)
       const body = encodeURIComponent(`Summary for ${editableProject?.name || ''}\n\nOpen issues: ${(issues||[]).filter(i=>i.projectId===editableProject?.id && i.status!=='resolved').length}\n\nSent from Unicorn App`)
       window.location.href = `mailto:${recipients.join(',')}?subject=${subject}&body=${body}`
+    };
+
+    const handleImportWireDrops = () => {
+      if (!editableProject?.id) {
+        alert('Save the project before importing wire drops.');
+        return;
+      }
+      if (!supabase) {
+        setImportError('Supabase not configured');
+        return;
+      }
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.csv';
+      input.onchange = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+        try {
+          setImportingDrops(true);
+          setImportError('');
+          setImportSummary(null);
+          const text = await file.text();
+          const rows = parseWireDropCsv(text);
+          if (!rows.length) {
+            setImportError('No data rows found in the CSV file.');
+            return;
+          }
+          const results = { success: 0, failed: 0, errors: [] };
+          for (let index = 0; index < rows.length; index++) {
+            const record = rows[index];
+            const pick = (...names) => {
+              for (const name of names) {
+                const value = record[name];
+                if (value !== undefined && value !== null && String(value).trim() !== '') {
+                  return String(value).trim();
+                }
+              }
+              return '';
+            };
+            const payload = {
+              project_id: editableProject.id,
+              uid: generateWireDropUid(),
+              name: pick('name', 'wire drop name', 'drop name') || `Drop ${results.success + results.failed + 1}`,
+              location: pick('location', 'loc', 'room') || 'Unspecified',
+              type: pick('type', 'wire type') || 'CAT6',
+              prewire_photo: pick('prewire photo', 'prewire', 'prewire_photo') || null,
+              installed_photo: pick('installed photo', 'installed', 'installed_photo') || null,
+            };
+
+            let attempts = 0;
+            let inserted = false;
+            while (attempts < 2 && !inserted) {
+              try {
+                const { error } = await supabase
+                  .from('wire_drops')
+                  .insert([payload]);
+                if (error) throw error;
+                results.success += 1;
+                inserted = true;
+              } catch (err) {
+                const message = String(err.message || '').toLowerCase();
+                if (message.includes('duplicate') && attempts === 0) {
+                  payload.uid = generateWireDropUid();
+                  attempts += 1;
+                } else {
+                  results.failed += 1;
+                  results.errors.push({ row: index + 1, message: err.message });
+                  inserted = true;
+                }
+              }
+            }
+          }
+          await loadWireDrops(editableProject.id);
+          setImportSummary(results);
+        } catch (err) {
+          setImportError(err.message || 'Failed to import wire drops');
+        } finally {
+          setImportingDrops(false);
+          event.target.value = '';
+        }
+      };
+      input.click();
     };
 
     return (
@@ -1740,14 +3333,12 @@ const App = () => {
             <h3 className={`font-medium ${t.text} mb-3`}>Wire Drops ({editableProject.wireDrops?.length || 0})</h3>
             <div className="grid grid-cols-2 gap-2">
               <button 
-                onClick={() => {
-                  // Import wire drops functionality would go here
-                  alert('Wire drops import functionality would be implemented here');
-                }}
-                className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm`}
+                onClick={handleImportWireDrops}
+                disabled={importingDrops}
+                className={`py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm ${importingDrops ? 'opacity-50 cursor-wait' : ''}`}
               >
                 <Upload size={16} className="inline mr-2" />
-                Import CSV
+                {importingDrops ? 'Importing…' : 'Import CSV'}
               </button>
               <button 
                 onClick={() => {
@@ -1760,6 +3351,27 @@ const App = () => {
                 Manage Drops
               </button>
             </div>
+            {(importSummary || importError) && (
+              <div className="mt-3 text-xs">
+                {importError && <div className="text-red-400 mb-1">{importError}</div>}
+                {importSummary && (
+                  <div className={`${t.textSecondary}`}>
+                    Imported {importSummary.success} drop{importSummary.success === 1 ? '' : 's'}{importSummary.failed ? `, ${importSummary.failed} failed` : ''}.
+                    {importSummary.errors?.length ? (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer">View errors</summary>
+                        <ul className="list-disc pl-4">
+                          {importSummary.errors.slice(0, 5).map((err, idx) => (
+                            <li key={idx}>{`Row ${err.row}: ${err.message}`}</li>
+                          ))}
+                          {importSummary.errors.length > 5 && <li>+ {importSummary.errors.length - 5} more</li>}
+                        </ul>
+                      </details>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Stakeholder Report */}
@@ -1802,241 +3414,654 @@ const App = () => {
   };
 
   // Project Detail View (Technician)
-  const ProjectDetailView = () => (
-    <div className={`min-h-screen ${t.bg}`}>
-      {/* Header */}
-      <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
-        <div className="flex items-center justify-between">
-          <button onClick={() => setCurrentView('dashboard')} className={`px-4 py-2 rounded-lg border ${t.border} ${t.text} font-medium flex items-center gap-2`}>
-            <ArrowLeft size={18} />
-            Back
-          </button>
-          <div className={`text-xs font-bold ${t.accentText}`}>
-            INTELLIGENT<br/>SYSTEMS
+  const ProjectDetailView = () => {
+    const [newTodo, setNewTodo] = useState('');
+    const [todoError, setTodoError] = useState('');
+    const [addingTodo, setAddingTodo] = useState(false);
+    const [updatingTodoId, setUpdatingTodoId] = useState(null);
+    const [deletingTodoId, setDeletingTodoId] = useState(null);
+    const [showCompletedTodos, setShowCompletedTodos] = useState(true);
+
+    const todos = selectedProject?.todos || [];
+    const openTodos = todos.filter(todo => !todo.completed).length;
+    const visibleTodos = todos.filter(todo => showCompletedTodos || !todo.completed);
+    const totalTodos = todos.length;
+    const projectId = selectedProject?.id;
+
+    useEffect(() => {
+      setShowCompletedTodos(true);
+      setNewTodo('');
+      setTodoError('');
+    }, [projectId]);
+
+    const handleAddTodo = async () => {
+      const title = newTodo.trim();
+      if (!title || !selectedProject) return;
+      if (!supabase) {
+        setTodoError('Supabase not configured');
+        return;
+      }
+      try {
+        setAddingTodo(true);
+        setTodoError('');
+        const { data, error } = await supabase
+          .from('project_todos')
+          .insert([{ project_id: selectedProject.id, title }])
+          .select()
+          .single();
+        if (error) throw error;
+        const added = {
+          id: data.id,
+          projectId: data.project_id,
+          title: data.title,
+          completed: !!data.is_complete,
+          createdAt: data.created_at
+        };
+        updateProjectTodos(selectedProject.id, [...todos, added]);
+        setNewTodo('');
+      } catch (e) {
+        setTodoError(e.message);
+      } finally {
+        setAddingTodo(false);
+      }
+    };
+
+    const toggleTodoCompletion = async (todo) => {
+      if (!supabase || !selectedProject) {
+        setTodoError('Supabase not configured');
+        return;
+      }
+      try {
+        setUpdatingTodoId(todo.id);
+        setTodoError('');
+        const { error } = await supabase
+          .from('project_todos')
+          .update({ is_complete: !todo.completed })
+          .eq('id', todo.id);
+        if (error) throw error;
+        const updated = todos.map(t => t.id === todo.id ? { ...t, completed: !todo.completed } : t);
+        updateProjectTodos(selectedProject.id, updated);
+      } catch (e) {
+        setTodoError(e.message);
+      } finally {
+        setUpdatingTodoId(null);
+      }
+    };
+
+    const handleDeleteTodo = async (todoId) => {
+      if (!supabase || !selectedProject) {
+        setTodoError('Supabase not configured');
+        return;
+      }
+      try {
+        setDeletingTodoId(todoId);
+        setTodoError('');
+        const { error } = await supabase
+          .from('project_todos')
+          .delete()
+          .eq('id', todoId);
+        if (error) throw error;
+        const updated = todos.filter(t => t.id !== todoId);
+        updateProjectTodos(selectedProject.id, updated);
+      } catch (e) {
+        setTodoError(e.message);
+      } finally {
+        setDeletingTodoId(null);
+      }
+    };
+
+    return (
+      <div className={`min-h-screen ${t.bg}`}>
+        {/* Header */}
+        <div className={`${t.bgSecondary} border-b ${t.border} px-4 py-3`}>
+          <div className="flex items-center justify-between">
+            <button onClick={() => setCurrentView('dashboard')} className={`px-4 py-2 rounded-lg border ${t.border} ${t.text} font-medium flex items-center gap-2`}>
+              <ArrowLeft size={18} />
+              Back
+            </button>
+            <div className={`text-xs font-bold ${t.accentText}`}>
+              INTELLIGENT<br/>SYSTEMS
+            </div>
           </div>
         </div>
-      </div>
 
-      {selectedProject && (
-        <>
-          {/* Project Progress */}
-          <div className="p-4">
-            <div className={`rounded-xl overflow-hidden ${t.surface} border ${t.border}`}>
-              <div className="relative h-14">
-                <div 
-                  className={`absolute inset-0 ${
-                    calculateProjectProgress(selectedProject) > 70 ? t.success : 
-                    calculateProjectProgress(selectedProject) > 40 ? t.warning : 
-                    t.danger
-                  } opacity-90`}
-                  style={{ width: `${calculateProjectProgress(selectedProject)}%` }}
-                />
-                <div className={`absolute inset-0 flex items-center justify-center font-semibold ${t.text}`}>
-                  {selectedProject.name} - {calculateProjectProgress(selectedProject)}%
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Sections */}
-          <div className="px-4 pb-20">
-            {/* Wiring Diagram */}
-            <button
-              onClick={() => openLink(selectedProject.wiringDiagramUrl)}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <FileText size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Wiring Diagram</span>
-              </div>
-              <ExternalLink size={20} className={t.textSecondary} />
-            </button>
-
-            {/* Portal Proposal */}
-            <button
-              onClick={() => openLink(selectedProject.portalProposalUrl)}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <FileText size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Portal Proposal</span>
-              </div>
-              <ExternalLink size={20} className={t.textSecondary} />
-            </button>
-
-            {/* Wire Drops */}
-            <button 
-              onClick={() => setCurrentView('wireDropList')}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <Zap size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Wire Drops</span>
-                <span className={`px-2 py-1 rounded-full text-xs ${t.accent} text-white`}>
-                  {selectedProject.wireDrops?.length || 0}
-                </span>
-              </div>
-              <ChevronRight size={20} className={t.textSecondary} />
-            </button>
-
-            {/* Issues */}
-            <button
-              onClick={() => toggleSection('issues')}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <AlertCircle size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Issues</span>
-                {issues.filter(i => i.projectId === selectedProject.id && i.status !== 'resolved').length > 0 && (
-                  <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-                    {issues.filter(i => i.projectId === selectedProject.id && i.status !== 'resolved').length}
-                  </span>
-                )}
-              </div>
-              <ChevronRight size={20} className={`${t.textSecondary} transition-transform ${expandedSections.issues ? 'rotate-90' : ''}`} />
-            </button>
-            
-            {expandedSections.issues && (
-              <div className={`mb-2 p-4 rounded-xl ${t.surface} border ${t.border}`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowResolvedIssues(!showResolvedIssues)}
-                      className={`text-sm ${t.textSecondary}`}
-                    >
-                      {showResolvedIssues ? <Eye size={16} /> : <EyeOff size={16} />}
-                    </button>
-                    <span className={`text-sm ${t.textSecondary}`}>
-                      {showResolvedIssues ? 'Showing all' : 'Hiding resolved'}
-                    </span>
+        {selectedProject && (
+          <>
+            {/* Project Progress */}
+            <div className="p-4">
+              <div className={`rounded-xl overflow-hidden ${t.surface} border ${t.border}`}>
+                <div className="relative h-14">
+                  <div 
+                    className={`absolute inset-0 ${
+                      calculateProjectProgress(selectedProject) > 70 ? t.success : 
+                      calculateProjectProgress(selectedProject) > 40 ? t.warning : 
+                      t.danger
+                    } opacity-90`}
+                    style={{ width: `${calculateProjectProgress(selectedProject)}%` }}
+                  />
+                  <div className={`absolute inset-0 flex items-center justify-center font-semibold ${t.text}`}>
+                    {selectedProject.name} - {calculateProjectProgress(selectedProject)}%
                   </div>
-                  <button 
-                    onClick={() => setCurrentView('issueForm')}
-                    className={`p-1 ${t.accentText}`}
-                  >
-                    <Plus size={20} />
-                  </button>
                 </div>
-                
-                {issues
-                  .filter(i => i.projectId === selectedProject.id)
-                  .filter(i => showResolvedIssues || i.status !== 'resolved')
-                  .map(issue => (
-                    <button
-                      key={issue.id}
-                      onClick={() => {
-                        setSelectedIssue(issue);
-                        setCurrentView('issueDetail');
-                      }}
-                      className={`w-full p-3 mb-2 rounded-lg ${t.surfaceHover} text-left`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className={`font-medium ${t.text}`}>{issue.title}</p>
-                          <p className={`text-xs ${t.textSecondary} mt-1`}>{issue.date}</p>
-                        </div>
-                        <span className={`px-2 py-1 rounded text-xs text-white ${
-                          issue.status === 'blocked' ? t.danger :
-                          issue.status === 'open' ? t.warning :
-                          t.success
-                        }`}>
-                          {issue.status}
-                        </span>
-                      </div>
-                    </button>
-                  ))
-                }
               </div>
-            )}
+            </div>
 
-            {/* Files */}
-            <div className="grid grid-cols-3 gap-2 mb-2">
+            {/* Sections */}
+            <div className="px-4 pb-20">
+              {/* Wiring Diagram */}
               <button
-                onClick={() => openLink(selectedProject.oneDrivePhotos)}
-                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+                type="button"
+                onClick={() => openLink(selectedProject.wiringDiagramUrl)}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
               >
-                <Image size={20} className={`${t.textSecondary} mb-1`} />
-                <span className={`text-xs ${t.text}`}>Photos</span>
+                <div className="flex items-center gap-3">
+                  <FileText size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>Wiring Diagram</span>
+                </div>
+                <ExternalLink size={20} className={t.textSecondary} />
               </button>
+
+              {/* Portal Proposal */}
               <button
-                onClick={() => openLink(selectedProject.oneDriveFiles)}
-                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+                type="button"
+                onClick={() => openLink(selectedProject.portalProposalUrl)}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
               >
-                <Folder size={20} className={`${t.textSecondary} mb-1`} />
-                <span className={`text-xs ${t.text}`}>Files</span>
+                <div className="flex items-center gap-3">
+                  <FileText size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>Portal Proposal</span>
+                </div>
+                <ExternalLink size={20} className={t.textSecondary} />
               </button>
-              <button
-                onClick={() => openLink(selectedProject.oneDriveProcurement)}
-                className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+
+              {/* Wire Drops */}
+              <button 
+                type="button"
+                onClick={() => toggleSection('wireDrops')}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
               >
-                <Package size={20} className={`${t.textSecondary} mb-1`} />
-                <span className={`text-xs ${t.text}`}>Procurement</span>
+                <div className="flex items-center gap-3">
+                  <Zap size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>Wire Drops</span>
+                  <span className={`px-2 py-1 rounded-full text-xs ${t.accent} text-white`}>
+                    {selectedProject.wireDrops?.length || 0}
+                  </span>
+                </div>
+                <ChevronRight size={20} className={`${t.textSecondary} transition-transform ${expandedSections.wireDrops ? 'rotate-90' : ''}`} />
+              </button>
+
+              {expandedSections.wireDrops && (
+                <div className={`mb-2 p-4 rounded-xl ${t.surface} border ${t.border} space-y-3`}>
+                  {(!selectedProject.wireDrops || selectedProject.wireDrops.length === 0) && (
+                    <p className={`text-sm ${t.textSecondary}`}>No wire drops yet. Add one below.</p>
+                  )}
+                  {(selectedProject.wireDrops || []).map(drop => {
+                    const prewireComplete = !!drop.prewirePhoto;
+                    const installComplete = !!drop.installedPhoto;
+                    const completion = (prewireComplete ? 50 : 0) + (installComplete ? 50 : 0);
+                    return (
+                      <div
+                        key={drop.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedWireDrop(drop);
+                          setCurrentView('wireDropDetail');
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedWireDrop(drop);
+                            setCurrentView('wireDropDetail');
+                          }
+                        }}
+                        className={`p-3 rounded-lg ${t.surfaceHover} cursor-pointer transition hover:${t.accentText}`}
+                      >
+                        <div className="flex items-center justify-between mb-2 gap-3">
+                          <div>
+                            <p className={`font-medium ${t.text}`}>{drop.name}</p>
+                            <p className={`text-xs ${t.textSecondary}`}>{drop.location}</p>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded-full ${t.mutedBg} ${t.text}`}>{drop.uid}</span>
+                        </div>
+                        <div className={`flex items-center justify-between text-xs ${t.textSecondary}`}>
+                          <div className="flex gap-2">
+                            <span className={`px-2 py-0.5 rounded ${prewireComplete ? 'bg-green-600 text-white' : `${t.mutedBg} ${t.textSecondary}`}`}>Prewire</span>
+                            <span className={`px-2 py-0.5 rounded ${installComplete ? 'bg-green-600 text-white' : `${t.mutedBg} ${t.textSecondary}`}`}>Install</span>
+                          </div>
+                          <span className={`font-semibold ${t.text}`}>{completion}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedWireDrop(null);
+                        setCurrentView('wireDropForm');
+                      }}
+                      className={`flex-1 px-3 py-2 rounded-lg ${t.accent} text-white text-sm`}
+                    >
+                      Add Wire Drop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentView('wireDropList')}
+                      className={`px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} text-sm border ${t.border}`}
+                    >
+                      Full List
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* To-dos */}
+              <button
+                type="button"
+                onClick={() => toggleSection('todos')}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
+              >
+                <div className="flex items-center gap-3">
+                  <ListTodo size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>To-do List</span>
+                  {openTodos > 0 && (
+                    <span className="px-2 py-0.5 bg-orange-500 text-white text-xs rounded-full">
+                      {openTodos} open
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={20} className={`${t.textSecondary} transition-transform ${expandedSections.todos ? 'rotate-90' : ''}`} />
+              </button>
+
+              {expandedSections.todos && (
+                <div className={`mb-2 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={newTodo}
+                      onChange={(e) => setNewTodo(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddTodo();
+                        }
+                      }}
+                      placeholder="Add a new task..."
+                      className={`flex-1 px-3 py-2 rounded-lg ${t.surfaceHover} ${t.text} border ${t.border}`}
+                    />
+                    <button
+                      onClick={handleAddTodo}
+                      disabled={addingTodo || !newTodo.trim()}
+                      className={`p-2 rounded-lg ${addingTodo || !newTodo.trim() ? 'opacity-50 cursor-not-allowed' : `${t.accent} text-white`}`}
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className={`text-xs ${t.textSecondary}`}>
+                      {totalTodos === 0 ? 'No tasks yet' : `${openTodos} open • ${totalTodos} total`}
+                    </span>
+                    {totalTodos > 0 && (
+                      <button
+                        onClick={() => setShowCompletedTodos(prev => !prev)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded ${t.surfaceHover} ${t.text} text-xs border ${t.border}`}
+                      >
+                        {showCompletedTodos ? <EyeOff size={14} /> : <Eye size={14} />}
+                        <span>{showCompletedTodos ? 'Hide completed' : 'Show completed'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {todoError && <div className="text-xs text-red-400 mb-3">{todoError}</div>}
+                  <div className="space-y-2">
+                    {totalTodos === 0 ? (
+                      <p className={`text-sm ${t.textSecondary}`}>No tasks yet. Add your first item above.</p>
+                    ) : visibleTodos.length === 0 ? (
+                      <p className={`text-sm ${t.textSecondary}`}>All tasks are complete. Great job!</p>
+                    ) : (
+                      visibleTodos.map(todo => (
+                        <div
+                          key={todo.id}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg ${t.surfaceHover}`}
+                        >
+                          <button
+                            onClick={() => toggleTodoCompletion(todo)}
+                            disabled={updatingTodoId === todo.id}
+                            className={`p-1 rounded ${updatingTodoId === todo.id ? 'opacity-50 cursor-wait' : ''}`}
+                          >
+                            {todo.completed ? (
+                              <CheckSquare size={18} className="text-green-400" />
+                            ) : (
+                              <Square size={18} className={t.textSecondary} />
+                            )}
+                          </button>
+                          <span className={`flex-1 text-sm ${todo.completed ? 'line-through opacity-70' : t.text}`}>
+                            {todo.title}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteTodo(todo.id)}
+                            disabled={deletingTodoId === todo.id}
+                            className={`p-1 rounded ${deletingTodoId === todo.id ? 'opacity-50 cursor-wait' : ''}`}
+                          >
+                            <Trash2 size={16} className={t.textSecondary} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Issues */}
+              <button
+                type="button"
+                onClick={() => toggleSection('issues')}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
+              >
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>Issues</span>
+                  {issues.filter(i => i.projectId === selectedProject.id && i.status !== 'resolved').length > 0 && (
+                    <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                      {issues.filter(i => i.projectId === selectedProject.id && i.status !== 'resolved').length}
+                    </span>
+                  )}
+                </div>
+                <ChevronRight size={20} className={`${t.textSecondary} transition-transform ${expandedSections.issues ? 'rotate-90' : ''}`} />
+              </button>
+              
+              {expandedSections.issues && (
+                <div className={`mb-2 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowResolvedIssues(!showResolvedIssues)}
+                        className={`text-sm ${t.textSecondary}`}
+                      >
+                        {showResolvedIssues ? <Eye size={16} /> : <EyeOff size={16} />}
+                      </button>
+                      <span className={`text-sm ${t.textSecondary}`}>
+                        {showResolvedIssues ? 'Showing all' : 'Hiding resolved'}
+                      </span>
+                    </div>
+                    <button 
+                      onClick={() => setCurrentView('issueForm')}
+                      className={`p-1 ${t.accentText}`}
+                    >
+                      <Plus size={20} />
+                    </button>
+                  </div>
+                  
+                  {issues
+                    .filter(i => i.projectId === selectedProject.id)
+                    .filter(i => showResolvedIssues || i.status !== 'resolved')
+                    .map(issue => (
+                      <div
+                        key={issue.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          setSelectedIssue(issue);
+                          setCurrentView('issueDetail');
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedIssue(issue);
+                            setCurrentView('issueDetail');
+                          }
+                        }}
+                        className={`w-full p-3 mb-2 rounded-lg ${t.surfaceHover} text-left cursor-pointer transition hover:${t.accentText}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <p className={`font-medium ${t.text}`}>{issue.title}</p>
+                            <p className={`text-xs ${t.textSecondary} mt-1`}>{issue.date}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-1 rounded text-xs text-white capitalize ${
+                              issue.status === 'blocked' ? t.danger :
+                              issue.status === 'open' ? t.warning :
+                              t.success
+                            }`}>
+                              {issue.status}
+                            </span>
+                            <ChevronRight size={16} className={t.textSecondary} />
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
+
+              {/* Files */}
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <button
+                  onClick={() => openLink(selectedProject.oneDrivePhotos)}
+                  className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+                >
+                  <Image size={20} className={`${t.textSecondary} mb-1`} />
+                  <span className={`text-xs ${t.text}`}>Photos</span>
+                </button>
+                <button
+                  onClick={() => openLink(selectedProject.oneDriveFiles)}
+                  className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+                >
+                  <Folder size={20} className={`${t.textSecondary} mb-1`} />
+                  <span className={`text-xs ${t.text}`}>Files</span>
+                </button>
+                <button
+                  onClick={() => openLink(selectedProject.oneDriveProcurement)}
+                  className={`p-4 rounded-xl ${t.surface} border ${t.border} flex flex-col items-center`}
+                >
+                  <Package size={20} className={`${t.textSecondary} mb-1`} />
+                  <span className={`text-xs ${t.text}`}>Procurement</span>
+                </button>
+              </div>
+
+              {/* People */}
+              <button
+                onClick={() => setCurrentView('people')}
+                className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
+              >
+                <div className="flex items-center gap-3">
+                  <Users size={20} className={t.textSecondary} />
+                  <span className={`font-medium ${t.text}`}>Team & Contacts</span>
+                </div>
+                <ChevronRight size={20} className={t.textSecondary} />
               </button>
             </div>
 
-            {/* People */}
-            <button
-              onClick={() => setCurrentView('people')}
-              className={`w-full mb-2 p-4 rounded-xl ${t.surface} border ${t.border} flex items-center justify-between`}
-            >
-              <div className="flex items-center gap-3">
-                <Users size={20} className={t.textSecondary} />
-                <span className={`font-medium ${t.text}`}>Team & Contacts</span>
-              </div>
-              <ChevronRight size={20} className={t.textSecondary} />
-            </button>
-          </div>
-
-          {/* Bottom Actions */}
-          <div className={`fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-2 border-t ${t.border} ${t.bgSecondary}`}>
-            <button 
-              onClick={() => {
-                const query = prompt('Search for:');
-                if (query) {
-                  setSearchQuery(query);
-                  setCurrentView('wireDropList');
-                }
-              }}
-              className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
-            >
-              Search
-            </button>
-            <button 
-              onClick={() => setCurrentView('issueForm')}
-              className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
-            >
-              New Issue
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
+            {/* Bottom Actions */}
+            <div className={`fixed bottom-0 left-0 right-0 p-4 grid grid-cols-2 gap-2 border-t ${t.border} ${t.bgSecondary}`}>
+              <button 
+                onClick={() => {
+                  const query = prompt('Search for:');
+                  if (query) {
+                    setSearchQuery(query);
+                    setCurrentView('wireDropList');
+                  }
+                }}
+                className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+              >
+                Search
+              </button>
+              <button 
+                onClick={() => setCurrentView('issueForm')}
+                className={`py-3 rounded-lg ${t.surfaceHover} ${t.text} font-medium`}
+              >
+                New Issue
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   // Issue Form (simplified)
   const IssueForm = () => {
-    const [newIssue, setNewIssue] = useState({
+    const initialIssueState = {
       title: '',
       status: 'open',
       notes: '',
       photos: []
-    });
+    };
+    const [newIssue, setNewIssue] = useState(() => ({ ...initialIssueState }));
+    const [savingIssue, setSavingIssue] = useState(false);
+    const [issueError, setIssueError] = useState('');
+    const projectId = selectedProject?.id;
 
-    const saveIssue = () => {
+    const contactOptions = projectId
+      ? contacts
+          .filter(c => c.project_id === projectId)
+          .map(contact => {
+            const role = stakeholderRoles.find(r => r.id === contact.stakeholder_role_id) || null;
+            return {
+              contactId: contact.id,
+              contact,
+              role,
+              isRequired: !!role?.auto_issue_default
+            };
+          })
+          .sort((a, b) => {
+            const roleA = a.role?.name || '';
+            const roleB = b.role?.name || '';
+            if (roleA === roleB) {
+              return (a.contact.name || a.contact.email || '').localeCompare(b.contact.name || b.contact.email || '');
+            }
+            return roleA.localeCompare(roleB);
+          })
+      : [];
+
+    const defaultContactIds = contactOptions
+      .filter(option => option.isRequired && option.contactId)
+      .map(option => option.contactId);
+
+    const [selectedStakeholderContacts, setSelectedStakeholderContacts] = useState(defaultContactIds);
+
+    useEffect(() => {
+      setSelectedStakeholderContacts(defaultContactIds);
+    }, [defaultContactIds]);
+
+    const toggleStakeholderContact = (contactId, locked) => {
+      if (locked) return;
+      setSelectedStakeholderContacts(prev => (
+        prev.includes(contactId)
+          ? prev.filter(id => id !== contactId)
+          : [...prev, contactId]
+      ));
+    };
+
+    const formatStakeholderName = (option) => option.contact?.name || option.contact?.email || 'Stakeholder';
+
+    const resetForm = () => {
+      newIssue.photos.forEach(p => {
+        try { URL.revokeObjectURL(p.preview); } catch (_) {}
+      });
+      setNewIssue({ ...initialIssueState });
+      setSelectedStakeholderContacts(defaultContactIds);
+    };
+
+    const saveIssue = async () => {
       if (!newIssue.title.trim()) {
         alert('Please enter an issue title');
         return;
       }
+      if (!selectedProject?.id) {
+        alert('No project selected');
+        return;
+      }
+      if (!supabase) {
+        alert('Supabase not configured');
+        return;
+      }
 
-      const issue = {
-        id: 'I' + Date.now(),
-        projectId: selectedProject.id,
-        date: new Date().toLocaleDateString(),
-        ...newIssue
-      };
-      setIssues(prev => [...prev, issue]);
-      alert('Issue created!');
-      setCurrentView('project');
+      try {
+        setSavingIssue(true);
+        setIssueError('');
+
+        const { data: inserted, error } = await supabase
+          .from('issues')
+          .insert([{
+            project_id: selectedProject.id,
+            title: newIssue.title.trim(),
+            status: newIssue.status,
+            notes: newIssue.notes
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        const issueId = inserted.id;
+
+        for (const photo of newIssue.photos) {
+          try {
+            let file = photo.file;
+            if (!file) continue;
+            try {
+              file = await compressImage(file);
+            } catch (_) {}
+
+            let url;
+            if (process.env.REACT_APP_USE_ONEDRIVE === '1' && selectedProject?.oneDrivePhotos) {
+              const subPath = `issues/${issueId}`;
+              if (!navigator.onLine) {
+                await enqueueUpload({
+                  rootUrl: selectedProject.oneDrivePhotos,
+                  subPath,
+                  filename: file.name,
+                  contentType: file.type,
+                  blob: file,
+                  update: { type: 'issue_photo', issueId }
+                });
+                url = photo.preview;
+              } else {
+                try {
+                  url = await graphUploadViaApi({ rootUrl: selectedProject.oneDrivePhotos, subPath, file });
+                } catch (err) {
+                  const path = `projects/${selectedProject.id}/issues/${issueId}/photo-${Date.now()}`;
+                  url = await uploadPublicImage(file, path);
+                }
+              }
+            } else {
+              const path = `projects/${selectedProject.id}/issues/${issueId}/photo-${Date.now()}`;
+              url = await uploadPublicImage(file, path);
+            }
+
+            if (url) {
+              await supabase.from('issue_photos').insert([{ issue_id: issueId, url }]);
+            }
+          } catch (photoErr) {
+            console.error('Failed to upload issue photo', photoErr);
+          }
+        }
+
+        if (selectedStakeholderContacts.length) {
+          try {
+            const rows = selectedStakeholderContacts.map(contactId => ({
+              project_id: selectedProject.id,
+              issue_id: issueId,
+              contact_id: contactId
+            }));
+            await supabase.from('issue_contacts').insert(rows);
+          } catch (assignErr) {
+            console.error('Failed to assign issue stakeholders', assignErr);
+          }
+        }
+
+        await loadIssues(selectedProject.id);
+        await loadContactIssues(selectedProject.id);
+        alert('Issue created!');
+        resetForm();
+        setCurrentView('project');
+      } catch (err) {
+        setIssueError(err.message || 'Failed to create issue');
+      } finally {
+        setSavingIssue(false);
+      }
     };
 
     return (
@@ -2048,13 +4073,14 @@ const App = () => {
               <ArrowLeft size={24} />
             </button>
             <h1 className={`text-lg font-semibold ${t.text}`}>Log Issue</h1>
-            <button onClick={saveIssue} className={`p-2 ${t.accentText}`}>
+            <button onClick={saveIssue} disabled={savingIssue} className={`p-2 ${t.accentText} ${savingIssue ? 'opacity-50 cursor-wait' : ''}`}>
               <Save size={20} />
             </button>
           </div>
         </div>
 
         <div className="p-4">
+          {issueError && <div className="mb-3 text-sm text-red-400">{issueError}</div>}
           <input
             type="text"
             value={newIssue.title}
@@ -2077,15 +4103,49 @@ const App = () => {
               Blocked
             </button>
             <button
-              onClick={() => handlePhotoCapture((url) => {
-                setNewIssue({...newIssue, photos: [...newIssue.photos, url]});
+              onClick={() => handlePhotoCapture((photo) => {
+                if (!photo) return;
+                setNewIssue(prev => ({ ...prev, photos: [...prev.photos, photo] }));
               })}
               className={`py-8 rounded-lg ${t.surface} ${t.text}`}
             >
               <Camera size={32} className="mx-auto" />
             </button>
           </div>
-          
+
+          {/* Stakeholder notifications */}
+          <div className={`mb-4 p-4 rounded-xl ${t.surface} border ${t.border}`}>
+            <h3 className={`font-medium ${t.text} mb-2`}>Notify Stakeholders</h3>
+            {contactOptions.length === 0 ? (
+              <p className={`text-sm ${t.textSecondary}`}>Assign stakeholders in the People tab to include them here.</p>
+            ) : (
+              <div className="space-y-2">
+                {contactOptions.map(option => {
+                  const locked = option.isRequired;
+                  const isSelected = selectedStakeholderContacts.includes(option.contactId);
+                  return (
+                    <label key={option.contactId} className={`flex items-center gap-3 text-sm ${locked ? 'opacity-80' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={locked}
+                        onChange={() => toggleStakeholderContact(option.contactId, locked)}
+                      />
+                      <div className="flex flex-col">
+                        <span className={t.text}>{formatStakeholderName(option)}</span>
+                        <span className={`text-xs ${t.textSecondary}`}>
+                          {option.role?.name || 'Stakeholder'}
+                          {option.contact?.email ? ` · ${option.contact.email}` : ''}
+                        </span>
+                      </div>
+                      {locked && <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full">Required</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <textarea
             value={newIssue.notes}
             onChange={(e) => setNewIssue({...newIssue, notes: e.target.value})}
@@ -2099,23 +4159,24 @@ const App = () => {
               {newIssue.photos.map((photo, idx) => (
                 <div key={idx} className="relative">
                   <img 
-                    src={photo} 
+                    src={photo.preview} 
                     alt={`New issue ${idx + 1}`} 
                     className="w-full h-24 object-cover rounded-lg cursor-pointer" 
-                    onClick={() => setFullscreenImage(photo)}
+                    onClick={() => setFullscreenImage(photo.preview)}
                   />
                   <button 
-                    onClick={() => setFullscreenImage(photo)}
+                    onClick={() => setFullscreenImage(photo.preview)}
                     className="absolute top-1 left-1 p-1 bg-black/50 rounded-full text-white"
                   >
                     <Maximize size={12} />
                   </button>
                   <button 
                     onClick={() => {
-                      setNewIssue({
-                        ...newIssue, 
-                        photos: newIssue.photos.filter((_, i) => i !== idx)
-                      });
+                      try { URL.revokeObjectURL(photo.preview); } catch (_) {}
+                      setNewIssue(prev => ({
+                        ...prev,
+                        photos: prev.photos.filter((_, i) => i !== idx)
+                      }));
                     }}
                     className="absolute top-1 right-1 p-1 bg-red-500 rounded-full"
                   >
@@ -2131,109 +4192,179 @@ const App = () => {
   };
 
   // QR Scanner
-  const QRScanner = () => (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className={`${t.surface} rounded-2xl p-6 max-w-sm w-full`}>
-        <h2 className={`text-xl font-semibold ${t.text} mb-4`}>Scan QR Code</h2>
-        <div className={`h-64 ${t.surfaceHover} rounded-xl flex items-center justify-center mb-4`}>
-          <QrCode size={80} className={t.textSecondary} />
+  const closeScanner = useCallback(() => setShowScanner(false), []);
+
+  const QRScanner = ({ onScan, onClose }) => {
+    const [manualUid, setManualUid] = useState('');
+    const [scanError, setScanError] = useState('');
+    const videoRef = useRef(null);
+    const streamRef = useRef(null);
+    const rafRef = useRef(null);
+    const barcodeSupported = typeof window !== 'undefined' && 'BarcodeDetector' in window;
+    const detectorRef = useRef(null);
+
+    useEffect(() => {
+      if (!barcodeSupported || !onScan) return;
+      let cancelled = false;
+      const videoElement = videoRef.current;
+
+      const start = async () => {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          detectorRef.current = detector;
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          if (cancelled) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+          }
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play();
+          }
+
+          const detectFrame = async () => {
+            if (!videoRef.current || !detectorRef.current) return;
+            try {
+              const codes = await detectorRef.current.detect(videoRef.current);
+              if (codes.length) {
+                const value = codes[0].rawValue;
+                if (value) {
+                  const success = await onScan(value);
+                  if (success) {
+                    onClose();
+                    return;
+                  }
+                  setScanError('Wire drop not found for scanned code');
+                }
+              }
+            } catch (_) {}
+            rafRef.current = requestAnimationFrame(detectFrame);
+          };
+
+          detectFrame();
+        } catch (err) {
+          if (!cancelled) {
+            setScanError(err.message || 'Unable to access camera for scanning');
+          }
+        }
+      };
+
+      start();
+
+      return () => {
+        cancelled = true;
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        if (videoElement) videoElement.pause();
+        if (streamRef.current) streamRef.current.getTracks().forEach(track => track.stop());
+      };
+    }, [barcodeSupported, onScan, onClose]);
+
+    const handleManualSubmit = async (event) => {
+      event.preventDefault();
+      const value = manualUid.trim();
+      if (!value) {
+        setScanError('Enter a UID to search');
+        return;
+      }
+      const success = await onScan(value);
+      if (success) {
+        onClose();
+      } else {
+        setScanError('Wire drop not found for that UID');
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+        <div className={`${t.surface} rounded-2xl p-6 max-w-md w-full space-y-4`}>
+          <h2 className={`text-xl font-semibold ${t.text}`}>Scan Wire Drop</h2>
+          {barcodeSupported ? (
+            <div className={`relative rounded-xl overflow-hidden ${t.surfaceHover}`}>
+              <video ref={videoRef} className="w-full h-64 object-cover" muted playsInline />
+              <div className="absolute inset-0 border-2 border-dashed border-white/40 rounded-xl pointer-events-none"></div>
+            </div>
+          ) : (
+            <div className={`h-48 ${t.surfaceHover} rounded-xl flex items-center justify-center text-center px-4 ${t.textSecondary}`}>
+              Camera-based QR scanning isn&apos;t supported on this device. You can still enter a UID manually below.
+            </div>
+          )}
+          <form onSubmit={handleManualSubmit} className="space-y-2">
+            <label className={`text-xs ${t.textSecondary} block`}>Enter UID manually</label>
+            <div className="flex gap-2">
+              <input
+                value={manualUid}
+                onChange={(e) => {
+                  setManualUid(e.target.value.toUpperCase());
+                  setScanError('');
+                }}
+                placeholder="WD-..."
+                className={`flex-1 px-3 py-2 rounded ${t.surfaceHover} ${t.text} border ${t.border}`}
+              />
+              <button type="submit" className={`px-3 py-2 rounded ${t.accent} text-white`}>Go</button>
+            </div>
+          </form>
+          {scanError && <div className="text-sm text-red-400">{scanError}</div>}
+          <button 
+            onClick={onClose}
+            className={`w-full py-3 rounded-lg ${t.surfaceHover} ${t.text}`}
+          >
+            Close
+          </button>
         </div>
-        <p className={`text-center ${t.textSecondary} mb-4`}>Position QR code within frame</p>
-        <button 
-          onClick={() => setShowScanner(false)}
-          className={`w-full py-3 rounded-lg ${t.accent} text-white font-medium`}
-        >
-          Close Scanner
-        </button>
       </div>
-    </div>
-  );
+    );
+  };
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
+  useEffect(() => {
+    if (currentView === 'project' && pendingSection) {
+      setExpandedSections(prev => ({ ...prev, [pendingSection]: true }));
+      setPendingSection(null);
+    }
+  }, [currentView, pendingSection]);
+
+  useEffect(() => {
+    if (currentView === 'people' && selectedProjectId) {
+      loadContactIssues(selectedProjectId);
+    }
+  }, [currentView, selectedProjectId, loadContactIssues]);
+
   // Test read from Supabase (uses env table or input)
 
-  // Load wire drops for a project when viewing it
-  const loadWireDrops = async (projectId) => {
+  const updateProjectTodos = useCallback((projectId, todos) => {
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, todos } : p));
+    setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, todos } : prev);
+  }, []);
+
+  const loadTodos = useCallback(async (projectId) => {
     try {
       if (!supabase) return;
       const { data, error } = await supabase
-        .from('wire_drops')
+        .from('project_todos')
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: true });
       if (error) return;
-      const drops = (data || []).map(row => ({
+      const todos = (data || []).map(row => ({
         id: row.id,
-        uid: row.uid,
-        name: row.name,
-        location: row.location,
-        type: row.type || 'CAT6',
-        prewirePhoto: row.prewire_photo,
-        installedPhoto: row.installed_photo,
+        projectId: row.project_id,
+        title: row.title,
+        completed: !!row.is_complete,
+        createdAt: row.created_at
       }));
-      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, wireDrops: drops } : p));
-      setSelectedProject(prev => prev && prev.id === projectId ? { ...prev, wireDrops: drops } : prev);
+      updateProjectTodos(projectId, todos);
     } catch (_) {}
-  };
+  }, [updateProjectTodos]);
 
   useEffect(() => {
-    if (currentView === 'project' && selectedProject && (!selectedProject.wireDrops || selectedProject.wireDrops.length === 0)) {
-      loadWireDrops(selectedProject.id);
+    if ((currentView === 'project' || currentView === 'pmProjectDetail') && selectedProjectId) {
+      loadTodos(selectedProjectId);
     }
-    // eslint-disable-next-line
-  }, [currentView, selectedProject?.id]);
-
-  // Load issues for a project when viewing it (with photos)
-  const loadIssues = async (projectId) => {
-    try {
-      if (!supabase) return;
-      const { data: issueRows, error: issueErr } = await supabase
-        .from('issues')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-      if (issueErr) return;
-
-      const mapped = (issueRows || []).map(r => ({
-        id: r.id,
-        projectId: r.project_id,
-        title: r.title,
-        status: r.status,
-        date: r.created_at ? new Date(r.created_at).toLocaleDateString() : '',
-        notes: r.notes || '',
-        photos: []
-      }));
-
-      // Load photos for these issues (if any exist)
-      const ids = mapped.map(i => i.id);
-      if (ids.length) {
-        const { data: photoRows, error: photoErr } = await supabase
-          .from('issue_photos')
-          .select('*')
-          .in('issue_id', ids);
-        if (!photoErr && photoRows && photoRows.length) {
-          const byIssue = new Map();
-          for (const r of photoRows) {
-            if (!byIssue.has(r.issue_id)) byIssue.set(r.issue_id, []);
-            byIssue.get(r.issue_id).push(r.url);
-          }
-          mapped.forEach(m => { m.photos = byIssue.get(m.id) || []; });
-        }
-      }
-
-      setIssues(mapped);
-    } catch (_) {}
-  };
-
-  useEffect(() => {
-    if (currentView === 'project' && selectedProject) {
-      loadIssues(selectedProject.id);
-    }
-    // eslint-disable-next-line
-  }, [currentView, selectedProject?.id]);
+  }, [currentView, selectedProjectId, loadTodos]);
 
   // Main Render
   return (
@@ -2259,7 +4390,7 @@ const App = () => {
           {currentView === 'wireDropForm' && <WireDropForm />}
         </>
       )}
-      {showScanner && <QRScanner />}
+      {showScanner && <QRScanner onClose={closeScanner} onScan={openWireDropByUid} />}
       <FullscreenImageModal />
     </>
   );
