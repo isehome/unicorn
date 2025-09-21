@@ -61,3 +61,17 @@ select id, 'Sarah Johnson', 'Project Manager', 'sarah.pm@company.com', '512-555-
 union all
 select id, 'Mike Engineer', 'Lead Technician', 'mike@company.com', '512-555-0102', 'Intelligent Systems' from pr;
 
+-- Default stakeholder roles
+insert into public.stakeholder_roles (name, category, description)
+values
+  ('Engineering', 'internal', 'Company default contact'),
+  ('Accounting', 'internal', 'Company default contact'),
+  ('Procurement', 'internal', 'Company default contact'),
+  ('Project Manager', 'internal', null),
+  ('Lead Technician', 'internal', null),
+  ('Technician', 'internal', null),
+  ('Project Manager', 'external', null),
+  ('Site Manager', 'external', null),
+  ('Customer', 'external', null),
+  ('Electrician', 'external', null)
+on conflict (name) do nothing;
