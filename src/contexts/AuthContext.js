@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
       provider: 'azure',
       options: {
         // Request Graph scopes for Calendar (and keep basic identity)
-        scopes: 'openid profile email offline_access Calendars.Read',
+        scopes: 'openid profile email offline_access Calendars.Read Contacts.Read',
         redirectTo: `${window.location.origin}/auth/callback`
       }
     })

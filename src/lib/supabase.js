@@ -59,8 +59,8 @@ export const signInWithMicrosoft = async () => {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'azure',
     options: {
-      // Include Calendars.Read so we can read the user's calendar
-      scopes: 'openid profile email offline_access Calendars.Read',
+      // Include Microsoft Calendar + Contacts scopes for integrations
+      scopes: 'openid profile email offline_access Calendars.Read Contacts.Read',
       redirectTo: `${window.location.origin}/auth/callback`
     }
   })
