@@ -105,6 +105,8 @@ create table if not exists public.project_internal_stakeholders (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
   role_id uuid not null references public.stakeholder_roles(id) on delete cascade,
+  -- New unified linkage to contacts table (added via alter below if table already exists)
+  contact_id uuid references public.contacts(id) on delete cascade,
   full_name text,
   email text,
   profile_id uuid references public.profiles(id) on delete set null,
@@ -409,6 +411,25 @@ do $$ begin
     create policy dev_delete_all on public.project_external_stakeholders
       for delete to anon, authenticated using (true);
   end if;
+end $$;
+
+-- Migration-safe: ensure contact_id exists on internal stakeholders and backfill from email
+do $$ begin
+  begin
+    alter table public.project_internal_stakeholders add column if not exists contact_id uuid references public.contacts(id) on delete cascade;
+  exception when others then null;
+  end;
+  -- Backfill contact_id by matching email if possible
+  begin
+    update public.project_internal_stakeholders pis
+    set contact_id = c.id
+    from public.contacts c
+    where pis.contact_id is null
+      and pis.email is not null
+      and c.email is not null
+      and lower(c.email) = lower(pis.email);
+  exception when others then null;
+  end;
 end $$;
 
 -- Roles lookup for contact roles
