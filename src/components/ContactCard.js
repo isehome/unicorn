@@ -1,87 +1,192 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Plus, X, ChevronDown, Mail, Phone, MapPin, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, Mail, Phone, User, Edit2, Trash2 } from 'lucide-react';
 
-// Contact Card Component for project assignments
-const ContactCard = ({ contact, theme, onRemove, onTogglePrimary }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const t = theme;
+// Simplified, editable contact card used inside stakeholder slots
+// When embedded=true, the header is hidden and the details are shown inline
+const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = false }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [edited, setEdited] = useState({
+    first_name: contact.first_name || '',
+    last_name: contact.last_name || '',
+    email: contact.email || '',
+    phone: contact.phone || '',
+    address: contact.address || '',
+    company: contact.company || '',
+    role: contact.role || ''
+  });
+
+  const displayName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || contact.email || 'Contact';
+
+  const handleSave = () => {
+    if (!onUpdateContact) { setIsEditing(false); return; }
+    onUpdateContact({ id: contact.id, ...edited });
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEdited({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      address: contact.address || '',
+      company: contact.company || '',
+      role: contact.role || ''
+    });
+    setIsEditing(false);
+  };
+
+  const Details = () => (
+    <div className={`p-3 space-y-3`}>
+          {/* Email */}
+          <div className="flex items-center gap-2 text-sm">
+            <Mail size={14} className="ui-textSecondary" />
+            {isEditing ? (
+              <input
+                type="email"
+                className={`flex-1 ui-input`}
+                value={edited.email}
+                onChange={(e) => setEdited({ ...edited, email: e.target.value })}
+              />
+            ) : (
+              <a 
+                href={contact.email ? `mailto:${contact.email}` : undefined}
+                className={`ui-textLink ${!contact.email ? 'pointer-events-none opacity-60' : ''}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {contact.email || 'No email'}
+              </a>
+            )}
+          </div>
+
+          {/* Phone */}
+          <div className="flex items-center gap-2 text-sm">
+            <Phone size={14} className="ui-textSecondary" />
+            {isEditing ? (
+              <input
+                type="tel"
+                className={`flex-1 ui-input`}
+                value={edited.phone}
+                onChange={(e) => setEdited({ ...edited, phone: e.target.value })}
+              />
+            ) : (
+              <a 
+                href={contact.phone ? `tel:${contact.phone}` : undefined}
+                className={`ui-textLink ${!contact.phone ? 'pointer-events-none opacity-60' : ''}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {contact.phone || 'No phone'}
+              </a>
+            )}
+          </div>
+
+          {/* Address */}
+          <div className="text-sm">
+            {isEditing ? (
+              <textarea
+                className={`w-full ui-input`}
+                rows={2}
+                value={edited.address}
+                onChange={(e) => setEdited({ ...edited, address: e.target.value })}
+              />
+            ) : (
+              <div className="ui-textSecondary">{contact.address || 'No address'}</div>
+            )}
+          </div>
+
+          {/* Name and Role editing */}
+          {isEditing && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              <input
+                className={`ui-input`}
+                placeholder="First name"
+                value={edited.first_name}
+                onChange={(e) => setEdited({ ...edited, first_name: e.target.value })}
+              />
+              <input
+                className={`ui-input`}
+                placeholder="Last name"
+                value={edited.last_name}
+                onChange={(e) => setEdited({ ...edited, last_name: e.target.value })}
+              />
+              <input
+                className={`ui-input md:col-span-2`}
+                placeholder="Role"
+                value={edited.role}
+                onChange={(e) => setEdited({ ...edited, role: e.target.value })}
+              />
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 ui-border-t">
+            {!isEditing ? (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+                  className={`flex-1 ui-btn ui-btn--secondary text-xs flex items-center justify-center gap-1`}
+                >
+                  <Edit2 className="w-3 h-3" /> Edit
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); if (onRemove) onRemove(); }}
+                  className={`flex-1 ui-btn ui-btn--danger text-xs flex items-center justify-center gap-1`}
+                >
+                  <Trash2 className="w-3 h-3" /> Remove
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleCancel(); }}
+                  className={`flex-1 ui-btn ui-btn--secondary text-xs`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleSave(); }}
+                  className={`flex-1 ui-btn ui-btn--primary text-xs`}
+                >
+                  Save
+                </button>
+              </>
+            )}
+          </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className={`rounded-xl ui-surface ui-border`}>
+        <Details />
+      </div>
+    );
+  }
 
   return (
-    <div className={`rounded-lg ${t.surfaceHover} border ${t.border} overflow-hidden`}>
+    <div className={`rounded-xl ui-surface ui-border overflow-hidden`}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full p-3 text-left flex items-center justify-between hover:${t.surface} transition-colors`}
+        className={`w-full p-3 text-left flex items-center justify-between ui-surface transition-colors`}
       >
         <div className="flex items-center gap-3">
-          <User size={16} className={t.textSecondary} />
+          <User size={16} className="ui-textSecondary" />
           <div>
-            <div className={`font-medium ${t.text}`}>{contact.contact_name}</div>
-            <div className={`text-xs ${t.textSecondary}`}>
-              {contact.role_name}
-              {contact.is_primary && <span className="ml-2 text-green-400">• Primary</span>}
-            </div>
+            <div className={`font-medium ui-text`}>{displayName}</div>
           </div>
         </div>
         <ChevronDown 
           size={16} 
-          className={`${t.textSecondary} transform transition-transform ${
+          className={`ui-textSecondary transform transition-transform ${
             isExpanded ? 'rotate-180' : 'rotate-0'
           }`} 
         />
       </button>
 
       {isExpanded && (
-        <div className={`border-t ${t.border} p-3 space-y-2`}>
-          <div className="space-y-1 text-sm">
-            {contact.email && (
-              <div className="flex items-center gap-2">
-                <Mail size={14} className={t.textSecondary} />
-                <a 
-                  href={`mailto:${contact.email}`}
-                  className="text-blue-400 hover:text-blue-300"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {contact.email}
-                </a>
-              </div>
-            )}
-            {contact.phone && (
-              <div className="flex items-center gap-2">
-                <Phone size={14} className={t.textSecondary} />
-                <a 
-                  href={`tel:${contact.phone}`}
-                  className="text-blue-400 hover:text-blue-300"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {contact.phone}
-                </a>
-              </div>
-            )}
-            {contact.company && (
-              <div className={`text-sm ${t.textSecondary}`}>
-                {contact.company}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2 pt-2 border-t border-gray-700">
-            <button
-              onClick={() => onTogglePrimary()}
-              className={`flex-1 py-1 px-2 rounded text-xs transition-colors ${
-                contact.is_primary 
-                  ? 'bg-green-600 text-white hover:bg-green-700' 
-                  : `${t.surface} ${t.text} hover:${t.surfaceHover}`
-              }`}
-            >
-              {contact.is_primary ? 'Primary ✓' : 'Make Primary'}
-            </button>
-            <button
-              onClick={() => onRemove()}
-              className={`py-1 px-2 rounded text-xs ${t.surface} ${t.text} hover:${t.surfaceHover} transition-colors`}
-            >
-              Remove
-            </button>
-          </div>
+        <div className={`ui-border-t`}>
+          <Details />
         </div>
       )}
     </div>

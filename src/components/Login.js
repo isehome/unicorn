@@ -1,12 +1,11 @@
 // components/Login.js
 import React, { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 
 const Login = () => {
   const { login, loading } = useAuth()
   const [error, setError] = useState('')
-  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
   // Check for error in URL params
