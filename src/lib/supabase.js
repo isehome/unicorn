@@ -4,7 +4,11 @@ import { createClient } from '@supabase/supabase-js'
 export const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
 
-export const supabase = (supabaseUrl && supabaseAnonKey)
+// Only create client if we have valid URL and key (not placeholder values)
+const isValidUrl = supabaseUrl && supabaseUrl.startsWith('http') && !supabaseUrl.includes('your_supabase_project_url_here')
+const isValidKey = supabaseAnonKey && supabaseAnonKey !== 'your_supabase_anon_key_here'
+
+export const supabase = (isValidUrl && isValidKey)
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
@@ -103,3 +107,123 @@ export const deleteData = async (table, id) => {
   if (error) throw error
   return data
 }
+
+// ===== STAKEHOLDER SLOTS =====
+export const getStakeholderSlots = async () => {
+  const { data, error } = await supabase
+    .from('stakeholder_slots')
+    .select('*')
+    .order('slot_type', { ascending: true })
+    .order('slot_name', { ascending: true });
+  if (error) throw error;
+  return data;
+};
+
+export const createStakeholderSlot = async (slotData) => {
+  const { data, error } = await supabase
+    .from('stakeholder_slots')
+    .insert(slotData)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+// ===== PROJECT ASSIGNMENTS =====
+export const getProjectTeam = async (projectId) => {
+  const { data, error } = await supabase
+    .from('project_assignments')
+    .select(`
+      *,
+      contact:contacts(*),
+      stakeholder_slot:stakeholder_slots(*)
+    `)
+    .eq('project_id', projectId)
+    .eq('assignment_status', 'active')
+    .order('is_primary', { ascending: false });
+  if (error) throw error;
+  return data;
+};
+
+export const assignContactToProject = async (assignmentData) => {
+  const { data, error } = await supabase
+    .from('project_assignments')
+    .insert(assignmentData)
+    .select(`
+      *,
+      contact:contacts(*),
+      stakeholder_slot:stakeholder_slots(*)
+    `)
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const removeProjectAssignment = async (assignmentId) => {
+  const { data, error } = await supabase
+    .from('project_assignments')
+    .delete()
+    .eq('id', assignmentId);
+  if (error) throw error;
+  return data;
+};
+
+// ===== ISSUE ASSIGNMENTS =====
+export const getIssueAssignments = async (issueId) => {
+  const { data, error } = await supabase
+    .from('issue_assignments')
+    .select(`
+      *,
+      contact:contacts(*)
+    `)
+    .eq('issue_id', issueId);
+  if (error) throw error;
+  return data;
+};
+
+export const assignContactToIssue = async (issueId, contactId, assignmentType = 'watcher') => {
+  const { data, error } = await supabase
+    .from('issue_assignments')
+    .insert({ issue_id: issueId, contact_id: contactId, assignment_type: assignmentType })
+    .select(`
+      *,
+      contact:contacts(*)
+    `)
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+// ===== ENHANCED CONTACT QUERIES =====
+export const getContactsWithProjects = async () => {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select(`
+      *,
+      project_assignments(
+        project_id,
+        stakeholder_slot:stakeholder_slots(slot_name, slot_type),
+        is_primary,
+        assignment_status
+      )
+    `)
+    .eq('is_active', true)
+    .order('first_name');
+  if (error) throw error;
+  return data;
+};
+
+export const getAvailableContactsForProject = async (projectId) => {
+  // Get contacts not already assigned to this project
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('is_active', true)
+    .not('id', 'in', `(
+      SELECT contact_id FROM project_assignments 
+      WHERE project_id = '${projectId}' AND assignment_status = 'active'
+    )`)
+    .order('first_name');
+  if (error) throw error;
+  return data;
+};

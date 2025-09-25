@@ -1,45 +1,20 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import React, { createContext, useContext } from 'react'
 
 const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  // Immediate values - no async loading
+  const user = { id: 'demo-user', email: 'demo@example.com' }
+  const loading = false
 
-  useEffect(() => {
-    let mounted = true
-    const init = async () => {
-      try {
-        const { data } = await supabase.auth.getSession()
-        if (!mounted) return
-        setUser(data?.session?.user || null)
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    }
-    init()
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      setUser(session?.user || null)
-    })
-    return () => { mounted = false; sub?.subscription?.unsubscribe?.() }
-  }, [])
+  console.log('✅ AuthProvider: BYPASS MODE - no loading!')
 
   const login = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        // Request Graph scopes for Calendar (and keep basic identity)
-        scopes: 'openid profile email offline_access Calendars.Read Contacts.Read',
-        redirectTo: `${window.location.origin}/auth/callback`
-      }
-    })
-    if (error) throw error
+    console.log('Demo login')
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
+    console.log('Demo logout')
   }
 
   const value = { user, loading, login, logout }
