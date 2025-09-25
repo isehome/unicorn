@@ -633,7 +633,7 @@ export default RichContactCard;
 
               </div>                  onClick={handleSave}
 
-            )}                  className="flex-1 py-2 px-3 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+            )}                  className="flex-1 py-2 px-3 rounded text-sm bg-violet-500 text-white hover:bg-violet-600 transition-colors"
 
           </div>                >
 
@@ -863,7 +863,7 @@ export default RichContactCard;                    value={editedContact.email ||
           {/* Status badges */}
           <div className="flex flex-wrap gap-2">
             {contact?.is_internal && (
-              <span className="text-xs bg-blue-600/20 text-blue-200 px-2 py-1 rounded-full">
+              <span className="text-xs bg-violet-500/20 text-violet-200 px-2 py-1 rounded-full">
                 Internal
               </span>
             )}
@@ -901,7 +901,7 @@ export default RichContactCard;                    value={editedContact.email ||
                 </button>
                 <button
                   onClick={handleSave}
-                  className="flex-1 py-2 px-3 rounded text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  className="flex-1 py-2 px-3 rounded text-sm bg-violet-500 text-white hover:bg-violet-600 transition-colors"
                 >
                   Save
                 </button>

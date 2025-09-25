@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { ChevronDown, Mail, Phone, User, Edit2, Trash2 } from 'lucide-react';
+import { useTheme } from '../contexts/ThemeContext';
+import { ChevronDown, Mail, Phone, MapPin, Building, User } from 'lucide-react';
+import Button from './ui/Button';
 
 // Simplified, editable contact card used inside stakeholder slots
 // When embedded=true, the header is hidden and the details are shown inline
 const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = false }) => {
+  const { theme: themeContext, mode, utilities } = useTheme();
   const [isExpanded, setIsExpanded] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [edited, setEdited] = useState({
@@ -38,21 +41,22 @@ const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = fal
   };
 
   const Details = () => (
-    <div className={`p-3 space-y-3`}>
+    <div className={`p-4 space-y-4 ${mode === 'dark' ? 'bg-gray-800' : 'bg-gray-50'}`}>
           {/* Email */}
-          <div className="flex items-center gap-2 text-sm">
-            <Mail size={14} className="ui-textSecondary" />
+          <div className="flex items-center gap-3 text-sm">
+            <Mail size={16} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} />
             {isEditing ? (
               <input
                 type="email"
-                className={`flex-1 ui-input`}
+                className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 value={edited.email}
                 onChange={(e) => setEdited({ ...edited, email: e.target.value })}
+                placeholder="Email address"
               />
             ) : (
               <a 
                 href={contact.email ? `mailto:${contact.email}` : undefined}
-                className={`ui-textLink ${!contact.email ? 'pointer-events-none opacity-60' : ''}`}
+                className={`text-violet-600 hover:text-violet-800 ${!contact.email ? 'pointer-events-none opacity-60' : ''}`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {contact.email || 'No email'}
@@ -61,19 +65,20 @@ const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = fal
           </div>
 
           {/* Phone */}
-          <div className="flex items-center gap-2 text-sm">
-            <Phone size={14} className="ui-textSecondary" />
+          <div className="flex items-center gap-3 text-sm">
+            <Phone size={16} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} />
             {isEditing ? (
               <input
                 type="tel"
-                className={`flex-1 ui-input`}
+                className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 value={edited.phone}
                 onChange={(e) => setEdited({ ...edited, phone: e.target.value })}
+                placeholder="Phone number"
               />
             ) : (
               <a 
                 href={contact.phone ? `tel:${contact.phone}` : undefined}
-                className={`ui-textLink ${!contact.phone ? 'pointer-events-none opacity-60' : ''}`}
+                className={`text-violet-600 hover:text-violet-800 ${!contact.phone ? 'pointer-events-none opacity-60' : ''}`}
                 onClick={(e) => e.stopPropagation()}
               >
                 {contact.phone || 'No phone'}
@@ -82,36 +87,57 @@ const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = fal
           </div>
 
           {/* Address */}
-          <div className="text-sm">
+          <div className="flex items-start gap-3 text-sm">
+            <MapPin size={16} className={`${mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} mt-0.5`} />
             {isEditing ? (
               <textarea
-                className={`w-full ui-input`}
+                className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 rows={2}
                 value={edited.address}
                 onChange={(e) => setEdited({ ...edited, address: e.target.value })}
+                placeholder="Address"
               />
             ) : (
-              <div className="ui-textSecondary">{contact.address || 'No address'}</div>
+              <div className={mode === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                {contact.address || 'No address'}
+              </div>
+            )}
+          </div>
+
+          {/* Company */}
+          <div className="flex items-center gap-3 text-sm">
+            <Building size={16} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} />
+            {isEditing ? (
+              <input
+                className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
+                placeholder="Company"
+                value={edited.company}
+                onChange={(e) => setEdited({ ...edited, company: e.target.value })}
+              />
+            ) : (
+              <div className={mode === 'dark' ? 'text-gray-300' : 'text-gray-700'}>
+                {contact.company || 'No company'}
+              </div>
             )}
           </div>
 
           {/* Name and Role editing */}
           {isEditing && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-gray-200 dark:border-gray-600">
               <input
-                className={`ui-input`}
+                className={`px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 placeholder="First name"
                 value={edited.first_name}
                 onChange={(e) => setEdited({ ...edited, first_name: e.target.value })}
               />
               <input
-                className={`ui-input`}
+                className={`px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 placeholder="Last name"
                 value={edited.last_name}
                 onChange={(e) => setEdited({ ...edited, last_name: e.target.value })}
               />
               <input
-                className={`ui-input md:col-span-2`}
+                className={`md:col-span-2 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-gray-700 border-gray-600 text-gray-100' : 'bg-white border-gray-300 text-gray-900'} focus:ring-2 focus:ring-violet-500 focus:border-transparent`}
                 placeholder="Role"
                 value={edited.role}
                 onChange={(e) => setEdited({ ...edited, role: e.target.value })}
@@ -120,36 +146,44 @@ const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = fal
           )}
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2 ui-border-t">
+          <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
             {!isEditing ? (
               <>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
-                  className={`flex-1 ui-btn ui-btn--secondary text-xs flex items-center justify-center gap-1`}
+                  className="flex-1"
                 >
-                  <Edit2 className="w-3 h-3" /> Edit
-                </button>
-                <button
+                  Edit
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); if (onRemove) onRemove(); }}
-                  className={`flex-1 ui-btn ui-btn--danger text-xs flex items-center justify-center gap-1`}
+                  className="flex-1"
                 >
-                  <Trash2 className="w-3 h-3" /> Remove
-                </button>
+                  Remove
+                </Button>
               </>
             ) : (
               <>
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); handleCancel(); }}
-                  className={`flex-1 ui-btn ui-btn--secondary text-xs`}
+                  className="flex-1"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); handleSave(); }}
-                  className={`flex-1 ui-btn ui-btn--primary text-xs`}
+                  className="flex-1"
                 >
                   Save
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -158,34 +192,37 @@ const ContactCard = ({ contact, theme, onRemove, onUpdateContact, embedded = fal
 
   if (embedded) {
     return (
-      <div className={`rounded-xl ui-surface ui-border`}>
+      <div className={`rounded-lg border transition-all duration-250 ${mode === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm`}>
         <Details />
       </div>
     );
   }
 
   return (
-    <div className={`rounded-xl ui-surface ui-border overflow-hidden`}>
+    <div className={`rounded-lg border transition-all duration-250 ${mode === 'dark' ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} shadow-sm ${isExpanded ? 'shadow-md' : ''} overflow-hidden`}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full p-3 text-left flex items-center justify-between ui-surface transition-colors`}
+        className={`w-full p-4 text-left flex items-center justify-between ${mode === 'dark' ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-50 hover:bg-gray-100'} transition-colors`}
       >
         <div className="flex items-center gap-3">
-          <User size={16} className="ui-textSecondary" />
+          <User size={18} className={mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} />
           <div>
-            <div className={`font-medium ui-text`}>{displayName}</div>
+            <div className={`font-semibold ${mode === 'dark' ? 'text-gray-100' : 'text-gray-900'}`}>{displayName}</div>
+            {contact.role && (
+              <div className={`text-sm ${mode === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{contact.role}</div>
+            )}
           </div>
         </div>
         <ChevronDown 
-          size={16} 
-          className={`ui-textSecondary transform transition-transform ${
+          size={18} 
+          className={`${mode === 'dark' ? 'text-gray-400' : 'text-gray-600'} transform transition-transform ${
             isExpanded ? 'rotate-180' : 'rotate-0'
           }`} 
         />
       </button>
 
       {isExpanded && (
-        <div className={`ui-border-t`}>
+        <div className={`border-t ${mode === 'dark' ? 'border-gray-700' : 'border-gray-200'}`}>
           <Details />
         </div>
       )}

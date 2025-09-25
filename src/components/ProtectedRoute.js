@@ -4,7 +4,13 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 const ProtectedRoute = ({ children }) => {
+  const bypassAuth = process.env.REACT_APP_BYPASS_AUTH === 'true'
   const { user, loading } = useAuth()
+
+  // Allow bypassing auth in local development when explicitly enabled
+  if (bypassAuth) {
+    return children
+  }
 
   if (loading) {
     return (
