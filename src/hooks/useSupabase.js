@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   contactsService,
   projectsService,
-  projectStakeholdersService,
-  stakeholderRolesService,
   issuesService
 } from '../services/supabaseService';
 

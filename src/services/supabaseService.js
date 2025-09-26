@@ -156,11 +156,108 @@ export const projectStakeholdersService = {
     } catch (error) {
       handleError(error, 'Failed to add stakeholder to project');
     }
+  },
+
+  async removeFromProject(assignmentId) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { error } = await supabase
+        .from('project_stakeholders')
+        .delete()
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to remove stakeholder from project');
+    }
   }
 };
 
 // ============= STAKEHOLDERS SERVICE (alias for compatibility) =============
 export const stakeholdersService = projectStakeholdersService;
+
+// ============= PROJECT TODOS SERVICE =============
+export const projectTodosService = {
+  async getForProject(projectId) {
+    try {
+      if (!supabase || !projectId) return [];
+
+      const { data, error } = await supabase
+        .from('project_todos')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      return (data || []).map(todo => ({
+        id: todo.id,
+        projectId: todo.project_id,
+        title: todo.title,
+        completed: Boolean(todo.is_complete),
+        createdAt: todo.created_at
+      }));
+    } catch (error) {
+      console.error('Failed to fetch project todos:', error);
+      return [];
+    }
+  },
+
+  async create(projectId, title) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { data, error } = await supabase
+        .from('project_todos')
+        .insert([{ project_id: projectId, title }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return {
+        id: data.id,
+        projectId: data.project_id,
+        title: data.title,
+        completed: Boolean(data.is_complete),
+        createdAt: data.created_at
+      };
+    } catch (error) {
+      handleError(error, 'Failed to create project todo');
+    }
+  },
+
+  async toggleCompletion(id, completed) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { error } = await supabase
+        .from('project_todos')
+        .update({ is_complete: completed })
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to update project todo');
+    }
+  },
+
+  async remove(id) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { error } = await supabase
+        .from('project_todos')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to delete project todo');
+    }
+  }
+};
 
 // ============= ISSUES SERVICE =============
 export const issuesService = {
@@ -268,6 +365,31 @@ export const stakeholderRolesService = {
     } catch (error) {
       console.error('Failed to fetch stakeholder roles:', error);
       return [];
+    }
+  },
+
+  async create(roleData) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const payload = {
+        name: roleData.name,
+        category: roleData.category,
+        description: roleData.description ?? null,
+        is_active: roleData.is_active ?? true,
+        sort_order: roleData.sort_order ?? 0
+      };
+
+      const { data, error } = await supabase
+        .from('stakeholder_roles')
+        .insert([payload])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to create stakeholder role');
     }
   }
 };
