@@ -214,7 +214,7 @@ const TechnicianDashboard = () => {
         )}
       </div>
       {/* My-projects counters */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <div style={sectionStyles.card} className="flex items-center justify-between p-4 rounded-2xl border">
           <div>
             <div className="text-sm text-gray-600 dark:text-gray-400">To-do Items</div>
