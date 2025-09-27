@@ -222,7 +222,12 @@ const TechnicianDashboard = () => {
       </div>
       {/* My-projects counters */}
       <div className="grid grid-cols-2 gap-4">
-        <div style={sectionStyles.card} className="flex items-center justify-between p-4 rounded-2xl border">
+        <button
+          type="button"
+          onClick={() => navigate('/todos')}
+          style={sectionStyles.card}
+          className="flex items-center justify-between p-4 rounded-2xl border text-left"
+        >
           <div>
             <div className="text-sm text-gray-600 dark:text-gray-400">To-do Items</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -232,8 +237,13 @@ const TechnicianDashboard = () => {
             </div>
           </div>
           <ListTodo className="w-8 h-8 text-violet-600" />
-        </div>
-        <div style={sectionStyles.card} className="flex items-center justify-between p-4 rounded-2xl border">
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/issues')}
+          style={sectionStyles.card}
+          className="flex items-center justify-between p-4 rounded-2xl border text-left"
+        >
           <div>
             <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -243,7 +253,7 @@ const TechnicianDashboard = () => {
             </div>
           </div>
           <AlertTriangle className="w-8 h-8 text-amber-500" />
-        </div>
+        </button>
       </div>
 
       {/* Projects */}
