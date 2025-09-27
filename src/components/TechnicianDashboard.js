@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useProjects, useIssues } from '../hooks/useSupabase';
+import { fetchTodayEvents } from '../services/microsoftCalendarService';
 import Button from './ui/Button';
 import { 
   Clock, CheckCircle, AlertCircle, Folder, 
@@ -13,9 +15,61 @@ const TechnicianDashboard = () => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const { login, user } = useAuth();
   
   const { projects, loading: projectsLoading } = useProjects();
   const { issues, loading: issuesLoading } = useIssues();
+
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [calendarConnected, setCalendarConnected] = useState(false);
+  const [calendarLoading, setCalendarLoading] = useState(true);
+  const [calendarError, setCalendarError] = useState('');
+
+  const formatEventTime = useCallback((start, end) => {
+    try {
+      const options = { hour: 'numeric', minute: '2-digit' };
+      const startDate = start ? new Date(start) : null;
+      const endDate = end ? new Date(end) : null;
+      if (startDate && endDate) {
+        return `${startDate.toLocaleTimeString([], options)} – ${endDate.toLocaleTimeString([], options)}`;
+      }
+      if (startDate) {
+        return startDate.toLocaleTimeString([], options);
+      }
+      return 'All day';
+    } catch (error) {
+      console.warn('Failed to format calendar time', error);
+      return 'All day';
+    }
+  }, []);
+
+  const loadCalendarEvents = useCallback(async () => {
+    try {
+      setCalendarLoading(true);
+      setCalendarError('');
+      const result = await fetchTodayEvents();
+      setCalendarConnected(Boolean(result.connected));
+      setCalendarEvents(result.events || []);
+    } catch (error) {
+      console.error('Failed to load calendar events', error);
+      setCalendarError(error.message || 'Unable to load calendar events.');
+    } finally {
+      setCalendarLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCalendarEvents();
+  }, [loadCalendarEvents, user?.id]);
+
+  const handleConnectCalendar = useCallback(async () => {
+    try {
+      await login();
+    } catch (error) {
+      console.error('Calendar connection failed', error);
+      setCalendarError(error.message || 'Unable to connect calendar.');
+    }
+  }, [login]);
 
   // Calculate stats
   const stats = {
@@ -38,6 +92,71 @@ const TechnicianDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+      <div style={sectionStyles.card} className="space-y-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Today's Schedule</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Synced from Microsoft 365</p>
+          </div>
+          <div className="flex gap-2">
+            {calendarConnected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Calendar}
+                onClick={loadCalendarEvents}
+                disabled={calendarLoading}
+              >
+                Refresh
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Calendar}
+                onClick={handleConnectCalendar}
+              >
+                Connect Calendar
+              </Button>
+            )}
+          </div>
+        </div>
+        {calendarError && (
+          <p className="text-sm text-rose-500">{calendarError}</p>
+        )}
+        {calendarLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <Loader className="w-4 h-4 animate-spin text-violet-500" />
+            <span>Loading calendar…</span>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {calendarConnected && calendarEvents.length === 0 && (
+              <p className="text-sm text-gray-600 dark:text-gray-300">No events scheduled for today.</p>
+            )}
+            {!calendarConnected && (
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Connect your Microsoft account to see today's appointments.
+              </p>
+            )}
+            {calendarEvents.map((event) => (
+              <div
+                key={event.id}
+                className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2"
+              >
+                <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-violet-500" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{event.subject}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    {formatEventTime(event.start, event.end)}
+                    {event.location ? ` • ${event.location}` : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div style={sectionStyles.card} className="text-center">

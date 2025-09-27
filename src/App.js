@@ -12,11 +12,12 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
 import SettingsPage from './components/SettingsPage';
 import BottomNavigation from './components/BottomNavigation';
+import AuthCallback from './components/AuthCallback';
 import './index.css';
 
 const AppRoutes = () => {
   const location = useLocation();
-  const hideChrome = location.pathname === '/login';
+  const hideChrome = ['/login', '/auth/callback'].includes(location.pathname);
 
   return (
     <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300 ${hideChrome ? '' : 'pb-20'}`}>
@@ -24,6 +25,7 @@ const AppRoutes = () => {
       <main className={`${hideChrome ? '' : 'pt-4 sm:pt-6'} pb-6`}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route
             path="/"
             element={
