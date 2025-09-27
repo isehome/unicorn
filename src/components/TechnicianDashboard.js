@@ -23,7 +23,11 @@ const TechnicianDashboard = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [calendarError, setCalendarError] = useState('');
-  const [showMyProjects, setShowMyProjects] = useState(false);
+  const [showMyProjects, setShowMyProjects] = useState(() => {
+    const saved = localStorage.getItem('dashboard-show-my-projects');
+    if (saved === 'true' || saved === 'false') return saved === 'true';
+    return true; // default to My Projects on first load
+  });
   const [myProjectIds, setMyProjectIds] = useState([]);
   const [myProjectsLoading, setMyProjectsLoading] = useState(false);
   const [myProjectsError, setMyProjectsError] = useState('');
@@ -136,6 +140,9 @@ const TechnicianDashboard = () => {
     const idSet = new Set(myProjectIds);
     return projects.filter((project) => idSet.has(project.id));
   }, [projects, showMyProjects, myProjectIds]);
+  useEffect(() => {
+    localStorage.setItem('dashboard-show-my-projects', String(showMyProjects));
+  }, [showMyProjects]);
   // const recentIssues = issues.filter(i => i.status === 'open').slice(0, 5);
 
   if (projectsLoading || issuesLoading) {
