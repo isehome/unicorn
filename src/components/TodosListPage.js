@@ -20,11 +20,12 @@ const TodosListPage = () => {
       const ids = user?.email ? await projectStakeholdersService.getInternalProjectIdsByEmail(user.email) : [];
       setMyProjectIds(ids);
       if (ids.length && supabase) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('project_todos')
           .select('*')
           .in('project_id', ids)
           .order('created_at', { ascending: false });
+        if (error) console.error('Todos query error', error);
         setTodos(Array.isArray(data) ? data : []);
       } else {
         setTodos([]);
@@ -72,4 +73,3 @@ const TodosListPage = () => {
 };
 
 export default TodosListPage;
-

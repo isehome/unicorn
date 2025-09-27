@@ -22,7 +22,12 @@ const IssuesListPage = () => {
       const ids = user?.email ? await projectStakeholdersService.getInternalProjectIdsByEmail(user.email) : [];
       setMyProjectIds(ids);
       if (ids.length && supabase) {
-        const { data } = await supabase.from('issues').select('*').in('project_id', ids).order('created_at', { ascending: false });
+        const { data, error } = await supabase
+          .from('issues')
+          .select('*')
+          .in('project_id', ids)
+          .order('created_at', { ascending: false });
+        if (error) console.error('Issues query error', error);
         setIssues(Array.isArray(data) ? data : []);
       } else {
         setIssues([]);
@@ -77,4 +82,3 @@ const IssuesListPage = () => {
 };
 
 export default IssuesListPage;
-

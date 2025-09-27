@@ -182,15 +182,23 @@ export const projectStakeholdersService = {
 
       const normalized = email.trim().toLowerCase();
 
-      const { data, error } = await supabase
-        .from('project_stakeholders_detailed')
-        .select('project_id')
+      // 1) Find internal contacts matching this email
+      const { data: contacts, error: cErr } = await supabase
+        .from('contacts')
+        .select('id')
         .eq('is_internal', true)
         .ilike('email', normalized);
+      if (cErr) throw cErr;
+      const contactIds = (contacts || []).map((c) => c.id);
+      if (contactIds.length === 0) return [];
 
-      if (error) throw error;
-
-      const ids = Array.isArray(data) ? data.map((row) => row.project_id).filter(Boolean) : [];
+      // 2) Find active stakeholder assignments for those contacts
+      const { data: assignments, error: aErr } = await supabase
+        .from('project_stakeholders')
+        .select('project_id')
+        .in('contact_id', contactIds);
+      if (aErr) throw aErr;
+      const ids = Array.isArray(assignments) ? assignments.map((r) => r.project_id).filter(Boolean) : [];
       return [...new Set(ids)];
     } catch (error) {
       console.error('Failed to fetch internal stakeholder projects:', error);
