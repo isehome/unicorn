@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './ui/Button';
@@ -10,7 +10,8 @@ import {
   issueStakeholderTagsService,
   projectStakeholdersService
 } from '../services/supabaseService';
-import { ArrowLeft, Send, UserPlus, Trash2 } from 'lucide-react';
+import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
+import { ArrowLeft, Send, UserPlus, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -18,6 +19,14 @@ const IssueDetail = () => {
   const { user } = useAuth();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const ui = useMemo(() => {
+    const isDark = mode === 'dark';
+    return {
+      input: `w-full px-3 py-2 rounded-xl border ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`,
+      select: `w-full px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`,
+      subtle: isDark ? 'text-gray-400' : 'text-gray-600',
+    };
+  }, [mode]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,6 +37,8 @@ const IssueDetail = () => {
   const [availableProjectStakeholders, setAvailableProjectStakeholders] = useState([]);
   const [tagging, setTagging] = useState(false);
   const [error, setError] = useState('');
+  const [photos, setPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
 
   const isNew = issueId === 'new';
 
@@ -45,6 +56,13 @@ const IssueDetail = () => {
         setIssue(issueData);
         setComments(commentsData);
         setTags(tagsData);
+        // load photos
+        const { data: photoData } = await supabase
+          .from('issue_photos')
+          .select('*')
+          .eq('issue_id', issueId)
+          .order('created_at', { ascending: true });
+        setPhotos(photoData || []);
         const combined = [
           ...(projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' })),
           ...(projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }))
@@ -113,8 +131,18 @@ const IssueDetail = () => {
       setSaving(true);
       const author_name = user?.full_name || user?.name || user?.email || 'User';
       const author_email = user?.email || null;
+      // Only include author_id if a matching profile exists to satisfy FK
+      let author_id = null;
+      if (user?.id) {
+        const { data: profileRow } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (profileRow?.id) author_id = user.id;
+      }
       const created = await issueCommentsService.add(issue.id, {
-        author_id: user?.id || null,
+        author_id,
         author_name,
         author_email,
         comment_text: text,
@@ -128,6 +156,39 @@ const IssueDetail = () => {
       setError(e.message || 'Failed to add comment');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggleBlocked = async () => {
+    if (!issue?.id) return;
+    try {
+      const next = (issue.status || '').toLowerCase() === 'blocked' ? 'open' : 'blocked';
+      const updated = await issuesService.update(issue.id, { status: next });
+      if (updated) setIssue(updated);
+    } catch (e) {
+      setError(e.message || 'Failed to update status');
+    }
+  };
+
+  const handleUploadPhoto = async (evt) => {
+    const file = evt.target.files?.[0];
+    if (!file || !issue?.id) return;
+    try {
+      setUploading(true);
+      const path = `issues/${issue.id}/${Date.now()}`;
+      const url = await uploadPublicImage(file, path);
+      const { data, error } = await supabase
+        .from('issue_photos')
+        .insert([{ issue_id: issue.id, url, file_name: file.name, content_type: file.type, size_bytes: file.size }])
+        .select()
+        .single();
+      if (error) throw error;
+      setPhotos(prev => [...prev, data]);
+    } catch (e) {
+      setError(e.message || 'Failed to upload photo');
+    } finally {
+      setUploading(false);
+      evt.target.value = '';
     }
   };
 
@@ -220,9 +281,46 @@ const IssueDetail = () => {
       </div>
 
       <section className="rounded-2xl border p-4 space-y-1" style={sectionStyles.card}>
-        <div className="text-lg font-semibold">{issue?.title}</div>
-        {issue?.description && <div className="text-sm text-gray-600 dark:text-gray-300">{issue.description}</div>}
-        <div className="text-xs text-gray-500">Priority: {issue?.priority || '—'} • Status: {issue?.status || '—'}</div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-semibold">{issue?.title}</div>
+            {issue?.description && <div className={`text-sm ${ui.subtle}`}>{issue.description}</div>}
+            <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'} • Status: {issue?.status || '—'}</div>
+          </div>
+          <Button
+            size="sm"
+            variant={(issue?.status || '').toLowerCase() === 'blocked' ? 'warning' : 'secondary'}
+            icon={AlertTriangle}
+            onClick={handleToggleBlocked}
+          >
+            {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
+          </Button>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Photos</h3>
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} />
+            <span className={`px-3 py-1.5 rounded-lg border ${ui.subtle}`}>Upload</span>
+          </label>
+        </div>
+        {photos.length === 0 ? (
+          <div className={`text-sm ${ui.subtle} flex items-center gap-2`}>
+            <ImageIcon size={16} /> No photos yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {photos.map((p) => (
+              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="block rounded-xl overflow-hidden border">
+                <img src={toThumb(p.url, { width: 480, height: 320 })} alt={p.file_name || 'photo'} className="w-full h-28 object-cover" />
+              </a>
+            ))}
+          </div>
+        )}
+        {uploading && <div className={`text-xs ${ui.subtle}`}>Uploading…</div>}
+        {error && <div className="text-xs text-rose-500">{error}</div>}
       </section>
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
@@ -233,7 +331,7 @@ const IssueDetail = () => {
               <select
                 disabled={tagging}
                 onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value=''; } }}
-                className="px-3 py-2 rounded-xl border"
+                className={ui.select}
                 defaultValue=""
               >
                 <option value="" disabled>Add stakeholder…</option>
@@ -286,7 +384,7 @@ const IssueDetail = () => {
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
             placeholder="Add a comment…"
-            className="flex-1 px-3 py-2 rounded-xl border"
+            className={ui.input}
           />
           <Button variant="primary" icon={Send} onClick={handleAddComment} disabled={saving || !commentText.trim()}>Send</Button>
         </div>
@@ -296,4 +394,3 @@ const IssueDetail = () => {
 };
 
 export default IssueDetail;
-
