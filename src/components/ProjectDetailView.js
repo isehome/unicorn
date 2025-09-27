@@ -164,6 +164,7 @@ const ProjectDetailView = () => {
   const [addingTodo, setAddingTodo] = useState(false);
   const [updatingTodoId, setUpdatingTodoId] = useState(null);
   const [deletingTodoId, setDeletingTodoId] = useState(null);
+  const [dragTodoId, setDragTodoId] = useState(null);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [showResolvedIssues, setShowResolvedIssues] = useState(false);
   const [showAddStakeholder, setShowAddStakeholder] = useState(false);
@@ -291,9 +292,15 @@ const ProjectDetailView = () => {
     [todos]
   );
 
-  const visibleTodos = useMemo(() => (
-    showCompletedTodos ? todos : todos.filter((todo) => !todo.completed)
-  ), [todos, showCompletedTodos]);
+  const visibleTodos = useMemo(() => {
+    const list = showCompletedTodos ? todos : todos.filter((t) => !t.completed);
+    return [...list].sort((a, b) => {
+      const ao = (a.sortOrder ?? 0);
+      const bo = (b.sortOrder ?? 0);
+      if (ao !== bo) return ao - bo;
+      return String(a.createdAt).localeCompare(String(b.createdAt));
+    });
+  }, [todos, showCompletedTodos]);
 
   const openIssues = useMemo(
     () => issues.filter((issue) => (issue.status || '').toLowerCase() !== 'resolved'),
@@ -920,6 +927,24 @@ const ProjectDetailView = () => {
     }
   };
 
+  const handleReorderTodos = async (targetId) => {
+    if (!dragTodoId || dragTodoId === targetId) return;
+    const srcIdx = visibleTodos.findIndex(t => t.id === dragTodoId);
+    const tgtIdx = visibleTodos.findIndex(t => t.id === targetId);
+    if (srcIdx === -1 || tgtIdx === -1) return;
+    const reordered = [...visibleTodos];
+    const [moved] = reordered.splice(srcIdx, 1);
+    reordered.splice(tgtIdx, 0, moved);
+    const items = reordered.map((t, idx) => ({ id: t.id, sort_order: idx }));
+    setTodos(prev => prev.map(t => {
+      const u = items.find(x => x.id === t.id);
+      return u ? { ...t, sortOrder: u.sort_order } : t;
+    }));
+    try {
+      await projectTodosService.reorder(id, items);
+    } catch (_) {}
+  };
+
   const handleNewIssue = () => {
     navigate(`/project/${id}/issues/new`);
   };
@@ -1155,6 +1180,10 @@ const ProjectDetailView = () => {
                       <div
                         key={todo.id}
                         className="flex items-center gap-3 px-3 py-2 rounded-xl border"
+                        draggable
+                        onDragStart={() => setDragTodoId(todo.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => handleReorderTodos(todo.id)}
                         style={styles.mutedCard}
                       >
                         <button
@@ -1178,6 +1207,10 @@ const ProjectDetailView = () => {
                         >
                           {todo.title}
                         </span>
+                        <div className="hidden sm:flex items-center gap-2 text-xs">
+                          {todo.dueBy && <span className="px-2 py-0.5 rounded-full" style={styles.badge}>Due {new Date(todo.dueBy).toLocaleDateString()}</span>}
+                          {todo.doBy && <span className="px-2 py-0.5 rounded-full" style={styles.badge}>Do {new Date(todo.doBy).toLocaleDateString()}</span>}
+                        </div>
                         <button
                           onClick={() => handleDeleteTodo(todo.id)}
                           disabled={deleting}

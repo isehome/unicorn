@@ -98,7 +98,7 @@ export const projectsService = {
     } catch (error) {
       handleError(error, 'Failed to update project');
     }
-  }
+  },
 };
 
 // ============= PROJECT STAKEHOLDERS SERVICE =============
@@ -214,7 +214,7 @@ export const projectStakeholdersService = {
       console.error('Failed to fetch internal stakeholder projects:', error);
       return [];
     }
-  }
+  },
 };
 
 // ============= STAKEHOLDERS SERVICE (alias for compatibility) =============
@@ -226,11 +226,20 @@ export const projectTodosService = {
     try {
       if (!supabase || !projectId) return [];
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('project_todos')
         .select('*')
         .eq('project_id', projectId)
+        .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true });
+
+      if (error && /sort_order/.test(error.message || '')) {
+        ({ data, error } = await supabase
+          .from('project_todos')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true }));
+      }
 
       if (error) throw error;
 
@@ -239,7 +248,10 @@ export const projectTodosService = {
         projectId: todo.project_id,
         title: todo.title,
         completed: Boolean(todo.is_complete),
-        createdAt: todo.created_at
+        createdAt: todo.created_at,
+        sortOrder: typeof todo.sort_order === 'number' ? todo.sort_order : null,
+        dueBy: todo.due_by || null,
+        doBy: todo.do_by || null
       }));
     } catch (error) {
       console.error('Failed to fetch project todos:', error);
@@ -283,6 +295,50 @@ export const projectTodosService = {
       if (error) throw error;
     } catch (error) {
       handleError(error, 'Failed to update project todo');
+    }
+  },
+
+  async update(id, updates) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const payload = {};
+      if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.sort_order !== undefined) payload.sort_order = updates.sort_order;
+      if (updates.due_by !== undefined) payload.due_by = updates.due_by;
+      if (updates.do_by !== undefined) payload.do_by = updates.do_by;
+      if (Object.keys(payload).length === 0) return null;
+      const { data, error } = await supabase
+        .from('project_todos')
+        .update(payload)
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to update project todo');
+    }
+  },
+
+  async reorder(projectId, items) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      try {
+        const { error } = await supabase.rpc('reorder_project_todos', {
+          p_project_id: projectId,
+          p_items: items
+        });
+        if (!error) return true;
+      } catch (_) {}
+      await Promise.all(items.map(it => supabase
+        .from('project_todos')
+        .update({ sort_order: it.sort_order })
+        .eq('id', it.id)
+      ));
+      return true;
+    } catch (error) {
+      console.error('Failed to reorder todos:', error);
+      return false;
     }
   },
 
