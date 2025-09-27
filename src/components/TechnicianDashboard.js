@@ -17,7 +17,7 @@ const TechnicianDashboard = () => {
   const { login, user } = useAuth();
   
   const { projects, loading: projectsLoading } = useProjects();
-  const { issues, loading: issuesLoading } = useIssues();
+  const { loading: issuesLoading } = useIssues();
 
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [calendarConnected, setCalendarConnected] = useState(false);
@@ -136,7 +136,7 @@ const TechnicianDashboard = () => {
     const idSet = new Set(myProjectIds);
     return projects.filter((project) => idSet.has(project.id));
   }, [projects, showMyProjects, myProjectIds]);
-  const recentIssues = issues.filter(i => i.status === 'open').slice(0, 5);
+  // const recentIssues = issues.filter(i => i.status === 'open').slice(0, 5);
 
   if (projectsLoading || issuesLoading) {
     return (
@@ -334,49 +334,7 @@ const TechnicianDashboard = () => {
         )}
       </div>
 
-      {/* Recent Issues */}
-      <div style={sectionStyles.card}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Open Issues
-          </h2>
-        </div>
-        
-        {recentIssues.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No open issues</p>
-        ) : (
-          <div className="space-y-3">
-            {recentIssues.map((issue) => (
-              <div
-                key={issue.id}
-                className="border border-gray-200 dark:border-gray-700 rounded-lg p-4"
-              >
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  {issue.title}
-                </h3>
-                {issue.notes && (
-                  <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                    {issue.notes}
-                  </p>
-                )}
-                <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {new Date(issue.created_at).toLocaleDateString()}
-                  </span>
-                  <span className={`px-2 py-1 rounded-full ${
-                    issue.status === 'open'
-                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
-                      : 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-                  }`}>
-                    {issue.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Open issues list removed for streamlined dashboard */}
     </div>
   );
 };
