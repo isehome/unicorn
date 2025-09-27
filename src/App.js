@@ -14,6 +14,8 @@ import AppHeader from './components/AppHeader';
 import SettingsPage from './components/SettingsPage';
 import BottomNavigation from './components/BottomNavigation';
 import AuthCallback from './components/AuthCallback';
+import IssuesListPage from './components/IssuesListPage';
+import TodosListPage from './components/TodosListPage';
 import './index.css';
 
 const AppRoutes = () => {
@@ -81,6 +83,22 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <SettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/issues"
+            element={
+              <ProtectedRoute>
+                <IssuesListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/todos"
+            element={
+              <ProtectedRoute>
+                <TodosListPage />
               </ProtectedRoute>
             }
           />

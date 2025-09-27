@@ -26,13 +26,7 @@ export const projectsService = {
 
   async getWithStakeholders(projectId) {
     try {
-      if (!supabase) {
-        return {
-          id: projectId,
-          name: 'Demo Project',
-          stakeholders: { internal: [], external: [] }
-        };
-      }
+      if (!supabase) throw new Error('Supabase not configured');
 
       const { data: project, error: projectError } = await supabase
         .from('projects')
@@ -40,14 +34,7 @@ export const projectsService = {
         .eq('id', projectId)
         .single();
         
-      if (projectError) {
-        console.error('Project fetch error:', projectError);
-        return {
-          id: projectId,
-          name: 'Demo Project',
-          stakeholders: { internal: [], external: [] }
-        };
-      }
+      if (projectError) throw projectError;
 
       const stakeholders = await projectStakeholdersService.getForProject(projectId);
 
@@ -56,12 +43,7 @@ export const projectsService = {
         stakeholders
       };
     } catch (error) {
-      console.error('Failed to fetch project details:', error);
-      return {
-        id: projectId,
-        name: 'Demo Project',
-        stakeholders: { internal: [], external: [] }
-      };
+      handleError(error, 'Failed to fetch project details');
     }
   },
 
