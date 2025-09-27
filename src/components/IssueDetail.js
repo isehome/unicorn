@@ -235,24 +235,20 @@ const IssueDetail = () => {
   if (isNew) {
     return (
       <div className="max-w-3xl mx-auto p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <Button variant="secondary" size="sm" icon={ArrowLeft} onClick={() => navigate(-1)}>Back</Button>
-          <div className="text-xs text-gray-500">New Issue</div>
-        </div>
         <form onSubmit={handleCreate} className="rounded-2xl border p-4" style={sectionStyles.card}>
           <div className="grid gap-3">
             <div>
               <label className="block text-sm mb-1">Title</label>
-              <input name="title" required className="w-full px-3 py-2 rounded-xl border" />
+              <input name="title" required className={ui.input} />
             </div>
             <div>
               <label className="block text-sm mb-1">Description</label>
-              <textarea name="description" rows="4" className="w-full px-3 py-2 rounded-xl border" />
+              <textarea name="description" rows="4" className={ui.input} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm mb-1">Priority</label>
-                <select name="priority" defaultValue="medium" className="w-full px-3 py-2 rounded-xl border">
+                <select name="priority" defaultValue="medium" className={ui.select}>
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
                   <option value="high">High</option>
@@ -261,7 +257,7 @@ const IssueDetail = () => {
               </div>
               <div>
                 <label className="block text-sm mb-1">Due date</label>
-                <input type="date" name="due_date" className="w-full px-3 py-2 rounded-xl border" />
+                <input type="date" name="due_date" className={ui.input} />
               </div>
             </div>
             <div className="pt-2">
@@ -275,26 +271,39 @@ const IssueDetail = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <Button variant="secondary" size="sm" icon={ArrowLeft} onClick={() => navigate(-1)}>Back</Button>
-        <div className="text-xs text-gray-500">Issue Details</div>
-      </div>
-
       <section className="rounded-2xl border p-4 space-y-1" style={sectionStyles.card}>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">{issue?.title}</div>
             {issue?.description && <div className={`text-sm ${ui.subtle}`}>{issue.description}</div>}
-            <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'} • Status: {issue?.status || '—'}</div>
+            <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'}</div>
           </div>
-          <Button
-            size="sm"
-            variant={(issue?.status || '').toLowerCase() === 'blocked' ? 'warning' : 'secondary'}
-            icon={AlertTriangle}
-            onClick={handleToggleBlocked}
-          >
-            {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <select
+              value={(issue?.status || 'open')}
+              onChange={async (e) => {
+                try {
+                  const updated = await issuesService.update(issue.id, { status: e.target.value });
+                  if (updated) setIssue(updated);
+                } catch (err) {
+                  setError(err.message || 'Failed to update status');
+                }
+              }}
+              className={ui.select}
+            >
+              <option value="open">Open</option>
+              <option value="blocked">Blocked</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <Button
+              size="sm"
+              variant={(issue?.status || '').toLowerCase() === 'blocked' ? 'warning' : 'secondary'}
+              icon={AlertTriangle}
+              onClick={handleToggleBlocked}
+            >
+              {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
+            </Button>
+          </div>
         </div>
       </section>
 

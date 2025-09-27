@@ -31,13 +31,15 @@ const AppHeader = () => {
   const showBackButton = !['/', '/pm-dashboard', '/login'].includes(location.pathname);
 
   const pageTitle = useMemo(() => {
-    if (location.pathname === '/') return 'Technician Dashboard';
-    if (location.pathname.startsWith('/pm-dashboard')) return 'Project Manager Dashboard';
-    if (location.pathname.startsWith('/project/')) return 'Project Details';
-    if (location.pathname.startsWith('/people')) return 'People';
-    if (location.pathname.startsWith('/wire-drops')) return 'Wire Drops';
-    if (location.pathname.startsWith('/settings')) return 'Settings';
-    if (location.pathname.startsWith('/login')) return 'Sign In';
+    const p = location.pathname;
+    if (p === '/') return 'Technician Dashboard';
+    if (p.startsWith('/pm-dashboard')) return 'Project Manager Dashboard';
+    if (p.startsWith('/project/') && p.includes('/issues/')) return 'Issue Details';
+    if (p.startsWith('/project/')) return 'Project Details';
+    if (p.startsWith('/people')) return 'People';
+    if (p.startsWith('/wire-drops')) return 'Wire Drops';
+    if (p.startsWith('/settings')) return 'Settings';
+    if (p.startsWith('/login')) return 'Sign In';
     return 'Field Operations';
   }, [location.pathname]);
 
