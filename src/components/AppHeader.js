@@ -36,6 +36,8 @@ const AppHeader = () => {
     if (p.startsWith('/pm-dashboard')) return 'Project Manager Dashboard';
     if (p.startsWith('/project/') && p.includes('/issues/')) return 'Issue Details';
     if (p.startsWith('/project/')) return 'Project Details';
+    if (p.startsWith('/issues')) return 'Issues';
+    if (p.startsWith('/todos')) return 'To-dos';
     if (p.startsWith('/people')) return 'People';
     if (p.startsWith('/wire-drops')) return 'Wire Drops';
     if (p.startsWith('/settings')) return 'Settings';

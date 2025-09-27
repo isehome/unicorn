@@ -2,7 +2,8 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  useMemo
+  useMemo,
+  useRef
 } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
@@ -165,6 +166,9 @@ const ProjectDetailView = () => {
   const [updatingTodoId, setUpdatingTodoId] = useState(null);
   const [deletingTodoId, setDeletingTodoId] = useState(null);
   const [dragTodoId, setDragTodoId] = useState(null);
+  const [dragOverTodoId, setDragOverTodoId] = useState(null);
+  const [dragOverTodoPos, setDragOverTodoPos] = useState(null); // 'before' | 'after'
+  const dragImageElRef = useRef(null);
   const [showCompletedTodos, setShowCompletedTodos] = useState(true);
   const [showResolvedIssues, setShowResolvedIssues] = useState(false);
   const [showAddStakeholder, setShowAddStakeholder] = useState(false);
@@ -946,11 +950,13 @@ const ProjectDetailView = () => {
   const handleReorderTodos = async (targetId) => {
     if (!dragTodoId || dragTodoId === targetId) return;
     const srcIdx = visibleTodos.findIndex(t => t.id === dragTodoId);
-    const tgtIdx = visibleTodos.findIndex(t => t.id === targetId);
+    let tgtIdx = visibleTodos.findIndex(t => t.id === targetId);
     if (srcIdx === -1 || tgtIdx === -1) return;
+    if (dragOverTodoPos === 'after') tgtIdx += 1;
     const reordered = [...visibleTodos];
     const [moved] = reordered.splice(srcIdx, 1);
-    reordered.splice(tgtIdx, 0, moved);
+    const insertIdx = Math.min(Math.max(tgtIdx, 0), reordered.length);
+    reordered.splice(insertIdx, 0, moved);
     const items = reordered.map((t, idx) => ({ id: t.id, sort_order: idx }));
     setTodos(prev => prev.map(t => {
       const u = items.find(x => x.id === t.id);
@@ -1195,13 +1201,50 @@ const ProjectDetailView = () => {
                     return (
                       <div
                         key={todo.id}
-                        className="flex items-center gap-3 px-3 py-2 rounded-xl border"
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl border todo-card"
                         draggable
-                        onDragStart={() => setDragTodoId(todo.id)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleReorderTodos(todo.id)}
-                        style={styles.mutedCard}
+                        onDragStart={(e) => {
+                          setDragTodoId(todo.id);
+                          const card = e.currentTarget.closest('.todo-card');
+                          if (card && e.dataTransfer) {
+                            try {
+                              const clone = card.cloneNode(true);
+                              clone.style.position = 'absolute';
+                              clone.style.top = '-9999px';
+                              clone.style.left = '-9999px';
+                              clone.style.width = `${card.offsetWidth}px`;
+                              document.body.appendChild(clone);
+                              e.dataTransfer.setDragImage(clone, Math.min(24, card.offsetWidth / 2), 16);
+                              dragImageElRef.current = clone;
+                            } catch (_) {}
+                          }
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const midY = rect.top + rect.height / 2;
+                          setDragOverTodoId(todo.id);
+                          setDragOverTodoPos(e.clientY < midY ? 'before' : 'after');
+                        }}
+                        onDragEnter={() => setDragOverTodoId(todo.id)}
+                        onDragLeave={() => setDragOverTodoId(null)}
+                        onDragEnd={() => {
+                          setDragTodoId(null);
+                          setDragOverTodoId(null);
+                          if (dragImageElRef.current) {
+                            try { document.body.removeChild(dragImageElRef.current); } catch (_) {}
+                            dragImageElRef.current = null;
+                          }
+                        }}
+                        onDrop={() => { handleReorderTodos(todo.id); setDragOverTodoId(null); }}
+                        style={{
+                          ...styles.mutedCard,
+                          opacity: dragTodoId === todo.id ? 0.6 : 1
+                        }}
                       >
+                        {dragOverTodoId === todo.id && dragOverTodoPos === 'before' && (
+                          <div className="absolute left-0 right-0 -mt-2 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                        )}
                         <button
                           onClick={() => handleToggleTodo(todo)}
                           disabled={toggling}
@@ -1243,6 +1286,9 @@ const ProjectDetailView = () => {
                             />
                           </label>
                         </div>
+                       {dragOverTodoId === todo.id && dragOverTodoPos === 'after' && (
+                         <div className="absolute left-0 right-0 -mb-2 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                       )}
                         <button
                           onClick={() => handleDeleteTodo(todo.id)}
                           disabled={deleting}

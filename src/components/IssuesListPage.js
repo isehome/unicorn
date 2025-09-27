@@ -16,6 +16,11 @@ const IssuesListPage = () => {
   const [issues, setIssues] = useState([]);
   const [filter, setFilter] = useState('open'); // open | blocked | resolved | all
   const [error, setError] = useState('');
+  const [projects, setProjects] = useState([]); // {id,name}
+  const [projectFilter, setProjectFilter] = useState('all');
+
+  const isDark = mode === 'dark';
+  const selectClass = `px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`;
 
   useEffect(() => {
     const load = async () => {
@@ -29,6 +34,12 @@ const IssuesListPage = () => {
           setIssues([]);
           return;
         }
+        // load project names for filter + display
+        const { data: projectRows } = await supabase
+          .from('projects')
+          .select('id,name')
+          .in('id', ids);
+        setProjects(Array.isArray(projectRows) ? projectRows : []);
         // Prefer view if available
         let { data, error } = await supabase
           .from('issues_with_stats')
@@ -55,9 +66,11 @@ const IssuesListPage = () => {
   }, [user?.email]);
 
   const visible = useMemo(() => {
-    if (filter === 'all') return issues;
-    return issues.filter(i => (i.status || '').toLowerCase() === filter);
-  }, [issues, filter]);
+    let list = issues;
+    if (filter !== 'all') list = list.filter(i => (i.status || '').toLowerCase() === filter);
+    if (projectFilter !== 'all') list = list.filter(i => i.project_id === projectFilter);
+    return list;
+  }, [issues, filter, projectFilter]);
 
   if (loading) {
     return (
@@ -69,14 +82,22 @@ const IssuesListPage = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-white">My Issues</h1>
-        <select value={filter} onChange={(e) => setFilter(e.target.value)} className="px-3 py-2 rounded-xl border">
+        <div className="flex items-center gap-2">
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className={selectClass}>
+            <option value="all">All projects</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>{p.name || p.id}</option>
+            ))}
+          </select>
+          <select value={filter} onChange={(e) => setFilter(e.target.value)} className={selectClass}>
           <option value="open">Open</option>
           <option value="blocked">Blocked</option>
           <option value="resolved">Resolved</option>
           <option value="all">All</option>
-        </select>
+          </select>
+        </div>
       </div>
       {error && <div className="text-sm text-rose-500">{error}</div>}
       <div className="space-y-3">
@@ -94,7 +115,7 @@ const IssuesListPage = () => {
             {issue.description && (
               <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">{issue.description}</p>
             )}
-            <div className="text-xs text-gray-500 mt-1">Project: {issue.project_id}</div>
+            <div className="text-xs text-gray-500 mt-1">Project: {projects.find(p => p.id === issue.project_id)?.name || issue.project_id}</div>
           </button>
         ))}
         {visible.length === 0 && (
@@ -106,4 +127,3 @@ const IssuesListPage = () => {
 };
 
 export default IssuesListPage;
-
