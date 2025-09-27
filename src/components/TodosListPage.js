@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectStakeholdersService, projectTodosService } from '../services/supabaseService';
-import { CheckSquare, Square } from 'lucide-react';
+import { CheckSquare, Square, GripVertical } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const TodosListPage = () => {
@@ -68,9 +68,15 @@ const TodosListPage = () => {
   }, [user?.email]);
 
   const visible = useMemo(() => {
-    let list = todos.filter(t => showCompleted ? true : !t.is_complete);
+    let list = todos.filter(t => (showCompleted ? true : !t.is_complete));
     if (projectFilter !== 'all') list = list.filter(t => t.project_id === projectFilter);
-    return list;
+    // Sort to reflect priority (sort_order) then created_at
+    return [...list].sort((a, b) => {
+      const ao = a.sort_order ?? 0;
+      const bo = b.sort_order ?? 0;
+      if (ao !== bo) return ao - bo;
+      return String(a.created_at).localeCompare(String(b.created_at));
+    });
   }, [todos, showCompleted, projectFilter]);
 
   const onDragStart = (id) => { dragId.current = id; };
@@ -82,16 +88,18 @@ const TodosListPage = () => {
       alert('To enable drag-to-reorder, add a sort_order column to project_todos (see migration note).');
       return;
     }
-    // Require a specific project to avoid cross-project reorder confusion
+    // Require a specific project (clearer UX). If "All projects", ask user to pick one first.
     if (projectFilter === 'all') {
-      alert('Select a specific project from the filter to reorder its to-dos.');
+      alert('Please select a specific project to reorder its to-dos.');
       return;
     }
-    const srcIdx = visible.findIndex(t => t.id === sourceId);
-    const tgtIdx = visible.findIndex(t => t.id === targetId);
+    const inferredProjectId = projectFilter;
+    if (!inferredProjectId) return;
+    // Use only items from that project and current completion visibility
+    const projectTodos = todos.filter(t => t.project_id === inferredProjectId && (showCompleted ? true : !t.is_complete));
+    const srcIdx = projectTodos.findIndex(t => t.id === sourceId);
+    const tgtIdx = projectTodos.findIndex(t => t.id === targetId);
     if (srcIdx === -1 || tgtIdx === -1) return;
-    const projectId = projectFilter !== 'all' ? projectFilter : visible[tgtIdx]?.project_id;
-    const projectTodos = visible.filter(t => t.project_id === projectId);
     const reordered = [...projectTodos];
     const [moved] = reordered.splice(srcIdx, 1);
     reordered.splice(tgtIdx, 0, moved);
@@ -103,7 +111,7 @@ const TodosListPage = () => {
       return u ? { ...t, sort_order: u.sort_order } : t;
     }));
     try {
-      await projectTodosService.reorder(projectId, updates);
+      await projectTodosService.reorder(inferredProjectId, updates);
     } catch (e) {
       // fallback silently; UI still reordered
       console.warn('Failed to persist sort order', e);
@@ -142,13 +150,19 @@ const TodosListPage = () => {
             key={todo.id}
             style={sectionStyles.card}
             className="p-4 rounded-2xl border"
-            draggable
-            onDragStart={() => onDragStart(todo.id)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => onDropOn(todo.id)}
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
+                <button
+                  className="p-1 cursor-grab active:cursor-grabbing"
+                  title="Drag to reorder"
+                  draggable
+                  onDragStart={() => onDragStart(todo.id)}
+                >
+                  <GripVertical className="w-4 h-4 text-gray-400" />
+                </button>
                 <button
                   onClick={async () => {
                     try {
