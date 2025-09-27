@@ -11,7 +11,7 @@ import {
   projectStakeholdersService
 } from '../services/supabaseService';
 import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
-import { ArrowLeft, Send, UserPlus, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Send, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -308,6 +308,16 @@ const IssueDetail = () => {
         </div>
       </section>
 
+      {/* Details section */}
+      <section className="rounded-2xl border p-4 space-y-2" style={sectionStyles.card}>
+        <h3 className="text-sm font-semibold">Details</h3>
+        {issue?.description ? (
+          <p className={`text-sm ${ui.subtle}`}>{issue.description}</p>
+        ) : (
+          <p className={`text-sm ${ui.subtle}`}>No additional details provided.</p>
+        )}
+      </section>
+
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Photos</h3>
@@ -352,7 +362,6 @@ const IssueDetail = () => {
                 ))}
               </select>
             </div>
-            <Button variant="secondary" size="sm" icon={UserPlus} disabled={tagging}>Add</Button>
           </div>
         </div>
         {tags.length === 0 ? (
