@@ -23,28 +23,11 @@ const AuthContext = createContext({
   refreshProfile: async () => {}
 });
 
-const buildBypassValue = () => ({
-  user: {
-    id: 'bypass-user',
-    email: 'developer@example.com',
-    full_name: 'Bypass Mode User'
-  },
-  profile: null,
-  session: null,
-  loading: false,
-  error: null,
-  login: async () => {},
-  logout: async () => {},
-  refreshProfile: async () => {}
-});
-
 export function AuthProvider({ children }) {
-  const bypassAuth = process.env.REACT_APP_BYPASS_AUTH === 'true';
-
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(!bypassAuth);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadProfile = useCallback(async (userId) => {
@@ -72,8 +55,6 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (bypassAuth) return undefined;
-
     let mounted = true;
 
     const initialise = async () => {
@@ -146,10 +127,9 @@ export function AuthProvider({ children }) {
       mounted = false;
       authListener?.subscription?.unsubscribe();
     };
-  }, [bypassAuth, loadProfile]);
+  }, [loadProfile]);
 
   const login = useCallback(async () => {
-    if (bypassAuth) return null;
     if (!supabase) {
       throw new Error('Supabase is not configured. Set REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY.');
     }
@@ -164,10 +144,9 @@ export function AuthProvider({ children }) {
       setLoading(false);
       throw err;
     }
-  }, [bypassAuth]);
+  }, []);
 
   const logout = useCallback(async () => {
-    if (bypassAuth) return;
     if (!supabase) return;
     try {
       await supabaseSignOut();
@@ -177,18 +156,14 @@ export function AuthProvider({ children }) {
       setProfile(null);
       setLoading(false);
     }
-  }, [bypassAuth]);
+  }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (bypassAuth || !user) return null;
+    if (!user) return null;
     return loadProfile(user.id);
-  }, [bypassAuth, loadProfile, user]);
+  }, [loadProfile, user]);
 
   const value = useMemo(() => {
-    if (bypassAuth) {
-      return buildBypassValue();
-    }
-
     const enrichedUser = user ? { ...user, ...(profile || {}) } : null;
     return {
       user: enrichedUser,
@@ -200,7 +175,7 @@ export function AuthProvider({ children }) {
       logout,
       refreshProfile
     };
-  }, [bypassAuth, user, profile, session, loading, error, login, logout, refreshProfile]);
+  }, [user, profile, session, loading, error, login, logout, refreshProfile]);
 
   return (
     <AuthContext.Provider value={value}>
