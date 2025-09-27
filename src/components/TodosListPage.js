@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectStakeholdersService } from '../services/supabaseService';
+import { projectStakeholdersService, projectTodosService } from '../services/supabaseService';
+import { CheckSquare, Square } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const TodosListPage = () => {
@@ -45,6 +46,7 @@ const TodosListPage = () => {
           .in('project_id', ids)
           .order('sort_order', { ascending: true })
           .order('created_at', { ascending: false });
+        if (!error) setMissingSort(false);
         if (error && /sort_order/.test(error.message || '')) {
           setMissingSort(true);
           ({ data, error } = await supabase
@@ -80,22 +82,28 @@ const TodosListPage = () => {
       alert('To enable drag-to-reorder, add a sort_order column to project_todos (see migration note).');
       return;
     }
+    // Require a specific project to avoid cross-project reorder confusion
+    if (projectFilter === 'all') {
+      alert('Select a specific project from the filter to reorder its to-dos.');
+      return;
+    }
     const srcIdx = visible.findIndex(t => t.id === sourceId);
     const tgtIdx = visible.findIndex(t => t.id === targetId);
     if (srcIdx === -1 || tgtIdx === -1) return;
-    const reordered = [...visible];
+    const projectId = projectFilter !== 'all' ? projectFilter : visible[tgtIdx]?.project_id;
+    const projectTodos = visible.filter(t => t.project_id === projectId);
+    const reordered = [...projectTodos];
     const [moved] = reordered.splice(srcIdx, 1);
     reordered.splice(tgtIdx, 0, moved);
-    // Recompute sort_order 0..n and persist for this project
-    const projectId = reordered[0]?.project_id;
-    const updates = reordered.map((t, idx) => ({ id: t.id, sort_order: idx, project_id: t.project_id }));
-    // Update UI immediately
+    // Recompute sort_order 0..n for this project's list
+    const updates = reordered.map((t, idx) => ({ id: t.id, sort_order: idx }));
+    // Update UI immediately across the full dataset
     setTodos(prev => prev.map(t => {
       const u = updates.find(x => x.id === t.id);
       return u ? { ...t, sort_order: u.sort_order } : t;
     }));
     try {
-      await Promise.all(updates.map(u => supabase.from('project_todos').update({ sort_order: u.sort_order }).eq('id', u.id)));
+      await projectTodosService.reorder(projectId, updates);
     } catch (e) {
       // fallback silently; UI still reordered
       console.warn('Failed to persist sort order', e);
@@ -140,12 +148,66 @@ const TodosListPage = () => {
             onDrop={() => onDropOn(todo.id)}
           >
             <div className="flex items-center justify-between">
-              <div className="font-medium text-gray-900 dark:text-white">{todo.title}</div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      await projectTodosService.toggleCompletion(todo.id, !todo.is_complete);
+                      setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, is_complete: !t.is_complete } : t));
+                    } catch (_) {}
+                  }}
+                  className="p-1"
+                  title={todo.is_complete ? 'Mark as open' : 'Mark as done'}
+                >
+                  {todo.is_complete ? (
+                    <CheckSquare className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <Square className="w-4 h-4 text-gray-500" />
+                  )}
+                </button>
+                <div className="font-medium text-gray-900 dark:text-white">{todo.title}</div>
+              </div>
               <span className={`px-2 py-1 text-xs rounded-full ${todo.is_complete ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'}`}>
                 {todo.is_complete ? 'Done' : 'Open'}
               </span>
             </div>
-            <div className="text-xs text-gray-500 mt-1">Project: {projects.find(p => p.id === todo.project_id)?.name || todo.project_id}</div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">Project: {projects.find(p => p.id === todo.project_id)?.name || todo.project_id}</div>
+              {!missingSort && (
+                <div className="flex items-center gap-2 text-xs">
+                  <label className="flex items-center gap-1">
+                    <span className="text-gray-500">Due</span>
+                    <input
+                      type="date"
+                      value={todo.due_by ? String(todo.due_by).substring(0,10) : ''}
+                      onChange={async (e) => {
+                        const value = e.target.value || null;
+                        try {
+                          await supabase.from('project_todos').update({ due_by: value }).eq('id', todo.id);
+                          setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, due_by: value } : t));
+                        } catch (_) {}
+                      }}
+                      className={selectClass}
+                    />
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <span className="text-gray-500">Do</span>
+                    <input
+                      type="date"
+                      value={todo.do_by ? String(todo.do_by).substring(0,10) : ''}
+                      onChange={async (e) => {
+                        const value = e.target.value || null;
+                        try {
+                          await supabase.from('project_todos').update({ do_by: value }).eq('id', todo.id);
+                          setTodos(prev => prev.map(t => t.id === todo.id ? { ...t, do_by: value } : t));
+                        } catch (_) {}
+                      }}
+                      className={selectClass}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
         ))}
         {visible.length === 0 && (

@@ -927,6 +927,22 @@ const ProjectDetailView = () => {
     }
   };
 
+  const handleUpdateTodoDate = async (todoId, field, value) => {
+    try {
+      // Persist update
+      const payload = field === 'due_by' ? { due_by: value || null } : { do_by: value || null };
+      await projectTodosService.update(todoId, payload);
+      // Update local state
+      setTodos(prev => prev.map(t => (
+        t.id === todoId
+          ? { ...t, ...(field === 'due_by' ? { dueBy: value || null } : { doBy: value || null }) }
+          : t
+      )));
+    } catch (e) {
+      console.warn('Failed to update todo date', e);
+    }
+  };
+
   const handleReorderTodos = async (targetId) => {
     if (!dragTodoId || dragTodoId === targetId) return;
     const srcIdx = visibleTodos.findIndex(t => t.id === dragTodoId);
@@ -1207,9 +1223,25 @@ const ProjectDetailView = () => {
                         >
                           {todo.title}
                         </span>
-                        <div className="hidden sm:flex items-center gap-2 text-xs">
-                          {todo.dueBy && <span className="px-2 py-0.5 rounded-full" style={styles.badge}>Due {new Date(todo.dueBy).toLocaleDateString()}</span>}
-                          {todo.doBy && <span className="px-2 py-0.5 rounded-full" style={styles.badge}>Do {new Date(todo.doBy).toLocaleDateString()}</span>}
+                        <div className="flex items-center gap-2 text-xs">
+                          <label className="flex items-center gap-1">
+                            <span className="sr-only">Due by</span>
+                            <input
+                              type="date"
+                              value={todo.dueBy ? String(todo.dueBy).substring(0,10) : ''}
+                              onChange={(e) => handleUpdateTodoDate(todo.id, 'due_by', e.target.value)}
+                              className="px-2 py-1 rounded-xl border text-xs"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1">
+                            <span className="sr-only">Do by</span>
+                            <input
+                              type="date"
+                              value={todo.doBy ? String(todo.doBy).substring(0,10) : ''}
+                              onChange={(e) => handleUpdateTodoDate(todo.id, 'do_by', e.target.value)}
+                              className="px-2 py-1 rounded-xl border text-xs"
+                            />
+                          </label>
                         </div>
                         <button
                           onClick={() => handleDeleteTodo(todo.id)}
