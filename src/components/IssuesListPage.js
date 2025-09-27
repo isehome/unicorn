@@ -14,10 +14,11 @@ const IssuesListPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [issues, setIssues] = useState([]);
-  const [filter, setFilter] = useState('open'); // open | blocked | resolved | all
+  const [filter, setFilter] = useState('open'); // open | closed | all
   const [error, setError] = useState('');
   const [projects, setProjects] = useState([]); // {id,name}
   const [projectFilter, setProjectFilter] = useState('all');
+  const [blockedOnly, setBlockedOnly] = useState(false);
 
   const isDark = mode === 'dark';
   const selectClass = `px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`;
@@ -67,10 +68,18 @@ const IssuesListPage = () => {
 
   const visible = useMemo(() => {
     let list = issues;
-    if (filter !== 'all') list = list.filter(i => (i.status || '').toLowerCase() === filter);
+    if (filter !== 'all') {
+      const wantClosed = filter === 'closed';
+      list = list.filter(i => {
+        const s = (i.status || '').toLowerCase();
+        const isClosed = s === 'closed' || s === 'resolved';
+        return wantClosed ? isClosed : !isClosed; // open vs closed
+      });
+    }
+    if (blockedOnly) list = list.filter(i => Boolean(i.is_blocked));
     if (projectFilter !== 'all') list = list.filter(i => i.project_id === projectFilter);
     return list;
-  }, [issues, filter, projectFilter]);
+  }, [issues, filter, projectFilter, blockedOnly]);
 
   if (loading) {
     return (
@@ -92,11 +101,14 @@ const IssuesListPage = () => {
             ))}
           </select>
           <select value={filter} onChange={(e) => setFilter(e.target.value)} className={selectClass}>
-          <option value="open">Open</option>
-          <option value="blocked">Blocked</option>
-          <option value="resolved">Resolved</option>
-          <option value="all">All</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            <option value="all">All</option>
           </select>
+          <label className="text-sm flex items-center gap-2">
+            <input type="checkbox" checked={blockedOnly} onChange={(e) => setBlockedOnly(e.target.checked)} />
+            <span className="text-gray-700 dark:text-gray-300">Blocked only</span>
+          </label>
         </div>
       </div>
       {error && <div className="text-sm text-rose-500">{error}</div>}

@@ -11,7 +11,7 @@ import {
   projectStakeholdersService
 } from '../services/supabaseService';
 import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
-import { ArrowLeft, Plus, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -329,9 +329,47 @@ const IssueDetail = () => {
         </div>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Details</h3>
-          {!editingDetails && (
-            <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
-          )}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={issue?.is_blocked ? 'danger' : 'secondary'}
+              size="sm"
+              icon={AlertTriangle}
+              onClick={async () => {
+                const next = !issue?.is_blocked;
+                try {
+                  const updated = await issuesService.update(issue.id, { is_blocked: next });
+                  if (updated) setIssue(prev => ({ ...prev, is_blocked: next }));
+                } catch (_) {
+                  // fallback via status when is_blocked column missing
+                  const fallback = next ? 'blocked' : 'open';
+                  try {
+                    const updated = await issuesService.update(issue.id, { status: fallback });
+                    if (updated) setIssue(prev => ({ ...prev, status: fallback }));
+                  } catch (err) {}
+                }
+              }}
+            >
+              {issue?.is_blocked ? 'Unblock' : 'Mark Blocked'}
+            </Button>
+            <Button
+              variant={(issue?.status || '').toLowerCase() === 'resolved' ? 'success' : 'secondary'}
+              size="sm"
+              icon={CheckCircle}
+              onClick={async () => {
+                const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
+                const nextStatus = isResolved ? 'open' : 'resolved';
+                try {
+                  const updated = await issuesService.update(issue.id, { status: nextStatus, is_blocked: false });
+                  if (updated) setIssue(prev => ({ ...prev, status: nextStatus, is_blocked: false }));
+                } catch (err) {}
+              }}
+            >
+              {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
+            </Button>
+            {!editingDetails && (
+              <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
+            )}
+          </div>
         </div>
         {editingDetails ? (
           <>
