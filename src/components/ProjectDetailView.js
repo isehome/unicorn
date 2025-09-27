@@ -460,7 +460,7 @@ const ProjectDetailView = () => {
   }, []);
 
   const StakeholderCard = ({ person, category, isExpanded, onToggle, onRemove, onEdit, onContactAction }) => {
-    const accentColor = category === 'internal' ? palette.info : palette.success;
+    const accentColor = category === 'internal' ? palette.accent : palette.success;
     return (
       <div
         className="rounded-2xl transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"

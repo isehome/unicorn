@@ -17,8 +17,9 @@ const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { mode } = useTheme();
+  const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const palette = theme.palette;
   const ui = useMemo(() => {
     const isDark = mode === 'dark';
     return {
@@ -360,9 +361,17 @@ const IssueDetail = () => {
           <div className="space-y-2">
             {tags.map(tag => (
               <div key={tag.tag_id} className="flex items-center justify-between px-3 py-2 rounded-xl border">
-                <div>
-                  <div className="text-sm font-medium">{tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span></div>
-                  <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • {new Date(tag.tagged_at).toLocaleString()}</div>
+                <div className="flex items-start gap-2">
+                  <span
+                    className="mt-1 inline-block w-2 h-2 rounded-full"
+                    style={{ backgroundColor: tag.is_internal ? palette.accent : palette.success }}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">
+                      {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
+                    </div>
+                    <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • {new Date(tag.tagged_at).toLocaleString()}</div>
+                  </div>
                 </div>
                 <button className="text-rose-500" onClick={() => handleRemoveTag(tag.tag_id)} title="Remove">
                   <Trash2 size={16} />
