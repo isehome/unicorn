@@ -171,6 +171,28 @@ export const projectStakeholdersService = {
     } catch (error) {
       handleError(error, 'Failed to remove stakeholder from project');
     }
+  },
+
+  async getInternalProjectIdsByEmail(email) {
+    try {
+      if (!supabase || !email) return [];
+
+      const normalized = email.trim().toLowerCase();
+
+      const { data, error } = await supabase
+        .from('project_stakeholders_detailed')
+        .select('project_id')
+        .eq('is_internal', true)
+        .ilike('email', normalized);
+
+      if (error) throw error;
+
+      const ids = Array.isArray(data) ? data.map((row) => row.project_id).filter(Boolean) : [];
+      return [...new Set(ids)];
+    } catch (error) {
+      console.error('Failed to fetch internal stakeholder projects:', error);
+      return [];
+    }
   }
 };
 

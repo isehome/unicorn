@@ -1,14 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useProjects, useIssues } from '../hooks/useSupabase';
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
+import { projectStakeholdersService } from '../services/supabaseService';
 import Button from './ui/Button';
-import { 
-  Clock, CheckCircle, AlertCircle, Folder, 
-  Plus, Loader, Calendar
+import {
+  Clock, CheckCircle, AlertCircle, Folder,
+  Loader, Calendar
 } from 'lucide-react';
 
 const TechnicianDashboard = () => {
@@ -24,6 +25,10 @@ const TechnicianDashboard = () => {
   const [calendarConnected, setCalendarConnected] = useState(false);
   const [calendarLoading, setCalendarLoading] = useState(true);
   const [calendarError, setCalendarError] = useState('');
+  const [showMyProjects, setShowMyProjects] = useState(false);
+  const [myProjectIds, setMyProjectIds] = useState([]);
+  const [myProjectsLoading, setMyProjectsLoading] = useState(false);
+  const [myProjectsError, setMyProjectsError] = useState('');
 
   const formatEventTime = useCallback((start, end) => {
     try {
@@ -62,6 +67,30 @@ const TechnicianDashboard = () => {
     loadCalendarEvents();
   }, [loadCalendarEvents, user?.id]);
 
+  useEffect(() => {
+    const loadMyProjects = async () => {
+      if (!user?.email) {
+        setMyProjectIds([]);
+        return;
+      }
+
+      try {
+        setMyProjectsLoading(true);
+        setMyProjectsError('');
+        const ids = await projectStakeholdersService.getInternalProjectIdsByEmail(user.email);
+        setMyProjectIds(ids);
+      } catch (error) {
+        console.error('Failed to load user projects', error);
+        setMyProjectsError(error.message || 'Unable to load your projects.');
+        setMyProjectIds([]);
+      } finally {
+        setMyProjectsLoading(false);
+      }
+    };
+
+    loadMyProjects();
+  }, [user?.email]);
+
   const handleConnectCalendar = useCallback(async () => {
     try {
       await login();
@@ -79,7 +108,12 @@ const TechnicianDashboard = () => {
     totalIssues: issues.length
   };
 
-  const recentProjects = projects.slice(0, 5);
+  const displayedProjects = useMemo(() => {
+    if (!showMyProjects) return projects;
+    if (!Array.isArray(myProjectIds) || myProjectIds.length === 0) return [];
+    const idSet = new Set(myProjectIds);
+    return projects.filter((project) => idSet.has(project.id));
+  }, [projects, showMyProjects, myProjectIds]);
   const recentIssues = issues.filter(i => i.status === 'open').slice(0, 5);
 
   if (projectsLoading || issuesLoading) {
@@ -200,27 +234,67 @@ const TechnicianDashboard = () => {
         </div>
       </div>
 
-      {/* Recent Projects */}
+      {/* Projects */}
       <div style={sectionStyles.card}>
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Recent Projects
-          </h2>
-          <Button
-            variant="primary"
-            size="sm"
-            icon={Plus}
-            onClick={() => navigate('/pm-dashboard')}
-          >
-            View All
-          </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {showMyProjects ? 'My Projects' : 'All Projects'}
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {showMyProjects ? 'Projects where you are listed as an internal stakeholder.' : 'Full project roster.'}
+            </p>
+          </div>
+          <div className="inline-flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-slate-900/60 p-1">
+            <button
+              type="button"
+              onClick={() => setShowMyProjects(true)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                showMyProjects
+                  ? 'bg-violet-500 text-white shadow'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-violet-500'
+              }`}
+            >
+              My Projects
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMyProjects(false)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                !showMyProjects
+                  ? 'bg-violet-500 text-white shadow'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-violet-500'
+              }`}
+            >
+              All Projects
+            </button>
+          </div>
         </div>
-        
-        {recentProjects.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No projects yet</p>
+
+        {showMyProjects && !user?.email && (
+          <p className="text-gray-500 dark:text-gray-400 text-sm">
+            Sign in with your Microsoft account to load your assigned projects.
+          </p>
+        )}
+
+        {showMyProjects && myProjectsLoading && (
+          <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <Loader className="w-4 h-4 animate-spin text-violet-500" />
+            <span>Loading your projects…</span>
+          </div>
+        )}
+
+        {myProjectsError && showMyProjects && (
+          <p className="text-sm text-rose-500">{myProjectsError}</p>
+        )}
+
+        {!myProjectsLoading && displayedProjects.length === 0 ? (
+          <p className="text-gray-500 text-center py-4 text-sm">
+            {showMyProjects ? 'You are not assigned to any projects yet.' : 'No projects available.'}
+          </p>
         ) : (
           <div className="space-y-3">
-            {recentProjects.map((project) => (
+            {displayedProjects.map((project) => (
               <div
                 key={project.id}
                 onClick={() => navigate(`/project/${project.id}`)}
@@ -237,7 +311,7 @@ const TechnicianDashboard = () => {
                     </p>
                   </div>
                   <span className={`px-2 py-1 text-xs rounded-full ${
-                    project.status === 'active' 
+                    project.status === 'active'
                       ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
                       : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
                   }`}>
