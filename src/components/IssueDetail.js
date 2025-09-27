@@ -40,6 +40,8 @@ const IssueDetail = () => {
   const [error, setError] = useState('');
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsText, setDetailsText] = useState('');
 
   const isNew = issueId === 'new';
 
@@ -57,6 +59,7 @@ const IssueDetail = () => {
         setIssue(issueData);
         setComments(commentsData);
         setTags(tagsData);
+        setDetailsText(String(issueData?.description ?? issueData?.notes ?? ''));
         // load photos
         const { data: photoData } = await supabase
           .from('issue_photos')
@@ -120,6 +123,25 @@ const IssueDetail = () => {
       navigate(`/project/${projectId}/issues/${created.id}`);
     } catch (e) {
       setError(e.message || 'Failed to create issue');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveDetails = async () => {
+    if (!issue?.id) return;
+    try {
+      setSaving(true);
+      const key = (issue && Object.prototype.hasOwnProperty.call(issue, 'description'))
+        ? 'description'
+        : (Object.prototype.hasOwnProperty.call(issue || {}, 'notes') ? 'notes' : 'description');
+      const updated = await issuesService.update(issue.id, { [key]: detailsText });
+      if (updated) {
+        setIssue(updated);
+        setEditingDetails(false);
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to save details');
     } finally {
       setSaving(false);
     }
@@ -309,12 +331,29 @@ const IssueDetail = () => {
       </section>
 
       {/* Details section */}
-      <section className="rounded-2xl border p-4 space-y-2" style={sectionStyles.card}>
-        <h3 className="text-sm font-semibold">Details</h3>
-        {issue?.description ? (
-          <p className={`text-sm ${ui.subtle}`}>{issue.description}</p>
+      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Details</h3>
+          {!editingDetails && (
+            <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
+          )}
+        </div>
+        {editingDetails ? (
+          <>
+            <textarea
+              rows={5}
+              value={detailsText}
+              onChange={(e) => setDetailsText(e.target.value)}
+              className={ui.input}
+              placeholder="Describe the issue…"
+            />
+            <div className="flex gap-2">
+              <Button variant="primary" size="sm" onClick={handleSaveDetails} loading={saving}>Save</Button>
+              <Button variant="secondary" size="sm" onClick={() => { setEditingDetails(false); setDetailsText(String(issue?.description ?? issue?.notes ?? '')); }} disabled={saving}>Cancel</Button>
+            </div>
+          </>
         ) : (
-          <p className={`text-sm ${ui.subtle}`}>No additional details provided.</p>
+          <p className={`text-sm ${ui.subtle}`}>{detailsText || 'No additional details provided.'}</p>
         )}
       </section>
 
