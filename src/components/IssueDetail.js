@@ -11,7 +11,7 @@ import {
   projectStakeholdersService
 } from '../services/supabaseService';
 import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
-import { ArrowLeft, Send, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, AlertTriangle, Image as ImageIcon } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -294,11 +294,10 @@ const IssueDetail = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
-      <section className="rounded-2xl border p-4 space-y-1" style={sectionStyles.card}>
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+        <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-lg font-semibold">{issue?.title}</div>
-            {issue?.description && <div className={`text-sm ${ui.subtle}`}>{issue.description}</div>}
             <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -328,10 +327,6 @@ const IssueDetail = () => {
             </Button>
           </div>
         </div>
-      </section>
-
-      {/* Details section */}
-      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Details</h3>
           {!editingDetails && (
@@ -452,7 +447,7 @@ const IssueDetail = () => {
             placeholder="Add a comment…"
             className={ui.input}
           />
-          <Button variant="primary" icon={Send} onClick={handleAddComment} disabled={saving || !commentText.trim()}>Send</Button>
+          <Button variant="primary" icon={Plus} onClick={handleAddComment} disabled={saving || !commentText.trim()}>Add</Button>
         </div>
       </section>
     </div>
