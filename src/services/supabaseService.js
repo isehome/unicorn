@@ -326,6 +326,118 @@ export const issuesService = {
   }
 };
 
+// Extra issue helpers
+issuesService.getById = async (id) => {
+  try {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('issues')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Failed to fetch issue:', error);
+    return null;
+  }
+};
+
+issuesService.update = async (id, updates) => {
+  try {
+    if (!supabase) throw new Error('Supabase not configured');
+    const { data, error } = await supabase
+      .from('issues')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    handleError(error, 'Failed to update issue');
+  }
+};
+
+// ============= ISSUE COMMENTS SERVICE =============
+export const issueCommentsService = {
+  async getForIssue(issueId) {
+    try {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from('issue_comments')
+        .select('*')
+        .eq('issue_id', issueId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Failed to fetch issue comments:', error);
+      return [];
+    }
+  },
+  async add(issueId, { author_id, author_name, author_email, comment_text, is_internal = true }) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const payload = { issue_id: issueId, author_id, author_name, author_email, comment_text, is_internal };
+      const { data, error } = await supabase
+        .from('issue_comments')
+        .insert([payload])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to add comment');
+    }
+  }
+};
+
+// ============= ISSUE STAKEHOLDER TAGS SERVICE =============
+export const issueStakeholderTagsService = {
+  async getDetailed(issueId) {
+    try {
+      if (!supabase) return [];
+      const { data, error } = await supabase
+        .from('issue_stakeholder_tags_detailed')
+        .select('*')
+        .eq('issue_id', issueId)
+        .order('tagged_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Failed to fetch issue stakeholder tags:', error);
+      return [];
+    }
+  },
+  async add(issueId, projectStakeholderId, tagType = 'assigned') {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const { data, error } = await supabase
+        .from('issue_stakeholder_tags')
+        .insert([{ issue_id: issueId, project_stakeholder_id: projectStakeholderId, tag_type: tagType }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to tag stakeholder');
+    }
+  },
+  async remove(tagId) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const { error } = await supabase
+        .from('issue_stakeholder_tags')
+        .delete()
+        .eq('id', tagId);
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to remove stakeholder tag');
+    }
+  }
+};
+
 // ============= CONTACTS SERVICE =============
 export const contactsService = {
   async getAll(filters = {}) {
