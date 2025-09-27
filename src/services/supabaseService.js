@@ -173,6 +173,27 @@ export const projectStakeholdersService = {
     }
   },
 
+  async updateAssignment(assignmentId, { contactId, roleId }) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      const updates = {};
+      if (contactId) updates.contact_id = contactId;
+      if (roleId) updates.stakeholder_role_id = roleId;
+      if (Object.keys(updates).length === 0) return null;
+
+      const { data, error } = await supabase
+        .from('project_stakeholders')
+        .update(updates)
+        .eq('id', assignmentId)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to update stakeholder assignment');
+    }
+  },
+
   async getInternalProjectIdsByEmail(email) {
     try {
       if (!supabase || !email) return [];

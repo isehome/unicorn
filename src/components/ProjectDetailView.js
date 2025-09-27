@@ -463,8 +463,12 @@ const ProjectDetailView = () => {
     const accentColor = category === 'internal' ? palette.info : palette.success;
     return (
       <div
-        className="rounded-2xl transition-transform duration-200 hover:-translate-y-0.5"
+        className="rounded-2xl transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
         style={{ ...styles.mutedCard, borderWidth: 1, borderStyle: 'solid', boxShadow: styles.innerShadow }}
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyUp={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle?.(); }}
       >
         <div className="p-4">
           <div className="flex items-start gap-3">
@@ -473,13 +477,9 @@ const ProjectDetailView = () => {
                 <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: accentColor }} />
                 <p className="text-sm font-medium" style={styles.textSecondary}>{person.role_name || 'Stakeholder'}</p>
               </div>
-              <button
-                onClick={onToggle}
-                className="text-left font-semibold tracking-tight"
-                style={{ ...styles.textPrimary, lineHeight: 1.35 }}
-              >
+              <div className="text-left font-semibold tracking-tight" style={{ ...styles.textPrimary, lineHeight: 1.35 }}>
                 {person.contact_name || person.name || 'Unassigned contact'}
-              </button>
+              </div>
             </div>
           </div>
         </div>
@@ -493,7 +493,7 @@ const ProjectDetailView = () => {
                 <div className="flex items-center gap-2">
                   <Mail size={14} style={styles.textSecondary} />
                   <button
-                    onClick={() => onContactAction?.('email', person.email)}
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('email', person.email); }}
                     className="hover:underline"
                     style={{ color: palette.info }}
                   >
@@ -505,7 +505,7 @@ const ProjectDetailView = () => {
                 <div className="flex items-center gap-2">
                   <Phone size={14} style={styles.textSecondary} />
                   <button
-                    onClick={() => onContactAction?.('phone', person.phone)}
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('phone', person.phone); }}
                     className="hover:underline"
                     style={{ color: palette.info }}
                   >
@@ -523,7 +523,7 @@ const ProjectDetailView = () => {
                 <div className="flex items-center gap-2">
                   <Map size={14} style={styles.textSecondary} />
                   <button
-                    onClick={() => onContactAction?.('address', person.address)}
+                    onClick={(e) => { e.stopPropagation(); onContactAction?.('address', person.address); }}
                     className="hover:underline text-left"
                     style={{ color: palette.info }}
                   >
@@ -540,8 +540,8 @@ const ProjectDetailView = () => {
                 </div>
               )}
               <div className="flex gap-2 pt-3">
-                <Button variant="primary" icon={Pencil} size="sm" onClick={() => onEdit?.(person)}>Edit</Button>
-                <Button variant="danger" icon={Trash2} size="sm" onClick={onRemove}>Delete</Button>
+                <Button variant="primary" icon={Pencil} size="sm" onClick={(e) => { e.stopPropagation(); onEdit?.(person); }}>Edit</Button>
+                <Button variant="danger" icon={Trash2} size="sm" onClick={(e) => { e.stopPropagation(); onRemove(); }}>Delete</Button>
               </div>
             </div>
           </div>
