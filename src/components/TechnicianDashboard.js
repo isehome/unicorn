@@ -6,11 +6,9 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { useProjects, useIssues } from '../hooks/useSupabase';
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
 import { projectStakeholdersService } from '../services/supabaseService';
+import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
-import {
-  Clock, CheckCircle, AlertCircle, Folder,
-  Loader, Calendar
-} from 'lucide-react';
+import { ListTodo, AlertTriangle, Loader, Calendar } from 'lucide-react';
 
 const TechnicianDashboard = () => {
   const navigate = useNavigate();
@@ -100,13 +98,37 @@ const TechnicianDashboard = () => {
     }
   }, [login]);
 
-  // Calculate stats
-  const stats = {
-    activeProjects: projects.filter(p => p.status === 'active').length,
-    totalProjects: projects.length,
-    openIssues: issues.filter(i => i.status === 'open').length,
-    totalIssues: issues.length
-  };
+  // My-projects counts for Todos and Issues
+  const [todoCounts, setTodoCounts] = useState({ open: 0, total: 0, loading: true });
+  const [issueCounts, setIssueCounts] = useState({ open: 0, blocked: 0, total: 0, loading: true });
+  const loadMyCounts = useCallback(async () => {
+    if (!Array.isArray(myProjectIds) || myProjectIds.length === 0) {
+      setTodoCounts({ open: 0, total: 0, loading: false });
+      setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
+      return;
+    }
+    try {
+      setTodoCounts(prev => ({ ...prev, loading: true }));
+      setIssueCounts(prev => ({ ...prev, loading: true }));
+      const [todosRes, issuesRes] = await Promise.all([
+        supabase.from('project_todos').select('id,is_complete,project_id').in('project_id', myProjectIds),
+        supabase.from('issues').select('id,status,project_id').in('project_id', myProjectIds)
+      ]);
+      const todos = Array.isArray(todosRes?.data) ? todosRes.data : [];
+      const issuesAll = Array.isArray(issuesRes?.data) ? issuesRes.data : [];
+      setTodoCounts({ open: todos.filter(t => !t.is_complete).length, total: todos.length, loading: false });
+      setIssueCounts({
+        open: issuesAll.filter(i => (i.status || '').toLowerCase() === 'open').length,
+        blocked: issuesAll.filter(i => (i.status || '').toLowerCase() === 'blocked').length,
+        total: issuesAll.length,
+        loading: false
+      });
+    } catch (_) {
+      setTodoCounts({ open: 0, total: 0, loading: false });
+      setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
+    }
+  }, [myProjectIds]);
+  useEffect(() => { loadMyCounts(); }, [loadMyCounts]);
 
   const displayedProjects = useMemo(() => {
     if (!showMyProjects) return projects;
@@ -191,46 +213,29 @@ const TechnicianDashboard = () => {
           </div>
         )}
       </div>
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div style={sectionStyles.card} className="text-center">
-          <Folder className="w-8 h-8 text-violet-600 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {stats.activeProjects}
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Active Projects
-          </p>
+      {/* My-projects counters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div style={sectionStyles.card} className="flex items-center justify-between p-4 rounded-2xl border">
+          <div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">To-do Items</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              {todoCounts.open}
+              <span className="text-sm font-medium ml-2 text-gray-600 dark:text-gray-400">open</span>
+              <span className="text-sm font-medium ml-2 text-gray-600 dark:text-gray-400">/ {todoCounts.total} total</span>
+            </div>
+          </div>
+          <ListTodo className="w-8 h-8 text-violet-600" />
         </div>
-        
-        <div style={sectionStyles.card} className="text-center">
-          <AlertCircle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {stats.openIssues}
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Open Issues
-          </p>
-        </div>
-        
-        <div style={sectionStyles.card} className="text-center">
-          <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {stats.totalProjects - stats.activeProjects}
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Completed
-          </p>
-        </div>
-        
-        <div style={sectionStyles.card} className="text-center">
-          <Clock className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">
-            {stats.totalProjects}
-          </p>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Total Projects
-          </p>
+        <div style={sectionStyles.card} className="flex items-center justify-between p-4 rounded-2xl border">
+          <div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+              {issueCounts.blocked}
+              <span className="text-sm font-medium ml-2 text-amber-600 dark:text-amber-400">blocked</span>
+              <span className="text-sm font-medium ml-3 text-gray-600 dark:text-gray-400">• {issueCounts.open} open</span>
+            </div>
+          </div>
+          <AlertTriangle className="w-8 h-8 text-amber-500" />
         </div>
       </div>
 
