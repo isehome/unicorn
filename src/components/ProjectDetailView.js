@@ -115,11 +115,6 @@ const ProjectDetailView = () => {
         borderRadius: sectionStyles.card.borderRadius,
         color: textPrimary
       },
-      header: {
-        background: sectionStyles.header.background,
-        borderBottom: sectionStyles.header.borderBottom,
-        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)'
-      },
       badge: {
         backgroundColor: mode === 'dark' ? 'rgba(129, 140, 248, 0.2)' : 'rgba(129, 140, 248, 0.18)',
         color: mode === 'dark' ? '#E0E7FF' : '#4338CA'
@@ -132,13 +127,6 @@ const ProjectDetailView = () => {
         backgroundColor: mutedBackground,
         borderColor,
         color: textPrimary
-      },
-      bottomBar: {
-        backgroundColor: cardBackground,
-        borderTop: `1px solid ${borderColor}`,
-        boxShadow: mode === 'dark'
-          ? '0 -12px 32px rgba(2, 6, 23, 0.65)'
-          : '0 -10px 30px rgba(15, 23, 42, 0.1)'
       },
       innerShadow: mode === 'dark'
         ? 'inset 0 1px 0 rgba(255, 255, 255, 0.04)'
@@ -471,7 +459,7 @@ const ProjectDetailView = () => {
     }
   }, []);
 
-  const StakeholderCard = ({ person, category, isExpanded, onToggle, onRemove, onContactAction }) => {
+  const StakeholderCard = ({ person, category, isExpanded, onToggle, onRemove, onEdit, onContactAction }) => {
     const accentColor = category === 'internal' ? palette.info : palette.success;
     return (
       <div
@@ -552,8 +540,8 @@ const ProjectDetailView = () => {
                 </div>
               )}
               <div className="flex gap-2 pt-3">
+                <Button variant="primary" icon={Pencil} size="sm" onClick={() => onEdit?.(person)}>Edit</Button>
                 <Button variant="danger" icon={Trash2} size="sm" onClick={onRemove}>Delete</Button>
-                <Button variant="primary" icon={Pencil} size="sm" onClick={() => onContactAction?.('edit', person)}>Edit</Button>
               </div>
             </div>
           </div>
@@ -932,13 +920,6 @@ const ProjectDetailView = () => {
     }
   };
 
-  const handleSearch = () => {
-    const query = window.prompt('Search for:');
-    if (query) {
-      navigate(`/wire-drops?search=${encodeURIComponent(query)}`);
-    }
-  };
-
   const handleNewIssue = () => {
     navigate(`/project/${id}/issues/new`);
   };
@@ -980,25 +961,8 @@ const ProjectDetailView = () => {
   }
 
   return (
-    <div className={`min-h-screen pb-28 transition-colors duration-300 ${pageClasses}`}>
-      <div style={styles.header} className="sticky top-0 z-30 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate(-1)}
-            icon={ArrowLeft}
-          >
-            Back
-          </Button>
-          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">Field Manager</div>
-          <div className="text-[10px] font-semibold tracking-[0.3em] uppercase text-right text-violet-600 dark:text-violet-300">
-            Intelligent<br />Systems
-          </div>
-        </div>
-      </div>
-
-      <div className="p-4 space-y-4 max-w-5xl mx-auto">
+    <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
+      <div className="px-4 pt-2 pb-8 space-y-4 max-w-5xl mx-auto">
         <div className="rounded-2xl overflow-hidden border relative" style={{ ...styles.card, boxShadow: styles.card.boxShadow }}>
           <div className="relative h-16">
             <div
@@ -1367,6 +1331,7 @@ const ProjectDetailView = () => {
                           isExpanded={expandedContact === cardKey}
                           onToggle={() => handleToggleContact(cardKey)}
                           onRemove={() => handleRemoveStakeholder(assignmentId, cardKey, person?.contact_name || person?.name)}
+                          onEdit={() => handleEditStakeholder(person)}
                           onContactAction={handleContactAction}
                         />
                       );
@@ -1399,6 +1364,7 @@ const ProjectDetailView = () => {
                           isExpanded={expandedContact === cardKey}
                           onToggle={() => handleToggleContact(cardKey)}
                           onRemove={() => handleRemoveStakeholder(assignmentId, cardKey, person?.contact_name || person?.name)}
+                          onEdit={() => handleEditStakeholder(person)}
                           onContactAction={handleContactAction}
                         />
                       );
@@ -1462,24 +1428,6 @@ const ProjectDetailView = () => {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-4 flex gap-2 border-t" style={styles.bottomBar}>
-        <Button
-          variant="secondary"
-          fullWidth
-          icon={Search}
-          onClick={handleSearch}
-        >
-          Search
-        </Button>
-        <Button
-          variant="primary"
-          fullWidth
-          icon={Plus}
-          onClick={handleNewIssue}
-        >
-          New Issue
-        </Button>
-      </div>
     </div>
   );
 };
