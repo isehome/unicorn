@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import TechnicianDashboard from './components/TechnicianDashboard';
 import PMDashboard from './components/PMDashboard';
 import ProjectDetailView from './components/ProjectDetailView';
@@ -18,6 +18,7 @@ import './index.css';
 const AppRoutes = () => {
   const location = useLocation();
   const hideChrome = ['/login', '/auth/callback'].includes(location.pathname);
+  const { loading } = useAuth();
 
   return (
     <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300 ${hideChrome ? '' : 'pb-20'}`}>
@@ -78,6 +79,15 @@ const AppRoutes = () => {
         </Routes>
       </main>
       {!hideChrome && <BottomNavigation />}
+
+      {loading && (
+        <div className="fixed inset-0 z-[60] bg-white/70 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center">
+          <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <span className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            <span>Signing you in…</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,11 +1,14 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function AuthCallback() {
   const navigate = useNavigate()
+  const ranRef = useRef(false)
 
   useEffect(() => {
+    if (ranRef.current) return
+    ranRef.current = true
     const run = async () => {
       try {
         // First check if a session already exists
