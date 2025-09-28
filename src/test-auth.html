@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Auth Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #7c3aed;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Auth Configuration Test</h1>
+    
+    <div id="env-check"></div>
+    <div id="supabase-check"></div>
+    <div id="session-check"></div>
+    
+    <button id="test-login" onclick="testLogin()">Test Sign In Flow</button>
+    <button id="check-session" onclick="checkSession()">Check Current Session</button>
+    <button id="clear-storage" onclick="clearStorage()">Clear Local Storage</button>
+    
+    <div id="results"></div>
+    
+    <script type="module">
+        // Check environment variables
+        const envCheck = document.getElementById('env-check');
+        const supabaseUrl = process.env?.REACT_APP_SUPABASE_URL || window.REACT_APP_SUPABASE_URL || '';
+        const supabaseKey = process.env?.REACT_APP_SUPABASE_ANON_KEY || window.REACT_APP_SUPABASE_ANON_KEY || '';
+        
+        if (!supabaseUrl || !supabaseKey) {
+            envCheck.innerHTML = '<div class="status error">❌ Environment variables not set. Check your .env file and ensure it contains REACT_APP_SUPABASE_URL and REACT_APP_SUPABASE_ANON_KEY</div>';
+        } else if (supabaseUrl.includes('your_supabase_project_url_here')) {
+            envCheck.innerHTML = '<div class="status warning">⚠️ Using placeholder Supabase URL. Update .env with your actual Supabase project URL.</div>';
+        } else {
+            envCheck.innerHTML = `<div class="status success">✅ Environment variables set<br>URL: ${supabaseUrl}</div>`;
+        }
+        
+        // Test direct Supabase connection
+        window.testLogin = async function() {
+            const btn = document.getElementById('test-login');
+            const results = document.getElementById('results');
+            
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            
+            results.innerHTML = '<div class="status warning">Testing OAuth flow... If successful, browser will redirect to Microsoft.</div>';
+            
+            // Simulate the OAuth call
+            try {
+                const redirectUrl = `${window.location.origin}/auth/callback`;
+                results.innerHTML += `<div class="status">Redirect URL: ${redirectUrl}</div>`;
+                results.innerHTML += '<div class="status success">✅ If this were the real OAuth flow, the browser would now redirect to Microsoft sign-in.</div>';
+                results.innerHTML += '<div class="status">Check the browser console for any errors.</div>';
+            } catch (error) {
+                results.innerHTML += `<div class="status error">❌ Error: ${error.message}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Test Sign In Flow';
+            }
+        };
+        
+        window.checkSession = function() {
+            const results = document.getElementById('results');
+            const sessionData = localStorage.getItem('supabase.auth.token');
+            
+            if (sessionData) {
+                try {
+                    const parsed = JSON.parse(sessionData);
+                    results.innerHTML = `<div class="status success">✅ Session found in localStorage</div>`;
+                    results.innerHTML += `<pre>${JSON.stringify(parsed, null, 2)}</pre>`;
+                } catch (e) {
+                    results.innerHTML = `<div class="status error">❌ Session data is corrupted</div>`;
+                }
+            } else {
+                results.innerHTML = `<div class="status warning">⚠️ No session found in localStorage</div>`;
+            }
+        };
+        
+        window.clearStorage = function() {
+            localStorage.clear();
+            sessionStorage.clear();
+            document.getElementById('results').innerHTML = '<div class="status success">✅ Local and session storage cleared. Refresh the page to test sign-in again.</div>';
+        };
+        
+        // Check for auth callback params
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('code') || urlParams.has('error')) {
+            document.getElementById('results').innerHTML = '<div class="status warning">⚠️ Auth callback parameters detected in URL. This page would normally exchange the code for a session.</div>';
+        }
+    </script>
+</body>
+</html>
