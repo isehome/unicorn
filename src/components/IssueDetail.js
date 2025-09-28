@@ -115,24 +115,27 @@ const IssueDetail = () => {
     try {
       setSaving(true);
       setError('');
+      const ownerMatch = user?.email
+        ? availableProjectStakeholders.find(p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase())
+        : null;
+      const assignedTo = ownerMatch && typeof ownerMatch.profile_id === 'string'
+        ? ownerMatch.profile_id
+        : null;
       const payload = {
         project_id: projectId,
         title,
         description: detailsText,
         priority: newPriority,
         status: 'open',
-        assigned_to: user?.id || null,
+        assigned_to: assignedTo,
         created_by: user?.id || null,
         due_date: newDueDate || null
       };
       const created = await issuesService.create(payload);
 
       // Auto-tag creator as owner if they exist as project stakeholder
-      if (created?.id && user?.email && availableProjectStakeholders.length) {
-        const match = availableProjectStakeholders.find(p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase());
-        if (match?.assignment_id) {
-          try { await issueStakeholderTagsService.add(created.id, match.assignment_id, 'owner'); } catch (_) {}
-        }
+      if (created?.id && ownerMatch?.assignment_id) {
+        try { await issueStakeholderTagsService.add(created.id, ownerMatch.assignment_id, 'owner'); } catch (_) {}
       }
 
       navigate(`/project/${projectId}/issues/${created.id}`);
