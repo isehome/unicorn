@@ -182,17 +182,6 @@ const IssueDetail = () => {
     }
   };
 
-  const handleToggleBlocked = async () => {
-    if (!issue?.id) return;
-    try {
-      const next = (issue.status || '').toLowerCase() === 'blocked' ? 'open' : 'blocked';
-      const updated = await issuesService.update(issue.id, { status: next });
-      if (updated) setIssue(updated);
-    } catch (e) {
-      setError(e.message || 'Failed to update status');
-    }
-  };
-
   const handleUploadPhoto = async (evt) => {
     const file = evt.target.files?.[0];
     if (!file || !issue?.id) return;
@@ -295,37 +284,9 @@ const IssueDetail = () => {
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-lg font-semibold">{issue?.title}</div>
-            <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'}</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <select
-              value={(issue?.status || 'open')}
-              onChange={async (e) => {
-                try {
-                  const updated = await issuesService.update(issue.id, { status: e.target.value });
-                  if (updated) setIssue(updated);
-                } catch (err) {
-                  setError(err.message || 'Failed to update status');
-                }
-              }}
-              className={ui.select}
-            >
-              <option value="open">Open</option>
-              <option value="blocked">Blocked</option>
-              <option value="resolved">Resolved</option>
-            </select>
-            <Button
-              size="sm"
-              variant={(issue?.status || '').toLowerCase() === 'blocked' ? 'warning' : 'secondary'}
-              icon={AlertTriangle}
-              onClick={handleToggleBlocked}
-            >
-              {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
-            </Button>
-          </div>
+        <div>
+          <div className="text-lg font-semibold">{issue?.title}</div>
+          <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'}</div>
         </div>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Details</h3>
