@@ -91,6 +91,8 @@ const IssueDetail = () => {
         setNewTitle('');
         setNewPriority('medium');
         setNewDueDate('');
+        setCommentText('');
+        setEditingDetails(false);
       }
     } catch (e) {
       setError(e.message || 'Failed to load issue');
@@ -257,50 +259,102 @@ const IssueDetail = () => {
     );
   }
 
-  if (isNew) {
-    return (
-      <form onSubmit={handleCreate} className="max-w-4xl mx-auto p-4 space-y-4">
-        <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
-          <div>
-            <label className="block text-sm mb-1">Title</label>
-            <input
-              value={newTitle}
-              onChange={(e) => setNewTitle(e.target.value)}
-              placeholder="Issue title"
-              className={ui.input}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  const content = (
+    <>
+      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+        {isNew ? (
+          <div className="space-y-3">
             <div>
-              <label className="block text-sm mb-1">Priority</label>
-              <select
-                value={newPriority}
-                onChange={(e) => setNewPriority(e.target.value)}
-                className={ui.select}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm mb-1">Due date</label>
+              <label className="block text-sm mb-1">Title</label>
               <input
-                type="date"
-                value={newDueDate}
-                onChange={(e) => setNewDueDate(e.target.value)}
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="Issue title"
                 className={ui.input}
+                required
               />
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm mb-1">Priority</label>
+                <select
+                  value={newPriority}
+                  onChange={(e) => setNewPriority(e.target.value)}
+                  className={ui.select}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-1">Due date</label>
+                <input
+                  type="date"
+                  value={newDueDate}
+                  onChange={(e) => setNewDueDate(e.target.value)}
+                  className={ui.input}
+                />
+              </div>
+            </div>
           </div>
-        </section>
-
-        <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Details</h3>
+        ) : (
+          <div>
+            <div className="text-lg font-semibold">{issue?.title}</div>
+            <div className={`text-xs ${ui.subtle}`}>
+              Priority: {issue?.priority || '—'} • Status: {(issue?.status || 'open').toUpperCase()}
+            </div>
           </div>
+        )}
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Details</h3>
+          {isNew ? (
+            <span className={`text-xs ${ui.subtle}`}>Provide context for this issue.</span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Button
+                variant={issue?.is_blocked ? 'danger' : 'secondary'}
+                size="sm"
+                icon={AlertTriangle}
+                onClick={async () => {
+                  const next = !issue?.is_blocked;
+                  try {
+                    const updated = await issuesService.update(issue.id, { is_blocked: next });
+                    if (updated) setIssue(prev => ({ ...prev, is_blocked: next }));
+                  } catch (_) {
+                    const fallback = next ? 'blocked' : 'open';
+                    try {
+                      const updated = await issuesService.update(issue.id, { status: fallback });
+                      if (updated) setIssue(prev => ({ ...prev, status: fallback }));
+                    } catch (err) {}
+                  }
+                }}
+              >
+                {issue?.is_blocked ? 'Unblock' : 'Mark Blocked'}
+              </Button>
+              <Button
+                variant={(issue?.status || '').toLowerCase() === 'resolved' ? 'success' : 'secondary'}
+                size="sm"
+                icon={CheckCircle}
+                onClick={async () => {
+                  const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
+                  const nextStatus = isResolved ? 'open' : 'resolved';
+                  try {
+                    const updated = await issuesService.update(issue.id, { status: nextStatus, is_blocked: false });
+                    if (updated) setIssue(prev => ({ ...prev, status: nextStatus, is_blocked: false }));
+                  } catch (err) {}
+                }}
+              >
+                {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
+              </Button>
+              {!editingDetails && (
+                <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
+              )}
+            </div>
+          )}
+        </div>
+        {isNew ? (
           <textarea
             rows={6}
             value={detailsText}
@@ -308,81 +362,7 @@ const IssueDetail = () => {
             className={ui.input}
             placeholder="Describe the issue…"
           />
-        </section>
-
-        <section className="rounded-2xl border p-4" style={sectionStyles.card}>
-          <div className={`text-sm ${ui.subtle}`}>
-            Add photos, stakeholders, and comments after creating the issue.
-          </div>
-        </section>
-
-        <div className="flex items-center justify-between">
-          {error ? <div className="text-sm text-rose-500">{error}</div> : <span />}
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => navigate(-1)} disabled={saving}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" icon={Plus} loading={saving}>
-              Create Issue
-            </Button>
-          </div>
-        </div>
-      </form>
-    );
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
-      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
-        <div>
-          <div className="text-lg font-semibold">{issue?.title}</div>
-          <div className={`text-xs ${ui.subtle}`}>Priority: {issue?.priority || '—'}</div>
-        </div>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Details</h3>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={issue?.is_blocked ? 'danger' : 'secondary'}
-              size="sm"
-              icon={AlertTriangle}
-              onClick={async () => {
-                const next = !issue?.is_blocked;
-                try {
-                  const updated = await issuesService.update(issue.id, { is_blocked: next });
-                  if (updated) setIssue(prev => ({ ...prev, is_blocked: next }));
-                } catch (_) {
-                  // fallback via status when is_blocked column missing
-                  const fallback = next ? 'blocked' : 'open';
-                  try {
-                    const updated = await issuesService.update(issue.id, { status: fallback });
-                    if (updated) setIssue(prev => ({ ...prev, status: fallback }));
-                  } catch (err) {}
-                }
-              }}
-            >
-              {issue?.is_blocked ? 'Unblock' : 'Mark Blocked'}
-            </Button>
-            <Button
-              variant={(issue?.status || '').toLowerCase() === 'resolved' ? 'success' : 'secondary'}
-              size="sm"
-              icon={CheckCircle}
-              onClick={async () => {
-                const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
-                const nextStatus = isResolved ? 'open' : 'resolved';
-                try {
-                  const updated = await issuesService.update(issue.id, { status: nextStatus, is_blocked: false });
-                  if (updated) setIssue(prev => ({ ...prev, status: nextStatus, is_blocked: false }));
-                } catch (err) {}
-              }}
-            >
-              {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
-            </Button>
-            {!editingDetails && (
-              <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
-            )}
-          </div>
-        </div>
-        {editingDetails ? (
+        ) : editingDetails ? (
           <>
             <textarea
               rows={5}
@@ -404,12 +384,22 @@ const IssueDetail = () => {
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Photos</h3>
-          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
-            <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} />
-            <span className={`px-3 py-1.5 rounded-lg border ${ui.subtle}`}>Upload</span>
+          <label className={`inline-flex items-center gap-2 text-sm ${isNew ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleUploadPhoto}
+              disabled={isNew}
+            />
+            <span className={`px-3 py-1.5 rounded-lg border ${ui.subtle}`}>
+              {isNew ? 'Upload after save' : 'Upload'}
+            </span>
           </label>
         </div>
-        {photos.length === 0 ? (
+        {isNew ? (
+          <div className={`text-sm ${ui.subtle}`}>Add photos after creating the issue.</div>
+        ) : photos.length === 0 ? (
           <div className={`text-sm ${ui.subtle} flex items-center gap-2`}>
             <ImageIcon size={16} /> No photos yet.
           </div>
@@ -423,7 +413,7 @@ const IssueDetail = () => {
           </div>
         )}
         {uploading && <div className={`text-xs ${ui.subtle}`}>Uploading…</div>}
-        {error && <div className="text-xs text-rose-500">{error}</div>}
+        {!isNew && error && <div className="text-xs text-rose-500">{error}</div>}
       </section>
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
@@ -432,7 +422,7 @@ const IssueDetail = () => {
           <div className="flex items-center gap-2">
             <div className="relative">
               <select
-                disabled={tagging}
+                disabled={tagging || isNew}
                 onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value=''; } }}
                 className={ui.select}
                 defaultValue=""
@@ -447,7 +437,9 @@ const IssueDetail = () => {
             </div>
           </div>
         </div>
-        {tags.length === 0 ? (
+        {isNew ? (
+          <div className={`text-sm ${ui.subtle}`}>Add stakeholders after creating the issue.</div>
+        ) : tags.length === 0 ? (
           <div className="text-sm text-gray-600 dark:text-gray-300">No stakeholders tagged.</div>
         ) : (
           <div className="space-y-2">
@@ -476,7 +468,9 @@ const IssueDetail = () => {
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <h3 className="text-sm font-semibold">Comments</h3>
-        {comments.length === 0 ? (
+        {isNew ? (
+          <div className={`text-sm ${ui.subtle}`}>Comments will be available after the issue is created.</div>
+        ) : comments.length === 0 ? (
           <div className="text-sm text-gray-600 dark:text-gray-300">No comments yet.</div>
         ) : (
           <div className="space-y-2">
@@ -493,12 +487,48 @@ const IssueDetail = () => {
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment…"
+            placeholder={isNew ? 'Create the issue to add comments.' : 'Add a comment…'}
             className={ui.input}
+            disabled={isNew}
           />
-          <Button variant="primary" icon={Plus} onClick={handleAddComment} disabled={saving || !commentText.trim()}>Add</Button>
+          <Button
+            variant="primary"
+            icon={Plus}
+            onClick={handleAddComment}
+            disabled={isNew || saving || !commentText.trim()}
+          >
+            Add
+          </Button>
         </div>
       </section>
+
+      {isNew && (
+        <div className="flex items-center justify-between">
+          {error ? <div className="text-sm text-rose-500">{error}</div> : <span />}
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => navigate(-1)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" icon={Plus} loading={saving}>
+              Create Issue
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (isNew) {
+    return (
+      <form onSubmit={handleCreate} className="max-w-4xl mx-auto p-4 space-y-4">
+        {content}
+      </form>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-4 space-y-4">
+      {content}
     </div>
   );
 };
