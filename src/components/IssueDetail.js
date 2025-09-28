@@ -42,6 +42,9 @@ const IssueDetail = () => {
   const [uploading, setUploading] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
   const [detailsText, setDetailsText] = useState('');
+  const [newTitle, setNewTitle] = useState('');
+  const [newPriority, setNewPriority] = useState('medium');
+  const [newDueDate, setNewDueDate] = useState('');
 
   const isNew = issueId === 'new';
 
@@ -80,6 +83,14 @@ const IssueDetail = () => {
           ...(projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }))
         ];
         setAvailableProjectStakeholders(combined);
+        setIssue(null);
+        setComments([]);
+        setTags([]);
+        setPhotos([]);
+        setDetailsText('');
+        setNewTitle('');
+        setNewPriority('medium');
+        setNewDueDate('');
       }
     } catch (e) {
       setError(e.message || 'Failed to load issue');
@@ -93,22 +104,24 @@ const IssueDetail = () => {
   }, [loadData]);
 
   const handleCreate = async (evt) => {
-    evt.preventDefault();
-    const form = new FormData(evt.currentTarget);
-    const title = String(form.get('title') || '').trim();
-    if (!title) return;
+    if (evt) evt.preventDefault();
+    const title = newTitle.trim();
+    if (!title) {
+      setError('A title is required.');
+      return;
+    }
     try {
       setSaving(true);
       setError('');
       const payload = {
         project_id: projectId,
         title,
-        description: String(form.get('description') || ''),
-        priority: String(form.get('priority') || 'medium'),
+        description: detailsText,
+        priority: newPriority,
         status: 'open',
         assigned_to: user?.id || null,
         created_by: user?.id || null,
-        due_date: form.get('due_date') || null
+        due_date: newDueDate || null
       };
       const created = await issuesService.create(payload);
 
@@ -246,38 +259,75 @@ const IssueDetail = () => {
 
   if (isNew) {
     return (
-      <div className="max-w-3xl mx-auto p-4 space-y-4">
-        <form onSubmit={handleCreate} className="rounded-2xl border p-4" style={sectionStyles.card}>
-          <div className="grid gap-3">
+      <form onSubmit={handleCreate} className="max-w-4xl mx-auto p-4 space-y-4">
+        <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
+          <div>
+            <label className="block text-sm mb-1">Title</label>
+            <input
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Issue title"
+              className={ui.input}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm mb-1">Title</label>
-              <input name="title" required className={ui.input} />
+              <label className="block text-sm mb-1">Priority</label>
+              <select
+                value={newPriority}
+                onChange={(e) => setNewPriority(e.target.value)}
+                className={ui.select}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="critical">Critical</option>
+              </select>
             </div>
             <div>
-              <label className="block text-sm mb-1">Description</label>
-              <textarea name="description" rows="4" className={ui.input} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm mb-1">Priority</label>
-                <select name="priority" defaultValue="medium" className={ui.select}>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="critical">Critical</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm mb-1">Due date</label>
-                <input type="date" name="due_date" className={ui.input} />
-              </div>
-            </div>
-            <div className="pt-2">
-              <Button type="submit" variant="primary" loading={saving}>Create</Button>
+              <label className="block text-sm mb-1">Due date</label>
+              <input
+                type="date"
+                value={newDueDate}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                className={ui.input}
+              />
             </div>
           </div>
-        </form>
-      </div>
+        </section>
+
+        <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Details</h3>
+          </div>
+          <textarea
+            rows={6}
+            value={detailsText}
+            onChange={(e) => setDetailsText(e.target.value)}
+            className={ui.input}
+            placeholder="Describe the issue…"
+          />
+        </section>
+
+        <section className="rounded-2xl border p-4" style={sectionStyles.card}>
+          <div className={`text-sm ${ui.subtle}`}>
+            Add photos, stakeholders, and comments after creating the issue.
+          </div>
+        </section>
+
+        <div className="flex items-center justify-between">
+          {error ? <div className="text-sm text-rose-500">{error}</div> : <span />}
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => navigate(-1)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" icon={Plus} loading={saving}>
+              Create Issue
+            </Button>
+          </div>
+        </div>
+      </form>
     );
   }
 
