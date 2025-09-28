@@ -118,9 +118,20 @@ const IssueDetail = () => {
       const ownerMatch = user?.email
         ? availableProjectStakeholders.find(p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase())
         : null;
-      const assignedTo = ownerMatch && typeof ownerMatch.profile_id === 'string'
-        ? ownerMatch.profile_id
-        : null;
+      let creatorProfileId = null;
+      if (user?.id) {
+        try {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (profileRow?.id) creatorProfileId = profileRow.id;
+        } catch (_) {
+          creatorProfileId = null;
+        }
+      }
+      const assignedTo = ownerMatch?.profile_id || creatorProfileId || null;
       const payload = {
         project_id: projectId,
         title,
@@ -128,7 +139,7 @@ const IssueDetail = () => {
         priority: newPriority,
         status: 'open',
         assigned_to: assignedTo,
-        created_by: user?.id || null,
+        created_by: creatorProfileId,
         due_date: newDueDate || null
       };
       const created = await issuesService.create(payload);
