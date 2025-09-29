@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Debug</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5558e3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Authentication Debug Tool</h1>
+    
+    <div class="section">
+        <h2>1. Environment Check</h2>
+        <div id="env-check"></div>
+    </div>
+    
+    <div class="section">
+        <h2>2. URL Analysis</h2>
+        <div id="url-analysis"></div>
+    </div>
+    
+    <div class="section">
+        <h2>3. Supabase Connection</h2>
+        <div id="supabase-check"></div>
+    </div>
+    
+    <div class="section">
+        <h2>4. Session Status</h2>
+        <div id="session-status"></div>
+        <button onclick="checkSession()">Check Session</button>
+        <button onclick="clearSession()">Clear Session</button>
+    </div>
+    
+    <div class="section">
+        <h2>5. Auth Code Exchange</h2>
+        <div id="exchange-status"></div>
+        <button onclick="tryExchange()">Try Exchange Code</button>
+    </div>
+    
+    <div class="section">
+        <h2>6. Console Logs</h2>
+        <pre id="console-logs"></pre>
+    </div>
+
+    <script>
+        let logs = [];
+        let supabase = null;
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toISOString();
+            logs.push(`[${timestamp}] ${type.toUpperCase()}: ${message}`);
+            document.getElementById('console-logs').textContent = logs.join('\n');
+        }
+        
+        function addStatus(elementId, message, className) {
+            const element = document.getElementById(elementId);
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${className}`;
+            statusDiv.textContent = message;
+            element.appendChild(statusDiv);
+        }
+        
+        // 1. Check environment variables
+        async function checkEnvironment() {
+            addLog('Checking environment configuration...');
+            
+            // Try to get env vars from parent window if in iframe
+            let supabaseUrl = null;
+            let supabaseAnonKey = null;
+            
+            try {
+                // Check localStorage for saved config
+                const savedConfig = localStorage.getItem('supabase.auth.token');
+                if (savedConfig) {
+                    addStatus('env-check', '✓ Found saved auth token in localStorage', 'info');
+                    addLog('Found saved auth token');
+                }
+                
+                // You'll need to manually set these for testing
+                // Get from your .env file
+                supabaseUrl = prompt('Enter REACT_APP_SUPABASE_URL:');
+                supabaseAnonKey = prompt('Enter REACT_APP_SUPABASE_ANON_KEY:');
+                
+                if (!supabaseUrl || !supabaseAnonKey) {
+                    addStatus('env-check', '✗ Missing Supabase configuration', 'error');
+                    addLog('Missing configuration', 'error');
+                    return false;
+                }
+                
+                if (supabaseUrl.includes('your_supabase_project_url_here')) {
+                    addStatus('env-check', '✗ Using placeholder URL', 'error');
+                    addLog('Placeholder URL detected', 'error');
+                    return false;
+                }
+                
+                addStatus('env-check', `✓ URL: ${supabaseUrl}`, 'success');
+                addStatus('env-check', `✓ Key: ${supabaseAnonKey.substring(0, 20)}...`, 'success');
+                addLog('Environment configured');
+                
+                // Initialize Supabase
+                const { createClient } = window.supabase;
+                supabase = createClient(supabaseUrl, supabaseAnonKey, {
+                    auth: {
+                        flowType: 'pkce',
+                        autoRefreshToken: true,
+                        detectSessionInUrl: true,
+                        persistSession: true,
+                        storageKey: 'supabase.auth.token',
+                        storage: window.localStorage
+                    }
+                });
+                
+                addLog('Supabase client initialized');
+                return true;
+            } catch (error) {
+                addStatus('env-check', `✗ Error: ${error.message}`, 'error');
+                addLog(`Environment check failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        // 2. Analyze current URL
+        function analyzeUrl() {
+            addLog('Analyzing current URL...');
+            const url = window.location.href;
+            const params = new URLSearchParams(window.location.search);
+            const hash = window.location.hash;
+            
+            addStatus('url-analysis', `Current URL: ${url}`, 'info');
+            
+            // Check for OAuth code
+            const code = params.get('code');
+            if (code) {
+                addStatus('url-analysis', `✓ Found auth code: ${code.substring(0, 10)}...`, 'success');
+                addLog('Auth code found in URL');
+            } else {
+                addStatus('url-analysis', '✗ No auth code in URL', 'warning');
+                addLog('No auth code in URL', 'warning');
+            }
+            
+            // Check for error
+            const error = params.get('error');
+            if (error) {
+                addStatus('url-analysis', `✗ Error in URL: ${error}`, 'error');
+                addLog(`URL error: ${error}`, 'error');
+                
+                const errorDesc = params.get('error_description');
+                if (errorDesc) {
+                    addStatus('url-analysis', `Description: ${errorDesc}`, 'error');
+                    addLog(`Error description: ${errorDesc}`, 'error');
+                }
+            }
+            
+            // Check hash for tokens
+            if (hash) {
+                addStatus('url-analysis', `Hash fragment: ${hash}`, 'info');
+                if (hash.includes('access_token')) {
+                    addStatus('url-analysis', '✓ Found access token in hash', 'success');
+                    addLog('Access token found in hash');
+                }
+            }
+        }
+        
+        // 3. Test Supabase connection
+        async function testSupabase() {
+            if (!supabase) {
+                addStatus('supabase-check', '✗ Supabase client not initialized', 'error');
+                addLog('Supabase not initialized', 'error');
+                return;
+            }
+            
+            addLog('Testing Supabase connection...');
+            
+            try {
+                // Try to make a simple request
+                const { data, error } = await supabase.auth.getSession();
+                
+                if (error) {
+                    addStatus('supabase-check', `✗ Connection error: ${error.message}`, 'error');
+                    addLog(`Supabase error: ${error.message}`, 'error');
+                } else {
+                    addStatus('supabase-check', '✓ Supabase connection successful', 'success');
+                    addLog('Supabase connected');
+                    
+                    if (data?.session) {
+                        addStatus('supabase-check', '✓ Active session found', 'success');
+                        addLog('Active session exists');
+                    } else {
+                        addStatus('supabase-check', 'No active session', 'info');
+                        addLog('No active session');
+                    }
+                }
+            } catch (error) {
+                addStatus('supabase-check', `✗ Unexpected error: ${error.message}`, 'error');
+                addLog(`Connection test failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // 4. Check current session
+        async function checkSession() {
+            if (!supabase) {
+                addStatus('session-status', '✗ Supabase not initialized', 'error');
+                return;
+            }
+            
+            addLog('Checking session...');
+            document.getElementById('session-status').innerHTML = '';
+            
+            try {
+                const { data, error } = await supabase.auth.getSession();
+                
+                if (error) {
+                    addStatus('session-status', `✗ Error: ${error.message}`, 'error');
+                    addLog(`Session check error: ${error.message}`, 'error');
+                } else if (data?.session) {
+                    addStatus('session-status', '✓ Active session found', 'success');
+                    addStatus('session-status', `User ID: ${data.session.user.id}`, 'info');
+                    addStatus('session-status', `Email: ${data.session.user.email}`, 'info');
+                    addStatus('session-status', `Provider: ${data.session.user.app_metadata?.provider}`, 'info');
+                    addStatus('session-status', `Expires: ${new Date(data.session.expires_at * 1000).toLocaleString()}`, 'info');
+                    addLog('Session details retrieved');
+                } else {
+                    addStatus('session-status', 'No active session', 'warning');
+                    addLog('No session found', 'warning');
+                }
+            } catch (error) {
+                addStatus('session-status', `✗ Unexpected error: ${error.message}`, 'error');
+                addLog(`Session check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // 5. Clear session
+        async function clearSession() {
+            if (!supabase) {
+                addStatus('session-status', '✗ Supabase not initialized', 'error');
+                return;
+            }
+            
+            addLog('Clearing session...');
+            
+            try {
+                const { error } = await supabase.auth.signOut();
+                
+                if (error) {
+                    addStatus('session-status', `✗ Error clearing: ${error.message}`, 'error');
+                    addLog(`Clear session error: ${error.message}`, 'error');
+                } else {
+                    addStatus('session-status', '✓ Session cleared', 'success');
+                    addLog('Session cleared successfully');
+                    
+                    // Also clear localStorage
+                    localStorage.removeItem('supabase.auth.token');
+                    addStatus('session-status', '✓ localStorage cleared', 'success');
+                }
+            } catch (error) {
+                addStatus('session-status', `✗ Unexpected error: ${error.message}`, 'error');
+                addLog(`Clear session failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // 6. Try to exchange code
+        async function tryExchange() {
+            if (!supabase) {
+                addStatus('exchange-status', '✗ Supabase not initialized', 'error');
+                return;
+            }
+            
+            addLog('Attempting code exchange...');
+            document.getElementById('exchange-status').innerHTML = '';
+            
+            const params = new URLSearchParams(window.location.search);
+            const code = params.get('code');
+            
+            if (!code) {
+                addStatus('exchange-status', '✗ No auth code in URL to exchange', 'error');
+                addLog('No code to exchange', 'error');
+                return;
+            }
+            
+            try {
+                addStatus('exchange-status', 'Exchanging code...', 'info');
+                addLog('Starting exchange...');
+                
+                const { data, error } = await supabase.auth.exchangeCodeForSession();
+                
+                if (error) {
+                    addStatus('exchange-status', `✗ Exchange failed: ${error.message}`, 'error');
+                    addLog(`Exchange error: ${error.message}`, 'error');
+                    
+                    // Log more details
+                    if (error.status) {
+                        addStatus('exchange-status', `HTTP Status: ${error.status}`, 'error');
+                    }
+                    if (error.code) {
+                        addStatus('exchange-status', `Error Code: ${error.code}`, 'error');
+                    }
+                } else if (data?.session) {
+                    addStatus('exchange-status', '✓ Code exchanged successfully!', 'success');
+                    addStatus('exchange-status', `User: ${data.session.user.email}`, 'info');
+                    addLog('Code exchange successful');
+                } else {
+                    addStatus('exchange-status', 'Exchange completed but no session returned', 'warning');
+                    addLog('No session from exchange', 'warning');
+                }
+            } catch (error) {
+                addStatus('exchange-status', `✗ Unexpected error: ${error.message}`, 'error');
+                addLog(`Exchange failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+        
+        // Initialize on load
+        window.addEventListener('load', async () => {
+            addLog('Page loaded, starting debug...');
+            
+            // Run initial checks
+            analyzeUrl();
+            
+            const envOk = await checkEnvironment();
+            if (envOk) {
+                await testSupabase();
+                await checkSession();
+            }
+        });
+        
+        // Log all console messages
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        console.log = function(...args) {
+            addLog(args.join(' '), 'log');
+            originalLog.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            addLog(args.join(' '), 'error');
+            originalError.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+            addLog(args.join(' '), 'warning');
+            originalWarn.apply(console, args);
+        };
+    </script>
+</body>
+</html>

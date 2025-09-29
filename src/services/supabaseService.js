@@ -556,6 +556,23 @@ export const contactsService = {
       console.error('Failed to fetch contact:', error);
       return null;
     }
+  },
+
+  async create(contactData) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      const { data, error } = await supabase
+        .from('contacts')
+        .insert([contactData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to create contact');
+    }
   }
 };
 

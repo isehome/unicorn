@@ -44,6 +44,7 @@ import {
   issuesService
 } from '../services/supabaseService';
 import { enhancedStyles } from '../styles/styleSystem';
+import TodoDetailModal from './TodoDetailModal';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -178,6 +179,9 @@ const ProjectDetailView = () => {
   const [pendingContactId, setPendingContactId] = useState('');
   const [pendingRoleId, setPendingRoleId] = useState('');
   const [editingStakeholder, setEditingStakeholder] = useState(null);
+  const [creatingNewContact, setCreatingNewContact] = useState(false);
+  const [selectedTodo, setSelectedTodo] = useState(null);
+  const [showTodoModal, setShowTodoModal] = useState(false);
 
   const refreshStakeholders = useCallback(async () => {
     try {
@@ -570,6 +574,8 @@ const ProjectDetailView = () => {
     onSelectRole,
     onAdd,
     onCreateRole,
+    creatingContact,
+    onSetCreatingContact,
     onClose
   }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -579,6 +585,15 @@ const ProjectDetailView = () => {
     const [newRoleDescription, setNewRoleDescription] = useState('');
     const [roleError, setRoleError] = useState('');
     const [savingRole, setSavingRole] = useState(false);
+    
+    // New contact creation state - Controlled from parent
+    const [newContactName, setNewContactName] = useState('');
+    const [newContactEmail, setNewContactEmail] = useState('');
+    const [newContactPhone, setNewContactPhone] = useState('');
+    const [newContactCompany, setNewContactCompany] = useState('');
+    const [newContactIsInternal, setNewContactIsInternal] = useState(false);  // Changed default to false (external)
+    const [contactError, setContactError] = useState('');
+    const [savingContact, setSavingContact] = useState(false);
 
     const CREATE_ROLE_OPTION = '__create_role__';
 
@@ -644,9 +659,58 @@ const ProjectDetailView = () => {
       }
     };
 
+    const handleCreateContact = async () => {
+      const name = newContactName.trim();
+      const email = newContactEmail.trim();
+      
+      if (!name) {
+        setContactError('Contact name is required');
+        return;
+      }
+      
+      try {
+        setSavingContact(true);
+        setContactError('');
+        
+        // Create the new contact
+        const newContact = await contactsService.create({
+          name: name,  // Changed from full_name to name to match database column
+          full_name: name,  // Keep full_name for compatibility
+          email: email || null,  // Email is now optional
+          phone: newContactPhone.trim() || null,
+          company: newContactCompany.trim() || null,
+          is_internal: newContactIsInternal,
+          is_active: true
+        });
+        
+        if (newContact?.id) {
+          // Refresh available contacts to include the new one
+          await loadAvailableData();
+          // Select the new contact
+          onSelectContact(newContact.id);
+          // Reset the form
+          onSetCreatingContact(false);
+          setNewContactName('');
+          setNewContactEmail('');
+          setNewContactPhone('');
+          setNewContactCompany('');
+          setNewContactIsInternal(false);  // Reset to false (external) as default
+        }
+      } catch (error) {
+        console.error('Failed to create contact:', error);
+        setContactError(error.message || 'Failed to create contact');
+      } finally {
+        setSavingContact(false);
+      }
+    };
+
     const handleSubmit = async (event) => {
       event.preventDefault();
-      if (!selectedContactId || !selectedRoleId) {
+      if (creatingContact) {
+        await handleCreateContact();
+        return;
+      }
+      if (!selectedContactId || selectedContactId === '__add_new__' || !selectedRoleId) {
         alert('Please select both a contact and role');
         return;
       }
@@ -687,20 +751,135 @@ const ProjectDetailView = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2" style={styles.textPrimary}>
-                Select Contact ({filteredContacts.length} available)
-              </label>
-              <div
-                className="rounded-xl border max-h-48 overflow-y-auto divide-y"
-                style={styles.mutedCard}
-              >
-                {filteredContacts.length === 0 ? (
-                  <div className="p-4 text-center text-sm" style={styles.textSecondary}>
-                    {searchQuery ? 'No contacts match your search query.' : 'No available contacts to assign.'}
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium" style={styles.textPrimary}>
+                  Select Contact ({filteredContacts.length} available)
+                </label>
+                {!creatingContact && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={Plus}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSetCreatingContact(true);
+                      onSelectContact('__add_new__');
+                    }}
+                  >
+                    Create New
+                  </Button>
+                )}
+              </div>
+              
+              {creatingContact ? (
+                <div className="rounded-xl border p-4 space-y-3" style={styles.mutedCard}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold" style={styles.textPrimary}>New Contact Details</h3>
+                    <button
+                      type="button"
+                      className="text-xs underline"
+                      style={styles.textSecondary}
+                      onClick={() => {
+                        onSetCreatingContact(false);
+                        onSelectContact('');
+                        setContactError('');
+                      }}
+                      disabled={savingContact}
+                    >
+                      Cancel
+                    </button>
                   </div>
-                ) : (
-                  <>
-                    {filteredContacts.map((contact) => (
+                    <div className="grid gap-3">
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.textSecondary}>Full Name *</label>
+                        <input
+                          type="text"
+                          value={newContactName}
+                          onChange={(e) => setNewContactName(e.target.value)}
+                          placeholder="John Doe"
+                          className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.textSecondary}>Email</label>
+                        <input
+                          type="email"
+                          value={newContactEmail}
+                          onChange={(e) => setNewContactEmail(e.target.value)}
+                          placeholder="john@example.com (optional)"
+                          className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.textSecondary}>Phone</label>
+                        <input
+                          type="tel"
+                          value={newContactPhone}
+                          onChange={(e) => setNewContactPhone(e.target.value)}
+                          placeholder="+1 (555) 123-4567"
+                          className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.textSecondary}>Company</label>
+                        <input
+                          type="text"
+                          value={newContactCompany}
+                          onChange={(e) => setNewContactCompany(e.target.value)}
+                          placeholder="Company Name"
+                          className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          disabled={savingContact}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.textSecondary}>Type</label>
+                        <select
+                          value={newContactIsInternal}
+                          onChange={(e) => setNewContactIsInternal(e.target.value === 'true')}
+                          className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          disabled={savingContact}
+                        >
+                          <option value="true">Internal</option>
+                          <option value="false">External</option>
+                        </select>
+                      </div>
+                    </div>
+                    {contactError && (
+                      <p className="text-xs text-rose-500">{contactError}</p>
+                    )}
+                  <button
+                    type="button"
+                    className="w-full py-2 px-4 rounded-xl text-white transition-colors disabled:opacity-60"
+                    style={{ background: palette.accent }}
+                    onClick={handleCreateContact}
+                    disabled={savingContact}
+                  >
+                    {savingContact ? 'Creating…' : 'Create Contact'}
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="rounded-xl border max-h-48 overflow-y-auto divide-y"
+                  style={styles.mutedCard}
+                >
+                  {filteredContacts.length === 0 ? (
+                    <div className="p-4 text-center">
+                      <p className="text-sm" style={styles.textSecondary}>
+                        {searchQuery ? 'No contacts match your search query.' : 'No available contacts to assign.'}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredContacts.map((contact) => (
                       <button
                         key={contact.id}
                         type="button"
@@ -736,20 +915,10 @@ const ProjectDetailView = () => {
                           </div>
                         </div>
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-3 mt-2 rounded-xl border border-dashed border-violet-400 text-violet-700 bg-violet-50 hover:bg-violet-100"
-                      onClick={() => onSelectContact('__add_new__')}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Plus size={16} />
-                        <span>Add New Contact</span>
-                      </div>
-                    </button>
-                  </>
-                )}
-              </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
@@ -885,7 +1054,8 @@ const ProjectDetailView = () => {
     );
   };
 
-  const handleAddTodo = async () => {
+  const handleAddTodo = async (e) => {
+    if (e) e.preventDefault();
     const title = newTodo.trim();
     if (!title) return;
     try {
@@ -897,6 +1067,7 @@ const ProjectDetailView = () => {
         setNewTodo('');
       }
     } catch (err) {
+      console.error('Failed to add todo:', err);
       setTodoError(err.message || 'Failed to add to-do');
     } finally {
       setAddingTodo(false);
@@ -947,6 +1118,72 @@ const ProjectDetailView = () => {
     }
   };
 
+  const handleUpdateTodoImportance = async (todoId, value) => {
+    try {
+      const payload = { importance: value || 'normal' };
+      await projectTodosService.update(todoId, payload);
+      setTodos(prev => prev.map(t => (
+        t.id === todoId ? { ...t, importance: value || 'normal' } : t
+      )));
+    } catch (e) {
+      console.warn('Failed to update todo importance', e);
+    }
+  };
+
+  const handleOpenTodoDetail = (todo) => {
+    setSelectedTodo(todo);
+    setShowTodoModal(true);
+  };
+
+  const handleSaveTodo = async (updatedData) => {
+    try {
+      await projectTodosService.update(selectedTodo.id, updatedData);
+      setTodos(prev => prev.map(t => 
+        t.id === selectedTodo.id 
+          ? { ...t, ...updatedData }
+          : t
+      ));
+      setShowTodoModal(false);
+      setSelectedTodo(null);
+    } catch (error) {
+      console.error('Failed to save todo:', error);
+      alert('Failed to save changes');
+    }
+  };
+
+  const handleDeleteTodoFromModal = async () => {
+    if (!selectedTodo) return;
+    const confirmed = window.confirm('Are you sure you want to delete this todo?');
+    if (!confirmed) return;
+    
+    try {
+      await projectTodosService.remove(selectedTodo.id);
+      setTodos(prev => prev.filter(t => t.id !== selectedTodo.id));
+      setShowTodoModal(false);
+      setSelectedTodo(null);
+    } catch (error) {
+      console.error('Failed to delete todo:', error);
+      alert('Failed to delete todo');
+    }
+  };
+
+  const handleToggleTodoFromModal = async () => {
+    if (!selectedTodo) return;
+    
+    try {
+      await projectTodosService.toggleCompletion(selectedTodo.id, !selectedTodo.completed);
+      setTodos(prev => prev.map(t => 
+        t.id === selectedTodo.id 
+          ? { ...t, completed: !selectedTodo.completed }
+          : t
+      ));
+      setSelectedTodo(prev => ({ ...prev, completed: !prev.completed }));
+    } catch (error) {
+      console.error('Failed to toggle todo:', error);
+      alert('Failed to toggle completion status');
+    }
+  };
+
   const handleReorderTodos = async (targetId) => {
     if (!dragTodoId || dragTodoId === targetId) return;
     const srcIdx = visibleTodos.findIndex(t => t.id === dragTodoId);
@@ -983,6 +1220,7 @@ const ProjectDetailView = () => {
     setEditingStakeholder(null);
     setPendingContactId('');
     setPendingRoleId('');
+    setCreatingNewContact(false);
     setShowAddStakeholder(true);
   };
 
@@ -1024,29 +1262,6 @@ const ProjectDetailView = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => openLink(project.wiring_diagram_url)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-          style={styles.card}
-        >
-          <div className="flex items-center gap-3" style={styles.textSecondary}>
-            <FileText size={20} />
-            <span className="font-medium" style={styles.textPrimary}>Wiring Diagram</span>
-          </div>
-          <ExternalLink size={18} style={styles.textSecondary} />
-        </button>
-
-        <button
-          onClick={() => openLink(project.portal_proposal_url)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-          style={styles.card}
-        >
-          <div className="flex items-center gap-3" style={styles.textSecondary}>
-            <FileText size={20} />
-            <span className="font-medium" style={styles.textPrimary}>Portal Proposal</span>
-          </div>
-          <ExternalLink size={18} style={styles.textSecondary} />
-        </button>
 
         <div>
           <button
@@ -1201,8 +1416,9 @@ const ProjectDetailView = () => {
                     return (
                       <div
                         key={todo.id}
-                        className="flex items-center gap-3 px-3 py-2 rounded-xl border todo-card"
+                        className="p-4 rounded-xl border todo-card cursor-pointer hover:shadow-md transition-shadow"
                         draggable
+                        onClick={() => handleOpenTodoDetail(todo)}
                         onDragStart={(e) => {
                           setDragTodoId(todo.id);
                           const card = e.currentTarget.closest('.todo-card');
@@ -1236,67 +1452,95 @@ const ProjectDetailView = () => {
                             dragImageElRef.current = null;
                           }
                         }}
-                        onDrop={() => { handleReorderTodos(todo.id); setDragOverTodoId(null); }}
+                        onDrop={(e) => { e.stopPropagation(); handleReorderTodos(todo.id); setDragOverTodoId(null); }}
                         style={{
                           ...styles.mutedCard,
                           opacity: dragTodoId === todo.id ? 0.6 : 1
                         }}
                       >
                         {dragOverTodoId === todo.id && dragOverTodoPos === 'before' && (
-                          <div className="absolute left-0 right-0 -mt-2 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                          <div className="absolute left-0 right-0 -mt-4 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
                         )}
-                        <button
-                          onClick={() => handleToggleTodo(todo)}
-                          disabled={toggling}
-                          className="p-1"
-                        >
-                          {todo.completed ? (
-                            <CheckSquare size={18} style={{ color: palette.success }} />
-                          ) : (
-                            <Square size={18} style={styles.textSecondary} />
-                          )}
-                        </button>
-                        <span
-                          className="flex-1 text-sm"
-                          style={{
-                            ...styles.textPrimary,
-                            textDecoration: todo.completed ? 'line-through' : 'none',
-                            opacity: todo.completed ? 0.6 : 1
-                          }}
-                        >
-                          {todo.title}
-                        </span>
+                        
+                        {/* Title row at top */}
+                        <div className="flex items-center mb-3">
+                          <div className="flex items-center gap-2 flex-1">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleToggleTodo(todo); }}
+                              disabled={toggling}
+                              className="p-1"
+                            >
+                              {todo.completed ? (
+                                <CheckSquare size={18} style={{ color: palette.success }} />
+                              ) : (
+                                <Square size={18} style={styles.textSecondary} />
+                              )}
+                            </button>
+                            <span
+                              className="flex-1 text-base font-medium"
+                              style={{
+                                ...styles.textPrimary,
+                                textDecoration: todo.completed ? 'line-through' : 'none',
+                                opacity: todo.completed ? 0.6 : 1
+                              }}
+                            >
+                              {todo.title}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        {/* Controls row at bottom */}
                         <div className="flex items-center gap-2 text-xs">
-                          <label className="flex items-center gap-1">
-                            <span className="sr-only">Due by</span>
+                          <label className="flex items-center gap-1" title="Due Date">
+                            <span style={styles.subtleText}>Due:</span>
                             <input
                               type="date"
                               value={todo.dueBy ? String(todo.dueBy).substring(0,10) : ''}
-                              onChange={(e) => handleUpdateTodoDate(todo.id, 'due_by', e.target.value)}
-                              className="px-2 py-1 rounded-xl border text-xs"
+                              onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'due_by', e.target.value); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+                              style={{
+                                ...styles.input,
+                                minWidth: '100px',
+                                opacity: todo.dueBy ? 1 : 0.4,
+                                color: todo.dueBy ? styles.input.color : styles.subtleText.color
+                              }}
                             />
                           </label>
-                          <label className="flex items-center gap-1">
-                            <span className="sr-only">Do by</span>
+                          <label className="flex items-center gap-1" title="Do Date">
+                            <span style={styles.subtleText}>Do:</span>
                             <input
                               type="date"
                               value={todo.doBy ? String(todo.doBy).substring(0,10) : ''}
-                              onChange={(e) => handleUpdateTodoDate(todo.id, 'do_by', e.target.value)}
-                              className="px-2 py-1 rounded-xl border text-xs"
+                              onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'do_by', e.target.value); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+                              style={{
+                                ...styles.input,
+                                minWidth: '100px',
+                                opacity: todo.doBy ? 1 : 0.4,
+                                color: todo.doBy ? styles.input.color : styles.subtleText.color
+                              }}
                             />
                           </label>
+                          <select
+                            value={todo.importance || 'normal'}
+                            onChange={(e) => { e.stopPropagation(); handleUpdateTodoImportance(todo.id, e.target.value); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            style={styles.input}
+                            title="Importance"
+                          >
+                            <option value="low">Low</option>
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                          </select>
                         </div>
+                        
                        {dragOverTodoId === todo.id && dragOverTodoPos === 'after' && (
-                         <div className="absolute left-0 right-0 -mb-2 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                         <div className="absolute left-0 right-0 -mb-4 h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
                        )}
-                        <button
-                          onClick={() => handleDeleteTodo(todo.id)}
-                          disabled={deleting}
-                          className="p-1"
-                          style={{ color: palette.danger }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
                       </div>
                     );
                   })}
@@ -1498,11 +1742,14 @@ const ProjectDetailView = () => {
           onSelectRole={setPendingRoleId}
           onAdd={handleStakeholderAdded}
           onCreateRole={handleCreateRole}
+          creatingContact={creatingNewContact}
+          onSetCreatingContact={setCreatingNewContact}
           onClose={() => {
             setShowAddStakeholder(false);
             setPendingContactId('');
             setPendingRoleId('');
             setEditingStakeholder(null);
+            setCreatingNewContact(false);
           }}
           isEditing={Boolean(editingStakeholder)}
         />
@@ -1511,7 +1758,19 @@ const ProjectDetailView = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+        <button
+          onClick={() => openLink(project.wiring_diagram_url)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          style={styles.card}
+        >
+          <div className="flex items-center gap-3" style={styles.textSecondary}>
+            <FileText size={20} />
+            <span className="font-medium" style={styles.textPrimary}>Wiring Diagram</span>
+          </div>
+          <ExternalLink size={18} style={styles.textSecondary} />
+        </button>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             onClick={() => openLink(project.one_drive_photos)}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
@@ -1537,7 +1796,34 @@ const ProjectDetailView = () => {
             <span className="text-sm" style={styles.textPrimary}>Procurement</span>
           </button>
         </div>
+
+        <button
+          onClick={() => openLink(project.portal_proposal_url)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          style={styles.card}
+        >
+          <div className="flex items-center gap-3" style={styles.textSecondary}>
+            <FileText size={20} />
+            <span className="font-medium" style={styles.textPrimary}>Portal Proposal</span>
+          </div>
+          <ExternalLink size={18} style={styles.textSecondary} />
+        </button>
       </div>
+
+      {showTodoModal && selectedTodo && (
+        <TodoDetailModal
+          todo={selectedTodo}
+          onClose={() => {
+            setShowTodoModal(false);
+            setSelectedTodo(null);
+          }}
+          onSave={handleSaveTodo}
+          onDelete={handleDeleteTodoFromModal}
+          onToggleComplete={handleToggleTodoFromModal}
+          styles={styles}
+          palette={palette}
+        />
+      )}
 
     </div>
   );

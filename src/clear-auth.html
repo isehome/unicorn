@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clear Auth & Retry</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #90caf9;
+        }
+        .success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border: 1px solid #81c784;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+        }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #5558e3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .actions {
+            margin-top: 20px;
+        }
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Authentication Troubleshooter</h1>
+        
+        <div id="status-container"></div>
+        
+        <div class="actions">
+            <button onclick="clearAll()">Clear All Auth Data</button>
+            <button onclick="checkStatus()">Check Current Status</button>
+            <button onclick="goToLogin()">Go to Login Page</button>
+        </div>
+        
+        <div style="margin-top: 30px">
+            <h3>Storage Items Found:</h3>
+            <pre id="storage-items"></pre>
+        </div>
+        
+        <div style="margin-top: 20px">
+            <h3>Current URL:</h3>
+            <pre id="current-url"></pre>
+        </div>
+    </div>
+
+    <script>
+        function addStatus(message, type = 'info') {
+            const container = document.getElementById('status-container');
+            const statusDiv = document.createElement('div');
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+            container.appendChild(statusDiv);
+        }
+        
+        function clearAll() {
+            document.getElementById('status-container').innerHTML = '';
+            
+            // Clear localStorage
+            const localStorageKeys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('supabase') || key.includes('auth'))) {
+                    localStorageKeys.push(key);
+                }
+            }
+            
+            localStorageKeys.forEach(key => {
+                localStorage.removeItem(key);
+                addStatus(`Removed localStorage: ${key}`, 'success');
+            });
+            
+            // Clear sessionStorage
+            const sessionStorageKeys = [];
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key && (key.includes('supabase') || key.includes('auth'))) {
+                    sessionStorageKeys.push(key);
+                }
+            }
+            
+            sessionStorageKeys.forEach(key => {
+                sessionStorage.removeItem(key);
+                addStatus(`Removed sessionStorage: ${key}`, 'success');
+            });
+            
+            // Clear cookies
+            document.cookie.split(";").forEach(function(c) { 
+                const cookie = c.trim();
+                if (cookie) {
+                    const eqPos = cookie.indexOf("=");
+                    const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                    if (name.includes('supabase') || name.includes('auth')) {
+                        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+                        addStatus(`Removed cookie: ${name}`, 'success');
+                    }
+                }
+            });
+            
+            if (localStorageKeys.length === 0 && sessionStorageKeys.length === 0) {
+                addStatus('No auth data found to clear', 'info');
+            } else {
+                addStatus(`✓ Cleared ${localStorageKeys.length + sessionStorageKeys.length} auth items`, 'success');
+            }
+            
+            checkStatus();
+        }
+        
+        function checkStatus() {
+            document.getElementById('status-container').innerHTML = '';
+            
+            // Check localStorage
+            const authItems = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('supabase') || key.includes('auth'))) {
+                    try {
+                        const value = localStorage.getItem(key);
+                        authItems[key] = value ? JSON.parse(value) : value;
+                    } catch {
+                        authItems[key] = localStorage.getItem(key);
+                    }
+                }
+            }
+            
+            document.getElementById('storage-items').textContent = 
+                Object.keys(authItems).length > 0 
+                    ? JSON.stringify(authItems, null, 2)
+                    : 'No auth items in storage';
+            
+            // Show current URL
+            const url = window.location.href;
+            const params = new URLSearchParams(window.location.search);
+            const hash = window.location.hash;
+            
+            let urlInfo = `Full URL: ${url}\n`;
+            if (params.toString()) {
+                urlInfo += `Query Params: ${params.toString()}\n`;
+            }
+            if (hash) {
+                urlInfo += `Hash: ${hash}\n`;
+            }
+            
+            document.getElementById('current-url').textContent = urlInfo;
+            
+            // Check for auth code or error
+            if (params.get('code')) {
+                addStatus('⚠️ Found auth code in URL - this should have been exchanged', 'error');
+            }
+            if (params.get('error')) {
+                addStatus(`❌ Error in URL: ${params.get('error')}`, 'error');
+                const errorDesc = params.get('error_description');
+                if (errorDesc) {
+                    addStatus(`Description: ${errorDesc}`, 'error');
+                }
+            }
+            
+            if (Object.keys(authItems).length > 0) {
+                addStatus(`Found ${Object.keys(authItems).length} auth items in storage`, 'info');
+                
+                // Check if there's a valid session
+                const supabaseAuth = authItems['supabase.auth.token'];
+                if (supabaseAuth && supabaseAuth.currentSession) {
+                    const session = supabaseAuth.currentSession;
+                    const expiresAt = session.expires_at ? new Date(session.expires_at * 1000) : null;
+                    const now = new Date();
+                    
+                    if (expiresAt && expiresAt > now) {
+                        addStatus(`✓ Valid session found (expires ${expiresAt.toLocaleString()})`, 'success');
+                        if (session.user && session.user.email) {
+                            addStatus(`User: ${session.user.email}`, 'info');
+                        }
+                    } else {
+                        addStatus('⚠️ Session expired', 'error');
+                    }
+                } else {
+                    addStatus('No active session found', 'info');
+                }
+            } else {
+                addStatus('✓ No auth data in storage (clean state)', 'success');
+            }
+        }
+        
+        function goToLogin() {
+            // Clear the URL params first
+            const cleanUrl = window.location.origin + '/login';
+            window.location.href = cleanUrl;
+        }
+        
+        // Check status on load
+        window.addEventListener('load', checkStatus);
+    </script>
+</body>
+</html>

@@ -2,8 +2,8 @@ const brandColors = {
   primary: '#8B5CF6',
   primaryHover: '#7C3AED',
   primaryLight: '#A78BFA',
-  secondary: '#06B6D4',
-  success: '#10B981',
+  secondary: '#ACB3D1', // RGB(172, 179, 209)
+  success: '#94AF32', // RGB(148, 175, 50)
   warning: '#F59E0B',
   danger: '#EF4444',
   info: '#3B82F6'

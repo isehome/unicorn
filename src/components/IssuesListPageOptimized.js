@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDebounce } from '../utils/debounce';
 
 // Memoized Issue Card Component
-const IssueCard = memo(({ issue, project, onClick, sectionStyles }) => (
+const IssueCard = memo(({ issue, project, onClick, sectionStyles, isDark }) => (
   <button
     onClick={onClick}
     style={sectionStyles.card}
@@ -18,7 +18,44 @@ const IssueCard = memo(({ issue, project, onClick, sectionStyles }) => (
   >
     <div className="flex items-center justify-between">
       <div className="font-semibold text-gray-900 dark:text-white">{issue.title}</div>
-      <span className="text-xs px-2 py-1 rounded-full border">
+      <span 
+        className="text-xs px-2.5 py-1 rounded-full font-medium"
+        style={(() => {
+          const status = (issue.status || 'open').toLowerCase();
+          if (status === 'resolved' || status === 'closed') {
+            return {
+              backgroundColor: '#10b98120',
+              color: '#10b981',
+              border: '1px solid #10b98140'
+            };
+          } else if (status === 'blocked') {
+            return {
+              backgroundColor: '#ef444420',
+              color: '#ef4444',
+              border: '1px solid #ef444440'
+            };
+          } else if (status === 'in_progress' || status === 'in progress') {
+            return {
+              backgroundColor: '#3b82f620',
+              color: '#3b82f6',
+              border: '1px solid #3b82f640'
+            };
+          } else if (status === 'critical') {
+            return {
+              backgroundColor: '#dc262620',
+              color: '#dc2626',
+              border: '1px solid #dc262640'
+            };
+          } else {
+            // Default for 'open' and other statuses
+            return {
+              backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              color: isDark ? '#d1d5db' : '#6b7280',
+              border: `1px solid ${isDark ? '#4b5563' : '#e5e7eb'}`
+            };
+          }
+        })()}
+      >
         {(issue.status || 'open').toUpperCase()}
       </span>
     </div>
@@ -260,6 +297,7 @@ const IssuesListPageOptimized = () => {
               project={project}
               onClick={() => handleNavigateToIssue(issue)}
               sectionStyles={sectionStyles}
+              isDark={isDark}
             />
           );
         })}

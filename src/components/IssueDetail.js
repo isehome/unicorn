@@ -11,7 +11,7 @@ import {
   projectStakeholdersService
 } from '../services/supabaseService';
 import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
-import { ArrowLeft, Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -45,6 +45,7 @@ const IssueDetail = () => {
   const [newTitle, setNewTitle] = useState('');
   const [newPriority, setNewPriority] = useState('medium');
   const [newDueDate, setNewDueDate] = useState('');
+  const [expandedStakeholder, setExpandedStakeholder] = useState(null);
 
   const isNew = issueId === 'new';
 
@@ -261,6 +262,27 @@ const IssueDetail = () => {
       setError(e.message || 'Failed to remove tag');
     }
   };
+
+  const handleContactAction = useCallback((type, value) => {
+    if (!value) return;
+    if (type === 'email') {
+      window.location.href = `mailto:${value}`;
+      return;
+    }
+    if (type === 'phone') {
+      const sanitized = `${value}`.replace(/[^+\d]/g, '');
+      window.location.href = `tel:${sanitized}`;
+      return;
+    }
+    if (type === 'address') {
+      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  }, []);
+
+  const toggleStakeholder = useCallback((tagId) => {
+    setExpandedStakeholder(prev => prev === tagId ? null : tagId);
+  }, []);
 
   if (loading) {
     return (
@@ -555,25 +577,89 @@ const IssueDetail = () => {
           <div className="text-sm text-gray-600 dark:text-gray-300">No stakeholders tagged.</div>
         ) : (
           <div className="space-y-2">
-            {tags.map(tag => (
-              <div key={tag.tag_id} className="flex items-center justify-between px-3 py-2 rounded-xl border">
-                <div className="flex items-start gap-2">
-                  <span
-                    className="mt-1 inline-block w-2 h-2 rounded-full"
-                    style={{ backgroundColor: tag.is_internal ? palette.accent : palette.success }}
-                  />
-                  <div>
-                    <div className="text-sm font-medium">
-                      {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
+            {tags.map(tag => {
+              const isExpanded = expandedStakeholder === tag.tag_id;
+              return (
+                <div key={tag.tag_id} className="rounded-xl border overflow-hidden">
+                  <div 
+                    className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    onClick={() => toggleStakeholder(tag.tag_id)}
+                  >
+                    <div className="flex items-start gap-2 flex-1">
+                      <span
+                        className="mt-1 inline-block w-2 h-2 rounded-full"
+                        style={{ backgroundColor: tag.is_internal ? palette.accent : palette.success }}
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">
+                          {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
+                        </div>
+                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • {new Date(tag.tagged_at).toLocaleString()}</div>
+                      </div>
+                      <ChevronDown 
+                        size={16} 
+                        className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                      />
                     </div>
-                    <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • {new Date(tag.tagged_at).toLocaleString()}</div>
+                    <button 
+                      className="text-rose-500 ml-2" 
+                      onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag.tag_id); }} 
+                      title="Remove"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 border-t bg-gray-50 dark:bg-gray-800/50">
+                      <div className="pt-3 space-y-2 text-sm">
+                        {tag.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail size={14} className="text-gray-400" />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleContactAction('email', tag.email); }}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {tag.email}
+                            </button>
+                          </div>
+                        )}
+                        {tag.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone size={14} className="text-gray-400" />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleContactAction('phone', tag.phone); }}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {tag.phone}
+                            </button>
+                          </div>
+                        )}
+                        {tag.company && (
+                          <div className="flex items-center gap-2">
+                            <Building size={14} className="text-gray-400" />
+                            <span>{tag.company}</span>
+                          </div>
+                        )}
+                        {tag.address && (
+                          <div className="flex items-center gap-2">
+                            <Map size={14} className="text-gray-400" />
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleContactAction('address', tag.address); }}
+                              className="text-blue-600 hover:underline text-left"
+                            >
+                              {tag.address}
+                            </button>
+                          </div>
+                        )}
+                        {!tag.email && !tag.phone && !tag.company && !tag.address && (
+                          <div className="text-gray-500 italic">No contact details available</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <button className="text-rose-500" onClick={() => handleRemoveTag(tag.tag_id)} title="Remove">
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
