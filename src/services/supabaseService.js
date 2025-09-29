@@ -378,10 +378,7 @@ export const issuesService = {
         console.error('Issues fetch error:', error);
         return [];
       }
-      return (data || []).map(row => ({
-        ...row,
-        is_blocked: typeof row.is_blocked === 'boolean' ? row.is_blocked : false
-      }));
+      return data || [];
     } catch (error) {
       console.error('Failed to fetch issues:', error);
       return [];
@@ -416,10 +413,7 @@ issuesService.getById = async (id) => {
       .eq('id', id)
       .single();
     if (error) throw error;
-    return data ? {
-      ...data,
-      is_blocked: typeof data.is_blocked === 'boolean' ? data.is_blocked : false
-    } : data;
+    return data;
   } catch (error) {
     console.error('Failed to fetch issue:', error);
     return null;

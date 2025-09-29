@@ -23,48 +23,49 @@ const IssuesListPage = () => {
   const isDark = mode === 'dark';
   const selectClass = `px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`;
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const ids = user?.email
-          ? await projectStakeholdersService.getInternalProjectIdsByEmail(user.email)
-          : [];
-        if (!ids.length || !supabase) {
-          setIssues([]);
-          return;
-        }
-        // load project names for filter + display
-        const { data: projectRows } = await supabase
-          .from('projects')
-          .select('id,name')
-          .in('id', ids);
-        setProjects(Array.isArray(projectRows) ? projectRows : []);
-        // Prefer view if available
-        let { data, error } = await supabase
-          .from('issues_with_stats')
+  const loadIssues = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const ids = user?.email
+        ? await projectStakeholdersService.getInternalProjectIdsByEmail(user.email)
+        : [];
+      if (!ids.length || !supabase) {
+        setIssues([]);
+        return;
+      }
+      // load project names for filter + display
+      const { data: projectRows } = await supabase
+        .from('projects')
+        .select('id,name')
+        .in('id', ids);
+      setProjects(Array.isArray(projectRows) ? projectRows : []);
+      // Prefer view if available
+      let { data, error } = await supabase
+        .from('issues_with_stats')
+        .select('*')
+        .in('project_id', ids)
+        .order('created_at', { ascending: false });
+      if (error) {
+        ({ data, error } = await supabase
+          .from('issues')
           .select('*')
           .in('project_id', ids)
-          .order('created_at', { ascending: false });
-        if (error) {
-          ({ data, error } = await supabase
-            .from('issues')
-            .select('*')
-            .in('project_id', ids)
-            .order('created_at', { ascending: false }));
-        }
-        if (error) throw error;
-        setIssues(Array.isArray(data) ? data : []);
-      } catch (e) {
-        setError(e.message || 'Failed to load issues');
-        setIssues([]);
-      } finally {
-        setLoading(false);
+          .order('created_at', { ascending: false }));
       }
-    };
-    load();
-  }, [user?.email]);
+      if (error) throw error;
+      setIssues(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || 'Failed to load issues');
+      setIssues([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIssues();
+  }, [user?.email, loadIssues]);
 
   const visible = useMemo(() => {
     let list = issues;
@@ -76,7 +77,7 @@ const IssuesListPage = () => {
         return wantClosed ? isClosed : !isClosed; // open vs closed
       });
     }
-    if (blockedOnly) list = list.filter(i => Boolean(i.is_blocked));
+    if (blockedOnly) list = list.filter(i => (i.status || '').toLowerCase() === 'blocked');
     if (projectFilter !== 'all') list = list.filter(i => i.project_id === projectFilter);
     return list;
   }, [issues, filter, projectFilter, blockedOnly]);
@@ -111,7 +112,17 @@ const IssuesListPage = () => {
           </label>
         </div>
       </div>
-      {error && <div className="text-sm text-rose-500">{error}</div>}
+      {error && (
+        <div className="text-sm text-rose-500 flex items-center gap-2">
+          <span>{error}</span>
+          <button
+            onClick={loadIssues}
+            className="ml-2 px-3 py-1 rounded bg-violet-500 text-white text-xs hover:bg-violet-600"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <div className="space-y-3">
         {visible.map(issue => (
           <button

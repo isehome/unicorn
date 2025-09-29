@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId = null;
 
     const initialise = async () => {
       if (!supabase) {
@@ -68,6 +69,18 @@ export function AuthProvider({ children }) {
         }
         return;
       }
+
+      // Set a timeout to prevent indefinite loading
+      timeoutId = setTimeout(() => {
+        if (mounted && loading) {
+          console.warn('Auth initialization timeout - proceeding without auth');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          setError(new Error('Authentication timeout'));
+        }
+      }, 5000); // 5 second timeout
 
       try {
         const { data, error: sessionError } = await supabase.auth.getSession();
@@ -96,7 +109,10 @@ export function AuthProvider({ children }) {
           setProfile(null);
         }
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          setLoading(false);
+          if (timeoutId) clearTimeout(timeoutId);
+        }
       }
     };
 
@@ -125,9 +141,10 @@ export function AuthProvider({ children }) {
 
     return () => {
       mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
       authListener?.subscription?.unsubscribe();
     };
-  }, [loadProfile]);
+  }, [loadProfile, loading]);
 
   const login = useCallback(async () => {
     if (!supabase) {

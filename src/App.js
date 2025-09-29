@@ -1,8 +1,11 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import TechnicianDashboard from './components/TechnicianDashboard';
+import TechnicianDashboardOptimized from './components/TechnicianDashboardOptimized';
 import PMDashboard from './components/PMDashboard';
 import ProjectDetailView from './components/ProjectDetailView';
 import IssueDetail from './components/IssueDetail';
@@ -14,7 +17,7 @@ import AppHeader from './components/AppHeader';
 import SettingsPage from './components/SettingsPage';
 import BottomNavigation from './components/BottomNavigation';
 import AuthCallback from './components/AuthCallback';
-import IssuesListPage from './components/IssuesListPage';
+import IssuesListPageOptimized from './components/IssuesListPageOptimized';
 import TodosListPage from './components/TodosListPage';
 import './index.css';
 
@@ -34,7 +37,7 @@ const AppRoutes = () => {
             path="/"
             element={
               <ProtectedRoute>
-                <TechnicianDashboard />
+                <TechnicianDashboardOptimized />
               </ProtectedRoute>
             }
           />
@@ -90,7 +93,7 @@ const AppRoutes = () => {
             path="/issues"
             element={
               <ProtectedRoute>
-                <IssuesListPage />
+                <IssuesListPageOptimized />
               </ProtectedRoute>
             }
           />
@@ -121,13 +124,16 @@ const AppRoutes = () => {
 
 function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Router>
-          <AppRoutes />
-        </Router>
-      </AuthProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </AuthProvider>
+      </ThemeProvider>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }
 

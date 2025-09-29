@@ -59,6 +59,12 @@ const IssueDetail = () => {
           issueStakeholderTagsService.getDetailed(issueId),
           projectStakeholdersService.getForProject(projectId)
         ]);
+        
+        // Debug logging to check the issue data
+        console.log('Issue Data Loaded:', issueData);
+        console.log('Is Blocked:', issueData?.is_blocked);
+        console.log('Status:', issueData?.status);
+        
         setIssue(issueData);
         setComments(commentsData);
         setTags(tagsData);
@@ -327,41 +333,133 @@ const IssueDetail = () => {
             <span className={`text-xs ${ui.subtle}`}>Provide context for this issue.</span>
           ) : (
             <div className="flex items-center gap-2">
-              <Button
-                variant={issue?.is_blocked ? 'danger' : 'secondary'}
-                size="sm"
-                icon={AlertTriangle}
-                onClick={async () => {
-                  const next = !issue?.is_blocked;
-                  try {
-                    const updated = await issuesService.update(issue.id, { is_blocked: next });
-                    if (updated) setIssue(prev => ({ ...prev, is_blocked: next }));
-                  } catch (_) {
-                    const fallback = next ? 'blocked' : 'open';
+                <button
+                  type="button"
+                  disabled={saving}
+                  style={(issue?.status || '').toLowerCase() === 'blocked' ? { 
+                    backgroundColor: '#ef4444', // Tailwind red-500
+                    color: '#ffffff', 
+                    borderColor: '#ef4444',
+                    padding: '6px 12px',
+                    borderRadius: '0.75rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid',
+                    transition: 'all 0.2s',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1
+                  } : {
+                    backgroundColor: 'transparent',
+                    color: mode === 'dark' ? '#9ca3af' : '#6b7280',
+                    borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                    padding: '6px 12px',
+                    borderRadius: '0.75rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid',
+                    transition: 'all 0.2s',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1
+                  }}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (saving) return;
+                    
+                    // Check status field for blocked state (only field that exists in DB)
+                    const isBlocked = (issue?.status || '').toLowerCase() === 'blocked';
+                    const nextStatus = isBlocked ? 'open' : 'blocked';
+                    console.log('Blocked Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
+                    
                     try {
-                      const updated = await issuesService.update(issue.id, { status: fallback });
-                      if (updated) setIssue(prev => ({ ...prev, status: fallback }));
-                    } catch (err) {}
-                  }
-                }}
-              >
-                {issue?.is_blocked ? 'Unblock' : 'Mark Blocked'}
-              </Button>
-              <Button
-                variant={(issue?.status || '').toLowerCase() === 'resolved' ? 'success' : 'secondary'}
-                size="sm"
-                icon={CheckCircle}
-                onClick={async () => {
-                  const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
-                  const nextStatus = isResolved ? 'open' : 'resolved';
-                  try {
-                    const updated = await issuesService.update(issue.id, { status: nextStatus, is_blocked: false });
-                    if (updated) setIssue(prev => ({ ...prev, status: nextStatus, is_blocked: false }));
-                  } catch (err) {}
-                }}
-              >
-                {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
-              </Button>
+                      setSaving(true);
+                      setError('');
+                      // Update only the status field (is_blocked doesn't exist in DB)
+                      const updated = await issuesService.update(issue.id, { status: nextStatus });
+                      console.log('Updated issue:', updated);
+                      if (updated) {
+                        setIssue(updated);  // Use the full updated object from the server
+                      }
+                    } catch (err) {
+                      console.error('Failed to update blocked status:', err);
+                      setError('Failed to update blocked status');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  <AlertTriangle size={16} />
+                  {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  style={(issue?.status || '').toLowerCase() === 'resolved' ? { 
+                    backgroundColor: '#10b981', // Tailwind green-500
+                    color: '#ffffff', 
+                    borderColor: '#10b981',
+                    padding: '6px 12px',
+                    borderRadius: '0.75rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid',
+                    transition: 'all 0.2s',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1
+                  } : {
+                    backgroundColor: 'transparent',
+                    color: mode === 'dark' ? '#9ca3af' : '#6b7280',
+                    borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                    padding: '6px 12px',
+                    borderRadius: '0.75rem',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid',
+                    transition: 'all 0.2s',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.6 : 1
+                  }}
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (saving) return;
+                    
+                    const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
+                    const nextStatus = isResolved ? 'open' : 'resolved';
+                    console.log('Resolved Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
+                    
+                    try {
+                      setSaving(true);
+                      setError('');
+                      // Update only the status field (is_blocked doesn't exist in DB)
+                      const updated = await issuesService.update(issue.id, { status: nextStatus });
+                      console.log('Updated issue:', updated);
+                      if (updated) {
+                        setIssue(updated);  // Use the full updated object from the server
+                      }
+                    } catch (err) {
+                      console.error('Failed to update resolved status:', err);
+                      setError('Failed to update resolved status');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                >
+                  <CheckCircle size={16} />
+                  {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
+                </button>
               {!editingDetails && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
               )}
