@@ -8,15 +8,62 @@ const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
 const isValidUrl = supabaseUrl && supabaseUrl.startsWith('http') && !supabaseUrl.includes('your_supabase_project_url_here')
 const isValidKey = supabaseAnonKey && supabaseAnonKey !== 'your_supabase_anon_key_here'
 
+// Connection retry configuration
+const connectionRetryConfig = {
+  maxRetries: 3,
+  retryDelay: 1000,
+  shouldRetry: (error) => {
+    // Retry on network errors or specific Supabase errors
+    return error?.message?.includes('Failed to fetch') || 
+           error?.message?.includes('Network') ||
+           error?.code === 'PGRST301'
+  }
+}
+
 export const supabase = (isValidUrl && isValidKey)
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        persistSession: true,
+        storageKey: 'supabase.auth.token',
+        storage: window.localStorage
+      },
+      global: {
+        headers: { 'x-client-info': 'unicorn-app' },
+      },
+      db: {
+        schema: 'public'
+      },
+      realtime: {
+        params: {
+          eventsPerSecond: 10
+        }
       }
     })
   : null
+
+// Retry wrapper for database operations
+async function withRetry(operation, config = connectionRetryConfig) {
+  let lastError = null
+  
+  for (let i = 0; i < config.maxRetries; i++) {
+    try {
+      return await operation()
+    } catch (error) {
+      lastError = error
+      
+      if (i < config.maxRetries - 1 && config.shouldRetry(error)) {
+        await new Promise(resolve => setTimeout(resolve, config.retryDelay * Math.pow(2, i)))
+      } else {
+        throw error
+      }
+    }
+  }
+  
+  throw lastError
+}
 
 // PUBLIC STORAGE (optional fallback when not using OneDrive)
 export const PHOTOS_BUCKET = process.env.REACT_APP_SUPABASE_BUCKET || 'photos'
@@ -24,12 +71,19 @@ export const PHOTOS_BUCKET = process.env.REACT_APP_SUPABASE_BUCKET || 'photos'
 // Upload an image file to Storage and return a public URL
 export async function uploadPublicImage(file, path) {
   if (!supabase) throw new Error('Supabase not configured')
-  const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase()
-  const key = `${path}.${ext}`
-  const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(key, file, { contentType: file.type, upsert: true })
-  if (error) throw error
-  const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(key)
-  return data.publicUrl
+  
+  return withRetry(async () => {
+    const ext = (file.name?.split('.').pop() || 'jpg').toLowerCase()
+    const key = `${path}.${ext}`
+    const { error } = await supabase.storage.from(PHOTOS_BUCKET).upload(key, file, { 
+      contentType: file.type, 
+      upsert: true,
+      cacheControl: '3600'
+    })
+    if (error) throw error
+    const { data } = supabase.storage.from(PHOTOS_BUCKET).getPublicUrl(key)
+    return data.publicUrl
+  })
 }
 
 // Build low-res thumbnail URL using Supabase image renderer (if enabled)
@@ -57,173 +111,219 @@ export function slugifySegment(input, max = 60) {
   return trimmed || 'item'
 }
 
-// --- Optional auth helpers kept for compatibility ---
+// --- Auth helpers with improved error handling ---
 export const signInWithMicrosoft = async () => {
   if (!supabase) throw new Error('Supabase not configured')
+  
+  // Don't use withRetry for OAuth - it will redirect the browser
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'azure',
     options: {
       // Include Microsoft Calendar + Contacts scopes for integrations
       scopes: 'openid profile email offline_access Calendars.Read Contacts.Read',
-      redirectTo: `${window.location.origin}/auth/callback`
+      redirectTo: `${window.location.origin}/auth/callback`,
+      queryParams: {
+        prompt: 'select_account'
+      },
+      skipBrowserRedirect: false // Ensure browser redirect happens
     }
   })
+  
   if (error) throw error
+  
+  // If data.url exists, the browser should redirect
+  // This won't execute after a successful redirect
   return data
 }
 
 export const signOut = async () => {
   if (!supabase) return
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  
+  return withRetry(async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+  })
 }
 
-export const getCurrentUser = () => supabase ? supabase.auth.getUser() : null
-export const getSession = () => supabase ? supabase.auth.getSession() : null
+export const getCurrentUser = () => {
+  if (!supabase) return Promise.resolve({ data: { user: null }, error: null })
+  return withRetry(() => supabase.auth.getUser())
+}
 
-// DB helpers used by Dashboard
+export const getSession = () => {
+  if (!supabase) return Promise.resolve({ data: { session: null }, error: null })
+  return withRetry(() => supabase.auth.getSession())
+}
+
+// DB helpers with retry logic
 export const insertData = async (table, data) => {
-  const { data: result, error } = await supabase.from(table).insert(data).select()
-  if (error) throw error
-  return result
+  return withRetry(async () => {
+    const { data: result, error } = await supabase.from(table).insert(data).select()
+    if (error) throw error
+    return result
+  })
 }
 
 export const fetchData = async (table, filters = {}) => {
-  let query = supabase.from(table).select('*')
-  Object.entries(filters).forEach(([k, v]) => { query = query.eq(k, v) })
-  const { data, error } = await query
-  if (error) throw error
-  return data
+  return withRetry(async () => {
+    let query = supabase.from(table).select('*')
+    Object.entries(filters).forEach(([k, v]) => { query = query.eq(k, v) })
+    const { data, error } = await query
+    if (error) throw error
+    return data
+  })
 }
 
 export const updateData = async (table, id, updates) => {
-  const { data, error } = await supabase.from(table).update(updates).eq('id', id).select()
-  if (error) throw error
-  return data
+  return withRetry(async () => {
+    const { data, error } = await supabase.from(table).update(updates).eq('id', id).select()
+    if (error) throw error
+    return data
+  })
 }
 
 export const deleteData = async (table, id) => {
-  const { data, error } = await supabase.from(table).delete().eq('id', id)
-  if (error) throw error
-  return data
+  return withRetry(async () => {
+    const { data, error } = await supabase.from(table).delete().eq('id', id)
+    if (error) throw error
+    return data
+  })
 }
 
-// ===== STAKEHOLDER SLOTS =====
+// ===== STAKEHOLDER SLOTS with retry =====
 export const getStakeholderSlots = async () => {
-  const { data, error } = await supabase
-    .from('stakeholder_slots')
-    .select('*')
-    .order('slot_type', { ascending: true })
-    .order('slot_name', { ascending: true });
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('stakeholder_slots')
+      .select('*')
+      .order('slot_type', { ascending: true })
+      .order('slot_name', { ascending: true })
+    if (error) throw error
+    return data
+  })
+}
 
 export const createStakeholderSlot = async (slotData) => {
-  const { data, error } = await supabase
-    .from('stakeholder_slots')
-    .insert(slotData)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('stakeholder_slots')
+      .insert(slotData)
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  })
+}
 
-// ===== PROJECT ASSIGNMENTS =====
+// ===== PROJECT ASSIGNMENTS with retry =====
 export const getProjectTeam = async (projectId) => {
-  const { data, error } = await supabase
-    .from('project_assignments')
-    .select(`
-      *,
-      contact:contacts(*),
-      stakeholder_slot:stakeholder_slots(*)
-    `)
-    .eq('project_id', projectId)
-    .eq('assignment_status', 'active')
-    .order('is_primary', { ascending: false });
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('project_assignments')
+      .select(`
+        *,
+        contact:contacts(*),
+        stakeholder_slot:stakeholder_slots(*)
+      `)
+      .eq('project_id', projectId)
+      .eq('assignment_status', 'active')
+      .order('is_primary', { ascending: false })
+    if (error) throw error
+    return data
+  })
+}
 
 export const assignContactToProject = async (assignmentData) => {
-  const { data, error } = await supabase
-    .from('project_assignments')
-    .insert(assignmentData)
-    .select(`
-      *,
-      contact:contacts(*),
-      stakeholder_slot:stakeholder_slots(*)
-    `)
-    .single();
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('project_assignments')
+      .insert(assignmentData)
+      .select(`
+        *,
+        contact:contacts(*),
+        stakeholder_slot:stakeholder_slots(*)
+      `)
+      .single()
+    if (error) throw error
+    return data
+  })
+}
 
 export const removeProjectAssignment = async (assignmentId) => {
-  const { data, error } = await supabase
-    .from('project_assignments')
-    .delete()
-    .eq('id', assignmentId);
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('project_assignments')
+      .delete()
+      .eq('id', assignmentId)
+    if (error) throw error
+    return data
+  })
+}
 
-// ===== ISSUE ASSIGNMENTS =====
+// ===== ISSUE ASSIGNMENTS with retry =====
 export const getIssueAssignments = async (issueId) => {
-  const { data, error } = await supabase
-    .from('issue_assignments')
-    .select(`
-      *,
-      contact:contacts(*)
-    `)
-    .eq('issue_id', issueId);
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('issue_assignments')
+      .select(`
+        *,
+        contact:contacts(*)
+      `)
+      .eq('issue_id', issueId)
+    if (error) throw error
+    return data
+  })
+}
 
 export const assignContactToIssue = async (issueId, contactId, assignmentType = 'watcher') => {
-  const { data, error } = await supabase
-    .from('issue_assignments')
-    .insert({ issue_id: issueId, contact_id: contactId, assignment_type: assignmentType })
-    .select(`
-      *,
-      contact:contacts(*)
-    `)
-    .single();
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('issue_assignments')
+      .insert({ issue_id: issueId, contact_id: contactId, assignment_type: assignmentType })
+      .select(`
+        *,
+        contact:contacts(*)
+      `)
+      .single()
+    if (error) throw error
+    return data
+  })
+}
 
-// ===== ENHANCED CONTACT QUERIES =====
+// ===== ENHANCED CONTACT QUERIES with retry =====
 export const getContactsWithProjects = async () => {
-  const { data, error } = await supabase
-    .from('contacts')
-    .select(`
-      *,
-      project_assignments(
-        project_id,
-        stakeholder_slot:stakeholder_slots(slot_name, slot_type),
-        is_primary,
-        assignment_status
-      )
-    `)
-    .eq('is_active', true)
-    .order('first_name');
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select(`
+        *,
+        project_assignments(
+          project_id,
+          stakeholder_slot:stakeholder_slots(slot_name, slot_type),
+          is_primary,
+          assignment_status
+        )
+      `)
+      .eq('is_active', true)
+      .order('first_name')
+    if (error) throw error
+    return data
+  })
+}
 
 export const getAvailableContactsForProject = async (projectId) => {
-  // Get contacts not already assigned to this project
-  const { data, error } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('is_active', true)
-    .not('id', 'in', `(
-      SELECT contact_id FROM project_assignments 
-      WHERE project_id = '${projectId}' AND assignment_status = 'active'
-    )`)
-    .order('first_name');
-  if (error) throw error;
-  return data;
-};
+  return withRetry(async () => {
+    // Get contacts not already assigned to this project
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('is_active', true)
+      .not('id', 'in', `(
+        SELECT contact_id FROM project_assignments 
+        WHERE project_id = '${projectId}' AND assignment_status = 'active'
+      )`)
+      .order('first_name')
+    if (error) throw error
+    return data
+  })
+}

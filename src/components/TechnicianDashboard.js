@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -10,7 +10,7 @@ import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import { ListTodo, AlertTriangle, Loader, Calendar } from 'lucide-react';
 
-const TechnicianDashboard = () => {
+const TechnicianDashboard = React.memo(() => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
@@ -31,6 +31,12 @@ const TechnicianDashboard = () => {
   const [myProjectIds, setMyProjectIds] = useState([]);
   const [myProjectsLoading, setMyProjectsLoading] = useState(false);
   const [myProjectsError, setMyProjectsError] = useState('');
+  
+  // Use refs to prevent unnecessary re-renders
+  const calendarLoadingRef = useRef(false);
+  const projectsLoadingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const refreshTimeoutRef = useRef(null);
 
   const formatEventTime = useCallback((start, end) => {
     try {
@@ -50,28 +56,73 @@ const TechnicianDashboard = () => {
     }
   }, []);
 
-  const loadCalendarEvents = useCallback(async () => {
+  const loadCalendarEvents = useCallback(async (isRetry = false) => {
+    // Prevent concurrent calendar loads
+    if (calendarLoadingRef.current && !isRetry) {
+      return;
+    }
+    
+    calendarLoadingRef.current = true;
+    
     try {
       setCalendarLoading(true);
       setCalendarError('');
+      
       const result = await fetchTodayEvents();
+      
+      if (!mountedRef.current) return;
+      
       setCalendarConnected(Boolean(result.connected));
       setCalendarEvents(result.events || []);
+      
+      if (result.error) {
+        setCalendarError(result.error);
+      }
     } catch (error) {
       console.error('Failed to load calendar events', error);
-      setCalendarError(error.message || 'Unable to load calendar events.');
+      if (mountedRef.current) {
+        setCalendarError(error.message || 'Unable to load calendar events.');
+      }
     } finally {
-      setCalendarLoading(false);
+      if (mountedRef.current) {
+        setCalendarLoading(false);
+        calendarLoadingRef.current = false;
+      }
     }
   }, []);
 
-  useEffect(() => {
-    loadCalendarEvents();
-  }, [loadCalendarEvents, user?.id]);
+  // Debounced calendar refresh
+  const handleCalendarRefresh = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current);
+    }
+    
+    refreshTimeoutRef.current = setTimeout(() => {
+      loadCalendarEvents(true);
+    }, 300);
+  }, [loadCalendarEvents]);
 
+  // Load calendar events only once on mount or user change
   useEffect(() => {
+    if (user?.id) {
+      loadCalendarEvents();
+    }
+  }, [user?.id]); // Only depend on user ID, not the entire loadCalendarEvents function
+
+  // Load user projects with proper cleanup
+  useEffect(() => {
+    let isCancelled = false;
+    
     const loadMyProjects = async () => {
+      // Debug logging
+      console.log('TechnicianDashboard loadMyProjects:', {
+        userEmail: user?.email,
+        userId: user?.id,
+        userObject: user
+      });
+      
       if (!user?.email) {
+        console.log('Skipping loadMyProjects - no email');
         setMyProjectIds([]);
         return;
       }
@@ -79,18 +130,35 @@ const TechnicianDashboard = () => {
       try {
         setMyProjectsLoading(true);
         setMyProjectsError('');
+        
+        console.log('Calling getInternalProjectIdsByEmail with:', user.email);
         const ids = await projectStakeholdersService.getInternalProjectIdsByEmail(user.email);
-        setMyProjectIds(ids);
+        console.log('Got project IDs:', ids);
+        
+        if (!isCancelled && mountedRef.current) {
+          setMyProjectIds(ids);
+        }
       } catch (error) {
         console.error('Failed to load user projects', error);
-        setMyProjectsError(error.message || 'Unable to load your projects.');
-        setMyProjectIds([]);
+        if (!isCancelled && mountedRef.current) {
+          setMyProjectsError(error.message || 'Unable to load your projects.');
+          setMyProjectIds([]);
+        }
       } finally {
-        setMyProjectsLoading(false);
+        if (!isCancelled && mountedRef.current) {
+          setMyProjectsLoading(false);
+        }
       }
     };
 
+    // Reset the loading ref when email changes
+    projectsLoadingRef.current = false;
     loadMyProjects();
+    
+    return () => {
+      isCancelled = true;
+      projectsLoadingRef.current = false;
+    };
   }, [user?.email]);
 
   const handleConnectCalendar = useCallback(async () => {
@@ -102,48 +170,100 @@ const TechnicianDashboard = () => {
     }
   }, [login]);
 
-  // My-projects counts for Todos and Issues
+  // My-projects counts for Todos and Issues with memoization
   const [todoCounts, setTodoCounts] = useState({ open: 0, total: 0, loading: true });
   const [issueCounts, setIssueCounts] = useState({ open: 0, blocked: 0, total: 0, loading: true });
-  const loadMyCounts = useCallback(async () => {
-    if (!Array.isArray(myProjectIds) || myProjectIds.length === 0) {
-      setTodoCounts({ open: 0, total: 0, loading: false });
-      setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
-      return;
-    }
-    try {
-      setTodoCounts(prev => ({ ...prev, loading: true }));
-      setIssueCounts(prev => ({ ...prev, loading: true }));
-      const [todosRes, issuesRes] = await Promise.all([
-        supabase.from('project_todos').select('id,is_complete,project_id').in('project_id', myProjectIds),
-        supabase.from('issues').select('id,status,project_id').in('project_id', myProjectIds)
-      ]);
-      const todos = Array.isArray(todosRes?.data) ? todosRes.data : [];
-      const issuesAll = Array.isArray(issuesRes?.data) ? issuesRes.data : [];
-      setTodoCounts({ open: todos.filter(t => !t.is_complete).length, total: todos.length, loading: false });
-      setIssueCounts({
-        open: issuesAll.filter(i => (i.status || '').toLowerCase() === 'open').length,
-        blocked: issuesAll.filter(i => (i.status || '').toLowerCase() === 'blocked').length,
-        total: issuesAll.length,
-        loading: false
-      });
-    } catch (_) {
-      setTodoCounts({ open: 0, total: 0, loading: false });
-      setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
-    }
-  }, [myProjectIds]);
-  useEffect(() => { loadMyCounts(); }, [loadMyCounts]);
+  
+  // Memoize the project IDs to avoid unnecessary effect triggers
+  const projectIdsKey = useMemo(() => myProjectIds.join(','), [myProjectIds]);
+  
+  useEffect(() => {
+    let isCancelled = false;
+    
+    const loadMyCounts = async () => {
+      if (!Array.isArray(myProjectIds) || myProjectIds.length === 0) {
+        if (!isCancelled) {
+          setTodoCounts({ open: 0, total: 0, loading: false });
+          setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
+        }
+        return;
+      }
+      
+      try {
+        // Batch state updates
+        setTodoCounts(prev => ({ ...prev, loading: true }));
+        setIssueCounts(prev => ({ ...prev, loading: true }));
+        
+        const [todosRes, issuesRes] = await Promise.all([
+          supabase.from('project_todos').select('id,is_complete,project_id').in('project_id', myProjectIds),
+          supabase.from('issues').select('id,status,project_id').in('project_id', myProjectIds)
+        ]);
+        
+        if (isCancelled || !mountedRef.current) return;
+        
+        const todos = Array.isArray(todosRes?.data) ? todosRes.data : [];
+        const issuesAll = Array.isArray(issuesRes?.data) ? issuesRes.data : [];
+        
+        // Batch state updates
+        setTodoCounts({ 
+          open: todos.filter(t => !t.is_complete).length, 
+          total: todos.length, 
+          loading: false 
+        });
+        
+        setIssueCounts({
+          open: issuesAll.filter(i => (i.status || '').toLowerCase() === 'open').length,
+          blocked: issuesAll.filter(i => (i.status || '').toLowerCase() === 'blocked').length,
+          total: issuesAll.length,
+          loading: false
+        });
+      } catch (error) {
+        console.error('Failed to load counts:', error);
+        if (!isCancelled && mountedRef.current) {
+          setTodoCounts({ open: 0, total: 0, loading: false });
+          setIssueCounts({ open: 0, blocked: 0, total: 0, loading: false });
+        }
+      }
+    };
+    
+    loadMyCounts();
+    
+    return () => {
+      isCancelled = true;
+    };
+  }, [projectIdsKey]); // Use memoized key instead of myProjectIds directly
 
+  // Memoize displayed projects to avoid recalculation
   const displayedProjects = useMemo(() => {
     if (!showMyProjects) return projects;
     if (!Array.isArray(myProjectIds) || myProjectIds.length === 0) return [];
     const idSet = new Set(myProjectIds);
     return projects.filter((project) => idSet.has(project.id));
   }, [projects, showMyProjects, myProjectIds]);
+
+  // Persist preference
   useEffect(() => {
     localStorage.setItem('dashboard-show-my-projects', String(showMyProjects));
   }, [showMyProjects]);
-  // const recentIssues = issues.filter(i => i.status === 'open').slice(0, 5);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    return () => {
+      mountedRef.current = false;
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Navigation handlers with useCallback to prevent re-creation
+  const handleTodosClick = useCallback(() => navigate('/todos'), [navigate]);
+  const handleIssuesClick = useCallback(() => navigate('/issues'), [navigate]);
+  const handleProjectClick = useCallback((projectId) => navigate(`/project/${projectId}`), [navigate]);
+  const handleShowMyProjects = useCallback(() => setShowMyProjects(true), []);
+  const handleShowAllProjects = useCallback(() => setShowMyProjects(false), []);
 
   if (projectsLoading || issuesLoading) {
     return (
@@ -167,7 +287,7 @@ const TechnicianDashboard = () => {
                 variant="secondary"
                 size="sm"
                 icon={Calendar}
-                onClick={loadCalendarEvents}
+                onClick={handleCalendarRefresh}
                 disabled={calendarLoading}
               >
                 Refresh
@@ -220,13 +340,14 @@ const TechnicianDashboard = () => {
           </div>
         )}
       </div>
+      
       {/* My-projects counters */}
       <div className="grid grid-cols-2 gap-4">
         <button
           type="button"
-          onClick={() => navigate('/todos')}
+          onClick={handleTodosClick}
           style={sectionStyles.card}
-          className="flex items-center justify-between p-4 rounded-2xl border text-left"
+          className="flex items-center justify-between p-4 rounded-2xl border text-left transition-transform hover:scale-[1.02]"
         >
           <div>
             <div className="text-sm text-gray-600 dark:text-gray-400">To-do Items</div>
@@ -238,11 +359,12 @@ const TechnicianDashboard = () => {
           </div>
           <ListTodo className="w-8 h-8 text-violet-600" />
         </button>
+        
         <button
           type="button"
-          onClick={() => navigate('/issues')}
+          onClick={handleIssuesClick}
           style={sectionStyles.card}
-          className="flex items-center justify-between p-4 rounded-2xl border text-left"
+          className="flex items-center justify-between p-4 rounded-2xl border text-left transition-transform hover:scale-[1.02]"
         >
           <div>
             <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
@@ -270,7 +392,7 @@ const TechnicianDashboard = () => {
           <div className="inline-flex items-center rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-slate-900/60 p-1">
             <button
               type="button"
-              onClick={() => setShowMyProjects(true)}
+              onClick={handleShowMyProjects}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
                 showMyProjects
                   ? 'bg-violet-500 text-white shadow'
@@ -281,7 +403,7 @@ const TechnicianDashboard = () => {
             </button>
             <button
               type="button"
-              onClick={() => setShowMyProjects(false)}
+              onClick={handleShowAllProjects}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
                 !showMyProjects
                   ? 'bg-violet-500 text-white shadow'
@@ -319,7 +441,7 @@ const TechnicianDashboard = () => {
             {displayedProjects.map((project) => (
               <div
                 key={project.id}
-                onClick={() => navigate(`/project/${project.id}`)}
+                onClick={() => handleProjectClick(project.id)}
                 className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
               >
                 <div className="flex justify-between items-start">
@@ -350,10 +472,10 @@ const TechnicianDashboard = () => {
           </div>
         )}
       </div>
-
-      {/* Open issues list removed for streamlined dashboard */}
     </div>
   );
-};
+});
+
+TechnicianDashboard.displayName = 'TechnicianDashboard';
 
 export default TechnicianDashboard;
