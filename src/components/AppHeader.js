@@ -75,14 +75,21 @@ const AppHeader = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="hidden sm:flex flex-col text-right leading-tight min-w-0">
-            <span className="text-[11px] text-gray-500 dark:text-gray-400">Signed in as</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate max-w-[160px]">
-              {displayName}
-            </span>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex flex-col text-right leading-tight min-w-0">
+            <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Logged in</span>
+            {user?.email && (
+              <span className="text-xs sm:text-sm font-medium text-gray-900 dark:text-gray-100 truncate max-w-[140px] sm:max-w-[240px]">
+                {user.email}
+              </span>
+            )}
+            {displayName !== user?.email && (
+              <span className="text-[10px] sm:text-[11px] text-gray-600 dark:text-gray-400 truncate max-w-[140px] sm:max-w-[240px]">
+                {displayName}
+              </span>
+            )}
           </div>
-          <div className="w-9 h-9 rounded-full bg-violet-500 text-white flex items-center justify-center text-sm font-semibold shadow">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center text-sm font-bold shadow-lg">
             {initials}
           </div>
         </div>

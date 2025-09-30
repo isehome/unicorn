@@ -8,6 +8,8 @@ import TechnicianDashboardOptimized from './components/TechnicianDashboardOptimi
 import PMDashboard from './components/PMDashboard';
 import ProjectDetailView from './components/ProjectDetailView';
 import PMProjectView from './components/PMProjectView';
+import PMProjectViewEnhanced from './components/PMProjectViewEnhanced';
+import PMIssuesPage from './components/PMIssuesPage';
 import IssueDetail from './components/IssueDetail';
 import PeopleManagement from './components/PeopleManagement';
 import WireDropsList from './components/WireDropsList';
@@ -63,7 +65,23 @@ const AppRoutes = () => {
             path="/pm/project/:projectId"
             element={
               <ProtectedRoute>
-                <PMProjectView />
+                <PMProjectViewEnhanced />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pm-project/:projectId"
+            element={
+              <ProtectedRoute>
+                <PMProjectViewEnhanced />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/project/:projectId/pm-issues"
+            element={
+              <ProtectedRoute>
+                <PMIssuesPage />
               </ProtectedRoute>
             }
           />

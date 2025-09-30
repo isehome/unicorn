@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -14,7 +14,8 @@ import {
   Clock,
   Folder,
   ChevronRight,
-  Loader
+  Loader,
+  Search
 } from 'lucide-react';
 
 const PMDashboard = () => {
@@ -24,6 +25,7 @@ const PMDashboard = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [newProject, setNewProject] = useState({
     name: '',
     client: '',
@@ -120,6 +122,20 @@ const PMDashboard = () => {
     }
   };
 
+  // Filter projects based on search term - must be before any conditional returns
+  const filteredProjects = useMemo(() => {
+    if (!searchTerm.trim()) return projects;
+    
+    const search = searchTerm.toLowerCase();
+    return projects.filter(project => 
+      project.name?.toLowerCase().includes(search) ||
+      project.client?.toLowerCase().includes(search) ||
+      project.address?.toLowerCase().includes(search) ||
+      project.project_number?.toLowerCase().includes(search) ||
+      project.phase?.toLowerCase().includes(search)
+    );
+  }, [projects, searchTerm]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -130,24 +146,6 @@ const PMDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-      {/* Header */}
-      <div style={sectionStyles.header} className="shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-violet-500 to-cyan-500 bg-clip-text text-transparent">
-              Project Manager Dashboard
-            </h1>
-            <Button 
-              variant="primary" 
-              icon={Plus}
-              onClick={() => setShowNewProjectForm(!showNewProjectForm)}
-            >
-              {showNewProjectForm ? 'Cancel' : 'New Project'}
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Create New Project Form (Collapsible) */}
         {showNewProjectForm && (
@@ -294,9 +292,35 @@ const PMDashboard = () => {
 
         {/* Existing Projects List */}
         <div style={sectionStyles.card}>
-          <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">
-            All Projects ({projects.length})
-          </h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              All Projects ({filteredProjects.length})
+            </h2>
+            <div className="flex items-center gap-3">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search projects..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white 
+                           focus:ring-2 focus:ring-violet-500 focus:border-transparent
+                           placeholder-gray-500 dark:placeholder-gray-400"
+                  style={{ width: '250px' }}
+                />
+              </div>
+              <Button 
+                variant="primary" 
+                icon={Plus}
+                onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+              >
+                {showNewProjectForm ? 'Cancel' : 'New Project'}
+              </Button>
+            </div>
+          </div>
 
           {projects.length === 0 ? (
             <div className="text-center py-8">
@@ -309,9 +333,19 @@ const PMDashboard = () => {
                 Create Your First Project
               </Button>
             </div>
+          ) : filteredProjects.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400">No projects match your search.</p>
+              <button
+                onClick={() => setSearchTerm('')}
+                className="mt-2 text-sm text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                Clear search
+              </button>
+            </div>
           ) : (
             <div className="space-y-3">
-              {projects.map((project) => (
+              {filteredProjects.map((project) => (
                 <div
                   key={project.id}
                   onClick={() => handleProjectClick(project.id)}
