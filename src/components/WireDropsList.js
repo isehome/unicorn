@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Filter, Plus, ArrowLeft, Loader } from 'lucide-react';
+import { Search, Filter, Plus, Loader } from 'lucide-react';
 
 const WireDropsList = () => {
   const { mode } = useTheme();
@@ -118,13 +118,6 @@ const WireDropsList = () => {
     navigate(`/wire-drops/new${projectId ? `?project=${projectId}` : ''}`);
   };
 
-  const handleGoBack = () => {
-    if (projectId) {
-      navigate(`/project/${projectId}`);
-    } else {
-      navigate(-1);
-    }
-  };
 
   if (loading) {
     return (
@@ -139,9 +132,7 @@ const WireDropsList = () => {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-sm text-rose-500 dark:text-rose-300">{error}</p>
-          <Button onClick={handleGoBack} variant="secondary" icon={ArrowLeft}>
-            Go Back
-          </Button>
+          {/* Error state - user will use app bar back button */}
         </div>
       </div>
     );
@@ -153,14 +144,7 @@ const WireDropsList = () => {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
             {projectId && (
-              <Button 
-                variant="ghost" 
-                icon={ArrowLeft} 
-                onClick={handleGoBack}
-                size="sm"
-              >
-                Back
-              </Button>
+              <div>{/* Spacer for layout */}</div>
             )}
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">

@@ -5,8 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
 import { 
-  ArrowLeft, 
-  Save,
+  Save, 
   X,
   MapPin,
   Zap,
@@ -172,7 +171,6 @@ const WireDropNew = () => {
         <div className="flex items-center justify-between">
           <Button 
             variant="ghost" 
-            icon={ArrowLeft} 
             onClick={handleCancel}
             size="sm"
           >

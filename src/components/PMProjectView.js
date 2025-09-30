@@ -645,18 +645,8 @@ const PMProjectView = () => {
 
       {/* Action Buttons */}
       <div className="flex gap-4">
-        <Button
-          variant="secondary"
-          onClick={() => navigate('/pm-dashboard')}
-        >
-          Back to Dashboard
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => navigate(`/project/${projectId}/stakeholders`)}
-        >
-          Manage Stakeholders
-        </Button>
+          <div>{/* Spacer for layout */}</div>
+        <div>{/* Spacer for layout */}</div>
         <Button
           variant="secondary"
           onClick={() => navigate(`/project/${projectId}/issues`)}

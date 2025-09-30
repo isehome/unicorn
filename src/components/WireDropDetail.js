@@ -271,14 +271,7 @@ const WireDropDetail = () => {
       <div className="px-4 pt-2 pb-8 space-y-6 max-w-4xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            icon={ArrowLeft} 
-            onClick={() => navigate(-1)}
-            size="sm"
-          >
-            Back
-          </Button>
+          <div>{/* Spacer for layout */}</div>
           {!editing ? (
             <Button 
               variant="primary" 

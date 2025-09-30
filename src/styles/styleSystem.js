@@ -1,3 +1,21 @@
+/**
+ * IMPORTANT NAVIGATION & UI CONVENTION:
+ * 
+ * Page titles should ONLY be displayed in the AppHeader component (app bar), 
+ * NOT within the page content itself. This ensures consistency across the app.
+ * 
+ * The AppHeader component:
+ * - Displays the current page title under "Intelligent Systems" 
+ * - Provides a universal back button for all pages except root pages (/, /pm-dashboard, /login)
+ * 
+ * Component guidelines:
+ * - DO NOT render page titles (h1/h2) in page bodies
+ * - DO NOT implement custom back buttons - use the app bar's back button
+ * - Use the AppHeader's page title display instead of duplicating titles
+ * 
+ * This ensures a clean, consistent navigation experience throughout the application.
+ */
+
 const brandColors = {
   primary: '#8B5CF6',
   primaryHover: '#7C3AED',

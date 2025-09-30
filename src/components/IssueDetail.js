@@ -11,7 +11,7 @@ import {
   projectStakeholdersService
 } from '../services/supabaseService';
 import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
-import { ArrowLeft, Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -296,7 +296,7 @@ const IssueDetail = () => {
     return (
       <div className="max-w-4xl mx-auto p-4">
         <div className="text-rose-600 text-sm mb-3">{error}</div>
-        <Button variant="secondary" icon={ArrowLeft} onClick={() => navigate(-1)}>Back</Button>
+        {/* Error state - user will use app bar back button */}
       </div>
     );
   }
@@ -704,7 +704,7 @@ const IssueDetail = () => {
         <div className="flex items-center justify-between">
           {error ? <div className="text-sm text-rose-500">{error}</div> : <span />}
           <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" icon={ArrowLeft} onClick={() => navigate(-1)} disabled={saving}>
+            <Button type="button" variant="secondary" onClick={() => navigate(-1)} disabled={saving}>
               Cancel
             </Button>
             <Button type="submit" variant="primary" icon={Plus} loading={saving}>

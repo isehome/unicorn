@@ -6,8 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import wireDropService from '../services/wireDropService';
 import Button from './ui/Button';
 import { 
-  ArrowLeft, 
-  MapPin, 
+  MapPin,
   Zap, 
   Camera, 
   Upload, 
@@ -301,9 +300,7 @@ const WireDropDetailEnhanced = () => {
       <div className={`min-h-screen flex items-center justify-center transition-colors ${pageClasses}`}>
         <div className="text-center space-y-4">
           <p className="text-sm text-rose-500 dark:text-rose-300">{error || 'Wire drop not found'}</p>
-          <Button onClick={() => navigate(-1)} variant="secondary" icon={ArrowLeft}>
-            Go Back
-          </Button>
+          {/* Error state - user will use app bar back button */}
         </div>
       </div>
     );
@@ -326,14 +323,7 @@ const WireDropDetailEnhanced = () => {
       <div className="px-4 pt-2 pb-8 space-y-6 max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            icon={ArrowLeft} 
-            onClick={() => navigate(-1)}
-            size="sm"
-          >
-            Back
-          </Button>
+          <div>{/* Spacer for layout */}</div>
           {!editing ? (
             <div className="flex gap-2">
               <Button 
