@@ -622,6 +622,189 @@ export const stakeholderRolesService = {
   }
 };
 
+// ============= TIME LOGS SERVICE =============
+export const timeLogsService = {
+  async checkIn(projectId, userEmail, userName = null) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      // Use the Supabase function for check-in
+      const { data, error } = await supabase
+        .rpc('time_log_check_in', {
+          p_project_id: projectId,
+          p_user_email: userEmail,
+          p_user_name: userName || userEmail
+        });
+        
+      if (error) {
+        console.error('Check-in error:', error);
+        return { success: false, message: error.message || 'Failed to check in' };
+      }
+      
+      return { success: true, data };
+    } catch (error) {
+      console.error('Failed to check in:', error);
+      return { success: false, message: error.message || 'Failed to check in' };
+    }
+  },
+  
+  async checkOut(projectId, userEmail) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      // Use the Supabase function for check-out
+      const { data, error } = await supabase
+        .rpc('time_log_check_out', {
+          p_project_id: projectId,
+          p_user_email: userEmail
+        });
+        
+      if (error) {
+        console.error('Check-out error:', error);
+        return { success: false, message: error.message || 'Failed to check out' };
+      }
+      
+      return { success: true, data };
+    } catch (error) {
+      console.error('Failed to check out:', error);
+      return { success: false, message: error.message || 'Failed to check out' };
+    }
+  },
+  
+  async getActiveSession(projectId, userEmail) {
+    try {
+      if (!supabase) return null;
+      
+      // Use the Supabase function to get active session
+      const { data, error } = await supabase
+        .rpc('get_active_session', {
+          p_project_id: projectId,
+          p_user_email: userEmail
+        });
+        
+      if (error) {
+        console.error('Failed to get active session:', error);
+        return null;
+      }
+      
+      return data && data.length > 0 ? data[0] : null;
+    } catch (error) {
+      console.error('Failed to get active session:', error);
+      return null;
+    }
+  },
+  
+  async getUserProjectTime(projectId, userEmail) {
+    try {
+      if (!supabase) return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
+      
+      const { data, error } = await supabase
+        .rpc('get_user_project_time', {
+          p_project_id: projectId,
+          p_user_email: userEmail
+        });
+        
+      if (error) {
+        console.error('Failed to get user project time:', error);
+        return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
+      }
+      
+      return data && data.length > 0 ? data[0] : { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
+    } catch (error) {
+      console.error('Failed to get user project time:', error);
+      return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
+    }
+  },
+  
+  async getProjectTimeSummary(projectId) {
+    try {
+      if (!supabase) return [];
+      
+      const { data, error } = await supabase
+        .rpc('get_project_time_summary', {
+          p_project_id: projectId
+        });
+        
+      if (error) {
+        console.error('Failed to get project time summary:', error);
+        return [];
+      }
+      
+      return data || [];
+    } catch (error) {
+      console.error('Failed to get project time summary:', error);
+      return [];
+    }
+  },
+  
+  async getWeeklyTimeSummary(userEmail = null, weeksBack = 4) {
+    try {
+      if (!supabase) return [];
+      
+      const { data, error } = await supabase
+        .rpc('get_weekly_time_summary', {
+          p_user_email: userEmail,
+          p_weeks_back: weeksBack
+        });
+        
+      if (error) {
+        console.error('Failed to get weekly time summary:', error);
+        return [];
+      }
+      
+      return data || [];
+    } catch (error) {
+      console.error('Failed to get weekly time summary:', error);
+      return [];
+    }
+  }
+};
+
+// ============= PROJECT PROGRESS SERVICE =============  
+export const projectProgressService = {
+  async getProjectProgress(projectId) {
+    try {
+      if (!supabase) return { prewire: 0, trim: 0, commission: 0 };
+      
+      // Get all wire drops with their stages
+      const { data: wireDrops, error } = await supabase
+        .from('wire_drops')
+        .select('*, wire_drop_stages(*)')
+        .eq('project_id', projectId);
+        
+      if (error || !wireDrops || wireDrops.length === 0) {
+        return { prewire: 0, trim: 0, commission: 0 };
+      }
+      
+      // Calculate progress for each stage
+      const totalDrops = wireDrops.length;
+      let prewireComplete = 0;
+      let trimComplete = 0;
+      let commissionComplete = 0;
+      
+      wireDrops.forEach(drop => {
+        const stages = drop.wire_drop_stages || [];
+        stages.forEach(stage => {
+          if (stage.completed) {
+            if (stage.stage_type === 'prewire') prewireComplete++;
+            else if (stage.stage_type === 'trim_out') trimComplete++;
+            else if (stage.stage_type === 'commission') commissionComplete++;
+          }
+        });
+      });
+      
+      return {
+        prewire: Math.round((prewireComplete / totalDrops) * 100),
+        trim: Math.round((trimComplete / totalDrops) * 100),
+        commission: Math.round((commissionComplete / totalDrops) * 100)
+      };
+    } catch (error) {
+      console.error('Failed to get project progress:', error);
+      return { prewire: 0, trim: 0, commission: 0 };
+    }
+  }
+};
+
 // ============= SUBSCRIPTIONS (mock for compatibility) =============
 export const subscriptions = {
   subscribeToProject: () => ({ unsubscribe: () => {} }),

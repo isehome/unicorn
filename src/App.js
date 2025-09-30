@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import TechnicianDashboardOptimized from './components/TechnicianDashboardOptimized';
 import PMDashboard from './components/PMDashboard';
 import ProjectDetailView from './components/ProjectDetailView';
+import PMProjectView from './components/PMProjectView';
 import IssueDetail from './components/IssueDetail';
 import PeopleManagement from './components/PeopleManagement';
 import WireDropsList from './components/WireDropsList';
@@ -55,6 +56,14 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <ProjectDetailView />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pm/project/:projectId"
+            element={
+              <ProtectedRoute>
+                <PMProjectView />
               </ProtectedRoute>
             }
           />

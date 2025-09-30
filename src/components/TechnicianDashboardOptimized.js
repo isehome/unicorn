@@ -1,11 +1,12 @@
-import React, { useCallback, useMemo, useState, memo } from 'react';
+import React, { useCallback, useMemo, useState, memo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
+import { timeLogsService, projectProgressService, issuesService } from '../services/supabaseService';
 import Button from './ui/Button';
-import { ListTodo, AlertTriangle, Loader, Calendar } from 'lucide-react';
+import { ListTodo, AlertTriangle, Loader, Calendar, LogIn, LogOut, FileWarning } from 'lucide-react';
 
 // Memoized Calendar Event Component
 const CalendarEvent = memo(({ event, formatEventTime }) => (
@@ -21,37 +22,109 @@ const CalendarEvent = memo(({ event, formatEventTime }) => (
   </div>
 ));
 
-// Memoized Project Card Component
-const ProjectCard = memo(({ project, onClick }) => (
-  <div
-    onClick={onClick}
-    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
-  >
-    <div className="flex justify-between items-start">
-      <div>
-        <h3 className="font-semibold text-gray-900 dark:text-white">
-          {project.name}
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          {project.project_number && `#${project.project_number} • `}
-          {project.status}
-        </p>
+// Progress Bar Component
+const ProgressBar = memo(({ label, percentage }) => {
+  const getBarColor = (percent) => {
+    if (percent < 33) return 'bg-red-500';
+    if (percent < 67) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-16">{label}</span>
+      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
+          style={{ width: `${percentage}%` }}
+        />
       </div>
-      <span className={`px-2 py-1 text-xs rounded-full ${
-        project.status === 'active'
-          ? 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-          : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-      }`}>
-        {project.status}
-      </span>
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
     </div>
-    {project.description && (
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-        {project.description}
-      </p>
-    )}
-  </div>
-));
+  );
+});
+
+// Memoized Project Card Component
+const ProjectCard = memo(({ 
+  project, 
+  onClick, 
+  onCheckIn, 
+  onCheckOut, 
+  onLogIssue, 
+  isCheckedIn, 
+  progress,
+  userId 
+}) => {
+  const handleCardClick = (e) => {
+    // Only trigger onClick if clicking on the card itself, not buttons
+    if (e.target === e.currentTarget || e.target.closest('.card-content')) {
+      onClick();
+    }
+  };
+
+  return (
+    <div
+      onClick={handleCardClick}
+      className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
+    >
+      <div className="card-content flex gap-4">
+        {/* Left side - Project info and buttons */}
+        <div className="flex-1 min-w-0">
+          <div className="mb-3">
+            <h3 className="font-semibold text-gray-900 dark:text-white">
+              {project.name}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {project.project_number && `#${project.project_number} • `}
+              {project.status}
+            </p>
+            {project.description && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mt-1">
+                {project.description}
+              </p>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={onLogIssue}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors"
+            >
+              <FileWarning className="w-3 h-3 inline mr-1" />
+              Log Issue
+            </button>
+            
+            {isCheckedIn ? (
+              <button
+                onClick={onCheckOut}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/30 transition-colors"
+              >
+                <LogOut className="w-3 h-3 inline mr-1" />
+                Check Out
+              </button>
+            ) : (
+              <button
+                onClick={onCheckIn}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors"
+              >
+                <LogIn className="w-3 h-3 inline mr-1" />
+                Check In
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right side - Progress Bars */}
+        <div className="flex flex-col justify-center space-y-1.5 w-48">
+          <ProgressBar label="Prewire" percentage={progress?.prewire || 0} />
+          <ProgressBar label="Trim" percentage={progress?.trim || 0} />
+          <ProgressBar label="Commission" percentage={progress?.commission || 0} />
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const TechnicianDashboardOptimized = () => {
   const navigate = useNavigate();
@@ -66,6 +139,68 @@ const TechnicianDashboardOptimized = () => {
     const saved = localStorage.getItem('dashboard-show-my-projects');
     return saved === 'true' || saved === null;
   });
+
+  const [checkedInProjects, setCheckedInProjects] = useState(new Set());
+  const [projectProgress, setProjectProgress] = useState({});
+  const [loadingActions, setLoadingActions] = useState(new Set());
+
+  // Get user ID for time logs (using email as fallback)
+  const userId = user?.email || 'anonymous';
+
+  // Load progress for all projects
+  useEffect(() => {
+    const loadProgress = async () => {
+      if (!projects.data) return;
+      
+      const progressData = {};
+      for (const project of projects.data) {
+        try {
+          const progress = await projectProgressService.getProjectProgress(project.id);
+          progressData[project.id] = progress;
+        } catch (error) {
+          console.error(`Failed to load progress for project ${project.id}:`, error);
+          progressData[project.id] = { prewire: 0, trim: 0, commission: 0 };
+        }
+      }
+      setProjectProgress(progressData);
+    };
+
+    loadProgress();
+  }, [projects.data]);
+
+  // Load checked-in status for all projects
+  useEffect(() => {
+    const loadCheckInStatus = async () => {
+      if (!projects.data || !userId) return;
+      
+      const checkedIn = new Set();
+      
+      // First check local storage
+      const localCheckIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+      Object.keys(localCheckIns).forEach(projectId => {
+        if (localCheckIns[projectId].user === userId) {
+          checkedIn.add(projectId);
+        }
+      });
+      
+      // Then try to check database
+      for (const project of projects.data) {
+        if (!checkedIn.has(project.id)) {
+          try {
+            const session = await timeLogsService.getActiveSession(project.id, userId);
+            if (session) {
+              checkedIn.add(project.id);
+            }
+          } catch (error) {
+            // Silently fail, we have local storage as backup
+          }
+        }
+      }
+      setCheckedInProjects(checkedIn);
+    };
+
+    loadCheckInStatus();
+  }, [projects.data, userId]);
 
   // Memoized event time formatter
   const formatEventTime = useCallback((start, end) => {
@@ -130,6 +265,130 @@ const TechnicianDashboardOptimized = () => {
     setShowMyProjects(showMy);
     localStorage.setItem('dashboard-show-my-projects', String(showMy));
   }, []);
+
+  const handleCheckIn = useCallback(async (e, projectId) => {
+    e.stopPropagation();
+    if (loadingActions.has(projectId)) return;
+    
+    setLoadingActions(prev => new Set(prev).add(projectId));
+    try {
+      const result = await timeLogsService.checkIn(projectId, userId);
+      if (result.success) {
+        setCheckedInProjects(prev => new Set(prev).add(projectId));
+        // Store locally as backup
+        const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+        checkIns[projectId] = {
+          user: userId,
+          checkIn: new Date().toISOString(),
+          projectName: projects.data?.find(p => p.id === projectId)?.name
+        };
+        localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+      } else if (result.message?.includes('metadata')) {
+        // Fallback to local storage if database doesn't support metadata
+        setCheckedInProjects(prev => new Set(prev).add(projectId));
+        const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+        checkIns[projectId] = {
+          user: userId,
+          checkIn: new Date().toISOString(),
+          projectName: projects.data?.find(p => p.id === projectId)?.name
+        };
+        localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+      } else {
+        alert(result.message || 'Failed to check in');
+      }
+    } catch (error) {
+      console.error('Check-in failed:', error);
+      // Fallback to local storage
+      setCheckedInProjects(prev => new Set(prev).add(projectId));
+      const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+      checkIns[projectId] = {
+        user: userId,
+        checkIn: new Date().toISOString(),
+        projectName: projects.data?.find(p => p.id === projectId)?.name
+      };
+      localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+      console.log('Check-in saved locally due to database issue');
+    } finally {
+      setLoadingActions(prev => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
+    }
+  }, [userId, loadingActions, projects.data]);
+
+  const handleCheckOut = useCallback(async (e, projectId) => {
+    e.stopPropagation();
+    if (loadingActions.has(projectId)) return;
+    
+    setLoadingActions(prev => new Set(prev).add(projectId));
+    try {
+      const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+      const checkInTime = checkIns[projectId]?.checkIn;
+      
+      const result = await timeLogsService.checkOut(projectId, userId);
+      if (result.success) {
+        setCheckedInProjects(prev => {
+          const next = new Set(prev);
+          next.delete(projectId);
+          return next;
+        });
+        // Remove from local storage
+        delete checkIns[projectId];
+        localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+        
+        // Calculate and show time spent
+        if (checkInTime) {
+          const duration = new Date() - new Date(checkInTime);
+          const hours = Math.floor(duration / 3600000);
+          const minutes = Math.floor((duration % 3600000) / 60000);
+          console.log(`Checked out after ${hours}h ${minutes}m`);
+        }
+      } else if (result.message?.includes('metadata') || result.message?.includes('No active')) {
+        // Fallback to local storage
+        setCheckedInProjects(prev => {
+          const next = new Set(prev);
+          next.delete(projectId);
+          return next;
+        });
+        delete checkIns[projectId];
+        localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+        
+        if (checkInTime) {
+          const duration = new Date() - new Date(checkInTime);
+          const hours = Math.floor(duration / 3600000);
+          const minutes = Math.floor((duration % 3600000) / 60000);
+          console.log(`Checked out after ${hours}h ${minutes}m (local)`);
+        }
+      } else {
+        alert(result.message || 'Failed to check out');
+      }
+    } catch (error) {
+      console.error('Check-out failed:', error);
+      // Fallback to local storage
+      const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
+      setCheckedInProjects(prev => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
+      delete checkIns[projectId];
+      localStorage.setItem('project_checkins', JSON.stringify(checkIns));
+      console.log('Check-out saved locally due to database issue');
+    } finally {
+      setLoadingActions(prev => {
+        const next = new Set(prev);
+        next.delete(projectId);
+        return next;
+      });
+    }
+  }, [userId, loadingActions]);
+
+  const handleLogIssue = useCallback(async (e, projectId) => {
+    e.stopPropagation();
+    // Navigate to create issue page with project pre-selected
+    navigate(`/issues/new?project=${projectId}`);
+  }, [navigate]);
 
   if (isLoading) {
     return (
@@ -304,6 +563,12 @@ const TechnicianDashboardOptimized = () => {
                 key={project.id}
                 project={project}
                 onClick={() => handleNavigateToProject(project.id)}
+                onCheckIn={(e) => handleCheckIn(e, project.id)}
+                onCheckOut={(e) => handleCheckOut(e, project.id)}
+                onLogIssue={(e) => handleLogIssue(e, project.id)}
+                isCheckedIn={checkedInProjects.has(project.id)}
+                progress={projectProgress[project.id]}
+                userId={userId}
               />
             ))}
           </div>
