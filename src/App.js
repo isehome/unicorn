@@ -10,6 +10,8 @@ import ProjectDetailView from './components/ProjectDetailView';
 import IssueDetail from './components/IssueDetail';
 import PeopleManagement from './components/PeopleManagement';
 import WireDropsList from './components/WireDropsList';
+import WireDropNew from './components/WireDropNew';
+import WireDropDetailEnhanced from './components/WireDropDetailEnhanced';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
@@ -77,6 +79,22 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <WireDropsList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wire-drops/new"
+            element={
+              <ProtectedRoute>
+                <WireDropNew />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wire-drops/:id"
+            element={
+              <ProtectedRoute>
+                <WireDropDetailEnhanced />
               </ProtectedRoute>
             }
           />

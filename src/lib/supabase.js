@@ -66,7 +66,7 @@ async function withRetry(operation, config = connectionRetryConfig) {
 }
 
 // PUBLIC STORAGE (optional fallback when not using OneDrive)
-export const PHOTOS_BUCKET = process.env.REACT_APP_SUPABASE_BUCKET || 'photos'
+export const PHOTOS_BUCKET = 'photos'
 
 // Upload an image file to Storage and return a public URL
 export async function uploadPublicImage(file, path) {

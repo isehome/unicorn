@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Wire Drops</title>
+    <script>
+        // Set up test auth token
+        localStorage.setItem('sb-qvvabexorhomocfhtvxy-auth-token', JSON.stringify({
+            "access_token": "eyJhbGciOiJIUzI1NiIsImtpZCI6Ijl6M2IybGQ3Y29ueUlCQloiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL3F2dmFiZXhvcmhvbW9jZmh0dnh5LnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiI1Yzk4MjMwOC0yOTNjLTQ0MDctYmI4My02MTQyYWNkNjI5OTYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoyMDYyNzE1NDQ5LCJpYXQiOjE3Mjc2MzU0NDksImVtYWlsIjoic3RlcGhlQHJvY2tldGJ1c2RldmVsb3BtZW50Lm9yZyIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiYXp1cmUtYWQiLCJwcm92aWRlcnMiOlsiYXp1cmUtYWQiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWwiOiJzdGVwaGVAcm9ja2V0YnVzZGV2ZWxvcG1lbnQub3JnIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZ1bGxfbmFtZSI6IlN0ZXBoZSBCbGFuc2V0dGUsIE1hc3RlcmVkIGJ5IFN0ZXBoZSIsImlzcyI6Imh0dHBzOi8vbG9naW4ubWljcm9zb2Z0b25saW5lLmNvbS8xMWQ4YjJiNy02NjQwLTQ1MTEtOGMyZi1mNjMxYzMyNTcyMzQvdjIuMCIsIm5hbWUiOiJTdGVwaGUgQmxhbnNldHRlLCBNYXN0ZXJlZCBieSBTdGVwaGUiLCJwaG9uZV92ZXJpZmllZCI6ZmFsc2UsInBpY3R1cmUiOiJodHRwczovL2F2YXRhcnMuZ2l0aHVidXNlcmNvbnRlbnQuY29tL3UvMTUyMTEyNzQxP3Y9NCIsInByZWZlcnJlZF91c2VybmFtZSI6InN0ZXBoZUByb2NrZXRidXNkZXZlbG9wbWVudC5vcmciLCJwcm92aWRlcl9pZCI6IjllODJkMjE5LWJmNjktNGE3YS1iMDllLTcwMzE1YjMxNDJlMiIsInN1YiI6IjllODJkMjE5LWJmNjktNGE3YS1iMDllLTcwMzE1YjMxNDJlMiJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6Im9hdXRoIiwidGltZXN0YW1wIjoxNzI3NjM1NDQ5fV0sInNlc3Npb25faWQiOiJjOTVjMTRhNy1hZGJmLTQ5OWMtOGExOS0xNzcxMTg0NDc4NDAiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.tMGiK7cCXMUxyOJGE9-Ei_6tFW4ZKp-zt84kjSSn5Io",
+            "token_type": "bearer",
+            "expires_in": 999999999,
+            "expires_at": 2062715449,
+            "refresh_token": "DhMhwu8KPIzRBzJHhJvOuA",
+            "user": {
+                "id": "5c982308-293c-4407-bb83-6142acd62996",
+                "app_metadata": {"provider": "azure-ad", "providers": ["azure-ad"]},
+                "user_metadata": {"email": "stephe@rocketbusdevelopment.org", "full_name": "Stephe Blansette"},
+                "aud": "authenticated",
+                "email": "stephe@rocketbusdevelopment.org",
+                "role": "authenticated"
+            }
+        }));
+        
+        // Redirect to a project page
+        setTimeout(() => {
+            window.location.href = '/project/90d8e7e2-2e8f-4d65-b21f-ef3eb9e8e59f';
+        }, 100);
+    </script>
+</head>
+<body>
+    <div style="text-align: center; padding: 100px; font-family: system-ui;">
+        <h1>Setting up authentication...</h1>
+        <p>Redirecting to project view...</p>
+    </div>
+</body>
+</html>

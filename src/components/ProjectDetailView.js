@@ -203,7 +203,17 @@ const ProjectDetailView = () => {
 
       const wireDropPromise = supabase
         .from('wire_drops')
-        .select('*')
+        .select(`
+          *,
+          wire_drop_stages(
+            stage_type,
+            completed,
+            completed_at,
+            completed_by,
+            photo_url,
+            notes
+          )
+        `)
         .eq('project_id', id)
         .order('uid');
 
@@ -1295,11 +1305,11 @@ const ProjectDetailView = () => {
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="primary" icon={Plus} onClick={handleAddWireDrop} fullWidth>
+              <div className="flex gap-2">
+                <Button variant="primary" icon={Plus} onClick={handleAddWireDrop} style={{ flex: '1 1 50%' }}>
                   Add Wire Drop
                 </Button>
-                <Button variant="secondary" onClick={handleFullWireList} fullWidth>
+                <Button variant="secondary" onClick={handleFullWireList} style={{ flex: '1 1 50%' }}>
                   Full List
                 </Button>
               </div>
@@ -1310,19 +1320,37 @@ const ProjectDetailView = () => {
                 </p>
               ) : (
                 filteredWireDrops.map((drop) => {
-                  const prewireComplete = Boolean(drop.prewire_photo);
-                  const installComplete = Boolean(drop.installed_photo);
-                  const completion = (prewireComplete ? 50 : 0) + (installComplete ? 50 : 0);
+                  // Calculate completion based on 3-stage system using wire_drop_stages
+                  const stages = drop.wire_drop_stages || [];
+                  
+                  const prewireStage = stages.find(s => s.stage_type === 'prewire');
+                  const trimOutStage = stages.find(s => s.stage_type === 'trim_out');
+                  const commissionStage = stages.find(s => s.stage_type === 'commission');
+                  
+                  const prewireComplete = Boolean(prewireStage?.completed);
+                  const installComplete = Boolean(trimOutStage?.completed);
+                  const commissionComplete = Boolean(commissionStage?.completed);
+                  
+                  // Calculate percentage (33.33% per stage for 3 stages)
+                  let completion = 0;
+                  if (prewireComplete) completion += 33.33;
+                  if (installComplete) completion += 33.33;
+                  if (commissionComplete) completion += 33.34;
+                  completion = Math.round(completion);
 
                   return (
-                    <div
+                    <button
                       key={drop.id}
-                      className="p-3 rounded-xl border transition-transform duration-200 hover:-translate-y-0.5"
+                      onClick={() => navigate(`/wire-drops/${drop.id}`)}
+                      className="w-full text-left p-3 rounded-xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-md"
                       style={styles.mutedCard}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="font-medium" style={styles.textPrimary}>{drop.name || 'Wire drop'}</p>
+                          <p className="font-medium" style={styles.textPrimary}>
+                            {drop.room_name || drop.name || 'Wire drop'}
+                            {drop.drop_name && ` - ${drop.drop_name}`}
+                          </p>
                           <p className="text-xs" style={styles.textSecondary}>{drop.location}</p>
                         </div>
                         <span className="text-xs px-2 py-1 rounded-full" style={styles.badge}>
@@ -1330,17 +1358,45 @@ const ProjectDetailView = () => {
                         </span>
                       </div>
                       <div className="mt-2 flex items-center justify-between text-xs">
-                        <div className="flex gap-2">
-                          <span className="px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wide" style={prewireComplete ? styles.badge : { backgroundColor: palette.chipIdleBg, color: palette.chipIdleText }}>
+                        <div className="flex gap-1">
+                          <span 
+                            className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide" 
+                            style={prewireComplete 
+                              ? { backgroundColor: withAlpha(palette.success, 0.18), color: palette.success }
+                              : { backgroundColor: withAlpha(palette.warning, 0.18), color: palette.warning }
+                            }
+                          >
                             Prewire
                           </span>
-                          <span className="px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wide" style={installComplete ? styles.badge : { backgroundColor: palette.chipIdleBg, color: palette.chipIdleText }}>
+                          <span 
+                            className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide" 
+                            style={installComplete
+                              ? { backgroundColor: withAlpha(palette.success, 0.18), color: palette.success }
+                              : { backgroundColor: withAlpha(palette.warning, 0.18), color: palette.warning }
+                            }
+                          >
                             Install
                           </span>
+                          <span 
+                            className="px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide" 
+                            style={commissionComplete
+                              ? { backgroundColor: withAlpha(palette.success, 0.18), color: palette.success }
+                              : { backgroundColor: withAlpha(palette.warning, 0.18), color: palette.warning }
+                            }
+                          >
+                            Comm
+                          </span>
                         </div>
-                        <span className="font-semibold" style={styles.textPrimary}>{completion}%</span>
+                        <span className={`font-bold text-sm ${
+                          completion === 100 ? 'text-green-600 dark:text-green-400' :
+                          completion >= 67 ? 'text-blue-600 dark:text-blue-400' :
+                          completion >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
+                          'text-gray-600 dark:text-gray-400'
+                        }`}>
+                          {completion}%
+                        </span>
                       </div>
-                    </div>
+                    </button>
                   );
                 })
               )}
