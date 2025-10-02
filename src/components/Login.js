@@ -3,8 +3,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { AUTH_ERRORS } from '../config/authConfig';
 
+// Detect if user is on mobile device
+const isMobile = () => {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || 
+         (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+};
+
 const Login = () => {
-  const { login, loading: authLoading, user, authState } = useAuth();
+  const { login, loginRedirect, loading: authLoading, user, authState, error: authError } = useAuth();
   const [error, setError] = useState('');
   const [localLoading, setLocalLoading] = useState(false);
   const [searchParams] = useSearchParams();
@@ -12,6 +18,7 @@ const Login = () => {
   const location = useLocation();
   
   const from = location.state?.from?.pathname || '/';
+  const useMobileFlow = isMobile();
 
   const getErrorMessage = useCallback((errorCode) => {
     const errorMap = {
@@ -23,6 +30,7 @@ const Login = () => {
       'popup_blocked': AUTH_ERRORS.POPUP_BLOCKED,
       'user_cancelled': AUTH_ERRORS.USER_CANCELLED,
       'network_error': AUTH_ERRORS.NETWORK_ERROR,
+      'interaction_in_progress': 'Authentication is in progress. Please wait or reload the page.',
     };
     
     return errorMap[errorCode] || 'An error occurred. Please try again.';
@@ -40,6 +48,13 @@ const Login = () => {
     }
   }, [searchParams, navigate, getErrorMessage]);
 
+  // Show error from AuthContext if present
+  useEffect(() => {
+    if (authError) {
+      setError(authError.message || 'An error occurred during authentication.');
+    }
+  }, [authError]);
+
   useEffect(() => {
     if (user && !authLoading && authState === 'authenticated') {
       console.log('[Login] User already authenticated, redirecting');
@@ -52,18 +67,39 @@ const Login = () => {
       setError('');
       setLocalLoading(true);
       
-      console.log('[Login] Starting login flow');
-      await login();
+      console.log('[Login] Starting login flow, mobile:', useMobileFlow);
       
-      console.log('[Login] Login flow completed');
+      if (useMobileFlow) {
+        console.log('[Login] Using redirect flow for mobile');
+        await loginRedirect();
+        // Note: On redirect, browser will navigate away, so code below won't execute
+      } else {
+        console.log('[Login] Using popup flow for desktop');
+        await login();
+        console.log('[Login] Login flow completed');
+      }
       
     } catch (error) {
       console.error('[Login] Login error:', error);
       setLocalLoading(false);
       
-      setError(error.message || 'Failed to sign in. Please try again.');
+      // Handle interaction_in_progress error
+      if (error.errorCode === 'interaction_in_progress') {
+        setError('Authentication is already in progress. Please reload the page and try again.');
+        
+        // Offer to clear the stuck state
+        setTimeout(() => {
+          if (window.confirm('Would you like to reset the authentication state?')) {
+            // Clear MSAL cache
+            localStorage.removeItem('msal.interaction.status');
+            window.location.reload();
+          }
+        }, 2000);
+      } else {
+        setError(error.message || 'Failed to sign in. Please try again.');
+      }
     }
-  }, [login]);
+  }, [login, loginRedirect, useMobileFlow]);
 
   const isLoading = authLoading || localLoading;
 
@@ -109,6 +145,11 @@ const Login = () => {
           <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
             Sign in with your Microsoft 365 account
           </p>
+          {useMobileFlow && (
+            <p className="mt-1 text-center text-xs text-gray-500 dark:text-gray-500">
+              Mobile browser detected
+            </p>
+          )}
         </div>
         
         {error && (
@@ -190,10 +231,11 @@ const Login = () => {
               Having trouble signing in?
             </summary>
             <ul className="mt-3 space-y-2 ml-4 list-disc">
-              <li>Ensure pop-ups are allowed for this site</li>
+              {!useMobileFlow && <li>Ensure pop-ups are allowed for this site</li>}
               <li>Use your work or school Microsoft account</li>
               <li>Check that you have access to this application</li>
               <li>Try clearing your browser cache and cookies</li>
+              {useMobileFlow && <li>Try using a different browser if issues persist</li>}
               <li>If issues persist, contact your IT administrator</li>
             </ul>
           </details>
