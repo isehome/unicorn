@@ -27,6 +27,7 @@ const AuthContext = createContext({
   error: null,
   authState: AUTH_STATES.INITIALIZING,
   login: async () => {},
+  loginRedirect: async () => {},
   logout: async () => {},
   acquireToken: async () => {},
 });
@@ -289,6 +290,36 @@ export function AuthProvider({ children }) {
     }
   }, [loadUserProfile, scheduleTokenRefresh]);
 
+  // Redirect flow for mobile
+  const loginRedirect = useCallback(async () => {
+    try {
+      console.log('[Auth] Starting login flow with redirect');
+      setError(null);
+
+      // This will redirect the browser to Microsoft login
+      await msalInstance.loginRedirect(loginRequest);
+      
+      // Code after this won't execute because browser redirects away
+    } catch (error) {
+      console.error('[Auth] Login redirect error:', error);
+      console.error('[Auth] Error code:', error.errorCode);
+      
+      let errorMessage = AUTH_ERRORS.UNKNOWN;
+      
+      if (error.errorCode === 'interaction_in_progress') {
+        errorMessage = 'Authentication already in progress. Please wait or reload the page.';
+      } else if (error.message?.includes('network') || error.message?.includes('Network')) {
+        errorMessage = AUTH_ERRORS.NETWORK_ERROR;
+      } else if (error.errorCode) {
+        errorMessage = `Authentication failed: ${error.errorCode}`;
+      }
+      
+      const formattedError = new Error(errorMessage);
+      setError(formattedError);
+      throw formattedError;
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       console.log('[Auth] Logging out');
@@ -329,6 +360,7 @@ export function AuthProvider({ children }) {
     error,
     authState,
     login,
+    loginRedirect,
     logout,
     acquireToken,
     msalInstance,
