@@ -111,48 +111,45 @@ export function slugifySegment(input, max = 60) {
   return trimmed || 'item'
 }
 
-// --- Auth helpers with improved error handling ---
+// --- Auth helpers ---
+// Note: These are primarily for backward compatibility
+// New code should use AuthContext directly
+
 export const signInWithMicrosoft = async () => {
   if (!supabase) throw new Error('Supabase not configured')
   
-  // Don't use withRetry for OAuth - it will redirect the browser
+  // OAuth flow - will redirect the browser
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'azure',
     options: {
-      // Include Microsoft Calendar + Contacts scopes for integrations
       scopes: 'openid profile email offline_access Calendars.Read Contacts.Read',
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: {
         prompt: 'select_account'
       },
-      skipBrowserRedirect: false // Ensure browser redirect happens
+      skipBrowserRedirect: false
     }
   })
   
   if (error) throw error
-  
-  // If data.url exists, the browser should redirect
-  // This won't execute after a successful redirect
   return data
 }
 
 export const signOut = async () => {
   if (!supabase) return
   
-  return withRetry(async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
-  })
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
 }
 
 export const getCurrentUser = () => {
   if (!supabase) return Promise.resolve({ data: { user: null }, error: null })
-  return withRetry(() => supabase.auth.getUser())
+  return supabase.auth.getUser()
 }
 
 export const getSession = () => {
   if (!supabase) return Promise.resolve({ data: { session: null }, error: null })
-  return withRetry(() => supabase.auth.getSession())
+  return supabase.auth.getSession()
 }
 
 // DB helpers with retry logic

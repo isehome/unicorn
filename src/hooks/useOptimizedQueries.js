@@ -59,13 +59,26 @@ export const useUserProjectsOptimized = (userEmail) => {
   });
 };
 
-// Optimized Calendar Events Hook
-export const useCalendarEventsOptimized = () => {
+// Optimized Calendar Events Hook - Now with auth context support
+export const useCalendarEventsOptimized = (authContext) => {
   return useQuery({
     queryKey: queryKeys.calendarEvents,
-    queryFn: fetchTodayEvents,
+    queryFn: async () => {
+      // Use the new MSAL-based method with auth context
+      if (authContext && authContext.accessToken !== undefined) {
+        return fetchTodayEvents(authContext);
+      }
+      // Return empty result if not authenticated
+      console.warn('Calendar: No authentication context available');
+      return {
+        connected: false,
+        events: [],
+        error: 'Calendar not connected. Please sign in.',
+      };
+    },
     staleTime: 15 * 60 * 1000, // Calendar events cached for 15 minutes
     refetchInterval: 30 * 60 * 1000, // Auto-refresh every 30 minutes
+    retry: 1, // Reduce retries to avoid multiple auth redirects
   });
 };
 
@@ -188,10 +201,10 @@ export const prefetchProjectData = async (queryClient, projectId) => {
 };
 
 // Combined dashboard data hook for reduced requests
-export const useDashboardData = (userEmail) => {
+export const useDashboardData = (userEmail, authContext) => {
   const projectsQuery = useProjectsOptimized();
   const userProjectsQuery = useUserProjectsOptimized(userEmail);
-  const calendarQuery = useCalendarEventsOptimized();
+  const calendarQuery = useCalendarEventsOptimized(authContext);
   
   // Batch load todo and issue counts
   const countsQuery = useQuery({

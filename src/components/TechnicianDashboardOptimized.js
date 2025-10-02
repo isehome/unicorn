@@ -130,10 +130,11 @@ const TechnicianDashboardOptimized = () => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
-  const { login, user } = useAuth();
+  const authContext = useAuth(); // Get the full auth context
+  const { login, user } = authContext;
   
-  // Use the combined dashboard data hook
-  const { projects, userProjectIds, calendar, counts, isLoading, error } = useDashboardData(user?.email);
+  // Pass auth context to dashboard data hook for proper calendar token management
+  const { projects, userProjectIds, calendar, counts, isLoading, error } = useDashboardData(user?.email, authContext);
   
   const [showMyProjects, setShowMyProjects] = useState(() => {
     const saved = localStorage.getItem('dashboard-show-my-projects');
