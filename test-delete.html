@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wire Drop Delete Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Wire Drop Delete Test</h1>
+    <div>
+        <input type="text" id="wireDropId" placeholder="Enter Wire Drop ID" style="width: 300px; padding: 8px;">
+        <button onclick="testDelete()" style="padding: 8px 16px;">Test Delete</button>
+    </div>
+    <div id="result" style="margin-top: 20px; padding: 20px; background: #f5f5f5; white-space: pre-wrap;"></div>
+
+    <script>
+        // Initialize Supabase - YOU NEED TO ADD YOUR CREDENTIALS
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL_HERE';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY_HERE';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        async function testDelete() {
+            const wireDropId = document.getElementById('wireDropId').value;
+            const resultDiv = document.getElementById('result');
+            
+            if (!wireDropId) {
+                resultDiv.textContent = 'Please enter a wire drop ID';
+                return;
+            }
+            
+            resultDiv.textContent = 'Testing delete...\n\n';
+            
+            try {
+                // Step 1: Check if wire drop exists
+                resultDiv.textContent += '1. Checking if wire drop exists...\n';
+                const { data: beforeData, error: beforeError } = await supabase
+                    .from('wire_drops')
+                    .select('*')
+                    .eq('id', wireDropId)
+                    .single();
+                
+                if (beforeError) {
+                    resultDiv.textContent += `   ❌ Error: ${beforeError.message}\n`;
+                    return;
+                }
+                
+                if (!beforeData) {
+                    resultDiv.textContent += '   ❌ Wire drop not found\n';
+                    return;
+                }
+                
+                resultDiv.textContent += `   ✓ Found: ${beforeData.name}\n\n`;
+                
+                // Step 2: Try to delete
+                resultDiv.textContent += '2. Attempting delete...\n';
+                const { data: deleteData, error: deleteError } = await supabase
+                    .from('wire_drops')
+                    .delete()
+                    .eq('id', wireDropId);
+                
+                if (deleteError) {
+                    resultDiv.textContent += `   ❌ Delete failed: ${deleteError.message}\n`;
+                    resultDiv.textContent += `   Error details: ${JSON.stringify(deleteError, null, 2)}\n`;
+                    return;
+                }
+                
+                resultDiv.textContent += '   ✓ Delete command executed\n\n';
+                
+                // Step 3: Verify it's gone
+                resultDiv.textContent += '3. Verifying deletion...\n';
+                const { data: afterData, error: afterError } = await supabase
+                    .from('wire_drops')
+                    .select('*')
+                    .eq('id', wireDropId)
+                    .single();
+                
+                if (afterError && afterError.code === 'PGRST116') {
+                    resultDiv.textContent += '   ✓ Wire drop successfully deleted!\n';
+                } else if (afterData) {
+                    resultDiv.textContent += '   ❌ Wire drop STILL EXISTS after delete!\n';
+                    resultDiv.textContent += `   This means the delete is being blocked or rolled back.\n`;
+                } else {
+                    resultDiv.textContent += `   ⚠️  Unexpected result: ${JSON.stringify(afterError)}\n`;
+                }
+                
+            } catch (err) {
+                resultDiv.textContent += `\n❌ Unexpected error: ${err.message}\n`;
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+</html>

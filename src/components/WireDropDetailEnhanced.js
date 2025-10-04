@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
 import wireDropService from '../services/wireDropService';
+import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import { 
   MapPin,
@@ -27,7 +28,8 @@ import {
   AlertCircle,
   AlertTriangle,
   RefreshCw,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react';
 
 const WireDropDetailEnhanced = () => {
@@ -226,9 +228,41 @@ const WireDropDetailEnhanced = () => {
   const handleDeleteWireDrop = async () => {
     try {
       setDeleting(true);
+      
+      // First verify the wire drop exists
+      const { data: checkExists } = await supabase
+        .from('wire_drops')
+        .select('id')
+        .eq('id', id)
+        .single();
+      
+      if (!checkExists) {
+        alert('Wire drop not found or already deleted');
+        navigate(-1);
+        return;
+      }
+      
+      // Attempt deletion
       await wireDropService.deleteWireDrop(id);
-      alert('Wire drop deleted successfully');
-      navigate(-1); // Go back to previous page
+      
+      // Verify it was actually deleted
+      const { data: stillExists, error: checkError } = await supabase
+        .from('wire_drops')
+        .select('id')
+        .eq('id', id)
+        .single();
+      
+      if (!stillExists || checkError?.code === 'PGRST116') {
+        // PGRST116 means no rows found - good, it was deleted
+        alert('Wire drop deleted successfully');
+        
+        // Navigate back and force a refresh of the list
+        navigate('/wire-drops', { replace: true });
+      } else {
+        // Item still exists after delete attempt
+        console.error('Wire drop still exists after delete attempt');
+        alert('Failed to delete wire drop - it still exists in the database. Please contact support.');
+      }
     } catch (err) {
       console.error('Error deleting wire drop:', err);
       alert(err.message || 'Failed to delete wire drop');
@@ -321,61 +355,51 @@ const WireDropDetailEnhanced = () => {
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
       <div className="px-4 pt-2 pb-8 space-y-6 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>{/* Spacer for layout */}</div>
-          {!editing ? (
-            <div className="flex gap-2">
-              <Button 
-                variant="danger" 
-                icon={Trash2} 
-                onClick={() => setShowDeleteConfirm(true)}
-                size="sm"
-              >
-                Delete
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Edit} 
-                onClick={() => setEditing(true)}
-                size="sm"
-              >
-                Edit
-              </Button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <Button 
-                variant="ghost" 
-                icon={X} 
-                onClick={handleCancel}
-                size="sm"
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Save} 
-                onClick={handleSave}
-                size="sm"
-                loading={saving}
-                disabled={saving}
-              >
-                Save
-              </Button>
-            </div>
-          )}
-        </div>
-
         {/* Main Info Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>
           <div className="p-6 space-y-4">
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 {editing ? (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-xl font-bold" style={styles.textPrimary}>Edit Wire Drop</h2>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="ghost" 
+                          icon={X} 
+                          onClick={handleCancel}
+                          size="sm"
+                          disabled={saving}
+                        >
+                          Cancel
+                        </Button>
+                        <Button 
+                          variant="primary" 
+                          icon={Save} 
+                          onClick={handleSave}
+                          loading={saving}
+                          disabled={saving}
+                          size="sm"
+                        >
+                          Save Changes
+                        </Button>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
+                          Drop Name
+                        </label>
+                        <input
+                          type="text"
+                          value={editForm.drop_name || ''}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, drop_name: e.target.value }))}
+                          placeholder="Drop name"
+                          className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                        />
+                      </div>
                       <div>
                         <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
                           Room Name
@@ -391,14 +415,64 @@ const WireDropDetailEnhanced = () => {
                       </div>
                       <div>
                         <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
-                          Drop Name
+                          Wire Type
                         </label>
                         <input
                           type="text"
-                          value={editForm.drop_name || ''}
-                          onChange={(e) => setEditForm(prev => ({ ...prev, drop_name: e.target.value }))}
-                          placeholder="Drop name"
+                          value={editForm.type || ''}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, type: e.target.value }))}
+                          placeholder="e.g., Cat 6, 18/4"
                           className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          value={editForm.location || ''}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, location: e.target.value }))}
+                          placeholder="Location details"
+                          className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
+                          Notes
+                        </label>
+                        <textarea
+                          value={editForm.notes || ''}
+                          onChange={(e) => setEditForm(prev => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Additional notes"
+                          rows={3}
+                          className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
+                          UID (Read-only)
+                        </label>
+                        <input
+                          type="text"
+                          value={wireDrop.uid || 'Not assigned'}
+                          disabled
+                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60"
+                          style={styles.input}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={styles.subtleText}>
+                          Lucid Shape ID (Read-only)
+                        </label>
+                        <input
+                          type="text"
+                          value={wireDrop.lucid_shape_id || 'Not linked'}
+                          disabled
+                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60"
                           style={styles.input}
                         />
                       </div>
@@ -406,20 +480,34 @@ const WireDropDetailEnhanced = () => {
                   </div>
                 ) : (
                   <>
-                    <h1 className="text-2xl font-bold" style={styles.textPrimary}>
-                      {wireDrop.room_name || wireDrop.name || 'Wire Drop'} {wireDrop.drop_name && `- ${wireDrop.drop_name}`}
-                    </h1>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm font-mono px-2 py-1 rounded" style={styles.mutedCard}>
-                        {wireDrop.uid}
-                      </span>
-                      {wireDrop.location && (
-                        <div className="flex items-center gap-1 text-sm" style={styles.textSecondary}>
-                          <MapPin size={14} />
-                          {wireDrop.location}
-                        </div>
-                      )}
+                    <div className="flex items-center justify-between">
+                      <h1 className="text-2xl font-bold" style={styles.textPrimary}>
+                        {wireDrop.name || 'Wire Drop'}
+                      </h1>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="danger" 
+                          icon={Trash2} 
+                          onClick={() => setShowDeleteConfirm(true)}
+                          size="sm"
+                        >
+                          Delete
+                        </Button>
+                        <Button 
+                          variant="primary" 
+                          icon={Edit} 
+                          onClick={() => setEditing(true)}
+                          size="sm"
+                        >
+                          Edit
+                        </Button>
+                      </div>
                     </div>
+                    {wireDrop.room_name && (
+                      <p className="text-lg mt-1" style={styles.textSecondary}>
+                        {wireDrop.room_name}
+                      </p>
+                    )}
                   </>
                 )}
                 
@@ -432,8 +520,181 @@ const WireDropDetailEnhanced = () => {
                   </button>
                 )}
               </div>
-              
-              <div className="text-right space-y-2">
+            </div>
+
+            {/* Wire Drop Data and Shape Data Grid - Comprehensive View */}
+            {!editing && (
+              <div className="border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
+                {/* Data Source Legend and Info */}
+                <div className="mb-4 p-3 rounded-lg" style={styles.mutedCard}>
+                  <h3 className="text-xs font-semibold mb-2" style={styles.textPrimary}>
+                    DATA SOURCE MAPPING & FIELD STATUS
+                  </h3>
+                  <div className="flex flex-wrap gap-4 text-xs mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded border-2" style={{
+                        borderColor: mode === 'dark' ? '#16a34a' : '#86efac',
+                        backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(134, 239, 172, 0.2)'
+                      }}></div>
+                      <span style={{ color: mode === 'dark' ? '#86efac' : '#15803d' }}>
+                        From Lucid Import (shape_data)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded border-2" style={{
+                        borderColor: mode === 'dark' ? '#9333ea' : '#c084fc',
+                        backgroundColor: mode === 'dark' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(192, 132, 252, 0.2)'
+                      }}></div>
+                      <span style={{ color: mode === 'dark' ? '#c084fc' : '#7c3aed' }}>
+                        Wire Drop Database Fields
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Lock size={12} className="text-gray-500" />
+                      <span className="text-gray-500">Locked (System Generated)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Edit size={12} className="text-blue-500" />
+                      <span className="text-blue-500">Editable Field</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Complete Wire Drop Record */}
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold mb-3" style={styles.textPrimary}>
+                    COMPLETE WIRE DROP RECORD (All Database Fields)
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Define all wire drop fields with metadata */}
+                    {(() => {
+                      const allFields = [
+                        // System/Locked Fields
+                        { name: 'Record ID', key: 'id', value: wireDrop.id, locked: true, source: 'system' },
+                        { name: 'Project ID', key: 'project_id', value: wireDrop.project_id, locked: true, source: 'system' },
+                        { name: 'Created At', key: 'created_at', value: wireDrop.created_at ? new Date(wireDrop.created_at).toLocaleDateString() : null, locked: true, source: 'system' },
+                        { name: 'Updated At', key: 'updated_at', value: wireDrop.updated_at ? new Date(wireDrop.updated_at).toLocaleDateString() : null, locked: true, source: 'system' },
+                        
+                        // Generated Fields
+                        { name: 'UID', key: 'uid', value: wireDrop.uid, locked: true, source: 'generated', description: 'Auto-generated from room & drop names' },
+                        
+                        // Lucid Association Fields (locked)
+                        { name: 'Lucid Shape ID', key: 'lucid_shape_id', value: wireDrop.lucid_shape_id, locked: true, source: 'lucid_link', description: 'Links to Lucid shape' },
+                        { name: 'Lucid Page ID', key: 'lucid_page_id', value: wireDrop.lucid_page_id, locked: true, source: 'lucid_link', description: 'Lucid page/floor reference' },
+                        
+                        // Lucid Position Data (locked)
+                        { name: 'Shape X', key: 'shape_x', value: wireDrop.shape_x, locked: true, source: 'lucid_position' },
+                        { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
+                        { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
+                        { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
+                        
+                        // Editable Core Fields (may originate from Lucid but can be edited)
+                        { name: 'Wire Type', key: 'type', value: wireDrop.type, editable: true, source: wireDrop.shape_data?.['Wire Type'] ? 'lucid' : 'manual' },
+                        { name: 'Room Name', key: 'room_name', value: wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
+                        { name: 'Drop Name', key: 'drop_name', value: wireDrop.drop_name, editable: true, source: wireDrop.shape_data?.['Drop Name'] ? 'lucid' : 'manual' },
+                        { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
+                        { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.shape_data?.Location ? 'lucid' : 'manual' },
+                        { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.shape_data?.Floor ? 'lucid' : 'manual' },
+                        { name: 'Notes', key: 'notes', value: wireDrop.notes, editable: true, source: 'manual' },
+                        
+                        // Additional fields that might exist
+                        { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.shape_data?.Device ? 'lucid' : 'manual' },
+                        { name: 'QR Code URL', key: 'qr_code_url', value: wireDrop.qr_code_url, editable: true, source: 'manual' },
+                        { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.shape_data?.['IS Drop'] ? 'lucid' : 'manual' },
+                        { name: 'Schematic Reference', key: 'schematic_reference', value: wireDrop.schematic_reference, editable: true, source: 'manual' },
+                        
+                        // Legacy photo fields (from original schema)
+                        { name: 'Prewire Photo (Legacy)', key: 'prewire_photo', value: wireDrop.prewire_photo, locked: true, source: 'legacy', description: 'Old photo system' },
+                        { name: 'Installed Photo (Legacy)', key: 'installed_photo', value: wireDrop.installed_photo, locked: true, source: 'legacy', description: 'Old photo system' },
+                      ];
+
+                      const getFieldStyle = (field) => {
+                        // Determine color based on source
+                        if (field.source === 'lucid' || field.source === 'lucid_link' || field.source === 'lucid_position') {
+                          // Green for Lucid-sourced data
+                          return {
+                            borderColor: mode === 'dark' ? '#16a34a' : '#86efac',
+                            backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(134, 239, 172, 0.2)',
+                            labelColor: mode === 'dark' ? '#86efac' : '#15803d',
+                            valueColor: mode === 'dark' ? '#bbf7d0' : '#166534'
+                          };
+                        } else {
+                          // Purple for database/manual fields
+                          return {
+                            borderColor: mode === 'dark' ? '#9333ea' : '#c084fc',
+                            backgroundColor: mode === 'dark' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(192, 132, 252, 0.2)',
+                            labelColor: mode === 'dark' ? '#c084fc' : '#7c3aed',
+                            valueColor: mode === 'dark' ? '#e9d5ff' : '#6b21a8'
+                          };
+                        }
+                      };
+
+                      return allFields.map((field) => {
+                        // Skip null/undefined values unless it's a boolean field
+                        if (field.value === null || field.value === undefined) {
+                          if (field.key !== 'is_drop') return null;
+                        }
+                        
+                        const style = getFieldStyle(field);
+                        
+                        return (
+                          <div 
+                            key={field.key} 
+                            className="px-3 py-2 rounded-lg border-2 relative"
+                            style={{
+                              borderColor: style.borderColor,
+                              backgroundColor: style.backgroundColor
+                            }}
+                            title={field.description || ''}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <span className="text-xs font-medium" style={{ color: style.labelColor }}>
+                                  {field.name}:
+                                </span>
+                                <p className="text-sm font-semibold break-all" style={{ color: style.valueColor }}>
+                                  {field.value || '(empty)'}
+                                </p>
+                                {field.source && (
+                                  <span className="text-xs opacity-60" style={{ color: style.labelColor }}>
+                                    Source: {field.source}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="ml-2 flex-shrink-0">
+                                {field.locked ? (
+                                  <Lock size={12} className="text-gray-500" title="System/Locked Field" />
+                                ) : field.editable ? (
+                                  <Edit size={12} className="text-blue-500" title="Editable Field" />
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }).filter(Boolean);
+                    })()}
+                  </div>
+                </div>
+
+                {/* Raw Lucid Shape Data */}
+                {wireDrop.shape_data && Object.keys(wireDrop.shape_data).length > 0 && (
+                  <div className="mb-4">
+                    <h3 className="text-xs font-semibold mb-3 text-green-600 dark:text-green-400">
+                      RAW LUCID SHAPE DATA (shape_data JSONB field)
+                    </h3>
+                    <div className="p-3 rounded-lg border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">
+                      <pre className="text-xs overflow-x-auto text-green-900 dark:text-green-100">
+                        {JSON.stringify(wireDrop.shape_data, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Completion Percentage */}
+            {!editing && (
+              <div className="text-right border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
                 <div className={`text-3xl font-bold ${
                   wireDrop.completion === 100 ? 'text-green-500' :
                   wireDrop.completion >= 67 ? 'text-blue-500' :
@@ -444,7 +705,7 @@ const WireDropDetailEnhanced = () => {
                 </div>
                 <div className="text-xs" style={styles.subtleText}>Complete</div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

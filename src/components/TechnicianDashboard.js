@@ -357,7 +357,7 @@ const TechnicianDashboard = React.memo(() => {
               <span className="text-sm font-medium ml-2 text-gray-600 dark:text-gray-400">/ {todoCounts.total} total</span>
             </div>
           </div>
-          <ListTodo className="w-8 h-8 text-violet-600" />
+          <ListTodo className="w-8 h-8" style={{ color: '#ACB3D1' }} />
         </button>
         
         <button
@@ -370,7 +370,14 @@ const TechnicianDashboard = React.memo(() => {
             <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               {issueCounts.blocked}
-              <span className="text-sm font-medium ml-2 text-amber-600 dark:text-amber-400">blocked</span>
+              <span 
+                className="text-sm font-medium ml-2"
+                style={{ 
+                  color: issueCounts.blocked > 0 ? '#EF4444' : '#F59E0B'
+                }}
+              >
+                blocked
+              </span>
               <span className="text-sm font-medium ml-3 text-gray-600 dark:text-gray-400">• {issueCounts.open} open</span>
             </div>
           </div>

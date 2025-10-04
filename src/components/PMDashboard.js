@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService } from '../services/supabaseService';
+import { projectsService, contactsService } from '../services/supabaseService';
 import Button from './ui/Button';
 import { 
   Plus, 
@@ -26,9 +26,11 @@ const PMDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [contacts, setContacts] = useState([]);
   const [newProject, setNewProject] = useState({
     name: '',
     client: '',
+    client_contact_id: '',
     address: '',
     project_number: '',
     phase: '',
@@ -40,10 +42,20 @@ const PMDashboard = () => {
     one_drive_procurement: '',
   });
 
-  // Load projects on mount
+  // Load projects and contacts on mount
   useEffect(() => {
     loadProjects();
+    loadContacts();
   }, []);
+
+  const loadContacts = async () => {
+    try {
+      const data = await contactsService.getAll();
+      setContacts(data);
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    }
+  };
 
   const loadProjects = async () => {
     try {
@@ -64,10 +76,16 @@ const PMDashboard = () => {
         return;
       }
 
-      await projectsService.create(newProject);
+      // Create project with client_contact_id
+      const projectData = {
+        ...newProject,
+        client_contact_id: newProject.client_contact_id || null
+      };
+      await projectsService.create(projectData);
       setNewProject({
         name: '',
         client: '',
+        client_contact_id: '',
         address: '',
         project_number: '',
         phase: '',
@@ -173,13 +191,32 @@ const PMDashboard = () => {
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                     Client
                   </label>
-                  <input
-                    type="text"
-                    value={newProject.client}
-                    onChange={(e) => setNewProject({...newProject, client: e.target.value})}
+                  <select
+                    value={newProject.client_contact_id}
+                    onChange={(e) => {
+                      const selectedContact = contacts.find(c => c.id === e.target.value);
+                      setNewProject({
+                        ...newProject, 
+                        client_contact_id: e.target.value,
+                        client: selectedContact ? (selectedContact.full_name || selectedContact.name || selectedContact.company || '') : ''
+                      });
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                    placeholder="Enter client name"
-                  />
+                  >
+                    <option value="">Select a client contact...</option>
+                    {contacts.map(contact => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.full_name || contact.name || 'Unnamed'} 
+                        {contact.company && ` - ${contact.company}`}
+                        {contact.email && ` (${contact.email})`}
+                      </option>
+                    ))}
+                  </select>
+                  {contacts.length === 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      No contacts available. Add contacts first to select as clients.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -408,20 +445,8 @@ const PMDashboard = () => {
                       </div>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        icon={Edit}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleProjectClick(project.id);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-600" />
+                    <div className="flex items-center">
+                      <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors" />
                     </div>
                   </div>
                 </div>

@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useRef
 } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
@@ -33,7 +33,10 @@ import {
   Map,
   Check,
   X,
-  Pencil
+  Pencil,
+  Shield,
+  Key,
+  AlertCircle
 } from 'lucide-react';
 import {
   projectsService,
@@ -45,6 +48,9 @@ import {
 } from '../services/supabaseService';
 import { enhancedStyles } from '../styles/styleSystem';
 import TodoDetailModal from './TodoDetailModal';
+import EquipmentManager from './EquipmentManager';
+import SecureDataManager from './SecureDataManager';
+import LucidChartCarousel from './LucidChartCarousel';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -82,6 +88,7 @@ const statusChipStyle = (palette, status) => {
 
 const ProjectDetailView = () => {
   const { id } = useParams();
+  const location = useLocation();
   const { theme, mode } = useTheme();
   const palette = theme.palette;
   const navigate = useNavigate();
@@ -182,6 +189,8 @@ const ProjectDetailView = () => {
   const [creatingNewContact, setCreatingNewContact] = useState(false);
   const [selectedTodo, setSelectedTodo] = useState(null);
   const [showTodoModal, setShowTodoModal] = useState(false);
+  const [showEquipmentManager, setShowEquipmentManager] = useState(false);
+  const [showSecureDataManager, setShowSecureDataManager] = useState(false);
 
   const refreshStakeholders = useCallback(async () => {
     try {
@@ -253,7 +262,21 @@ const ProjectDetailView = () => {
   useEffect(() => {
     loadProjectData();
     loadAvailableData();
-  }, [loadProjectData, loadAvailableData]);
+    
+    // Check if we should automatically open the issues section and trigger new issue creation
+    const searchParams = new URLSearchParams(location.search);
+    const action = searchParams.get('action');
+    
+    if (action === 'new-issue') {
+      // Automatically expand the issues section
+      setExpandedSection('issues');
+      
+      // After a short delay to ensure the section is expanded, trigger the new issue dialog
+      setTimeout(() => {
+        handleNewIssue();
+      }, 500);
+    }
+  }, [loadProjectData, loadAvailableData, location.search]);
 
   useEffect(() => {
     setExpandedSection(null);
@@ -1272,6 +1295,13 @@ const ProjectDetailView = () => {
           </div>
         </div>
 
+        {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
+        {project.wiring_diagram_url && (
+          <LucidChartCarousel 
+            documentUrl={project.wiring_diagram_url}
+            projectName={project.name}
+          />
+        )}
 
         <div>
           <button
@@ -1411,7 +1441,7 @@ const ProjectDetailView = () => {
             style={styles.card}
           >
             <div className="flex items-center gap-3">
-              <ListTodo size={20} style={styles.textSecondary} />
+              <ListTodo size={20} style={{ color: '#ACB3D1' }} />
               <span className="font-medium" style={styles.textPrimary}>To-do List</span>
               {openTodos.length > 0 && (
                 <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.warning, 0.18), color: palette.warning }}>
@@ -1814,6 +1844,48 @@ const ProjectDetailView = () => {
           )}
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            onClick={() => navigate(`/projects/${id}/equipment`)}
+            className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+            style={styles.card}
+          >
+            <div className="flex items-center gap-3">
+              <div 
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: withAlpha(palette.info, 0.1) }}
+              >
+                <Package size={20} style={{ color: palette.info }} />
+              </div>
+              <div className="text-left">
+                <p className="font-medium" style={styles.textPrimary}>Equipment List</p>
+                <p className="text-xs" style={styles.textSecondary}>Manage project equipment</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
+          </button>
+
+          <button
+            onClick={() => navigate(`/projects/${id}/secure-data`)}
+            className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+            style={styles.card}
+          >
+            <div className="flex items-center gap-3">
+              <div 
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: withAlpha(palette.danger, 0.1) }}
+              >
+                <Shield size={20} style={{ color: palette.danger }} />
+              </div>
+              <div className="text-left">
+                <p className="font-medium" style={styles.textPrimary}>Secure Data</p>
+                <p className="text-xs" style={styles.textSecondary}>Protected credentials</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
+          </button>
+        </div>
+
         <button
           onClick={() => openLink(project.wiring_diagram_url)}
           className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
@@ -1878,6 +1950,20 @@ const ProjectDetailView = () => {
           onToggleComplete={handleToggleTodoFromModal}
           styles={styles}
           palette={palette}
+        />
+      )}
+
+      {showEquipmentManager && (
+        <EquipmentManager
+          projectId={id}
+          onClose={() => setShowEquipmentManager(false)}
+        />
+      )}
+
+      {showSecureDataManager && (
+        <SecureDataManager
+          projectId={id}
+          onClose={() => setShowSecureDataManager(false)}
         />
       )}
 

@@ -17,7 +17,8 @@ import {
   Save,
   X,
   Loader,
-  FileText
+  FileText,
+  Map
 } from 'lucide-react';
 
 const WireDropDetail = () => {
@@ -305,6 +306,29 @@ const WireDropDetail = () => {
             </div>
           )}
         </div>
+
+        {/* Floor Plan Button */}
+        {wireDrop.lucid_shape_id && wireDrop.lucid_page_id && (
+          <div className="rounded-2xl overflow-hidden" style={styles.card}>
+            <button
+              onClick={() => navigate(`/projects/${wireDrop.project_id}/floor-plan?wireDropId=${wireDrop.id}`)}
+              className="w-full p-4 flex items-center justify-between hover:bg-opacity-80 transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white'
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <Map size={24} />
+                <div className="text-left">
+                  <div className="font-semibold">View on Floor Plan</div>
+                  <div className="text-sm opacity-90">See this wire drop's location</div>
+                </div>
+              </div>
+              <ArrowLeft size={20} className="transform rotate-180" />
+            </button>
+          </div>
+        )}
 
         {/* Main Info Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>

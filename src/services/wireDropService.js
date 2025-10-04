@@ -492,11 +492,14 @@ class WireDropService {
 
   /**
    * Generate human-readable UID from room and drop names
+   * Includes timestamp to ensure uniqueness even for recreated wire drops
    */
   generateUID(roomName, dropName) {
     const room = (roomName || 'RM').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
     const drop = (dropName || 'DROP').replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 6);
-    return `${room}-${drop}`;
+    // Add last 4 characters of timestamp to ensure uniqueness
+    const uniqueSuffix = Date.now().toString().slice(-4);
+    return `${room}-${drop}-${uniqueSuffix}`;
   }
 
   /**
@@ -504,12 +507,61 @@ class WireDropService {
    */
   async deleteWireDrop(wireDropId) {
     try {
-      const { error } = await supabase
+      console.log(`Attempting to delete wire drop: ${wireDropId}`);
+      
+      // First check if the wire drop exists
+      const { data: existingDrop, error: checkError } = await supabase
+        .from('wire_drops')
+        .select('id')
+        .eq('id', wireDropId)
+        .single();
+
+      if (checkError || !existingDrop) {
+        console.error('Wire drop not found or error checking:', checkError);
+        throw new Error('Wire drop not found or already deleted');
+      }
+
+      // Now attempt to delete
+      const { data, error } = await supabase
         .from('wire_drops')
         .delete()
-        .eq('id', wireDropId);
+        .eq('id', wireDropId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        // Check for specific error types
+        if (error.code === '42501' || error.message?.includes('policy')) {
+          throw new Error('Permission denied: Database DELETE policy is missing. Please run the fix_wire_drops_delete_NOW.sql script in Supabase SQL Editor.');
+        }
+        
+        throw error;
+      }
+
+      // Verify the delete actually removed something
+      if (!data || data.length === 0) {
+        console.error('Delete operation returned no data - item may not have been deleted');
+        
+        // Double-check if it still exists
+        const { data: stillExists } = await supabase
+          .from('wire_drops')
+          .select('id')
+          .eq('id', wireDropId)
+          .single();
+
+        if (stillExists) {
+          console.error('Wire drop still exists after delete attempt!');
+          throw new Error('Delete failed: Wire drop was not removed. Please check database permissions.');
+        }
+      }
+
+      console.log(`Successfully deleted wire drop: ${wireDropId}`, data);
       return true;
     } catch (error) {
       console.error('Failed to delete wire drop:', error);

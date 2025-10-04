@@ -387,8 +387,8 @@ const TechnicianDashboardOptimized = () => {
 
   const handleLogIssue = useCallback(async (e, projectId) => {
     e.stopPropagation();
-    // Navigate to create issue page with project pre-selected
-    navigate(`/issues/new?project=${projectId}`);
+    // Navigate to project detail view with issues section expanded
+    navigate(`/project/${projectId}?action=new-issue`);
   }, [navigate]);
 
   if (isLoading) {
@@ -476,7 +476,7 @@ const TechnicianDashboardOptimized = () => {
               </span>
             </div>
           </div>
-          <ListTodo className="w-8 h-8 text-violet-600" />
+          <ListTodo className="w-8 h-8" style={{ color: '#ACB3D1' }} />
         </button>
         
         <button
@@ -489,7 +489,14 @@ const TechnicianDashboardOptimized = () => {
             <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
             <div className="text-2xl font-bold text-gray-900 dark:text-white">
               {counts.data?.issues?.blocked ?? 0}
-              <span className="text-sm font-medium ml-2 text-amber-600 dark:text-amber-400">blocked</span>
+              <span 
+                className="text-sm font-medium ml-2"
+                style={{ 
+                  color: (counts.data?.issues?.blocked ?? 0) > 0 ? '#EF4444' : '#F59E0B'
+                }}
+              >
+                blocked
+              </span>
               <span className="text-sm font-medium ml-3 text-gray-600 dark:text-gray-400">
                 • {counts.data?.issues?.open ?? 0} open
               </span>

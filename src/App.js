@@ -14,6 +14,13 @@ import PeopleManagement from './components/PeopleManagement';
 import WireDropsList from './components/WireDropsList';
 import WireDropNew from './components/WireDropNew';
 import WireDropDetailEnhanced from './components/WireDropDetailEnhanced';
+import WireDropsHub from './components/WireDropsHub';
+import FloorPlanViewer from './pages/FloorPlanViewer';
+import LucidTest from './components/LucidTest';
+import LucidChartTest from './components/LucidChartTest';
+import LucidChartDebug from './components/LucidChartDebug';
+import EquipmentListPage from './components/EquipmentListPage';
+import SecureDataPage from './components/SecureDataPage';
 import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
@@ -22,6 +29,7 @@ import BottomNavigation from './components/BottomNavigation';
 import AuthCallback from './components/AuthCallback';
 import IssuesListPageOptimized from './components/IssuesListPageOptimized';
 import TodosListPage from './components/TodosListPage';
+import WireDropDeleteTest from './components/WireDropDeleteTest';
 import './index.css';
 
 const AppRoutes = () => {
@@ -103,7 +111,39 @@ const AppRoutes = () => {
             path="/wire-drops"
             element={
               <ProtectedRoute>
+                <WireDropsHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wire-drops-list"
+            element={
+              <ProtectedRoute>
                 <WireDropsList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lucid-test"
+            element={
+              <ProtectedRoute>
+                <LucidTest />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lucid-chart-test"
+            element={
+              <ProtectedRoute>
+                <LucidChartTest />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lucid-chart-debug"
+            element={
+              <ProtectedRoute>
+                <LucidChartDebug />
               </ProtectedRoute>
             }
           />
@@ -120,6 +160,30 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <WireDropDetailEnhanced />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/:projectId/floor-plan"
+            element={
+              <ProtectedRoute>
+                <FloorPlanViewer />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/:projectId/equipment"
+            element={
+              <ProtectedRoute>
+                <EquipmentListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/:projectId/secure-data"
+            element={
+              <ProtectedRoute>
+                <SecureDataPage />
               </ProtectedRoute>
             }
           />
@@ -144,6 +208,14 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <TodosListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/test/wire-drop-delete"
+            element={
+              <ProtectedRoute>
+                <WireDropDeleteTest />
               </ProtectedRoute>
             }
           />

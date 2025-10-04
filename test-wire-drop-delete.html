@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wire Drop Delete Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #8b5cf6;
+            padding-bottom: 10px;
+        }
+        button {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #7c3aed;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #8b5cf6;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .wire-drop-item {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Wire Drop Delete Diagnostic Test</h1>
+        <p>This tool tests wire drop deletion functionality and diagnoses permission issues.</p>
+
+        <div class="section">
+            <h2>1. Supabase Configuration</h2>
+            <input type="text" id="supabaseUrl" placeholder="Your Supabase URL (e.g., https://xxx.supabase.co)" />
+            <input type="text" id="supabaseKey" placeholder="Your Supabase Anon Key" />
+            <button onclick="initSupabase()">Connect to Supabase</button>
+            <div id="connectionResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>2. Check DELETE Policy</h2>
+            <button onclick="checkDeletePolicy()" disabled id="checkPolicyBtn">Check DELETE Policy</button>
+            <div id="policyResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. List Wire Drops</h2>
+            <button onclick="listWireDrops()" disabled id="listDropsBtn">List Wire Drops</button>
+            <div id="dropsList"></div>
+        </div>
+
+        <div class="section">
+            <h2>4. Test Delete</h2>
+            <select id="dropToDelete" disabled>
+                <option value="">Select a wire drop to delete</option>
+            </select>
+            <button onclick="testDelete()" disabled id="deleteBtn">Test Delete Operation</button>
+            <div id="deleteResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>5. Create Test Wire Drop</h2>
+            <input type="text" id="testDropName" placeholder="Test drop name" value="TEST-DELETE-ME" />
+            <select id="projectId" disabled>
+                <option value="">Select a project</option>
+            </select>
+            <button onclick="createTestDrop()" disabled id="createBtn">Create Test Wire Drop</button>
+            <div id="createResult"></div>
+        </div>
+    </div>
+
+    <script>
+        let supabase = null;
+
+        async function initSupabase() {
+            const url = document.getElementById('supabaseUrl').value;
+            const key = document.getElementById('supabaseKey').value;
+            const resultDiv = document.getElementById('connectionResult');
+
+            if (!url || !key) {
+                resultDiv.innerHTML = '<div class="result error">Please enter both URL and Key</div>';
+                return;
+            }
+
+            try {
+                // Create Supabase client using the global supabase object from CDN
+                supabase = window.supabase.createClient(url, key);
+                
+                // Test connection by trying to get user
+                const { data: { user }, error } = await supabase.auth.getUser();
+                
+                if (user) {
+                    resultDiv.innerHTML = `<div class="result success">✅ Connected! Logged in as: ${user.email || 'User'}</div>`;
+                } else {
+                    resultDiv.innerHTML = '<div class="result warning">⚠️ Connected but not authenticated. You may need to log in.</div>';
+                }
+
+                // Enable other buttons
+                document.getElementById('checkPolicyBtn').disabled = false;
+                document.getElementById('listDropsBtn').disabled = false;
+                document.getElementById('dropToDelete').disabled = false;
+                document.getElementById('deleteBtn').disabled = false;
+                document.getElementById('createBtn').disabled = false;
+                document.getElementById('projectId').disabled = false;
+
+                // Load projects for dropdown
+                await loadProjects();
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">❌ Connection failed: ${error.message}</div>`;
+            }
+        }
+
+        async function checkDeletePolicy() {
+            const resultDiv = document.getElementById('policyResult');
+            
+            try {
+                // Skip the RPC call as it may not exist, go straight to testing delete
+                // Try a delete with a fake ID to check for policy errors
+                const testId = 'test-' + Date.now();
+                const { error: deleteError } = await supabase
+                    .from('wire_drops')
+                    .delete()
+                    .eq('id', testId);
+
+                if (deleteError) {
+                    if (deleteError.message?.includes('policy') || deleteError.code === '42501') {
+                        resultDiv.innerHTML = `<div class="result error">❌ DELETE Policy Missing!
+                        
+Error: ${deleteError.message}
+Code: ${deleteError.code}
+
+SOLUTION: Run the SQL script 'fix_wire_drops_delete_NOW.sql' in Supabase SQL Editor</div>`;
+                    } else {
+                        resultDiv.innerHTML = `<div class="result info">ℹ️ Delete attempt returned: ${deleteError.message}
+This is expected since we used a fake ID.</div>`;
+                    }
+                } else {
+                    resultDiv.innerHTML = '<div class="result success">✅ DELETE policy appears to be working (no policy errors detected)</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">Error checking policy: ${error.message}</div>`;
+            }
+        }
+
+        async function listWireDrops() {
+            const resultDiv = document.getElementById('dropsList');
+            const selectElement = document.getElementById('dropToDelete');
+            
+            try {
+                const { data, error } = await supabase
+                    .from('wire_drops')
+                    .select('id, name, room_name, drop_name, uid, project_id')
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    resultDiv.innerHTML = '<div class="result info">No wire drops found</div>';
+                    return;
+                }
+
+                // Update dropdown
+                selectElement.innerHTML = '<option value="">Select a wire drop to delete</option>';
+                data.forEach(drop => {
+                    const option = document.createElement('option');
+                    option.value = drop.id;
+                    option.textContent = `${drop.name || drop.drop_name || 'Unnamed'} (${drop.uid || 'no-uid'})`;
+                    selectElement.appendChild(option);
+                });
+
+                // Display list
+                let html = `<div class="result info">Found ${data.length} wire drops (showing max 20):</div>`;
+                data.forEach(drop => {
+                    html += `<div class="wire-drop-item">
+                        <div>
+                            <strong>${drop.name || drop.drop_name || 'Unnamed'}</strong><br>
+                            <small>ID: ${drop.id}</small><br>
+                            <small>UID: ${drop.uid || 'none'}</small>
+                        </div>
+                        <button onclick="testDeleteSpecific('${drop.id}')">Delete</button>
+                    </div>`;
+                });
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">Error listing drops: ${error.message}</div>`;
+            }
+        }
+
+        async function testDelete() {
+            const dropId = document.getElementById('dropToDelete').value;
+            if (!dropId) {
+                document.getElementById('deleteResult').innerHTML = '<div class="result error">Please select a wire drop</div>';
+                return;
+            }
+            await testDeleteSpecific(dropId);
+        }
+
+        async function testDeleteSpecific(dropId) {
+            const resultDiv = document.getElementById('deleteResult');
+            
+            try {
+                resultDiv.innerHTML = '<div class="result info">🔄 Attempting delete...</div>';
+
+                // Step 1: Check if it exists
+                const { data: beforeData, error: beforeError } = await supabase
+                    .from('wire_drops')
+                    .select('id, name')
+                    .eq('id', dropId)
+                    .single();
+
+                if (beforeError || !beforeData) {
+                    resultDiv.innerHTML = `<div class="result error">Wire drop not found: ${beforeError?.message || 'No data'}</div>`;
+                    return;
+                }
+
+                // Step 2: Attempt delete
+                const { data: deleteData, error: deleteError } = await supabase
+                    .from('wire_drops')
+                    .delete()
+                    .eq('id', dropId)
+                    .select();
+
+                console.log('Delete result:', { deleteData, deleteError });
+
+                if (deleteError) {
+                    resultDiv.innerHTML = `<div class="result error">❌ Delete failed!
+                    
+Error: ${deleteError.message}
+Code: ${deleteError.code}
+Details: ${JSON.stringify(deleteError.details, null, 2)}
+
+${deleteError.code === '42501' ? '⚠️ PERMISSION DENIED - Run the SQL fix script!' : ''}</div>`;
+                    return;
+                }
+
+                // Step 3: Verify it's gone
+                const { data: afterData, error: afterError } = await supabase
+                    .from('wire_drops')
+                    .select('id')
+                    .eq('id', dropId)
+                    .single();
+
+                if (!afterData && afterError?.code === 'PGRST116') {
+                    // PGRST116 means no rows returned - good!
+                    resultDiv.innerHTML = `<div class="result success">✅ DELETE SUCCESSFUL!
+                    
+Wire drop ${dropId} has been deleted.
+Delete returned: ${deleteData ? JSON.stringify(deleteData) : 'no data'}
+
+The item no longer exists in the database.</div>`;
+                    
+                    // Refresh the list
+                    await listWireDrops();
+                } else if (afterData) {
+                    resultDiv.innerHTML = `<div class="result error">❌ DELETE FAILED!
+                    
+The delete operation appeared to succeed, but the wire drop still exists!
+This indicates a serious permission issue.
+
+Please run the SQL fix script: fix_wire_drops_delete_NOW.sql</div>`;
+                } else {
+                    resultDiv.innerHTML = `<div class="result warning">⚠️ Unclear result
+                    
+Delete data: ${JSON.stringify(deleteData)}
+After check: ${JSON.stringify(afterData)}
+After error: ${afterError?.message}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">Unexpected error: ${error.message}</div>`;
+            }
+        }
+
+        async function loadProjects() {
+            try {
+                const { data, error } = await supabase
+                    .from('projects')
+                    .select('id, name')
+                    .order('name');
+
+                if (data && data.length > 0) {
+                    const select = document.getElementById('projectId');
+                    select.innerHTML = '<option value="">Select a project</option>';
+                    data.forEach(project => {
+                        const option = document.createElement('option');
+                        option.value = project.id;
+                        option.textContent = project.name;
+                        select.appendChild(option);
+                    });
+                    // Select first project by default
+                    if (data.length > 0) {
+                        select.value = data[0].id;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        async function createTestDrop() {
+            const resultDiv = document.getElementById('createResult');
+            const name = document.getElementById('testDropName').value;
+            const projectId = document.getElementById('projectId').value;
+
+            if (!projectId) {
+                resultDiv.innerHTML = '<div class="result error">Please select a project</div>';
+                return;
+            }
+
+            try {
+                const testDrop = {
+                    project_id: projectId,
+                    name: name,
+                    drop_name: name,
+                    room_name: 'Test Room',
+                    uid: 'TEST-' + Date.now(),
+                    type: 'CAT6',
+                    location: 'Test Location'
+                };
+
+                const { data, error } = await supabase
+                    .from('wire_drops')
+                    .insert(testDrop)
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                resultDiv.innerHTML = `<div class="result success">✅ Test wire drop created!
+                
+ID: ${data.id}
+Name: ${data.name}
+UID: ${data.uid}
+
+You can now test deleting this item.</div>`;
+
+                // Refresh the list
+                await listWireDrops();
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">Error creating test drop: ${error.message}</div>`;
+            }
+        }
+
+        // Make this function globally available
+        window.testDeleteSpecific = testDeleteSpecific;
+    </script>
+</body>
+</html>

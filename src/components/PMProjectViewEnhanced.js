@@ -4,8 +4,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, timeLogsService } from '../services/supabaseService';
+import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
+import { wireDropService } from '../services/wireDropService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
+import LucidChartCarousel from './LucidChartCarousel';
 import { 
   Save, 
   ExternalLink, 
@@ -25,7 +28,10 @@ import {
   Settings,
   ChevronUp,
   ChevronDown,
-  GripVertical
+  GripVertical,
+  Download,
+  RefreshCw,
+  Link
 } from 'lucide-react';
 
 const PMProjectViewEnhanced = () => {
@@ -61,8 +67,23 @@ const PMProjectViewEnhanced = () => {
     project_number: '',
     description: '',
     start_date: '',
-    end_date: ''
+    end_date: '',
+    wiring_diagram_url: '',
+    portal_proposal_url: '',
+    one_drive_photos: '',
+    one_drive_files: '',
+    one_drive_procurement: ''
   });
+
+  // Lucid integration state
+  const [lucidData, setLucidData] = useState(null);
+  const [lucidLoading, setLucidLoading] = useState(false);
+  const [lucidError, setLucidError] = useState(null);
+  const [droppableShapes, setDroppableShapes] = useState([]);
+  const [selectedShapes, setSelectedShapes] = useState(new Set());
+  const [existingWireDrops, setExistingWireDrops] = useState([]);
+  const [batchCreating, setBatchCreating] = useState(false);
+  const [showLucidSection, setShowLucidSection] = useState(false);
 
   // Load project data and related information
   useEffect(() => {
@@ -116,7 +137,12 @@ const PMProjectViewEnhanced = () => {
           project_number: currentProject.project_number || '',
           description: currentProject.description || '',
           start_date: currentProject.start_date || '',
-          end_date: currentProject.end_date || ''
+          end_date: currentProject.end_date || '',
+          wiring_diagram_url: currentProject.wiring_diagram_url || '',
+          portal_proposal_url: currentProject.portal_proposal_url || '',
+          one_drive_photos: currentProject.one_drive_photos || '',
+          one_drive_files: currentProject.one_drive_files || '',
+          one_drive_procurement: currentProject.one_drive_procurement || ''
         });
 
         // Load milestones
@@ -163,6 +189,17 @@ const PMProjectViewEnhanced = () => {
       setSaving(true);
       console.log('Starting save with formData:', formData);
       
+      // Extract Lucid document ID from wiring diagram URL
+      let lucidDocId = null;
+      let lucidDocUrl = null;
+      if (formData.wiring_diagram_url) {
+        lucidDocId = extractDocumentIdFromUrl(formData.wiring_diagram_url);
+        lucidDocUrl = formData.wiring_diagram_url;
+        if (lucidDocId) {
+          console.log('Extracted Lucid document ID:', lucidDocId);
+        }
+      }
+      
       // Only send fields that exist in the database
       const validFields = {
         name: formData.name,
@@ -173,7 +210,14 @@ const PMProjectViewEnhanced = () => {
         project_number: formData.project_number,
         description: formData.description,
         start_date: formData.start_date || null,
-        end_date: formData.end_date || null
+        end_date: formData.end_date || null,
+        wiring_diagram_url: formData.wiring_diagram_url || null,
+        portal_proposal_url: formData.portal_proposal_url || null,
+        one_drive_photos: formData.one_drive_photos || null,
+        one_drive_files: formData.one_drive_files || null,
+        one_drive_procurement: formData.one_drive_procurement || null,
+        lucid_document_id: lucidDocId,
+        lucid_document_url: lucidDocUrl
       };
       
       console.log('Sending update with fields:', validFields);
@@ -350,6 +394,230 @@ const PMProjectViewEnhanced = () => {
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
     return date.toLocaleDateString();
+  };
+
+  // Lucid Integration Functions
+  const handleFetchLucidData = async () => {
+    if (!formData.wiring_diagram_url) {
+      alert('Please enter a Wiring Diagram URL first');
+      return;
+    }
+
+    setLucidLoading(true);
+    setLucidError(null);
+
+    try {
+      // Extract document ID from URL
+      const documentId = extractDocumentIdFromUrl(formData.wiring_diagram_url);
+      if (!documentId) {
+        throw new Error('Invalid Lucid Chart URL format');
+      }
+
+      // Fetch document contents
+      const docData = await fetchDocumentContents(documentId);
+      setLucidData(docData);
+
+      // Extract shapes
+      const shapes = extractShapes(docData);
+      
+      // Filter shapes that have IS Drop = true (case-insensitive for both key and value)
+      const droppable = shapes.filter(shape => {
+        const customData = shape.customData || {};
+        
+        // Check for "IS Drop" key in various cases
+        let isDropValue = null;
+        for (const key in customData) {
+          if (key.toLowerCase().trim() === 'is drop') {
+            isDropValue = customData[key];
+            break;
+          }
+        }
+        
+        // Check if value is truthy (case-insensitive)
+        if (isDropValue === null || isDropValue === undefined) {
+          return false;
+        }
+        
+        const valueStr = String(isDropValue).toLowerCase().trim();
+        console.log('Shape:', shape.id, 'IS Drop value:', isDropValue, 'Type:', typeof isDropValue);
+        return valueStr === 'true' || valueStr === 'yes' || valueStr === '1' || isDropValue === true || isDropValue === 1;
+      });
+
+      setDroppableShapes(droppable);
+      console.log(`Found ${droppable.length} droppable shapes out of ${shapes.length} total shapes`);
+      console.log('All shapes:', shapes.length);
+      console.log('Sample shape customData:', shapes[0]?.customData);
+
+      // Load existing wire drops to check for duplicates
+      const { data: wireDrops } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('project_id', projectId);
+      
+      setExistingWireDrops(wireDrops || []);
+      setShowLucidSection(true);
+
+    } catch (error) {
+      console.error('Failed to fetch Lucid data:', error);
+      setLucidError(error.message);
+    } finally {
+      setLucidLoading(false);
+    }
+  };
+
+  const handleShapeSelection = (shapeId) => {
+    const newSelected = new Set(selectedShapes);
+    if (newSelected.has(shapeId)) {
+      newSelected.delete(shapeId);
+    } else {
+      newSelected.add(shapeId);
+    }
+    setSelectedShapes(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    // Only select shapes that don't already have wire drops
+    const selectableShapes = droppableShapes.filter(shape => 
+      !existingWireDrops.some(wd => wd.lucid_shape_id === shape.id)
+    );
+    setSelectedShapes(new Set(selectableShapes.map(s => s.id)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedShapes(new Set());
+  };
+
+  const handleCreateWireDropsFromSelected = async () => {
+    if (selectedShapes.size === 0) {
+      alert('Please select at least one shape');
+      return;
+    }
+
+    setBatchCreating(true);
+    const errors = [];
+    const created = [];
+    const updated = [];
+
+    try {
+      for (const shapeId of selectedShapes) {
+        const shape = droppableShapes.find(s => s.id === shapeId);
+        if (!shape) continue;
+
+        // Extract data from shape (case-insensitive)
+        const customData = shape.customData || {};
+        
+        // Helper to get case-insensitive custom data value
+        const getCustomValue = (key) => {
+          for (const k in customData) {
+            if (k.toLowerCase().trim() === key.toLowerCase()) {
+              return customData[k];
+            }
+          }
+          return null;
+        };
+        
+        const shapeName = shape.text || getCustomValue('Drop Name') || `Drop ${shape.id.substring(0, 8)}`;
+        const roomName = getCustomValue('Room Name') || getCustomValue('Room') || '';
+        const location = getCustomValue('Location') || '';
+        const type = getCustomValue('Type') || getCustomValue('Wire Type') || 'CAT6';
+        
+        // Create notes field to store all Lucid shape data that we can't store in columns
+        const shapeMetadata = {
+          pageId: shape.pageId,
+          pageTitle: shape.pageTitle,
+          position: shape.position,
+          size: shape.size,
+          customData: customData,
+          floor: getCustomValue('Floor') || '',
+          device: getCustomValue('Device') || ''
+        };
+        
+        const notesContent = `Lucid Shape Data: ${JSON.stringify(shapeMetadata)}`;
+
+        // Check if wire drop already exists for this shape
+        const existingDrop = existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
+        
+        if (existingDrop) {
+          // Update existing wire drop with latest data from Lucid
+          const { data, error } = await supabase
+            .from('wire_drops')
+            .update({
+              name: shapeName,
+              room_name: roomName,
+              drop_name: shapeName,
+              location: location,
+              type: type,
+              notes: notesContent,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingDrop.id)
+            .select()
+            .single();
+
+          if (error) {
+            errors.push(`Failed to update wire drop for ${shapeName}: ${error.message}`);
+          } else {
+            updated.push(data);
+          }
+        } else {
+          // Use the service to create wire drop properly with stages
+          const wireDropData = {
+            drop_name: shapeName,
+            room_name: roomName,
+            location: location,
+            type: type,
+            lucid_shape_id: shape.id,
+            notes: notesContent
+          };
+
+          try {
+            const wireDrop = await wireDropService.createWireDrop(projectId, wireDropData);
+            created.push(wireDrop);
+          } catch (createError) {
+            errors.push(`Failed to create wire drop for ${shapeName}: ${createError.message}`);
+          }
+        }
+      }
+
+      // Refresh existing wire drops
+      const { data: updatedWireDrops } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('project_id', projectId);
+      
+      setExistingWireDrops(updatedWireDrops || []);
+      setSelectedShapes(new Set());
+
+      // Show results
+      const messages = [];
+      if (created.length > 0) {
+        messages.push(`Created ${created.length} new wire drop(s)`);
+      }
+      if (updated.length > 0) {
+        messages.push(`Updated ${updated.length} existing wire drop(s)`);
+      }
+      if (errors.length > 0) {
+        messages.push(`\n\nErrors:\n${errors.join('\n')}`);
+      }
+      
+      if (messages.length > 0) {
+        alert(messages.join('\n'));
+      }
+
+    } catch (error) {
+      console.error('Batch create error:', error);
+      alert('Failed to create wire drops: ' + error.message);
+    } finally {
+      setBatchCreating(false);
+    }
+  };
+
+  const isShapeLinked = (shapeId) => {
+    return existingWireDrops.some(wd => wd.lucid_shape_id === shapeId);
+  };
+
+  const getLinkedWireDrop = (shapeId) => {
+    return existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
   };
 
   if (loading) {
@@ -579,8 +847,113 @@ const PMProjectViewEnhanced = () => {
                        disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
             />
           </div>
+
+          {/* Setup URLs - Only visible in edit mode */}
+          {editMode && (
+            <div className="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+              <h3 className="text-sm font-semibold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                <Link className="w-4 h-4" />
+                Setup URLs
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <FileText className="w-4 h-4 inline mr-1" />
+                    Wiring Diagram URL (Lucid Chart)
+                  </label>
+                  <input
+                    type="url"
+                    name="wiring_diagram_url"
+                    value={formData.wiring_diagram_url}
+                    onChange={handleInputChange}
+                    placeholder="https://lucid.app/..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <FileText className="w-4 h-4 inline mr-1" />
+                    Portal Proposal URL
+                  </label>
+                  <input
+                    type="url"
+                    name="portal_proposal_url"
+                    value={formData.portal_proposal_url}
+                    onChange={handleInputChange}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Camera className="w-4 h-4 inline mr-1" />
+                    OneDrive Photos
+                  </label>
+                  <input
+                    type="url"
+                    name="one_drive_photos"
+                    value={formData.one_drive_photos}
+                    onChange={handleInputChange}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <FolderOpen className="w-4 h-4 inline mr-1" />
+                    OneDrive Files
+                  </label>
+                  <input
+                    type="url"
+                    name="one_drive_files"
+                    value={formData.one_drive_files}
+                    onChange={handleInputChange}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <FolderOpen className="w-4 h-4 inline mr-1" />
+                    OneDrive Procurement
+                  </label>
+                  <input
+                    type="url"
+                    name="one_drive_procurement"
+                    value={formData.one_drive_procurement}
+                    onChange={handleInputChange}
+                    placeholder="https://..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
+      {formData.wiring_diagram_url && (
+        <LucidChartCarousel 
+          documentUrl={formData.wiring_diagram_url}
+          projectName={project.name}
+        />
+      )}
 
       {/* Phase Milestones */}
       <div style={sectionStyles.card} className="p-6">
@@ -815,6 +1188,190 @@ const PMProjectViewEnhanced = () => {
         </div>
       </div>
 
+      {/* Lucid Integration Section */}
+      {formData.wiring_diagram_url && (
+        <div style={sectionStyles.card} className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Lucid Wiring Diagram Integration
+            </h2>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={ExternalLink}
+                onClick={() => window.open(formData.wiring_diagram_url, '_blank')}
+              >
+                Open Diagram
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={lucidLoading ? Loader : RefreshCw}
+                onClick={handleFetchLucidData}
+                disabled={lucidLoading}
+              >
+                {lucidLoading ? 'Fetching...' : showLucidSection ? 'Refresh' : 'Fetch Shape Data'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Document Info */}
+          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="font-medium text-gray-600 dark:text-gray-400">URL:</span>
+                <p className="text-gray-900 dark:text-white break-all">{formData.wiring_diagram_url}</p>
+              </div>
+              <div>
+                <span className="font-medium text-gray-600 dark:text-gray-400">Document ID:</span>
+                <p className="text-gray-900 dark:text-white font-mono">
+                  {extractDocumentIdFromUrl(formData.wiring_diagram_url) || 'Not detected - check URL format'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {lucidError && (
+            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <div>
+                  <p className="font-semibold text-red-900 dark:text-red-200">Error fetching Lucid data</p>
+                  <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showLucidSection && droppableShapes.length > 0 && (
+            <div>
+              <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm text-blue-900 dark:text-blue-200">
+                  Found <strong>{droppableShapes.length}</strong> shapes with "IS Drop = true"
+                  {existingWireDrops.length > 0 && (
+                    <span> • <strong>{existingWireDrops.filter(wd => wd.lucid_shape_id).length}</strong> already have wire drops</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Selection Controls */}
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSelectAll}
+                    disabled={droppableShapes.every(s => isShapeLinked(s.id))}
+                  >
+                    Select All (Available)
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDeselectAll}
+                    disabled={selectedShapes.size === 0}
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+                <Button
+                  variant="primary"
+                  icon={batchCreating ? Loader : Plus}
+                  onClick={handleCreateWireDropsFromSelected}
+                  disabled={selectedShapes.size === 0 || batchCreating}
+                >
+                  {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Wire Drop${selectedShapes.size !== 1 ? 's' : ''}`}
+                </Button>
+              </div>
+
+              {/* Shape List */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th className="px-4 py-2 text-left">
+                        <input
+                          type="checkbox"
+                          onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
+                          checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
+                          className="rounded"
+                        />
+                      </th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Shape Name</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Location</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {droppableShapes.map((shape) => {
+                      const linked = isShapeLinked(shape.id);
+                      const wireDrop = getLinkedWireDrop(shape.id);
+                      const shapeName = shape.text || `Drop ${shape.id.substring(0, 8)}`;
+                      const location = shape.customData?.Location || shape.customData?.location || '-';
+                      const type = shape.customData?.Type || shape.customData?.type || 'CAT6';
+
+                      return (
+                        <tr 
+                          key={shape.id} 
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
+                        >
+                          <td className="px-4 py-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedShapes.has(shape.id)}
+                              onChange={() => handleShapeSelection(shape.id)}
+                              disabled={linked}
+                              className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            />
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                            {shapeName}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                            {location}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                            {type}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                            {shape.pageTitle || 'Page ' + (shape.pageId?.substring(0, 8) || '?')}
+                          </td>
+                          <td className="px-4 py-3">
+                            {linked ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
+                                             bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                                <CheckCircle className="w-3 h-3" />
+                                Linked to {wireDrop?.name}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
+                                             bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
+                                Available
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {showLucidSection && droppableShapes.length === 0 && !lucidError && (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <p>No shapes found with "IS Drop = true" in the custom data.</p>
+              <p className="text-sm mt-2">Make sure your Lucid shapes have the custom data field "IS Drop" set to "true".</p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="flex gap-4">
         <Button
@@ -825,7 +1382,7 @@ const PMProjectViewEnhanced = () => {
         </Button>
         <Button
           variant="secondary"
-          onClick={() => navigate(`/project/${projectId}/wire-drops`)}
+          onClick={() => navigate('/wire-drops')}
         >
           View Wire Drops
         </Button>

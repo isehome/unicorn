@@ -14,14 +14,36 @@ const WireDropsList = () => {
   const sectionStyles = enhancedStyles.sections[mode];
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedFloor, setSelectedFloor] = useState('');
   const [allDrops, setAllDrops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [project, setProject] = useState(null);
+  const [showFloorFilter, setShowFloorFilter] = useState(false);
 
+  // Reload data on mount and whenever we return to this page
   useEffect(() => {
     loadWireDrops();
-  }, [projectId]);
+    
+    // Also reload when navigating back to this page or window regains focus
+    const handleFocus = () => {
+      loadWireDrops();
+    };
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadWireDrops();
+      }
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [projectId]); // Reload whenever projectId changes OR component remounts
 
   const loadWireDrops = async () => {
     try {
@@ -103,16 +125,35 @@ const WireDropsList = () => {
     };
   };
 
+  // Get unique floors for filtering
+  const availableFloors = useMemo(() => {
+    const floors = new Set();
+    allDrops.forEach(drop => {
+      if (drop.floor) floors.add(drop.floor);
+    });
+    return Array.from(floors).sort();
+  }, [allDrops]);
+
   const filteredDrops = useMemo(() => {
-    if (!searchTerm) return allDrops;
+    let filtered = allDrops;
     
-    const query = searchTerm.toLowerCase();
-    return allDrops.filter(drop =>
-      [drop.name, drop.location, drop.uid, drop.type, drop.projects?.name]
-        .filter(Boolean)
-        .some(value => value.toLowerCase().includes(query))
-    );
-  }, [allDrops, searchTerm]);
+    // Apply floor filter
+    if (selectedFloor) {
+      filtered = filtered.filter(drop => drop.floor === selectedFloor);
+    }
+    
+    // Apply search filter
+    if (searchTerm) {
+      const query = searchTerm.toLowerCase();
+      filtered = filtered.filter(drop =>
+        [drop.name, drop.room_name, drop.location, drop.type, drop.projects?.name]
+          .filter(Boolean)
+          .some(value => value.toLowerCase().includes(query))
+      );
+    }
+    
+    return filtered;
+  }, [allDrops, searchTerm, selectedFloor]);
 
   const handleAddWireDrop = () => {
     navigate(`/wire-drops/new${projectId ? `?project=${projectId}` : ''}`);
@@ -168,15 +209,24 @@ const WireDropsList = () => {
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search drops..."
+                placeholder="Search by name, room, location, or type..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
               />
             </div>
-            <Button variant="secondary" size="sm" icon={Filter}>
-              Filter
-            </Button>
+            {availableFloors.length > 0 && (
+              <select
+                value={selectedFloor}
+                onChange={(e) => setSelectedFloor(e.target.value)}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+              >
+                <option value="">All Floors</option>
+                {availableFloors.map(floor => (
+                  <option key={floor} value={floor}>{floor}</option>
+                ))}
+              </select>
+            )}
             <Button variant="primary" size="sm" icon={Plus} onClick={handleAddWireDrop}>
               Add
             </Button>
@@ -211,31 +261,43 @@ const WireDropsList = () => {
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-gray-900 dark:text-white">
-                            {drop.room_name || drop.name || 'Wire Drop'}
-                            {drop.drop_name && ` - ${drop.drop_name}`}
-                          </h3>
-                          {drop.uid && (
-                            <span className="text-xs font-mono px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
-                              {drop.uid}
+                        {/* Wire Drop Name as main title */}
+                        <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-1">
+                          {drop.name || 'Unnamed Drop'}
+                        </h3>
+                        
+                        {/* Room Name underneath */}
+                        {drop.room_name && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                            {drop.room_name}
+                          </p>
+                        )}
+                        
+                        {/* Wire Type and Floor as smaller text */}
+                        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                          {drop.type && (
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Type:</span> {drop.type}
+                            </span>
+                          )}
+                          {drop.floor && (
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Floor:</span> {drop.floor}
+                            </span>
+                          )}
+                          {drop.location && (
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium">Location:</span> {drop.location}
                             </span>
                           )}
                         </div>
                         
-                        <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                          {drop.location && (
-                            <p>Location: {drop.location}</p>
-                          )}
-                          {drop.projects?.name && !projectId && (
-                            <p className="text-violet-600 dark:text-violet-400">
-                              Project: {drop.projects.name}
-                            </p>
-                          )}
-                          {drop.type && (
-                            <p>Type: {drop.type}</p>
-                          )}
-                        </div>
+                        {/* Project name if viewing all projects */}
+                        {drop.projects?.name && !projectId && (
+                          <p className="text-xs text-violet-600 dark:text-violet-400 mt-2">
+                            Project: {drop.projects.name}
+                          </p>
+                        )}
                       </div>
                       
                       <div className="text-right space-y-2">
