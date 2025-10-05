@@ -1,6 +1,6 @@
-/**
- * Serverless function to proxy Lucid Chart API requests
- * This keeps the API key secure on the backend
+/** 
+ * Serverless function to proxy Lucid Chart API requests 
+ * This keeps the API key secure on the backend 
  */
 
 const LUCID_API_BASE_URL = 'https://api.lucid.co';
@@ -21,28 +21,60 @@ export default async function handler(req, res) {
   }
 
   // Get parameters from request body
-  const { documentId, pageNumber, exportImage } = req.body;
+  const { documentId, pageNumber, pageId, exportImage } = req.body;
   
   if (!documentId) {
     return res.status(400).json({ error: 'Document ID is required' });
   }
 
   try {
-    let url = `${LUCID_API_BASE_URL}/documents/${documentId}`;
+    let url;
     let headers = {
       'Authorization': `Bearer ${apiKey}`,
-      'Lucid-Api-Version': LUCID_API_VERSION,
-      'Content-Type': 'application/json'
+      'Lucid-Api-Version': LUCID_API_VERSION
     };
     
-    // If exporting image, adjust URL and headers
-    if (exportImage && typeof pageNumber === 'number') {
-      url += `?pageNumber=${pageNumber}`;
+    // FIXED: Use actual page ID from Lucid document
+    if (exportImage) {
+      // First, fetch document contents to get page info if we don't have pageId
+      if (!pageId && typeof pageNumber === 'number') {
+        const contentsUrl = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+        const contentsResponse = await fetch(contentsUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Lucid-Api-Version': LUCID_API_VERSION,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (contentsResponse.ok) {
+          const docData = await contentsResponse.json();
+          if (docData.pages && docData.pages[pageNumber]) {
+            // Use the actual page ID from the document
+            const actualPageId = docData.pages[pageNumber].id;
+            url = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export?format=png`;
+          } else {
+            throw new Error(`Page ${pageNumber} not found in document`);
+          }
+        } else {
+          throw new Error('Failed to fetch document contents for page lookup');
+        }
+      } else if (pageId) {
+        // Use the provided page ID directly
+        url = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${pageId}/export?format=png`;
+      } else {
+        throw new Error('Either pageId or pageNumber must be provided for image export');
+      }
+      
       headers['Accept'] = 'image/png';
     } else {
       // Default to getting document contents
-      url += '/contents';
+      url = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+      headers['Content-Type'] = 'application/json';
     }
+    
+    console.log('Calling Lucid API:', url);
     
     // Make request to Lucid API
     const response = await fetch(url, {
@@ -61,12 +93,12 @@ export default async function handler(req, res) {
         case 403:
           return res.status(403).json({ error: 'Forbidden: No access to this document' });
         case 404:
-          return res.status(404).json({ error: 'Document not found' });
+          return res.status(404).json({ error: 'Document or page not found' });
         case 429:
           return res.status(429).json({ error: 'Rate limit exceeded' });
         default:
           return res.status(response.status).json({ 
-            error: `API Error: ${response.statusText}` 
+            error: `API Error: ${response.statusText}`
           });
       }
     }

@@ -185,9 +185,10 @@ export const validateApiKeyFormat = (apiKey) => {
  * In production: Uses the proxy endpoint
  * @param {string} documentId - Lucid document ID
  * @param {number} pageNumber - Page index (0-based)
+ * @param {string} pageId - Optional page ID from Lucid document
  * @returns {Promise<string>} - Base64 data URL of the image
  */
-export const exportDocumentPage = async (documentId, pageNumber) => {
+export const exportDocumentPage = async (documentId, pageNumber, pageId = null) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
@@ -217,6 +218,7 @@ export const exportDocumentPage = async (documentId, pageNumber) => {
         body: JSON.stringify({ 
           documentId,
           pageNumber,
+          pageId: pageId,
           exportImage: true
         })
       });

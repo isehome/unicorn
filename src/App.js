@@ -1,36 +1,35 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
-import TechnicianDashboardOptimized from './components/TechnicianDashboardOptimized';
-import PMDashboard from './components/PMDashboard';
-import ProjectDetailView from './components/ProjectDetailView';
-import PMProjectViewEnhanced from './components/PMProjectViewEnhanced';
-import PMIssuesPage from './components/PMIssuesPage';
-import IssueDetail from './components/IssueDetail';
-import PeopleManagement from './components/PeopleManagement';
-import WireDropsList from './components/WireDropsList';
-import WireDropNew from './components/WireDropNew';
-import WireDropDetailEnhanced from './components/WireDropDetailEnhanced';
-import WireDropsHub from './components/WireDropsHub';
-import FloorPlanViewer from './pages/FloorPlanViewer';
-import LucidTest from './components/LucidTest';
-import LucidChartTest from './components/LucidChartTest';
-import LucidChartDebug from './components/LucidChartDebug';
-import EquipmentListPage from './components/EquipmentListPage';
-import SecureDataPage from './components/SecureDataPage';
-import Login from './components/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
-import SettingsPage from './components/SettingsPage';
 import BottomNavigation from './components/BottomNavigation';
-import AuthCallback from './components/AuthCallback';
-import IssuesListPageOptimized from './components/IssuesListPageOptimized';
-import TodosListPage from './components/TodosListPage';
-import WireDropDeleteTest from './components/WireDropDeleteTest';
+import LoadingSpinner from './components/ui/LoadingSpinner';
 import './index.css';
+
+// Lazy load all route components
+const TechnicianDashboardOptimized = lazy(() => import('./components/TechnicianDashboardOptimized'));
+const PMDashboard = lazy(() => import('./components/PMDashboard'));
+const ProjectDetailView = lazy(() => import('./components/ProjectDetailView'));
+const PMProjectViewEnhanced = lazy(() => import('./components/PMProjectViewEnhanced'));
+const PMIssuesPage = lazy(() => import('./components/PMIssuesPage'));
+const IssueDetail = lazy(() => import('./components/IssueDetail'));
+const PeopleManagement = lazy(() => import('./components/PeopleManagement'));
+const WireDropsList = lazy(() => import('./components/WireDropsList'));
+const WireDropNew = lazy(() => import('./components/WireDropNew'));
+const WireDropDetailEnhanced = lazy(() => import('./components/WireDropDetailEnhanced'));
+const WireDropsHub = lazy(() => import('./components/WireDropsHub'));
+const FloorPlanViewer = lazy(() => import('./pages/FloorPlanViewer'));
+const EquipmentListPage = lazy(() => import('./components/EquipmentListPage'));
+const SecureDataPage = lazy(() => import('./components/SecureDataPage'));
+const Login = lazy(() => import('./components/Login'));
+const SettingsPage = lazy(() => import('./components/SettingsPage'));
+const AuthCallback = lazy(() => import('./components/AuthCallback'));
+const IssuesListPageOptimized = lazy(() => import('./components/IssuesListPageOptimized'));
+const TodosListPage = lazy(() => import('./components/TodosListPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -40,7 +39,12 @@ const AppRoutes = () => {
     <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300 ${hideChrome ? '' : 'pb-20'}`}>
       {!hideChrome && <AppHeader />}
       <main className={`${hideChrome ? '' : 'pt-4 sm:pt-6'} pb-6`}>
-        <Routes>
+        <Suspense fallback={
+          <div className="flex items-center justify-center min-h-[50vh]">
+            <LoadingSpinner size="lg" message="Loading page..." />
+          </div>
+        }>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route
@@ -124,30 +128,6 @@ const AppRoutes = () => {
             }
           />
           <Route
-            path="/lucid-test"
-            element={
-              <ProtectedRoute>
-                <LucidTest />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/lucid-chart-test"
-            element={
-              <ProtectedRoute>
-                <LucidChartTest />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/lucid-chart-debug"
-            element={
-              <ProtectedRoute>
-                <LucidChartDebug />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/wire-drops/new"
             element={
               <ProtectedRoute>
@@ -211,16 +191,9 @@ const AppRoutes = () => {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/test/wire-drop-delete"
-            element={
-              <ProtectedRoute>
-                <WireDropDeleteTest />
-              </ProtectedRoute>
-            }
-          />
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </main>
       {!hideChrome && <BottomNavigation />}
     </div>

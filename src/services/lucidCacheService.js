@@ -38,7 +38,7 @@ export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}) =
 
     // Fetch fresh image from Lucid API via proxy
     // Get the base64 image from Lucid API via proxy
-    const base64Image = await exportDocumentPage(documentId, pageIndex);
+    const base64Image = await exportDocumentPage(documentId, pageIndex, pageInfo.id);
     
     if (!base64Image) {
       throw new Error('Failed to fetch image from Lucid API');
