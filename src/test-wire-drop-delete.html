@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wire Drop Delete Test & Diagnosis</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .policy-item {
+            background: #f0f8ff;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        select, input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .test-pass {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        .test-fail {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+        }
+        #loading {
+            display: none;
+            color: #007bff;
+        }
+        .loading {
+            display: inline-block !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Wire Drop Delete Diagnostic Tool</h1>
+        <p>This tool will help diagnose and fix wire drop deletion issues.</p>
+    </div>
+
+    <!-- Authentication Check -->
+    <div class="container">
+        <h2>1. Authentication Status</h2>
+        <div id="authStatus" class="info">Checking authentication...</div>
+        <button onclick="checkAuth()">Refresh Auth Status</button>
+    </div>
+
+    <!-- Database Policies Check -->
+    <div class="container">
+        <h2>2. Database Policies Check</h2>
+        <div id="policiesStatus" class="info">Click to check policies...</div>
+        <button onclick="checkPolicies()">Check DELETE Policies</button>
+        <div id="policiesList"></div>
+    </div>
+
+    <!-- Direct SQL Test -->
+    <div class="container">
+        <h2>3. Direct SQL Delete Test</h2>
+        <p>This will create a test wire drop and try to delete it using direct SQL.</p>
+        <div id="sqlTestStatus" class="info">Click to run test...</div>
+        <button onclick="runSQLDeleteTest()">Run SQL Delete Test</button>
+        <div id="sqlTestResult"></div>
+    </div>
+
+    <!-- RPC Delete Test -->
+    <div class="container">
+        <h2>4. RPC Function Delete Test</h2>
+        <p>This will test deletion using a database function.</p>
+        <div id="rpcTestStatus" class="info">Click to run test...</div>
+        <button onclick="runRPCDeleteTest()">Run RPC Delete Test</button>
+        <div id="rpcTestResult"></div>
+    </div>
+
+    <!-- Manual Delete Test -->
+    <div class="container">
+        <h2>5. Manual Delete Test</h2>
+        <p>Select a wire drop to test deletion:</p>
+        <select id="wireDropSelect">
+            <option value="">Loading wire drops...</option>
+        </select>
+        <button onclick="testManualDelete()">Test Delete Selected</button>
+        <div id="manualDeleteStatus"></div>
+    </div>
+
+    <!-- Apply Fix -->
+    <div class="container">
+        <h2>6. Apply Database Fix</h2>
+        <p>This will apply a comprehensive fix to the database policies.</p>
+        <button onclick="applyFix()" style="background: #28a745;">Apply Complete Fix</button>
+        <div id="fixStatus"></div>
+    </div>
+
+    <!-- Results Summary -->
+    <div class="container">
+        <h2>Test Results Summary</h2>
+        <div id="resultsSummary"></div>
+    </div>
+
+    <script>
+        // Get Supabase credentials from environment or localStorage
+        const SUPABASE_URL = localStorage.getItem('SUPABASE_URL') || prompt('Enter your Supabase URL:');
+        const SUPABASE_ANON_KEY = localStorage.getItem('SUPABASE_ANON_KEY') || prompt('Enter your Supabase Anon Key:');
+        
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+            localStorage.setItem('SUPABASE_URL', SUPABASE_URL);
+            localStorage.setItem('SUPABASE_ANON_KEY', SUPABASE_ANON_KEY);
+        }
+
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        let testResults = {
+            auth: false,
+            policies: false,
+            sqlDelete: false,
+            rpcDelete: false,
+            manualDelete: false
+        };
+
+        // Check authentication
+        async function checkAuth() {
+            const authDiv = document.getElementById('authStatus');
+            try {
+                const { data: { user }, error } = await supabaseClient.auth.getUser();
+                if (user) {
+                    authDiv.className = 'success';
+                    authDiv.innerHTML = `✅ Authenticated as: ${user.email || user.id}`;
+                    testResults.auth = true;
+                } else {
+                    authDiv.className = 'error';
+                    authDiv.innerHTML = '❌ Not authenticated. Please log in to your app first.';
+                    testResults.auth = false;
+                }
+            } catch (err) {
+                authDiv.className = 'error';
+                authDiv.innerHTML = `❌ Auth check failed: ${err.message}`;
+            }
+        }
+
+        // Check database policies
+        async function checkPolicies() {
+            const statusDiv = document.getElementById('policiesStatus');
+            const listDiv = document.getElementById('policiesList');
+            
+            statusDiv.className = 'info';
+            statusDiv.innerHTML = 'Checking policies...';
+            
+            try {
+                // Check if wire_drops table has RLS enabled
+                const { data: tables, error: tablesError } = await supabaseClient
+                    .rpc('check_rls_status', { table_name: 'wire_drops' })
+                    .single();
+
+                if (tablesError) {
+                    // Try a simpler query
+                    const { data: wireDrops, error: selectError } = await supabaseClient
+                        .from('wire_drops')
+                        .select('id')
+                        .limit(1);
+                    
+                    if (selectError) {
+                        statusDiv.className = 'error';
+                        statusDiv.innerHTML = `❌ Cannot access wire_drops table: ${selectError.message}`;
+                        return;
+                    }
+                }
+
+                // Try to get policies info
+                let policiesHtml = '<h3>Wire Drops Table Policies:</h3>';
+                
+                // Test each operation
+                const operations = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
+                for (const op of operations) {
+                    const testId = 'test-' + Date.now();
+                    let result = '';
+                    
+                    if (op === 'SELECT') {
+                        const { data, error } = await supabaseClient.from('wire_drops').select('id').limit(1);
+                        result = error ? '❌ Failed' : '✅ Allowed';
+                    } else if (op === 'DELETE') {
+                        // We'll check this specially
+                        result = '🔍 Testing below...';
+                    }
+                    
+                    policiesHtml += `<div class="policy-item">${op}: ${result}</div>`;
+                }
+                
+                listDiv.innerHTML = policiesHtml;
+                
+                statusDiv.className = 'warning';
+                statusDiv.innerHTML = '⚠️ Basic access works. Testing DELETE permission below...';
+                testResults.policies = true;
+                
+            } catch (err) {
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = `❌ Error checking policies: ${err.message}`;
+                testResults.policies = false;
+            }
+        }
+
+        // Run SQL delete test
+        async function runSQLDeleteTest() {
+            const statusDiv = document.getElementById('sqlTestStatus');
+            const resultDiv = document.getElementById('sqlTestResult');
+            
+            statusDiv.className = 'info';
+            statusDiv.innerHTML = 'Running SQL delete test...';
+            
+            try {
+                // First get a project ID
+                const { data: projects, error: projectError } = await supabaseClient
+                    .from('projects')
+                    .select('id')
+                    .limit(1)
+                    .single();
+                
+                if (projectError || !projects) {
+                    throw new Error('No projects found to test with');
+                }
+                
+                // Create a test wire drop
+                const testDrop = {
+                    project_id: projects.id,
+                    name: 'DELETE_TEST_' + Date.now(),
+                    room_name: 'TEST_ROOM',
+                    drop_name: 'TEST_DROP',
+                    location: 'TEST_LOCATION',
+                    type: 'TEST'
+                };
+                
+                const { data: created, error: createError } = await supabaseClient
+                    .from('wire_drops')
+                    .insert(testDrop)
+                    .select()
+                    .single();
+                
+                if (createError) {
+                    throw new Error(`Failed to create test drop: ${createError.message}`);
+                }
+                
+                resultDiv.innerHTML = `<div class="success">✅ Created test wire drop: ${created.id}</div>`;
+                
+                // Now try to delete it
+                const { data: deleted, error: deleteError } = await supabaseClient
+                    .from('wire_drops')
+                    .delete()
+                    .eq('id', created.id)
+                    .select();
+                
+                if (deleteError) {
+                    resultDiv.innerHTML += `<div class="error">❌ Delete failed: ${deleteError.message}</div>`;
+                    statusDiv.className = 'error';
+                    statusDiv.innerHTML = '❌ SQL Delete Test FAILED';
+                    testResults.sqlDelete = false;
+                    return;
+                }
+                
+                // Verify it's actually deleted
+                const { data: checkExists, error: checkError } = await supabaseClient
+                    .from('wire_drops')
+                    .select('id')
+                    .eq('id', created.id)
+                    .single();
+                
+                if (checkError?.code === 'PGRST116' || !checkExists) {
+                    resultDiv.innerHTML += `<div class="success">✅ Wire drop successfully deleted!</div>`;
+                    statusDiv.className = 'success';
+                    statusDiv.innerHTML = '✅ SQL Delete Test PASSED';
+                    testResults.sqlDelete = true;
+                } else {
+                    resultDiv.innerHTML += `<div class="error">❌ Wire drop still exists after delete!</div>`;
+                    statusDiv.className = 'error';
+                    statusDiv.innerHTML = '❌ Delete executed but item still exists';
+                    testResults.sqlDelete = false;
+                }
+                
+            } catch (err) {
+                resultDiv.innerHTML = `<div class="error">❌ Test failed: ${err.message}</div>`;
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = '❌ SQL Delete Test ERROR';
+                testResults.sqlDelete = false;
+            }
+        }
+
+        // Run RPC delete test
+        async function runRPCDeleteTest() {
+            const statusDiv = document.getElementById('rpcTestStatus');
+            const resultDiv = document.getElementById('rpcTestResult');
+            
+            statusDiv.className = 'info';
+            statusDiv.innerHTML = 'Setting up RPC function...';
+            
+            try {
+                // Create RPC function if needed (this will be done via SQL Editor)
+                resultDiv.innerHTML = `
+                    <div class="warning">
+                        ⚠️ RPC function test requires creating a database function.
+                        <br>Please run this SQL in your Supabase SQL Editor:
+                        <pre>
+CREATE OR REPLACE FUNCTION delete_wire_drop(drop_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  DELETE FROM wire_drops WHERE id = drop_id;
+  RETURN NOT EXISTS (SELECT 1 FROM wire_drops WHERE id = drop_id);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+                        </pre>
+                    </div>
+                `;
+                
+                statusDiv.className = 'warning';
+                statusDiv.innerHTML = '⚠️ Manual SQL required (see above)';
+                testResults.rpcDelete = null;
+                
+            } catch (err) {
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = `❌ RPC test failed: ${err.message}`;
+            }
+        }
+
+        // Load wire drops for manual test
+        async function loadWireDrops() {
+            const select = document.getElementById('wireDropSelect');
+            
+            try {
+                const { data: drops, error } = await supabaseClient
+                    .from('wire_drops')
+                    .select('id, name, room_name, drop_name')
+                    .order('created_at', { ascending: false })
+                    .limit(20);
+                
+                if (error) throw error;
+                
+                select.innerHTML = '<option value="">Select a wire drop to test...</option>';
+                drops.forEach(drop => {
+                    const option = document.createElement('option');
+                    option.value = drop.id;
+                    option.textContent = `${drop.room_name || 'No Room'} - ${drop.drop_name || drop.name || drop.id}`;
+                    select.appendChild(option);
+                });
+                
+            } catch (err) {
+                select.innerHTML = `<option value="">Error loading: ${err.message}</option>`;
+            }
+        }
+
+        // Test manual delete
+        async function testManualDelete() {
+            const select = document.getElementById('wireDropSelect');
+            const statusDiv = document.getElementById('manualDeleteStatus');
+            
+            const dropId = select.value;
+            if (!dropId) {
+                statusDiv.className = 'warning';
+                statusDiv.innerHTML = '⚠️ Please select a wire drop first';
+                return;
+            }
+            
+            if (!confirm('Are you sure you want to delete this wire drop? This is for testing only!')) {
+                return;
+            }
+            
+            statusDiv.className = 'info';
+            statusDiv.innerHTML = 'Attempting delete...';
+            
+            try {
+                // Try delete
+                const { data, error } = await supabaseClient
+                    .from('wire_drops')
+                    .delete()
+                    .eq('id', dropId)
+                    .select();
+                
+                if (error) {
+                    statusDiv.className = 'error';
+                    statusDiv.innerHTML = `❌ Delete failed: ${error.message}`;
+                    testResults.manualDelete = false;
+                    return;
+                }
+                
+                // Verify deletion
+                const { data: checkExists, error: checkError } = await supabaseClient
+                    .from('wire_drops')
+                    .select('id')
+                    .eq('id', dropId)
+                    .single();
+                
+                if (checkError?.code === 'PGRST116' || !checkExists) {
+                    statusDiv.className = 'success';
+                    statusDiv.innerHTML = '✅ Wire drop successfully deleted!';
+                    testResults.manualDelete = true;
+                    loadWireDrops(); // Reload list
+                } else {
+                    statusDiv.className = 'error';
+                    statusDiv.innerHTML = '❌ Wire drop still exists after delete attempt!';
+                    testResults.manualDelete = false;
+                }
+                
+            } catch (err) {
+                statusDiv.className = 'error';
+                statusDiv.innerHTML = `❌ Error: ${err.message}`;
+                testResults.manualDelete = false;
+            }
+        }
+
+        // Apply comprehensive fix
+        async function applyFix() {
+            const statusDiv = document.getElementById('fixStatus');
+            
+            statusDiv.className = 'warning';
+            statusDiv.innerHTML = `
+                <h3>📋 To fix the delete issue, run this SQL in your Supabase SQL Editor:</h3>
+                <pre>
+-- Fix wire_drops DELETE permission
+ALTER TABLE public.wire_drops ENABLE ROW LEVEL SECURITY;
+
+-- Drop all existing DELETE policies
+DROP POLICY IF EXISTS dev_delete_all ON public.wire_drops;
+DROP POLICY IF EXISTS "Enable delete for authenticated users" ON public.wire_drops;
+
+-- Create a new DELETE policy
+CREATE POLICY "delete_policy" ON public.wire_drops
+FOR DELETE TO authenticated, anon USING (true);
+
+-- Verify the policy
+SELECT tablename, policyname, cmd, roles::text 
+FROM pg_policies 
+WHERE tablename = 'wire_drops' AND cmd = 'DELETE';
+                </pre>
+                <p>After running this SQL, refresh this page and test again.</p>
+            `;
+        }
+
+        // Update results summary
+        function updateSummary() {
+            const summaryDiv = document.getElementById('resultsSummary');
+            
+            let html = '<h3>Diagnostic Results:</h3>';
+            html += '<ul>';
+            html += `<li>Authentication: ${testResults.auth ? '✅ PASS' : '❌ FAIL'}</li>`;
+            html += `<li>Policies Check: ${testResults.policies ? '✅ PASS' : '❌ FAIL'}</li>`;
+            html += `<li>SQL Delete: ${testResults.sqlDelete ? '✅ PASS' : '❌ FAIL'}</li>`;
+            html += `<li>Manual Delete: ${testResults.manualDelete ? '✅ PASS' : testResults.manualDelete === false ? '❌ FAIL' : '⏳ Not tested'}</li>`;
+            html += '</ul>';
+            
+            if (!testResults.sqlDelete || !testResults.manualDelete) {
+                html += '<div class="error"><strong>❌ Delete functionality is not working.</strong> Please apply the fix above.</div>';
+            } else if (testResults.sqlDelete && testResults.manualDelete) {
+                html += '<div class="success"><strong>✅ Delete functionality is working correctly!</strong></div>';
+            }
+            
+            summaryDiv.innerHTML = html;
+        }
+
+        // Initialize
+        window.onload = async function() {
+            await checkAuth();
+            await loadWireDrops();
+            updateSummary();
+        };
+
+        // Update summary after each test
+        setInterval(updateSummary, 2000);
+    </script>
+</body>
+</html>
