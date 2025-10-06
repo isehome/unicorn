@@ -34,39 +34,41 @@ export default async function handler(req, res) {
       'Lucid-Api-Version': LUCID_API_VERSION
     };
     
-    // FIXED: Use actual page ID from Lucid document
+    // FIXED: Use correct Lucid export endpoint with page parameter
     if (exportImage) {
-      // First, fetch document contents to get page info if we don't have pageId
-      if (!pageId && typeof pageNumber === 'number') {
-        const contentsUrl = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
-        const contentsResponse = await fetch(contentsUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Lucid-Api-Version': LUCID_API_VERSION,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (contentsResponse.ok) {
-          const docData = await contentsResponse.json();
-          if (docData.pages && docData.pages[pageNumber]) {
-            // Use the actual page ID from the document
-            const actualPageId = docData.pages[pageNumber].id;
-            url = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export?format=png`;
-          } else {
-            throw new Error(`Page ${pageNumber} not found in document`);
-          }
-        } else {
-          throw new Error('Failed to fetch document contents for page lookup');
+      // First fetch document contents to get the actual page ID
+      const contentsUrl = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+      const contentsResponse = await fetch(contentsUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Lucid-Api-Version': LUCID_API_VERSION,
+          'Content-Type': 'application/json'
         }
-      } else if (pageId) {
-        // Use the provided page ID directly
-        url = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${pageId}/export?format=png`;
-      } else {
-        throw new Error('Either pageId or pageNumber must be provided for image export');
+      });
+      
+      if (!contentsResponse.ok) {
+        throw new Error('Failed to fetch document contents');
       }
       
+      const docData = await contentsResponse.json();
+      
+      // Get the actual page ID from the document
+      let actualPageId = pageId;
+      if (!actualPageId && typeof pageNumber === 'number') {
+        if (docData.pages && docData.pages[pageNumber]) {
+          actualPageId = docData.pages[pageNumber].id;
+        } else {
+          throw new Error(`Page ${pageNumber} not found in document`);
+        }
+      }
+      
+      if (!actualPageId) {
+        throw new Error('Could not determine page ID');
+      }
+      
+      // Try the standard export endpoint with page query parameter
+      url = `${LUCID_API_BASE_URL}/documents/${documentId}?page=${actualPageId}`;
       headers['Accept'] = 'image/png';
     } else {
       // Default to getting document contents
