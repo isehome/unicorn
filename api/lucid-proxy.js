@@ -140,15 +140,19 @@ export default async function handler(req, res) {
       throw new Error(`Page ${pageNumber} not found in document`);
     };
 
-    // Use correct Lucid export endpoint: /documents/{id}/pages/{pageId}/export
+    // Try different approach: use document endpoint with export parameters
     if (exportImage || action === 'exportImage') {
       const actualPageId = await determinePageId();
       if (!actualPageId) {
         throw new Error('Could not determine page ID');
       }
 
-      // Correct Lucid API export endpoint structure
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export`);
+      // Try using the document endpoint with format=image parameter
+      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}`);
+      
+      // Add page and format parameters
+      imageUrl.searchParams.set('pageId', actualPageId);
+      imageUrl.searchParams.set('format', 'png');
 
       if (scale) {
         imageUrl.searchParams.set('scale', scale);
@@ -213,6 +217,45 @@ export default async function handler(req, res) {
 
     // Handle image export differently
     if (exportImage || action === 'exportImage') {
+      // Check content type of response
+      const contentType = response.headers.get('content-type');
+      console.log('Response content-type:', contentType);
+      
+      // If it's JSON, it might contain a URL to the image
+      if (contentType && contentType.includes('application/json')) {
+        const jsonData = await response.json();
+        console.log('Received JSON response for image export:', jsonData);
+        
+        // Check if there's an image URL in the response
+        if (jsonData.imageUrl || jsonData.url || jsonData.exportUrl) {
+          const imageUrl = jsonData.imageUrl || jsonData.url || jsonData.exportUrl;
+          console.log('Found image URL in response:', imageUrl);
+          
+          // Fetch the actual image from the URL
+          const imageResponse = await fetch(imageUrl, {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`
+            }
+          });
+          
+          if (imageResponse.ok) {
+            const buffer = await imageResponse.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString('base64');
+            return res.status(200).json({ 
+              image: `data:image/png;base64,${base64}`,
+              pageNumber: pageNumber 
+            });
+          }
+        }
+        
+        // If no image URL, return error with the JSON data for debugging
+        return res.status(500).json({ 
+          error: 'Export endpoint returned JSON instead of image',
+          responseData: jsonData
+        });
+      }
+      
+      // If it's image data, convert to base64
       const buffer = await response.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
       res.status(200).json({ 

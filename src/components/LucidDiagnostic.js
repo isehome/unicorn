@@ -134,12 +134,25 @@ const LucidDiagnostic = () => {
       const isPlaceholder = imageDataUrl.includes('Thumbnail unavailable') || 
                            imageDataUrl.includes('Enable CORS');
 
+      // Always show the data URL details for debugging
+      console.log('Image data URL details:', {
+        length: imageDataUrl.length,
+        prefix: imageDataUrl.substring(0, 100),
+        isPlaceholder
+      });
+
       if (isPlaceholder) {
         addTestResult(
           `Download Page ${pageIndex + 1}`,
           false,
-          'Received placeholder image - API may not be returning actual PNG',
-          { pageIndex, pageId, pageTitle, isPlaceholder: true }
+          'Received placeholder image - API may not be returning actual PNG. Check console for details.',
+          { 
+            pageIndex, 
+            pageId, 
+            pageTitle, 
+            isPlaceholder: true,
+            dataUrlPrefix: imageDataUrl.substring(0, 200)
+          }
         );
       } else {
         // Create a download link
