@@ -19,9 +19,11 @@ const isDevelopment = process.env.NODE_ENV === 'development';
 const shouldUseProxy = () => !!PROXY_BASE_URL || !isDevelopment;
 
 const callLucidProxy = async (payload = {}) => {
-  // Validate that we have a proxy endpoint configured
-  if (!PROXY_ENDPOINT || PROXY_ENDPOINT === '/api/lucid-proxy') {
-    throw new Error('Lucid proxy endpoint not configured. Please set REACT_APP_LUCID_PROXY_URL environment variable or deploy to a server with the proxy endpoint.');
+  // The proxy endpoint can be either:
+  // - A full URL (for local dev pointing to deployed proxy): https://unicorn-one.vercel.app/api/lucid-proxy
+  // - A relative path (for production where API route is on same domain): /api/lucid-proxy
+  if (!PROXY_ENDPOINT) {
+    throw new Error('Lucid proxy endpoint not configured.');
   }
 
   const response = await fetch(PROXY_ENDPOINT, {
