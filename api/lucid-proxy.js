@@ -140,15 +140,15 @@ export default async function handler(req, res) {
       throw new Error(`Page ${pageNumber} not found in document`);
     };
 
-    // FIXED: Use correct Lucid export endpoint with page parameter
+    // Use correct Lucid export endpoint: /documents/{id}/pages/{pageId}/export
     if (exportImage || action === 'exportImage') {
       const actualPageId = await determinePageId();
       if (!actualPageId) {
         throw new Error('Could not determine page ID');
       }
 
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}`);
-      imageUrl.searchParams.set('page', actualPageId);
+      // Correct Lucid API export endpoint structure
+      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export`);
 
       if (scale) {
         imageUrl.searchParams.set('scale', scale);
