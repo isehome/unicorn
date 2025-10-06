@@ -3,8 +3,5 @@
     "env": {
       "CI": "false"
     }
-  },
-  "env": {
-    "REACT_APP_LUCID_API_KEY": "@lucid-api-key"
   }
 }
