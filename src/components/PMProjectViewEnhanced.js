@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService, timeLogsService } from '../services/supabaseService';
+import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { supabase } from '../lib/supabase';
@@ -36,6 +36,28 @@ import {
   Search
 } from 'lucide-react';
 
+// Progress Bar Component
+const ProgressBar = ({ label, percentage }) => {
+  const getBarColor = (percent) => {
+    if (percent < 33) return 'bg-red-500';
+    if (percent < 67) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-20">{label}</span>
+      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
+    </div>
+  );
+};
+
 const PMProjectViewEnhanced = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -53,6 +75,7 @@ const PMProjectViewEnhanced = () => {
     activeUsers: [],
     totalHours: 0
   });
+  const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -107,6 +130,7 @@ const PMProjectViewEnhanced = () => {
     loadTimeData();
     loadPhasesAndStatuses();
     loadContacts();
+    loadProgress();
     
     // Refresh time data every 30 seconds
     const interval = setInterval(loadTimeData, 30000);
@@ -223,6 +247,16 @@ const PMProjectViewEnhanced = () => {
       });
     } catch (error) {
       console.error('Failed to load time data:', error);
+    }
+  };
+
+  const loadProgress = async () => {
+    try {
+      const progress = await projectProgressService.getProjectProgress(projectId);
+      setProjectProgress(progress);
+    } catch (error) {
+      console.error('Failed to load progress:', error);
+      setProjectProgress({ prewire: 0, trim: 0, commission: 0 });
     }
   };
 
@@ -1448,7 +1482,7 @@ const PMProjectViewEnhanced = () => {
       <div style={sectionStyles.card} className="p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Time Tracking
+            Time Tracking & Progress
           </h2>
           <div className="flex items-center gap-4">
             <div className="text-right">
@@ -1461,10 +1495,25 @@ const PMProjectViewEnhanced = () => {
               variant="secondary"
               size="sm"
               icon={Clock}
-              onClick={loadTimeData}
+              onClick={() => {
+                loadTimeData();
+                loadProgress();
+              }}
             >
               Refresh
             </Button>
+          </div>
+        </div>
+
+        {/* Project Progress Gauges */}
+        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Project Progress
+          </h3>
+          <div className="space-y-2">
+            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
+            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
+            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
           </div>
         </div>
 

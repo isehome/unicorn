@@ -44,7 +44,8 @@ import {
   projectStakeholdersService,
   contactsService,
   stakeholderRolesService,
-  issuesService
+  issuesService,
+  projectProgressService
 } from '../services/supabaseService';
 import { enhancedStyles } from '../styles/styleSystem';
 import TodoDetailModal from './TodoDetailModal';
@@ -59,6 +60,28 @@ const formatDate = (value) => {
   } catch (error) {
     return value;
   }
+};
+
+// Progress Bar Component
+const ProgressBar = ({ label, percentage }) => {
+  const getBarColor = (percent) => {
+    if (percent < 33) return 'bg-red-500';
+    if (percent < 67) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-20">{label}</span>
+      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
+    </div>
+  );
 };
 
 const withAlpha = (hex, alpha) => {
@@ -191,6 +214,7 @@ const ProjectDetailView = () => {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showEquipmentManager, setShowEquipmentManager] = useState(false);
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
+  const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
 
   const refreshStakeholders = useCallback(async () => {
     try {
@@ -237,6 +261,15 @@ const ProjectDetailView = () => {
       setWireDrops(wireDropsResult?.data || []);
       setTodos(todoResult || []);
       setIssues(Array.isArray(issuesResult) ? issuesResult : []);
+      
+      // Load project progress
+      try {
+        const progress = await projectProgressService.getProjectProgress(id);
+        setProjectProgress(progress);
+      } catch (progressError) {
+        console.error('Failed to load progress:', progressError);
+        setProjectProgress({ prewire: 0, trim: 0, commission: 0 });
+      }
     } catch (err) {
       console.error('Failed to load project detail:', err);
       setError(err.message || 'Failed to load project details');
@@ -1281,17 +1314,19 @@ const ProjectDetailView = () => {
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
       <div className="px-4 pt-2 pb-8 space-y-4 max-w-5xl mx-auto">
-        <div className="rounded-2xl overflow-hidden border relative" style={{ ...styles.card, boxShadow: styles.card.boxShadow }}>
-          <div className="relative h-16">
-            <div
-              className="absolute inset-0 transition-all duration-300"
-              style={{ width: `${progress}%`, ...styles.progressFill(progress) }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center font-semibold gap-3 tracking-wide" style={styles.textPrimary}>
+        <div className="rounded-2xl border p-6" style={{ ...styles.card, boxShadow: styles.card.boxShadow }}>
+          <div className="mb-4">
+            <div className="flex items-center gap-3 mb-2">
               <span className="uppercase text-[11px]" style={styles.subtleText}>Project</span>
-              <span className="text-lg">{project.name}</span>
-              <span className="px-3 py-1 rounded-full text-xs" style={styles.progressBadge}>{progress}%</span>
+              <span className="text-lg font-semibold" style={styles.textPrimary}>{project.name}</span>
             </div>
+          </div>
+          
+          {/* Project Progress Gauges */}
+          <div className="space-y-2">
+            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
+            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
+            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
           </div>
         </div>
 

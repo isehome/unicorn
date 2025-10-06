@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService, contactsService } from '../services/supabaseService';
+import { projectsService, contactsService, projectProgressService } from '../services/supabaseService';
 import Button from './ui/Button';
 import { 
   Plus, 
@@ -18,6 +18,28 @@ import {
   Search
 } from 'lucide-react';
 
+// Progress Bar Component
+const ProgressBar = ({ label, percentage }) => {
+  const getBarColor = (percent) => {
+    if (percent < 33) return 'bg-red-500';
+    if (percent < 67) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-16">{label}</span>
+      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
+    </div>
+  );
+};
+
 const PMDashboard = () => {
   const { mode } = useTheme();
   const navigate = useNavigate();
@@ -27,6 +49,7 @@ const PMDashboard = () => {
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [contacts, setContacts] = useState([]);
+  const [projectProgress, setProjectProgress] = useState({});
   const [newProject, setNewProject] = useState({
     name: '',
     client: '',
@@ -47,6 +70,27 @@ const PMDashboard = () => {
     loadProjects();
     loadContacts();
   }, []);
+
+  // Load progress for all projects
+  useEffect(() => {
+    const loadProgress = async () => {
+      if (projects.length === 0) return;
+      
+      const progressData = {};
+      for (const project of projects) {
+        try {
+          const progress = await projectProgressService.getProjectProgress(project.id);
+          progressData[project.id] = progress;
+        } catch (error) {
+          console.error(`Failed to load progress for project ${project.id}:`, error);
+          progressData[project.id] = { prewire: 0, trim: 0, commission: 0 };
+        }
+      }
+      setProjectProgress(progressData);
+    };
+
+    loadProgress();
+  }, [projects]);
 
   const loadContacts = async () => {
     try {
@@ -382,75 +426,86 @@ const PMDashboard = () => {
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredProjects.map((project) => (
-                <div
-                  key={project.id}
-                  onClick={() => handleProjectClick(project.id)}
-                  className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md 
-                           transition-all cursor-pointer group bg-white dark:bg-gray-800"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-lg text-gray-900 dark:text-white">
-                          {project.name}
-                        </h3>
-                        <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(project.status)}`}>
-                          {project.status || 'active'}
-                        </span>
-                        {project.phase && (
-                          <span className={`text-xs font-medium ${getPhaseColor(project.phase)}`}>
-                            {project.phase}
+              {filteredProjects.map((project) => {
+                const progress = projectProgress[project.id] || { prewire: 0, trim: 0, commission: 0 };
+                
+                return (
+                  <div
+                    key={project.id}
+                    onClick={() => handleProjectClick(project.id)}
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md 
+                             transition-all cursor-pointer group bg-white dark:bg-gray-800"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white">
+                            {project.name}
+                          </h3>
+                          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(project.status)}`}>
+                            {project.status || 'active'}
                           </span>
-                        )}
+                          {project.phase && (
+                            <span className={`text-xs font-medium ${getPhaseColor(project.phase)}`}>
+                              {project.phase}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                          {project.project_number && (
+                            <span>#{project.project_number}</span>
+                          )}
+                          {project.client && (
+                            <span>Client: {project.client}</span>
+                          )}
+                          {project.address && (
+                            <span>{project.address}</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-4 mt-2">
+                          {project.wiring_diagram_url && (
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              <FileText className="w-3 h-3" />
+                              Wiring Diagram
+                            </span>
+                          )}
+                          {project.one_drive_photos && (
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              <Image className="w-3 h-3" />
+                              Photos
+                            </span>
+                          )}
+                          {project.one_drive_files && (
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              <Folder className="w-3 h-3" />
+                              Files
+                            </span>
+                          )}
+                          {project.one_drive_procurement && (
+                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              <Package className="w-3 h-3" />
+                              Procurement
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
-                      <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                        {project.project_number && (
-                          <span>#{project.project_number}</span>
-                        )}
-                        {project.client && (
-                          <span>Client: {project.client}</span>
-                        )}
-                        {project.address && (
-                          <span>{project.address}</span>
-                        )}
+                      {/* Progress Bars */}
+                      <div className="flex flex-col justify-center space-y-1.5 w-48 flex-shrink-0">
+                        <ProgressBar label="Prewire" percentage={progress.prewire || 0} />
+                        <ProgressBar label="Trim" percentage={progress.trim || 0} />
+                        <ProgressBar label="Commission" percentage={progress.commission || 0} />
                       </div>
-
-                      <div className="flex items-center gap-4 mt-2">
-                        {project.wiring_diagram_url && (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <FileText className="w-3 h-3" />
-                            Wiring Diagram
-                          </span>
-                        )}
-                        {project.one_drive_photos && (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <Image className="w-3 h-3" />
-                            Photos
-                          </span>
-                        )}
-                        {project.one_drive_files && (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <Folder className="w-3 h-3" />
-                            Files
-                          </span>
-                        )}
-                        {project.one_drive_procurement && (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <Package className="w-3 h-3" />
-                            Procurement
-                          </span>
-                        )}
+                      
+                      <div className="flex items-center flex-shrink-0">
+                        <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors" />
                       </div>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors" />
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
