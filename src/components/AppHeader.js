@@ -39,7 +39,7 @@ const AppHeader = () => {
     if (p.startsWith('/issues')) return 'Issues';
     if (p.startsWith('/todos')) return 'To-dos';
     if (p.startsWith('/people')) return 'People';
-    if (p === '/lucid-test') return 'Lucid Chart Integration';
+    if (p === '/lucid-test') return 'Lucid API Diagnostic';
     if (p === '/wire-drops-list') return 'Wire Drops List';
     if (p.startsWith('/wire-drops')) return 'Wire Drops';
     if (p.startsWith('/settings')) return 'Settings';

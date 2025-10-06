@@ -10,7 +10,7 @@ const BottomNavigation = () => {
     { icon: Home, label: 'Home', path: '/' },
     { icon: Users, label: 'People', path: '/people' },
     { icon: Activity, label: 'Wire Drops', path: '/wire-drops' },
-    { icon: QrCode, label: 'Scan Tag', path: '/scan' },
+    { icon: QrCode, label: 'Lucid Test', path: '/lucid-test' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 

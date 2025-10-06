@@ -7,6 +7,50 @@
 
 const LUCID_API_BASE_URL = 'https://api.lucid.co';
 const LUCID_API_VERSION = '1';
+const rawProxyBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
+const PROXY_BASE_URL = rawProxyBase.endsWith('/')
+  ? rawProxyBase.slice(0, -1)
+  : rawProxyBase;
+const PROXY_ENDPOINT = PROXY_BASE_URL
+  ? `${PROXY_BASE_URL}/api/lucid-proxy`
+  : '/api/lucid-proxy';
+const isDevelopment = process.env.NODE_ENV === 'development';
+
+const shouldUseProxy = () => !!PROXY_BASE_URL || !isDevelopment;
+
+const callLucidProxy = async (payload = {}) => {
+  // Validate that we have a proxy endpoint configured
+  if (!PROXY_ENDPOINT || PROXY_ENDPOINT === '/api/lucid-proxy') {
+    throw new Error('Lucid proxy endpoint not configured. Please set REACT_APP_LUCID_PROXY_URL environment variable or deploy to a server with the proxy endpoint.');
+  }
+
+  const response = await fetch(PROXY_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const rawText = await response.text();
+  let data;
+
+  try {
+    data = rawText ? JSON.parse(rawText) : {};
+  } catch (parseError) {
+    data = { raw: rawText };
+  }
+
+  if (!response.ok) {
+    const message = data?.error || data?.message || rawText || `Proxy request failed (${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.details = data;
+    throw error;
+  }
+
+  return data;
+};
 
 /**
  * Fetches document contents from Lucid Chart API
@@ -22,11 +66,10 @@ export const fetchDocumentContents = async (documentId) => {
   }
 
   const apiKey = process.env.REACT_APP_LUCID_API_KEY;
-  const isDevelopment = process.env.NODE_ENV === 'development';
 
   try {
-    // In development, call Lucid API directly; in production, use proxy
-    if (isDevelopment && apiKey) {
+    // Prefer proxy unless we're in local dev without an override
+    if (!shouldUseProxy() && apiKey) {
       // Direct API call for local development
       const response = await fetch(
         `${LUCID_API_BASE_URL}/documents/${documentId}/contents`,
@@ -57,21 +100,8 @@ export const fetchDocumentContents = async (documentId) => {
 
       return await response.json();
     } else {
-      // Use secure proxy for production
-      const response = await fetch('/api/lucid-proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ documentId })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `API Error (${response.status})`);
-      }
-
-      return await response.json();
+      // Use secure proxy for production (and optionally for dev via override)
+      return await callLucidProxy({ documentId });
     }
   } catch (error) {
     // Re-throw errors with additional context
@@ -80,6 +110,38 @@ export const fetchDocumentContents = async (documentId) => {
     }
     throw error;
   }
+};
+
+/**
+ * Fetch lightweight document metadata (page count, titles, version)
+ * @param {string} documentId - Lucid document ID
+ * @returns {Promise<Object>} Metadata payload from Lucid
+ */
+export const fetchDocumentMetadata = async (documentId) => {
+  if (!documentId) {
+    throw new Error('Document ID is required');
+  }
+
+  const apiKey = process.env.REACT_APP_LUCID_API_KEY;
+
+  if (!shouldUseProxy() && apiKey) {
+    const response = await fetch(`${LUCID_API_BASE_URL}/documents/${documentId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Lucid-Api-Version': LUCID_API_VERSION,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch document metadata (${response.status})`);
+    }
+
+    return response.json();
+  }
+
+  return callLucidProxy({ documentId, action: 'metadata' });
 };
 
 /**
@@ -188,58 +250,201 @@ export const validateApiKeyFormat = (apiKey) => {
  * @param {string} pageId - Optional page ID from Lucid document
  * @returns {Promise<string>} - Base64 data URL of the image
  */
-export const exportDocumentPage = async (documentId, pageNumber, pageId = null) => {
+export const exportDocumentPage = async (documentId, pageNumber = null, pageId = null, options = {}) => {
   if (!documentId) {
     throw new Error('Document ID is required');
   }
 
   const apiKey = process.env.REACT_APP_LUCID_API_KEY;
-  const isDevelopment = process.env.NODE_ENV === 'development';
+
+  const label = typeof pageNumber === 'number'
+    ? `Page ${pageNumber + 1}`
+    : pageId ? `Page ${pageId}` : 'Page';
 
   // In local development, use CORS proxy
-  if (isDevelopment) {
+  if (!shouldUseProxy() && !(options.forceProxy)) {
     if (!apiKey) {
       console.error('API key not configured. Please set REACT_APP_LUCID_API_KEY in .env.local');
       // Return a placeholder image
-      return createPlaceholderImage(`Page ${pageNumber + 1}`);
+      return createPlaceholderImage(label);
     }
 
     // In development, just return placeholder since CORS will block direct calls
     // Real images will load in production via the proxy
-    return createPlaceholderImage(`Page ${pageNumber + 1}`);
-  } else {
-    // In production, use the proxy endpoint
+    return createPlaceholderImage(label);
+  }
+
+  // Use the proxy endpoint (production or dev override)
+  try {
+    const payload = {
+      documentId,
+      exportImage: true,
+      action: 'exportImage'
+    };
+
+    if (typeof pageNumber === 'number') {
+      payload.pageNumber = pageNumber;
+    }
+
+    if (pageId) {
+      payload.pageId = pageId;
+    }
+
+    if (options.scale) {
+      payload.scale = options.scale;
+    }
+
+    if (options.dpi) {
+      payload.dpi = options.dpi;
+    }
+
+    if (options.crop) {
+      payload.crop = options.crop;
+    }
+
+    if (options.format) {
+      payload.format = options.format;
+    }
+
+    const data = await callLucidProxy(payload);
+
+    if (data.image) {
+      return data.image;
+    }
+
+    throw new Error('No image data received from proxy');
+  } catch (error) {
+    console.error(`Failed to export page ${label}:`, error);
+    return createPlaceholderImage(label);
+  }
+};
+
+/**
+ * Request an embed token for rendering Lucid in an iframe
+ * @param {string} documentId - Lucid document ID
+ * @param {Object} options - Additional embed options
+ * @returns {Promise<Object>} - Embed token response
+ */
+export const requestLucidEmbedToken = async (documentId, options = {}) => {
+  if (!documentId) {
+    throw new Error('Document ID is required');
+  }
+
+  const apiKey = process.env.REACT_APP_LUCID_API_KEY;
+
+  if (!shouldUseProxy() && apiKey) {
     try {
-      const response = await fetch('/api/lucid-proxy', {
+      const response = await fetch(`${LUCID_API_BASE_URL}/embeds/token`, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Lucid-Api-Version': LUCID_API_VERSION,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           documentId,
-          pageNumber,
-          pageId: pageId,
-          exportImage: true
+          permissions: options.permissions || ['view'],
+          expiresInSeconds: options.expiresInSeconds || 3600,
+          pageId: options.pageId || null,
+          type: options.type || 'document'
         })
       });
-      
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Export failed: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(errorText || `Lucid embed token request failed (${response.status})`);
       }
-      
-      const data = await response.json();
-      
-      if (data.image) {
-        return data.image;
-      } else {
-        throw new Error('No image data received from proxy');
-      }
+
+      return await response.json();
     } catch (error) {
-      console.error(`Failed to export page ${pageNumber}:`, error);
-      return createPlaceholderImage(`Page ${pageNumber + 1}`);
+      console.error('Direct embed token request failed:', error);
+      throw new Error('Embed token request failed. When developing locally, set REACT_APP_LUCID_PROXY_URL to your deployed domain or run the backend proxy so the token can be issued.');
     }
   }
+
+  const data = await callLucidProxy({
+    documentId,
+    action: 'embedToken',
+    embedOptions: options
+  });
+
+  if (!data || (!data.token && !data.embedToken && !data.accessToken)) {
+    throw new Error('Proxy returned an empty embed token response');
+  }
+
+  return data;
+};
+
+/**
+ * Export a cropped, high-resolution image focused on a specific shape
+ * @param {string} documentId - Lucid document ID
+ * @param {string} shapeId - Lucid shape ID
+ * @param {Object} options - { padding, scale, format }
+ * @returns {Promise<string>} - Base64 data URL of the cropped image
+ */
+export const exportShapeFocusImage = async (documentId, shapeId, options = {}) => {
+  if (!documentId || !shapeId) {
+    throw new Error('Document ID and shape ID are required');
+  }
+
+  const { padding = 80, scale = 2, format = 'png' } = options;
+  const docData = await fetchDocumentContents(documentId);
+
+  let targetPageId = null;
+  let targetPageIndex = null;
+  let bounds = null;
+
+  docData.pages?.some((page, pageIndex) => {
+    const shapesList = page.shapes || page.items?.shapes || [];
+    const match = shapesList.find((shape) => shape.id === shapeId);
+
+    if (match) {
+      targetPageId = page.id;
+      targetPageIndex = pageIndex;
+      bounds = match.boundingBox || match.bounds || null;
+      return true;
+    }
+
+    return false;
+  });
+
+  if (!bounds || targetPageIndex === null) {
+    throw new Error(`Shape ${shapeId} not found in document`);
+  }
+
+  const crop = createFocusCrop(bounds, padding);
+  return exportDocumentPage(documentId, targetPageIndex, targetPageId, {
+    crop,
+    scale,
+    format
+  });
+};
+
+/**
+ * Calculate a crop rectangle around a shape bounding box with padding
+ * @param {Object} bounds - { x, y, w, h }
+ * @param {number} padding - Padding in Lucid units
+ * @returns {Object} crop parameters compatible with Lucid export endpoint
+ */
+export const createFocusCrop = (bounds = {}, padding = 60) => {
+  const x = Number(bounds.x ?? bounds.left ?? 0);
+  const y = Number(bounds.y ?? bounds.top ?? 0);
+  const width = Number(bounds.w ?? bounds.width ?? 0);
+  const height = Number(bounds.h ?? bounds.height ?? 0);
+
+  const safePadding = Math.max(padding, 0);
+
+  const cropX = Math.max(x - safePadding, 0);
+  const cropY = Math.max(y - safePadding, 0);
+  const cropWidth = Math.max(width + safePadding * 2, width || 1);
+  const cropHeight = Math.max(height + safePadding * 2, height || 1);
+
+  return {
+    x: Math.round(cropX),
+    y: Math.round(cropY),
+    width: Math.round(cropWidth),
+    height: Math.round(cropHeight)
+  };
 };
 
 /**
