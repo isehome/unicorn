@@ -7,6 +7,7 @@ import { projectsService, timeLogsService } from '../services/supabaseService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { supabase } from '../lib/supabase';
+import { contactsService } from '../services/supabaseService';
 import Button from './ui/Button';
 import LucidChartCarousel from './LucidChartCarousel';
 import { 
@@ -31,7 +32,8 @@ import {
   GripVertical,
   Download,
   RefreshCw,
-  Link
+  Link,
+  Search
 } from 'lucide-react';
 
 const PMProjectViewEnhanced = () => {
@@ -40,6 +42,7 @@ const PMProjectViewEnhanced = () => {
   const { mode } = useTheme();
   const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
+  const { useMemo } = React;
   
   const [project, setProject] = useState(null);
   const [phases, setPhases] = useState([]);
@@ -84,17 +87,56 @@ const PMProjectViewEnhanced = () => {
   const [existingWireDrops, setExistingWireDrops] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
   const [showLucidSection, setShowLucidSection] = useState(false);
+  
+  // Client selection state
+  const [showClientPicker, setShowClientPicker] = useState(false);
+  const [availableContacts, setAvailableContacts] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientSearchTerm, setClientSearchTerm] = useState('');
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContactData, setNewContactData] = useState({
+    name: '',
+    company: '',
+    email: '',
+    phone: ''
+  });
 
   // Load project data and related information
   useEffect(() => {
     loadProjectData();
     loadTimeData();
     loadPhasesAndStatuses();
+    loadContacts();
     
     // Refresh time data every 30 seconds
     const interval = setInterval(loadTimeData, 30000);
     return () => clearInterval(interval);
   }, [projectId]);
+
+  // Auto-open client picker when entering edit mode
+  useEffect(() => {
+    if (editMode && !formData.client) {
+      // Small delay to ensure the UI has rendered
+      setTimeout(() => setShowClientPicker(true), 100);
+    } else if (!editMode) {
+      setShowClientPicker(false);
+    }
+  }, [editMode]);
+
+  const loadContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .order('name', { ascending: true });
+      
+      if (!error && data) {
+        setAvailableContacts(data);
+      }
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    }
+  };
 
   const loadPhasesAndStatuses = async () => {
     try {
@@ -188,6 +230,8 @@ const PMProjectViewEnhanced = () => {
     try {
       setSaving(true);
       console.log('Starting save with formData:', formData);
+      console.log('selectedClient state:', selectedClient);
+      console.log('Project ID:', projectId);
       
       // Extract Lucid document ID from wiring diagram URL
       let lucidDocId = null;
@@ -237,13 +281,169 @@ const PMProjectViewEnhanced = () => {
       
       console.log('Update successful:', data);
       setProject({ ...project, ...data });
+      
+      // Handle client stakeholder assignment - ALWAYS try if there's a client
+      let stakeholderResult = null;
+      if (formData.client) {
+        let contactToUse = selectedClient;
+        
+        // If no selectedClient, try to find matching contact
+        if (!contactToUse) {
+          console.log('No selectedClient, searching for matching contact...');
+          contactToUse = availableContacts.find(c => 
+            c.company === formData.client || 
+            c.name === formData.client
+          );
+          console.log('Found matching contact:', contactToUse);
+        }
+        
+        if (contactToUse) {
+          stakeholderResult = await updateClientStakeholder(contactToUse);
+        } else {
+          console.warn('Could not find a contact for client:', formData.client);
+          alert(`Warning: Client "${formData.client}" was saved, but no matching contact was found to create a stakeholder. Please ensure this contact exists in your contacts list.`);
+        }
+      }
+      
       setEditMode(false);
+      
+      // Show success message
+      if (stakeholderResult === true) {
+        alert('Project saved successfully! Client stakeholder has been updated.');
+      } else if (stakeholderResult === false) {
+        alert('Project saved successfully, but there was an issue updating the client stakeholder. Please check the console for details.');
+      } else {
+        alert('Project saved successfully!');
+      }
       
     } catch (error) {
       console.error('Failed to save project:', error);
       alert(`Failed to save: ${error.message || 'Unknown error'}`);
     } finally {
       setSaving(false);
+    }
+  };
+  
+  const updateClientStakeholder = async (contact) => {
+    try {
+      console.log('========================================');
+      console.log('UPDATING CLIENT STAKEHOLDER');
+      console.log('Contact:', contact);
+      console.log('Project ID:', projectId);
+      console.log('========================================');
+      
+      if (!contact || !contact.id) {
+        console.error('Invalid contact provided:', contact);
+        return false;
+      }
+      
+      // First, get or create the "Client" role in stakeholder_roles
+      let clientRoleId = null;
+      const { data: existingRoles, error: roleQueryError } = await supabase
+        .from('stakeholder_roles')
+        .select('*')
+        .eq('name', 'Client')
+        .single();
+      
+      if (roleQueryError && roleQueryError.code !== 'PGRST116') {
+        // PGRST116 is "not found" error, which is okay
+        console.error('Error checking for Client role:', roleQueryError);
+        return false;
+      }
+      
+      if (existingRoles) {
+        clientRoleId = existingRoles.id;
+        console.log('Found existing Client role with ID:', clientRoleId);
+      } else {
+        // Create the Client role
+        console.log('Creating Client role in stakeholder_roles...');
+        const { data: newRole, error: createRoleError } = await supabase
+          .from('stakeholder_roles')
+          .insert([{
+            name: 'Client',
+            category: 'external',
+            description: 'Project client',
+            sort_order: 12
+          }])
+          .select()
+          .single();
+        
+        if (createRoleError) {
+          console.error('Failed to create Client role:', createRoleError);
+          return false;
+        }
+        
+        clientRoleId = newRole.id;
+        console.log('Created new Client role with ID:', clientRoleId);
+      }
+      
+      // Now check if there's already a stakeholder assignment for this contact with Client role
+      const { data: existingAssignment, error: assignmentQueryError } = await supabase
+        .from('project_stakeholders')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('stakeholder_role_id', clientRoleId);
+        
+      if (assignmentQueryError) {
+        console.error('Error checking for existing Client assignment:', assignmentQueryError);
+        return false;
+      }
+      
+      console.log('Existing Client assignments found:', existingAssignment);
+      
+      if (existingAssignment && existingAssignment.length > 0) {
+        // Update existing assignment with new contact
+        console.log('Updating existing assignment with contact_id:', contact.id);
+        const { data: updateData, error: updateError } = await supabase
+          .from('project_stakeholders')
+          .update({ 
+            contact_id: contact.id
+          })
+          .eq('project_id', projectId)
+          .eq('stakeholder_role_id', clientRoleId)
+          .select();
+          
+        if (updateError) {
+          console.error('Failed to update Client assignment:', updateError);
+          return false;
+        } else {
+          console.log('✅ Successfully updated existing Client stakeholder assignment');
+          console.log('Updated data:', updateData);
+          return true;
+        }
+      } else {
+        // Create new Client assignment
+        console.log('Creating new Client assignment with data:', {
+          project_id: projectId,
+          contact_id: contact.id,
+          stakeholder_role_id: clientRoleId,
+          is_primary: true
+        });
+        
+        const { data: insertData, error: insertError } = await supabase
+          .from('project_stakeholders')
+          .insert([{
+            project_id: projectId,
+            contact_id: contact.id,
+            stakeholder_role_id: clientRoleId,
+            is_primary: true,
+            assignment_notes: 'Auto-assigned from project client field'
+          }])
+          .select();
+          
+        if (insertError) {
+          console.error('Failed to create Client assignment:', insertError);
+          console.error('Error details:', JSON.stringify(insertError, null, 2));
+          return false;
+        } else {
+          console.log('✅ Successfully created new Client stakeholder assignment');
+          console.log('Inserted data:', insertData);
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('Exception in updateClientStakeholder:', error);
+      return false;
     }
   };
 
@@ -254,6 +454,84 @@ const PMProjectViewEnhanced = () => {
       [name]: value
     }));
   };
+
+  const handleClientSelect = (contact) => {
+    // Set the client name based on the contact
+    const clientName = contact.company || contact.name || 'Unnamed Contact';
+    setFormData(prev => ({
+      ...prev,
+      client: clientName
+    }));
+    setSelectedClient(contact);
+    setShowClientPicker(false);
+    setClientSearchTerm('');
+    
+    // Note: The stakeholder assignment will happen when the project is saved
+    console.log('Client selected:', contact);
+  };
+
+  const handleClearClient = () => {
+    setFormData(prev => ({
+      ...prev,
+      client: ''
+    }));
+    setSelectedClient(null);
+    setClientSearchTerm('');
+  };
+  
+  const handleCreateNewContact = async () => {
+    try {
+      // Validate required fields
+      if (!newContactData.name && !newContactData.company) {
+        alert('Please provide at least a name or company');
+        return;
+      }
+      
+      // Create new contact
+      const { data: newContact, error } = await supabase
+        .from('contacts')
+        .insert([newContactData])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      // Add to available contacts
+      setAvailableContacts([...availableContacts, newContact]);
+      
+      // Select the new contact
+      handleClientSelect(newContact);
+      
+      // Reset form
+      setNewContactData({
+        name: '',
+        company: '',
+        email: '',
+        phone: ''
+      });
+      setShowNewContactForm(false);
+      
+    } catch (error) {
+      console.error('Failed to create contact:', error);
+      alert('Failed to create contact: ' + error.message);
+    }
+  };
+  
+  // Filter contacts based on search term
+  const filteredContacts = useMemo(() => {
+    if (!clientSearchTerm.trim()) return availableContacts;
+    
+    const search = clientSearchTerm.toLowerCase();
+    return availableContacts.filter(contact => {
+      const name = (contact.name || '').toLowerCase();
+      const company = (contact.company || '').toLowerCase();
+      const email = (contact.email || '').toLowerCase();
+      
+      return name.includes(search) || 
+             company.includes(search) || 
+             email.includes(search);
+    });
+  }, [availableContacts, clientSearchTerm]);
 
   const handleAddPhase = async () => {
     if (!newPhase.name) return;
@@ -687,16 +965,118 @@ const PMProjectViewEnhanced = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Client
             </label>
-            <input
-              type="text"
-              name="client"
-              value={formData.client}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
+            <div className="relative">
+              {!editMode ? (
+                <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
+                  {formData.client || <span className="text-gray-400">No client selected</span>}
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="flex gap-2">
+                    <div 
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               hover:border-violet-500 dark:hover:border-violet-400 cursor-pointer
+                               flex items-center gap-2"
+                      onClick={() => setShowClientPicker(!showClientPicker)}
+                    >
+                      <Users className="w-4 h-4 text-gray-500" />
+                      {formData.client ? (
+                        <span className="flex-1">{formData.client}</span>
+                      ) : (
+                        <span className="flex-1 text-gray-500 dark:text-gray-400">
+                          Select or add client...
+                        </span>
+                      )}
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showClientPicker ? 'rotate-180' : ''}`} />
+                    </div>
+                    {formData.client && (
+                      <button
+                        type="button"
+                        onClick={handleClearClient}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-600 
+                                 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-700"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Dropdown */}
+                  {showClientPicker && (
+                    <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 
+                                  dark:border-gray-600 rounded-lg shadow-lg max-h-96 overflow-hidden">
+                      {/* Search bar */}
+                      <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                        <input
+                          type="text"
+                          value={clientSearchTerm}
+                          onChange={(e) => setClientSearchTerm(e.target.value)}
+                          placeholder="Search contacts..."
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
+                                   bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                   placeholder-gray-500 dark:placeholder-gray-400"
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      
+                      {/* Contact list */}
+                      <div className="max-h-60 overflow-y-auto">
+                        {filteredContacts.length === 0 ? (
+                          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                            {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
+                          </div>
+                        ) : (
+                          filteredContacts.map(contact => {
+                            const displayName = contact.name || contact.company || 'Unnamed Contact';
+                            
+                            return (
+                              <div 
+                                key={contact.id}
+                                className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer 
+                                         border-b border-gray-100 dark:border-gray-700 last:border-0"
+                                onClick={() => handleClientSelect(contact)}
+                              >
+                                <div className="font-medium text-gray-900 dark:text-white">
+                                  {displayName}
+                                </div>
+                                {contact.company && contact.name && (
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">{contact.company}</div>
+                                )}
+                                {contact.email && (
+                                  <div className="text-sm text-gray-500 dark:text-gray-500">
+                                    {contact.email} {contact.phone && `• ${contact.phone}`}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                      
+                      {/* Add new contact button */}
+                      <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowNewContactForm(true);
+                            setShowClientPicker(false);
+                          }}
+                          className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
+                                   flex items-center justify-center gap-2"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add New Contact
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
@@ -1505,6 +1885,100 @@ const PMProjectViewEnhanced = () => {
             <div className="flex gap-2 mt-4">
               <Button onClick={() => setShowPhaseOrderModal(false)} variant="primary">
                 Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* New Contact Form Modal */}
+      {showNewContactForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div style={sectionStyles.card} className="p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
+              Add New Contact
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  value={newContactData.name}
+                  onChange={(e) => setNewContactData({...newContactData, name: e.target.value})}
+                  placeholder="Full name"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Company
+                </label>
+                <input
+                  type="text"
+                  value={newContactData.company}
+                  onChange={(e) => setNewContactData({...newContactData, company: e.target.value})}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={newContactData.email}
+                  onChange={(e) => setNewContactData({...newContactData, email: e.target.value})}
+                  placeholder="email@example.com"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Phone
+                </label>
+                <input
+                  type="tel"
+                  value={newContactData.phone}
+                  onChange={(e) => setNewContactData({...newContactData, phone: e.target.value})}
+                  placeholder="(555) 123-4567"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-2 mt-6">
+              <Button 
+                onClick={handleCreateNewContact} 
+                variant="primary"
+                className="flex-1"
+              >
+                Create Contact
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowNewContactForm(false);
+                  setNewContactData({
+                    name: '',
+                    company: '',
+                    email: '',
+                    phone: ''
+                  });
+                }}
+                variant="secondary"
+                className="flex-1"
+              >
+                Cancel
               </Button>
             </div>
           </div>
