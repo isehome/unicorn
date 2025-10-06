@@ -256,8 +256,8 @@ const WireDropDetailEnhanced = () => {
         // PGRST116 means no rows found - good, it was deleted
         alert('Wire drop deleted successfully');
         
-        // Navigate back and force a refresh of the list
-        navigate('/wire-drops', { replace: true });
+        // Navigate back to the previous page
+        navigate(-1);
       } else {
         // Item still exists after delete attempt
         console.error('Wire drop still exists after delete attempt');
