@@ -140,213 +140,136 @@ export default async function handler(req, res) {
       throw new Error(`Page ${pageNumber} not found in document`);
     };
 
-    // Try different approach: use document endpoint with export parameters
+    // Handle image export using the correct two-step process
     if (exportImage || action === 'exportImage') {
       const actualPageId = await determinePageId();
       if (!actualPageId) {
         throw new Error('Could not determine page ID');
       }
 
-      // Try simpler endpoint structure - just document export with pageId as parameter
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/export`);
+      // Step 1: Request image generation using the correct endpoint
+      const generateUrl = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/generate-image`;
       
-      // Add page ID as parameter
-      imageUrl.searchParams.set('pageId', actualPageId);
+      console.log('Step 1: Requesting image generation at:', generateUrl);
       
-      // Add export format
-      imageUrl.searchParams.set('format', format || 'png');
-      
-      // Add scale or DPI
-      if (scale) {
-        imageUrl.searchParams.set('scale', scale.toString());
-      }
-      if (dpi) {
-        imageUrl.searchParams.set('dpi', dpi.toString());
-      }
+      const generateResponse = await fetch(generateUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Lucid-Api-Version': LUCID_API_VERSION,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          imageType: format || 'png',
+          scale: scale || 1,
+          dpi: dpi
+        })
+      });
 
-      if (crop && typeof crop === 'object') {
-        const { x, y, width, height } = crop;
-        if ([x, y, width, height].every((value) => value !== undefined && value !== null)) {
-          imageUrl.searchParams.set('crop', `${x},${y},${width},${height}`);
-        }
-      }
-
-      if (format) {
-        requestedMimeType = `image/${format}`;
-      }
-
-      if (dpi && scale) {
-        console.warn('Both dpi and scale provided; Lucid API will honor one depending on precedence.');
-      }
-
-      headers['Accept'] = requestedMimeType;
-
-      url = imageUrl.toString();
-    } else {
-      // Default to getting document contents
-      url = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
-      headers['Content-Type'] = 'application/json';
-    }
-
-    console.log('Calling Lucid API:', url);
-    console.log('With headers:', JSON.stringify(headers, null, 2));
-
-    // Make request to Lucid API
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: headers
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Lucid API error:', response.status, errorText);
-      console.error('Failed URL was:', url);
-      
-      // Return appropriate error messages
-      switch (response.status) {
-        case 401:
-          return res.status(401).json({ error: 'Unauthorized: Invalid API key' });
-        case 403:
-          return res.status(403).json({ error: 'Forbidden: No access to this document' });
-        case 404:
-          return res.status(404).json({ error: 'Document or page not found' });
-        case 429:
-          return res.status(429).json({ error: 'Rate limit exceeded' });
-        default:
-          return res.status(response.status).json({ 
-            error: `API Error: ${response.statusText}`
-          });
-      }
-    }
-
-    // Handle image export differently
-    if (exportImage || action === 'exportImage') {
-      // Check content type of response
-      const contentType = response.headers.get('content-type');
-      console.log('Response content-type:', contentType);
-      
-      // If it's JSON, it might be an async export job
-      if (contentType && contentType.includes('application/json')) {
-        const jsonData = await response.json();
-        console.log('Received JSON response for image export:', jsonData);
+      if (!generateResponse.ok) {
+        const errorText = await generateResponse.text();
+        console.error('Generate image error:', generateResponse.status, errorText);
         
-        // Check if it's an async job with status/jobId
-        if (jsonData.status || jsonData.jobId || jsonData.exportId || jsonData.id) {
-          console.log('Export appears to be async, checking for status...');
-          
-          const jobId = jsonData.jobId || jsonData.exportId || jsonData.id;
-          const maxAttempts = 10;  // Try for up to 10 seconds
-          let attempts = 0;
-          
-          // Poll for completion
-          while (attempts < maxAttempts) {
-            attempts++;
-            console.log(`Polling attempt ${attempts}/${maxAttempts}...`);
-            
-            // Wait 1 second between polls
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Check status endpoint (might be the same URL or a status-specific URL)
-            const statusUrl = jsonData.statusUrl || 
-                            `${LUCID_API_BASE_URL}/documents/${documentId}/export/${jobId}/status` ||
-                            `${LUCID_API_BASE_URL}/exports/${jobId}` ||
-                            url;  // Try the same URL again
-                            
-            const statusResponse = await fetch(statusUrl, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Lucid-Api-Version': LUCID_API_VERSION
-              }
+        switch (generateResponse.status) {
+          case 401:
+            return res.status(401).json({ error: 'Unauthorized: Invalid API key' });
+          case 403:
+            return res.status(403).json({ error: 'Forbidden: No access to this document' });
+          case 404:
+            return res.status(404).json({ error: 'Document or page not found' });
+          case 429:
+            return res.status(429).json({ error: 'Rate limit exceeded' });
+          default:
+            return res.status(generateResponse.status).json({ 
+              error: `API Error: ${generateResponse.statusText}`
             });
-            
-            if (statusResponse.ok) {
-              const statusData = await statusResponse.json();
-              console.log('Status check response:', statusData);
-              
-              // Check if export is complete
-              if (statusData.status === 'complete' || statusData.status === 'ready' || 
-                  statusData.complete === true || statusData.ready === true) {
-                
-                // Get the image URL from the status response
-                const imageUrl = statusData.downloadUrl || statusData.imageUrl || 
-                               statusData.url || statusData.exportUrl;
-                
-                if (imageUrl) {
-                  console.log('Export ready! Fetching from:', imageUrl);
-                  
-                  const imageResponse = await fetch(imageUrl, {
-                    headers: {
-                      'Authorization': `Bearer ${apiKey}`
-                    }
-                  });
-                  
-                  if (imageResponse.ok) {
-                    const buffer = await imageResponse.arrayBuffer();
-                    const base64 = Buffer.from(buffer).toString('base64');
-                    return res.status(200).json({ 
-                      image: `data:image/png;base64,${base64}`,
-                      pageNumber: pageNumber 
-                    });
-                  }
-                }
-              }
-              
-              // Check for failure states
-              if (statusData.status === 'failed' || statusData.status === 'error') {
-                return res.status(500).json({ 
-                  error: 'Export failed',
-                  details: statusData
-                });
-              }
-            }
-          }
-          
-          // Timeout after max attempts
-          return res.status(500).json({ 
-            error: 'Export timeout - took longer than expected',
-            lastResponse: jsonData
-          });
         }
-        
-        // Check if there's a direct image URL in the response
-        if (jsonData.imageUrl || jsonData.url || jsonData.exportUrl || jsonData.downloadUrl) {
-          const imageUrl = jsonData.imageUrl || jsonData.url || jsonData.exportUrl || jsonData.downloadUrl;
-          console.log('Found direct image URL in response:', imageUrl);
-          
-          // Fetch the actual image from the URL
-          const imageResponse = await fetch(imageUrl, {
-            headers: {
-              'Authorization': `Bearer ${apiKey}`
-            }
-          });
-          
-          if (imageResponse.ok) {
-            const buffer = await imageResponse.arrayBuffer();
-            const base64 = Buffer.from(buffer).toString('base64');
-            return res.status(200).json({ 
-              image: `data:image/png;base64,${base64}`,
-              pageNumber: pageNumber 
-            });
-          }
-        }
-        
-        // If no recognizable pattern, return error with the JSON data for debugging
+      }
+
+      const generateData = await generateResponse.json();
+      console.log('Step 1 response:', generateData);
+
+      // Step 2: Download the image from the provided link
+      const imageLink = generateData.link || generateData.url || generateData.imageUrl;
+      
+      if (!imageLink) {
         return res.status(500).json({ 
-          error: 'Export endpoint returned unexpected JSON',
-          responseData: jsonData,
-          hint: 'Check Vercel logs for the actual response structure'
+          error: 'No image link returned from generate-image endpoint',
+          response: generateData
         });
       }
+
+      console.log('Step 2: Downloading image from:', imageLink);
       
-      // If it's image data, convert to base64
-      const buffer = await response.arrayBuffer();
+      const imageResponse = await fetch(imageLink, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}` // May or may not be needed
+        }
+      });
+
+      if (!imageResponse.ok) {
+        // Try without auth header
+        const imageResponseNoAuth = await fetch(imageLink);
+        
+        if (!imageResponseNoAuth.ok) {
+          return res.status(500).json({ 
+            error: 'Failed to download generated image',
+            imageUrl: imageLink,
+            status: imageResponseNoAuth.status
+          });
+        }
+        
+        const buffer = await imageResponseNoAuth.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        return res.status(200).json({ 
+          image: `data:image/${format || 'png'};base64,${base64}`,
+          pageNumber: pageNumber 
+        });
+      }
+
+      // Success - convert image to base64 and return
+      const buffer = await imageResponse.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
-      res.status(200).json({ 
-        image: `data:${requestedMimeType};base64,${base64}`,
+      return res.status(200).json({ 
+        image: `data:image/${format || 'png'};base64,${base64}`,
         pageNumber: pageNumber 
       });
     } else {
+      // Default to getting document contents
+      const url = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+      headers['Content-Type'] = 'application/json';
+      
+      console.log('Calling Lucid API:', url);
+      console.log('With headers:', JSON.stringify(headers, null, 2));
+
+      // Make request to Lucid API
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: headers
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Lucid API error:', response.status, errorText);
+        console.error('Failed URL was:', url);
+        
+        // Return appropriate error messages
+        switch (response.status) {
+          case 401:
+            return res.status(401).json({ error: 'Unauthorized: Invalid API key' });
+          case 403:
+            return res.status(403).json({ error: 'Forbidden: No access to this document' });
+          case 404:
+            return res.status(404).json({ error: 'Document or page not found' });
+          case 429:
+            return res.status(429).json({ error: 'Rate limit exceeded' });
+          default:
+            return res.status(response.status).json({ 
+              error: `API Error: ${response.statusText}`
+            });
+        }
+      }
+
       // Return the document data
       const data = await response.json();
       res.status(200).json(data);
