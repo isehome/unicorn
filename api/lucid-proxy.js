@@ -140,37 +140,43 @@ export default async function handler(req, res) {
       throw new Error(`Page ${pageNumber} not found in document`);
     };
 
-    // Handle image export using the correct two-step process
+    // Handle image export using the CORRECT endpoint from documentation
     if (exportImage || action === 'exportImage') {
       const actualPageId = await determinePageId();
       if (!actualPageId) {
         throw new Error('Could not determine page ID');
       }
 
-      // Step 1: Request image generation using the correct endpoint
-      const generateUrl = `${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/generate-image`;
+      // Use the correct GET endpoint with Accept header
+      const exportUrl = `${LUCID_API_BASE_URL}/documents/${documentId}?pageId=${actualPageId}`;
       
-      console.log('Step 1: Requesting image generation at:', generateUrl);
+      // Format the Accept header - MUST include DPI or it returns 400
+      const imageFormat = format || 'png';
+      const imageDpi = dpi || 72; // Default to low DPI for smaller files
+      const acceptHeader = `image/${imageFormat};dpi=${imageDpi}`;
       
-      const generateResponse = await fetch(generateUrl, {
-        method: 'POST',
+      console.log('Exporting from:', exportUrl);
+      console.log('Accept header:', acceptHeader);
+      
+      const exportResponse = await fetch(exportUrl, {
+        method: 'GET', // GET not POST!
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Lucid-Api-Version': LUCID_API_VERSION,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          imageType: format || 'png',
-          scale: scale || 1,
-          dpi: dpi
-        })
+          'Accept': acceptHeader // This specifies the export format
+        }
       });
 
-      if (!generateResponse.ok) {
-        const errorText = await generateResponse.text();
-        console.error('Generate image error:', generateResponse.status, errorText);
+      if (!exportResponse.ok) {
+        const errorText = await exportResponse.text();
+        console.error('Export error:', exportResponse.status, errorText);
         
-        switch (generateResponse.status) {
+        switch (exportResponse.status) {
+          case 400:
+            return res.status(400).json({ 
+              error: 'Bad request - try adding DPI to Accept header (e.g., image/png;dpi=72)',
+              details: errorText
+            });
           case 401:
             return res.status(401).json({ error: 'Unauthorized: Invalid API key' });
           case 403:
@@ -178,61 +184,23 @@ export default async function handler(req, res) {
           case 404:
             return res.status(404).json({ error: 'Document or page not found' });
           case 429:
-            return res.status(429).json({ error: 'Rate limit exceeded' });
+            return res.status(429).json({ error: 'Rate limit exceeded (max 75 requests per 5 seconds)' });
           default:
-            return res.status(generateResponse.status).json({ 
-              error: `API Error: ${generateResponse.statusText}`
+            return res.status(exportResponse.status).json({ 
+              error: `API Error: ${exportResponse.statusText}`
             });
         }
       }
 
-      const generateData = await generateResponse.json();
-      console.log('Step 1 response:', generateData);
-
-      // Step 2: Download the image from the provided link
-      const imageLink = generateData.link || generateData.url || generateData.imageUrl;
-      
-      if (!imageLink) {
-        return res.status(500).json({ 
-          error: 'No image link returned from generate-image endpoint',
-          response: generateData
-        });
-      }
-
-      console.log('Step 2: Downloading image from:', imageLink);
-      
-      const imageResponse = await fetch(imageLink, {
-        headers: {
-          'Authorization': `Bearer ${apiKey}` // May or may not be needed
-        }
-      });
-
-      if (!imageResponse.ok) {
-        // Try without auth header
-        const imageResponseNoAuth = await fetch(imageLink);
-        
-        if (!imageResponseNoAuth.ok) {
-          return res.status(500).json({ 
-            error: 'Failed to download generated image',
-            imageUrl: imageLink,
-            status: imageResponseNoAuth.status
-          });
-        }
-        
-        const buffer = await imageResponseNoAuth.arrayBuffer();
-        const base64 = Buffer.from(buffer).toString('base64');
-        return res.status(200).json({ 
-          image: `data:image/${format || 'png'};base64,${base64}`,
-          pageNumber: pageNumber 
-        });
-      }
-
       // Success - convert image to base64 and return
-      const buffer = await imageResponse.arrayBuffer();
+      const buffer = await exportResponse.arrayBuffer();
       const base64 = Buffer.from(buffer).toString('base64');
+      console.log('Export successful! Image size:', buffer.byteLength, 'bytes');
+      
       return res.status(200).json({ 
-        image: `data:image/${format || 'png'};base64,${base64}`,
-        pageNumber: pageNumber 
+        image: `data:image/${imageFormat};base64,${base64}`,
+        pageNumber: pageNumber,
+        size: buffer.byteLength
       });
     } else {
       // Default to getting document contents
