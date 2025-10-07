@@ -5,7 +5,8 @@ import {
   AlertCircle, 
   CheckCircle, 
   Loader,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Eye
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -15,6 +16,7 @@ import {
   extractDocumentIdFromUrl,
   exportDocumentPage
 } from '../services/lucidApi';
+import LucidIframeEmbed from './LucidIframeEmbed';
 
 const LucidDiagnostic = () => {
   const { mode } = useTheme();
@@ -28,6 +30,7 @@ const LucidDiagnostic = () => {
   const [error, setError] = useState(null);
   const [testResults, setTestResults] = useState([]);
   const [downloadingPages, setDownloadingPages] = useState({});
+  const [showEmbed, setShowEmbed] = useState(false);
 
   const addTestResult = (test, success, message, data = null) => {
     setTestResults(prev => [...prev, {
@@ -538,10 +541,39 @@ const LucidDiagnostic = () => {
 
           <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-300">
-              <strong>Note:</strong> Image downloads use the proxy endpoint to bypass CORS. If downloads fail or return placeholders, check the proxy configuration and API key.
+              <strong>Note:</strong> Image export and embed tokens require special API permissions that are not available in all Lucid plans.
             </p>
           </div>
+          
+          <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <p className="text-sm text-green-800 dark:text-green-300 font-medium mb-2">
+              ✅ Working Alternative: Iframe Embed
+            </p>
+            <p className="text-sm text-green-700 dark:text-green-400">
+              You can display Lucid charts without any API permissions using the iframe embed method. This works with any Lucid account.
+            </p>
+            {documentId && (
+              <button
+                onClick={() => setShowEmbed(!showEmbed)}
+                className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+              >
+                <Eye className="w-4 h-4" />
+                {showEmbed ? 'Hide' : 'Show'} Embed Demo
+              </button>
+            )}
+          </div>
         </div>
+        
+        {/* Iframe Embed Demo */}
+        {showEmbed && documentId && (
+          <div className="mt-6">
+            <LucidIframeEmbed 
+              documentId={documentId}
+              title="Lucid Chart Embed Demo (No API Required)"
+              height="600px"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
