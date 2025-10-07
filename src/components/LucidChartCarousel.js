@@ -1,192 +1,291 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, FileText, Loader, AlertCircle, ExternalLink } from 'lucide-react';
-import { fetchDocumentContents, extractDocumentIdFromUrl } from '../services/lucidApi';
-import { getCachedPageImage, preloadDocumentPages } from '../services/lucidCacheService';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  FileText,
+  Loader,
+  AlertCircle,
+  ExternalLink,
+  Maximize2,
+  X
+} from 'lucide-react';
+import {
+  fetchDocumentMetadata,
+  fetchDocumentContents,
+  extractDocumentIdFromUrl,
+  requestLucidEmbedToken
+} from '../services/lucidApi';
+import { preloadDocumentPages, getCachedPageImage } from '../services/lucidCacheService';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
+
+const THUMB_SCALE = 0.45;
+
+const EmbedModal = ({ isOpen, onClose, loading, error, token, documentId, page }) => {
+  const { mode } = useTheme();
+
+  const embedUrl = useMemo(() => {
+    if (!token || !documentId) return null;
+    const baseUrl = `https://lucid.app/documents/embed/${documentId}`;
+    const search = new URLSearchParams({ token });
+    if (page?.id) {
+      search.set('pageId', page.id);
+    }
+    return `${baseUrl}?${search.toString()}`;
+  }, [token, documentId, page]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-sm">
+      <div className={`relative w-full max-w-5xl overflow-hidden rounded-2xl shadow-2xl ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'}`}>
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
+          aria-label="Close Lucid diagram"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className={`border-b px-6 py-4 ${mode === 'dark' ? 'border-gray-800' : 'border-gray-200'}`}>
+          <h3 className={`text-lg font-semibold ${mode === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+            {page?.title || 'Lucid Diagram'}
+          </h3>
+          {page && (
+            <p className={`mt-1 text-xs ${mode === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              Page {page.index + 1}
+            </p>
+          )}
+        </div>
+
+        <div className={`flex h-[70vh] items-center justify-center ${mode === 'dark' ? 'bg-gray-950' : 'bg-gray-50'}`}>
+          {loading && (
+            <div className="flex flex-col items-center gap-3 text-gray-500">
+              <Loader className="h-7 w-7 animate-spin" />
+              <span className="text-sm">Loading Lucid viewer…</span>
+            </div>
+          )}
+
+          {!loading && error && (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <AlertCircle className="h-8 w-8 text-red-500" />
+              <p className="max-w-sm text-sm text-red-500">{error}</p>
+            </div>
+          )}
+
+          {!loading && !error && embedUrl && (
+            <iframe
+              src={embedUrl}
+              title={page?.title || 'Lucid Diagram'}
+              className="h-full w-full border-0"
+              allow="fullscreen"
+              referrerPolicy="no-referrer"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const LucidChartCarousel = ({ documentUrl, projectName }) => {
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
-  const carouselRef = useRef(null);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [pages, setPages] = useState([]);
   const [thumbnails, setThumbnails] = useState({});
+  const [documentId, setDocumentId] = useState(null);
+  const [documentVersion, setDocumentVersion] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [thumbnailsLoading, setThumbnailsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  const [embedState, setEmbedState] = useState({
+    open: false,
+    loading: false,
+    token: null,
+    error: null,
+    page: null
+  });
 
   useEffect(() => {
-    if (documentUrl) {
-      loadDocumentPages();
+    if (!documentUrl) {
+      return;
     }
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setThumbnails({});
+
+      try {
+        const docId = extractDocumentIdFromUrl(documentUrl);
+        if (!docId) {
+          throw new Error('Invalid Lucid Chart URL');
+        }
+
+        setDocumentId(docId);
+
+        let metadata = null;
+        try {
+          metadata = await fetchDocumentMetadata(docId);
+        } catch (metaError) {
+          console.warn('Failed to fetch Lucid metadata, falling back to contents:', metaError);
+        }
+
+        let pageData = [];
+        if (metadata?.pages?.length) {
+          pageData = metadata.pages.map((page, index) => ({
+            id: page.id,
+            title: page.title || `Page ${index + 1}`,
+            index
+          }));
+        }
+
+        if (pageData.length === 0) {
+          const contents = await fetchDocumentContents(docId);
+          if (!contents?.pages?.length) {
+            throw new Error('This Lucid document does not have any pages.');
+          }
+
+          pageData = contents.pages.map((page, index) => ({
+            id: page.id,
+            title: page.title || `Page ${index + 1}`,
+            index
+          }));
+        }
+
+        const docVersion = metadata?.version || metadata?.documentVersion || metadata?.revision || null;
+
+        setPages(pageData);
+        setDocumentVersion(docVersion);
+
+        await loadThumbnails(docId, pageData, docVersion);
+      } catch (err) {
+        console.error('Failed to load Lucid pages:', err);
+        setError(err.message || 'Failed to load Lucid document');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, [documentUrl]);
 
-  const loadDocumentPages = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const documentId = extractDocumentIdFromUrl(documentUrl);
-      if (!documentId) {
-        throw new Error('Invalid Lucid Chart URL');
-      }
-
-      // Fetch document data to get page information
-      const docData = await fetchDocumentContents(documentId);
-      
-      if (docData && docData.pages) {
-        const pageData = docData.pages.map((page, index) => ({
-          id: page.id,
-          title: page.title || `Page ${index + 1}`,
-          index: index
-        }));
-        setPages(pageData);
-        
-        // Load thumbnails for each page
-        loadThumbnails(documentId, pageData);
-      }
-    } catch (err) {
-      console.error('Failed to load document pages:', err);
-      setError(err.message || 'Failed to load document pages');
-    } finally {
-      setLoading(false);
+  const loadThumbnails = async (docId, pageData, version) => {
+    if (!pageData.length) {
+      return;
     }
-  };
 
-  const loadThumbnails = async (documentId, pageData) => {
+    setThumbnailsLoading(true);
+
     try {
-      console.log(`Loading thumbnails for ${pageData.length} pages using cache service...`);
-      
-      // Use the cache service to load all pages (with batching and caching)
-      const imageUrls = await preloadDocumentPages(documentId, pageData);
-      
-      // Update state with all loaded images
-      setThumbnails(imageUrls);
-      
-      // Also load individual pages if some failed during batch loading
+      const imageMap = await preloadDocumentPages(docId, pageData, {
+        documentVersion: version,
+        scale: THUMB_SCALE,
+        format: 'png'
+      });
+
+      setThumbnails(imageMap);
+
+      // Backfill any pages that failed to preload
       for (const page of pageData) {
-        if (!imageUrls[page.index]) {
+        if (!imageMap[page.index]) {
           try {
-            const imageUrl = await getCachedPageImage(documentId, page.index, {
+            const url = await getCachedPageImage(docId, page.index, {
               title: page.title,
               id: page.id
+            }, {
+              documentVersion: version,
+              scale: THUMB_SCALE,
+              format: 'png'
             });
-            
-            if (imageUrl) {
-              setThumbnails(prev => ({ ...prev, [page.index]: imageUrl }));
+
+            if (url) {
+              setThumbnails((prev) => ({ ...prev, [page.index]: url }));
             }
-          } catch (error) {
-            console.error(`Failed to load cached image for page ${page.index}:`, error);
+          } catch (singleError) {
+            console.warn(`Thumbnail fallback failed for page ${page.index}:`, singleError);
           }
         }
       }
-    } catch (error) {
-      console.error('Failed to load thumbnails:', error);
-      
-      // Generate placeholder for all pages if loading fails
+    } catch (thumbError) {
+      console.error('Failed to load Lucid thumbnails:', thumbError);
       const placeholders = {};
-      for (const page of pageData) {
-        const canvas = document.createElement('canvas');
-        canvas.width = 300;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
-        
-        // Draw placeholder background
-        ctx.fillStyle = mode === 'dark' ? '#374151' : '#f3f4f6';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw border
-        ctx.strokeStyle = mode === 'dark' ? '#4b5563' : '#d1d5db';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
-        
-        // Draw page icon
-        ctx.fillStyle = mode === 'dark' ? '#9ca3af' : '#6b7280';
-        ctx.font = '48px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('📄', canvas.width / 2, canvas.height / 2 - 20);
-        
-        // Draw page title
-        ctx.font = 'bold 16px sans-serif';
-        ctx.fillStyle = mode === 'dark' ? '#e5e7eb' : '#374151';
-        ctx.fillText(page.title, canvas.width / 2, canvas.height / 2 + 40);
-        
-        // Draw "Loading..." text
-        ctx.font = '12px sans-serif';
-        ctx.fillStyle = mode === 'dark' ? '#9ca3af' : '#6b7280';
-        ctx.fillText('Loading image...', canvas.width / 2, canvas.height / 2 + 60);
-        
-        placeholders[page.index] = canvas.toDataURL();
+      if (typeof document !== 'undefined') {
+        for (const page of pageData) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 280;
+          canvas.height = 180;
+          const ctx = canvas.getContext('2d');
+
+          ctx.fillStyle = mode === 'dark' ? '#1f2937' : '#f3f4f6';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          ctx.strokeStyle = mode === 'dark' ? '#4b5563' : '#d1d5db';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+
+          ctx.fillStyle = mode === 'dark' ? '#a1a1aa' : '#6b7280';
+          ctx.font = '48px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('📄', canvas.width / 2, canvas.height / 2 - 20);
+
+          ctx.font = 'bold 16px sans-serif';
+          ctx.fillStyle = mode === 'dark' ? '#e5e7eb' : '#374151';
+          ctx.fillText(page.title, canvas.width / 2, canvas.height / 2 + 36);
+
+          ctx.font = '12px sans-serif';
+          ctx.fillStyle = mode === 'dark' ? '#9ca3af' : '#6b7280';
+          ctx.fillText('Thumbnail unavailable', canvas.width / 2, canvas.height / 2 + 60);
+
+          placeholders[page.index] = canvas.toDataURL();
+        }
       }
+
       setThumbnails(placeholders);
+    } finally {
+      setThumbnailsLoading(false);
     }
   };
 
-  const handlePrevious = () => {
-    setCurrentIndex((prev) => (prev - 1 + pages.length) % pages.length);
+  const handleOpenPage = async (page) => {
+    if (!documentId) {
+      return;
+    }
+
+    setSelectedIndex(page.index);
+    setEmbedState({ open: true, loading: true, token: null, error: null, page });
+
+    try {
+      const tokenResponse = await requestLucidEmbedToken(documentId, {
+        pageId: page.id,
+        permissions: ['view']
+      });
+
+      const tokenValue = tokenResponse?.token || tokenResponse?.embedToken || tokenResponse?.accessToken;
+      if (!tokenValue) {
+        throw new Error('Embed token not returned from Lucid');
+      }
+
+      setEmbedState((prev) => ({ ...prev, loading: false, token: tokenValue }));
+    } catch (tokenError) {
+      console.error('Failed to request Lucid embed token:', tokenError);
+      setEmbedState((prev) => ({
+        ...prev,
+        loading: false,
+        error: tokenError.message || 'Failed to load Lucid viewer'
+      }));
+    }
   };
 
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev + 1) % pages.length);
-  };
-
-  const handleDotClick = (index) => {
-    setCurrentIndex(index);
-  };
-
-  // Touch/Mouse drag handlers for swipe functionality
-  const handleMouseDown = (e) => {
-    setIsDragging(true);
-    setStartX(e.pageX - carouselRef.current.offsetLeft);
-    setScrollLeft(carouselRef.current.scrollLeft);
-  };
-
-  const handleTouchStart = (e) => {
-    setIsDragging(true);
-    setStartX(e.touches[0].pageX - carouselRef.current.offsetLeft);
-    setScrollLeft(carouselRef.current.scrollLeft);
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDragging) return;
-    e.preventDefault();
-    const x = e.pageX - carouselRef.current.offsetLeft;
-    const walk = (x - startX) * 2;
-    carouselRef.current.scrollLeft = scrollLeft - walk;
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isDragging) return;
-    const x = e.touches[0].pageX - carouselRef.current.offsetLeft;
-    const walk = (x - startX) * 2;
-    carouselRef.current.scrollLeft = scrollLeft - walk;
-  };
-
-  const handleDragEnd = () => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    
-    // Snap to nearest page
-    const carousel = carouselRef.current;
-    const scrollPosition = carousel.scrollLeft;
-    const itemWidth = carousel.offsetWidth;
-    const newIndex = Math.round(scrollPosition / itemWidth);
-    setCurrentIndex(Math.max(0, Math.min(newIndex, pages.length - 1)));
-    
-    // Smooth scroll to the snapped position
-    carousel.scrollTo({
-      left: newIndex * itemWidth,
-      behavior: 'smooth'
-    });
+  const closeEmbed = () => {
+    setEmbedState({ open: false, loading: false, token: null, error: null, page: null });
   };
 
   const openInLucidChart = () => {
     if (documentUrl) {
-      window.open(documentUrl, '_blank');
+      window.open(documentUrl, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -198,8 +297,8 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     return (
       <div style={sectionStyles.card} className="p-6 mb-6">
         <div className="flex items-center justify-center py-12">
-          <Loader className="w-8 h-8 animate-spin text-violet-600" />
-          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading diagram pages...</span>
+          <Loader className="h-7 w-7 animate-spin text-violet-600" />
+          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading Lucid pages…</span>
         </div>
       </div>
     );
@@ -208,139 +307,118 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
   if (error) {
     return (
       <div style={sectionStyles.card} className="p-6 mb-6">
-        <div className="flex items-center justify-center py-8">
-          <AlertCircle className="w-6 h-6 text-red-500 mr-2" />
-          <span className="text-red-600 dark:text-red-400">{error}</span>
+        <div className="flex items-center justify-center gap-2 py-8">
+          <AlertCircle className="h-5 w-5 text-red-500" />
+          <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
         </div>
       </div>
     );
   }
 
-  if (pages.length === 0) {
+  if (!pages.length) {
     return null;
   }
 
   return (
-    <div style={sectionStyles.card} className="p-6 mb-6">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-          <FileText className="w-5 h-5" />
-          Wiring Diagram Overview
-        </h2>
-        <button
-          onClick={openInLucidChart}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-violet-600 dark:text-violet-400 
-                   hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg transition-colors"
-        >
-          <ExternalLink className="w-4 h-4" />
-          Open in Lucid Chart
-        </button>
-      </div>
+    <>
+      <div style={sectionStyles.card} className="p-6 mb-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-gray-900 dark:text-white">
+            <FileText className="h-5 w-5" />
+            <div>
+              <p className="text-sm font-semibold">Wiring Diagram Overview</p>
+              {projectName && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">{projectName}</p>
+              )}
+            </div>
+          </div>
 
-      {/* Carousel Container */}
-      <div className="relative">
-        {/* Previous Button */}
-        {pages.length > 1 && (
-          <button
-            onClick={handlePrevious}
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 p-2 bg-white dark:bg-gray-800 
-                     rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Previous page"
-          >
-            <ChevronLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-          </button>
-        )}
-
-        {/* Carousel Content */}
-        <div
-          ref={carouselRef}
-          className="overflow-hidden rounded-lg cursor-grab active:cursor-grabbing"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleDragEnd}
-          onMouseLeave={handleDragEnd}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleDragEnd}
-        >
-          <div 
-            className="flex transition-transform duration-300 ease-in-out"
-            style={{
-              transform: `translateX(-${currentIndex * 100}%)`,
-              touchAction: 'pan-y'
-            }}
-          >
-            {pages.map((page, index) => (
-              <div
-                key={page.id}
-                className="min-w-full flex flex-col items-center justify-center p-4"
-              >
-                {/* Thumbnail */}
-                <div className="relative w-full max-w-2xl mx-auto mb-3">
-                  <div className="aspect-[3/2] bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden 
-                                border-2 border-gray-200 dark:border-gray-700">
-                    {thumbnails[index] ? (
-                      <img
-                        src={thumbnails[index]}
-                        alt={page.title}
-                        className="w-full h-full object-contain"
-                        draggable="false"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <div className="text-center">
-                          <FileText className="w-16 h-16 text-gray-400 dark:text-gray-600 mx-auto mb-2" />
-                          <p className="text-gray-500 dark:text-gray-400">Loading thumbnail...</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Page Title */}
-                <h3 className="text-center text-sm font-medium text-gray-900 dark:text-white">
-                  {page.title}
-                </h3>
-                <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Page {index + 1} of {pages.length}
-                </p>
-              </div>
-            ))}
+          <div className="flex gap-2">
+            {documentVersion && (
+              <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                v{documentVersion}
+              </span>
+            )}
+            <button
+              onClick={openInLucidChart}
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-violet-600 transition hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open in Lucid
+            </button>
           </div>
         </div>
 
-        {/* Next Button */}
-        {pages.length > 1 && (
-          <button
-            onClick={handleNext}
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 p-2 bg-white dark:bg-gray-800 
-                     rounded-full shadow-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            aria-label="Next page"
-          >
-            <ChevronRight className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-          </button>
+        <div className="overflow-x-auto pb-2">
+          <div className="flex gap-4">
+            {pages.map((page) => {
+              const thumbnail = thumbnails[page.index];
+              const isSelected = selectedIndex === page.index && embedState.open;
+
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => handleOpenPage(page)}
+                  className={`group relative w-48 shrink-0 rounded-xl border p-2 text-left transition ${
+                    isSelected
+                      ? 'border-violet-500 shadow-lg shadow-violet-500/10'
+                      : mode === 'dark'
+                        ? 'border-gray-800 bg-gray-900 hover:border-violet-500'
+                        : 'border-gray-200 bg-white hover:border-violet-500'
+                  }`}
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
+                    {thumbnail ? (
+                      <img
+                        src={thumbnail}
+                        alt={page.title}
+                        className="h-full w-full object-contain"
+                        draggable={false}
+                      />
+                    ) : (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-400">
+                        <FileText className="h-8 w-8" />
+                        <span className="text-xs">Loading…</span>
+                      </div>
+                    )}
+
+                    <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                      <Maximize2 className="h-3 w-3" />
+                      View
+                    </span>
+                  </div>
+
+                  <div className="mt-2">
+                    <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {page.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Page {page.index + 1}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {thumbnailsLoading && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+            <Loader className="h-3 w-3 animate-spin" />
+            Updating thumbnails…
+          </div>
         )}
       </div>
 
-      {/* Dots Indicator */}
-      {pages.length > 1 && (
-        <div className="flex justify-center gap-2 mt-4">
-          {pages.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => handleDotClick(index)}
-              className={`w-2 h-2 rounded-full transition-all duration-200 ${
-                index === currentIndex
-                  ? 'w-6 bg-violet-600 dark:bg-violet-400'
-                  : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500'
-              }`}
-              aria-label={`Go to page ${index + 1}`}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+      <EmbedModal
+        isOpen={embedState.open}
+        onClose={closeEmbed}
+        loading={embedState.loading}
+        error={embedState.error}
+        token={embedState.token}
+        documentId={documentId}
+        page={embedState.page}
+      />
+    </>
   );
 };
 

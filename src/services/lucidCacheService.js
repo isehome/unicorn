@@ -16,7 +16,7 @@ const CACHE_DURATION_DAYS = 7;
  * @param {object} pageInfo - Optional page information (title, id)
  * @returns {Promise<string>} - Public URL of the cached image
  */
-export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}) => {
+export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}, options = {}) => {
   try {
     // Check if we have a valid cached entry
     const { data: cacheEntry, error: cacheError } = await supabase
@@ -30,15 +30,23 @@ export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}) =
     if (cacheEntry && !cacheError) {
       const expiresAt = new Date(cacheEntry.expires_at);
       const now = new Date();
+      const versionMatches = options.documentVersion && cacheEntry.document_version
+        ? cacheEntry.document_version === options.documentVersion
+        : true;
       
-      if (expiresAt > now && cacheEntry.image_url) {
+      if (expiresAt > now && cacheEntry.image_url && versionMatches) {
         return cacheEntry.image_url;
       }
     }
 
     // Fetch fresh image from Lucid API via proxy
     // Get the base64 image from Lucid API via proxy
-    const base64Image = await exportDocumentPage(documentId, pageIndex, pageInfo.id);
+    const base64Image = await exportDocumentPage(documentId, pageIndex, pageInfo.id, {
+      scale: options.scale,
+      dpi: options.dpi,
+      crop: options.crop,
+      format: options.format
+    });
     
     if (!base64Image) {
       throw new Error('Failed to fetch image from Lucid API');
@@ -55,7 +63,8 @@ export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}) =
       storage_path: `base64-${documentId}-${pageIndex}`, // Indicator that this is base64
       image_url: base64Image, // Store the base64 data URL directly
       last_fetched: new Date().toISOString(),
-      expires_at: new Date(Date.now() + CACHE_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      expires_at: new Date(Date.now() + CACHE_DURATION_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+      document_version: options.documentVersion || null
     };
 
     // Try to upsert cache entry (optional - if table doesn't exist, still return the image)
@@ -104,7 +113,7 @@ export const hasCachedDocument = async (documentId) => {
  * @param {Array} pages - Array of page objects with index, title, id
  * @returns {Promise<Object>} - Map of pageIndex to image URL
  */
-export const preloadDocumentPages = async (documentId, pages) => {
+export const preloadDocumentPages = async (documentId, pages, options = {}) => {
   const imageUrls = {};
   
   // Load pages in parallel but with a limit to avoid rate limiting
@@ -115,6 +124,12 @@ export const preloadDocumentPages = async (documentId, pages) => {
       getCachedPageImage(documentId, page.index, {
         title: page.title,
         id: page.id
+      }, {
+        documentVersion: options.documentVersion,
+        scale: options.scale,
+        dpi: options.dpi,
+        crop: options.crop,
+        format: options.format
       }).then(url => {
         imageUrls[page.index] = url;
         return url;
