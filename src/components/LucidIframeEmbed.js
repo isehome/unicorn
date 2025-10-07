@@ -33,7 +33,8 @@ const LucidIframeEmbed = ({ documentId, title = 'Lucid Chart', height = '600px' 
   }
   
   // Lucid's public embed URL - no API key needed
-  const embedUrl = `https://lucid.app/documents/embedded/${docId}`;
+  // Updated URL format for better compatibility
+  const embedUrl = `https://lucid.app/documents/embeddedchart/${docId}`;
   
   return (
     <div style={sectionStyles.card} className="p-4">
