@@ -147,19 +147,23 @@ export default async function handler(req, res) {
         throw new Error('Could not determine page ID');
       }
 
-      // Try using the document endpoint with format=image parameter
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}`);
+      // Try using the document endpoint with parameters matching Lucid's export dialog
+      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/export`);
       
-      // Add page and format parameters
+      // Add parameters matching the Lucid export dialog
       imageUrl.searchParams.set('pageId', actualPageId);
-      imageUrl.searchParams.set('format', 'png');
+      imageUrl.searchParams.set('file_format', 'PNG');  // Match dialog: "File format: PNG"
+      imageUrl.searchParams.set('crop', 'content');     // Match dialog: "Crop to content"
+      imageUrl.searchParams.set('quality', '160');      // Match dialog: "Screen quality (160 PPI)"
+      imageUrl.searchParams.set('include_page_fill', 'false');  // Match dialog toggle
+      
+      // Also try with underscore and camelCase variations
+      imageUrl.searchParams.set('fileFormat', 'PNG');
+      imageUrl.searchParams.set('cropToContent', 'true');
 
-      if (scale) {
-        imageUrl.searchParams.set('scale', scale);
-      }
-
-      if (dpi) {
-        imageUrl.searchParams.set('dpi', dpi);
+      // Keep our scale parameter as well
+      if (scale || dpi) {
+        imageUrl.searchParams.set('dpi', dpi || '160');
       }
 
       if (crop && typeof crop === 'object') {
