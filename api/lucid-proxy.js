@@ -147,23 +147,19 @@ export default async function handler(req, res) {
         throw new Error('Could not determine page ID');
       }
 
-      // Try using the document endpoint with parameters matching Lucid's export dialog
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/export`);
+      // Try different endpoint structure based on Lucid API documentation
+      // First attempt: Use the pages endpoint directly
+      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export`);
       
-      // Add parameters matching the Lucid export dialog
-      imageUrl.searchParams.set('pageId', actualPageId);
-      imageUrl.searchParams.set('file_format', 'PNG');  // Match dialog: "File format: PNG"
-      imageUrl.searchParams.set('crop', 'content');     // Match dialog: "Crop to content"
-      imageUrl.searchParams.set('quality', '160');      // Match dialog: "Screen quality (160 PPI)"
-      imageUrl.searchParams.set('include_page_fill', 'false');  // Match dialog toggle
+      // Add export parameters
+      imageUrl.searchParams.set('format', format || 'png');
       
-      // Also try with underscore and camelCase variations
-      imageUrl.searchParams.set('fileFormat', 'PNG');
-      imageUrl.searchParams.set('cropToContent', 'true');
-
-      // Keep our scale parameter as well
-      if (scale || dpi) {
-        imageUrl.searchParams.set('dpi', dpi || '160');
+      // Add scale or DPI
+      if (scale) {
+        imageUrl.searchParams.set('scale', scale.toString());
+      }
+      if (dpi) {
+        imageUrl.searchParams.set('dpi', dpi.toString());
       }
 
       if (crop && typeof crop === 'object') {
@@ -191,6 +187,7 @@ export default async function handler(req, res) {
     }
 
     console.log('Calling Lucid API:', url);
+    console.log('With headers:', JSON.stringify(headers, null, 2));
 
     // Make request to Lucid API
     const response = await fetch(url, {
@@ -201,6 +198,7 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Lucid API error:', response.status, errorText);
+      console.error('Failed URL was:', url);
       
       // Return appropriate error messages
       switch (response.status) {
