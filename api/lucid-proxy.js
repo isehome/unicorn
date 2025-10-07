@@ -147,11 +147,13 @@ export default async function handler(req, res) {
         throw new Error('Could not determine page ID');
       }
 
-      // Try different endpoint structure based on Lucid API documentation
-      // First attempt: Use the pages endpoint directly
-      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/pages/${actualPageId}/export`);
+      // Try simpler endpoint structure - just document export with pageId as parameter
+      const imageUrl = new URL(`${LUCID_API_BASE_URL}/documents/${documentId}/export`);
       
-      // Add export parameters
+      // Add page ID as parameter
+      imageUrl.searchParams.set('pageId', actualPageId);
+      
+      // Add export format
       imageUrl.searchParams.set('format', format || 'png');
       
       // Add scale or DPI
