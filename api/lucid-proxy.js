@@ -225,15 +225,94 @@ export default async function handler(req, res) {
       const contentType = response.headers.get('content-type');
       console.log('Response content-type:', contentType);
       
-      // If it's JSON, it might contain a URL to the image
+      // If it's JSON, it might be an async export job
       if (contentType && contentType.includes('application/json')) {
         const jsonData = await response.json();
         console.log('Received JSON response for image export:', jsonData);
         
-        // Check if there's an image URL in the response
-        if (jsonData.imageUrl || jsonData.url || jsonData.exportUrl) {
-          const imageUrl = jsonData.imageUrl || jsonData.url || jsonData.exportUrl;
-          console.log('Found image URL in response:', imageUrl);
+        // Check if it's an async job with status/jobId
+        if (jsonData.status || jsonData.jobId || jsonData.exportId || jsonData.id) {
+          console.log('Export appears to be async, checking for status...');
+          
+          const jobId = jsonData.jobId || jsonData.exportId || jsonData.id;
+          const maxAttempts = 10;  // Try for up to 10 seconds
+          let attempts = 0;
+          
+          // Poll for completion
+          while (attempts < maxAttempts) {
+            attempts++;
+            console.log(`Polling attempt ${attempts}/${maxAttempts}...`);
+            
+            // Wait 1 second between polls
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check status endpoint (might be the same URL or a status-specific URL)
+            const statusUrl = jsonData.statusUrl || 
+                            `${LUCID_API_BASE_URL}/documents/${documentId}/export/${jobId}/status` ||
+                            `${LUCID_API_BASE_URL}/exports/${jobId}` ||
+                            url;  // Try the same URL again
+                            
+            const statusResponse = await fetch(statusUrl, {
+              method: 'GET',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Lucid-Api-Version': LUCID_API_VERSION
+              }
+            });
+            
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json();
+              console.log('Status check response:', statusData);
+              
+              // Check if export is complete
+              if (statusData.status === 'complete' || statusData.status === 'ready' || 
+                  statusData.complete === true || statusData.ready === true) {
+                
+                // Get the image URL from the status response
+                const imageUrl = statusData.downloadUrl || statusData.imageUrl || 
+                               statusData.url || statusData.exportUrl;
+                
+                if (imageUrl) {
+                  console.log('Export ready! Fetching from:', imageUrl);
+                  
+                  const imageResponse = await fetch(imageUrl, {
+                    headers: {
+                      'Authorization': `Bearer ${apiKey}`
+                    }
+                  });
+                  
+                  if (imageResponse.ok) {
+                    const buffer = await imageResponse.arrayBuffer();
+                    const base64 = Buffer.from(buffer).toString('base64');
+                    return res.status(200).json({ 
+                      image: `data:image/png;base64,${base64}`,
+                      pageNumber: pageNumber 
+                    });
+                  }
+                }
+              }
+              
+              // Check for failure states
+              if (statusData.status === 'failed' || statusData.status === 'error') {
+                return res.status(500).json({ 
+                  error: 'Export failed',
+                  details: statusData
+                });
+              }
+            }
+          }
+          
+          // Timeout after max attempts
+          return res.status(500).json({ 
+            error: 'Export timeout - took longer than expected',
+            lastResponse: jsonData
+          });
+        }
+        
+        // Check if there's a direct image URL in the response
+        if (jsonData.imageUrl || jsonData.url || jsonData.exportUrl || jsonData.downloadUrl) {
+          const imageUrl = jsonData.imageUrl || jsonData.url || jsonData.exportUrl || jsonData.downloadUrl;
+          console.log('Found direct image URL in response:', imageUrl);
           
           // Fetch the actual image from the URL
           const imageResponse = await fetch(imageUrl, {
@@ -252,10 +331,11 @@ export default async function handler(req, res) {
           }
         }
         
-        // If no image URL, return error with the JSON data for debugging
+        // If no recognizable pattern, return error with the JSON data for debugging
         return res.status(500).json({ 
-          error: 'Export endpoint returned JSON instead of image',
-          responseData: jsonData
+          error: 'Export endpoint returned unexpected JSON',
+          responseData: jsonData,
+          hint: 'Check Vercel logs for the actual response structure'
         });
       }
       
