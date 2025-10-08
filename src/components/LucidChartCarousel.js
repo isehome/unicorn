@@ -10,8 +10,7 @@ import {
 import {
   fetchDocumentMetadata,
   fetchDocumentContents,
-  extractDocumentIdFromUrl,
-  requestLucidEmbedToken
+  extractDocumentIdFromUrl
 } from '../services/lucidApi';
 import { preloadDocumentPages, getCachedPageImage } from '../services/lucidCacheService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -19,18 +18,19 @@ import { enhancedStyles } from '../styles/styleSystem';
 
 const THUMB_SCALE = 0.45;
 
-const EmbedModal = ({ isOpen, onClose, loading, error, token, documentId, page }) => {
+const EmbedModal = ({ isOpen, onClose, documentId, page }) => {
   const { mode } = useTheme();
 
+  // Use cookie-based embed (no token required, works if user is signed into Lucid)
   const embedUrl = useMemo(() => {
-    if (!token || !documentId) return null;
-    const baseUrl = `https://lucid.app/documents/embed/${documentId}`;
-    const search = new URLSearchParams({ token });
+    if (!documentId) return null;
+    // Cookie-based embed URL
+    const baseUrl = `https://lucid.app/documents/embeddedchart/${documentId}`;
     if (page?.id) {
-      search.set('pageId', page.id);
+      return `${baseUrl}?pageId=${page.id}`;
     }
-    return `${baseUrl}?${search.toString()}`;
-  }, [token, documentId, page]);
+    return baseUrl;
+  }, [documentId, page]);
 
   if (!isOpen) {
     return null;
@@ -59,28 +59,29 @@ const EmbedModal = ({ isOpen, onClose, loading, error, token, documentId, page }
         </div>
 
         <div className={`flex h-[70vh] items-center justify-center ${mode === 'dark' ? 'bg-gray-950' : 'bg-gray-50'}`}>
-          {loading && (
-            <div className="flex flex-col items-center gap-3 text-gray-500">
-              <Loader className="h-7 w-7 animate-spin" />
-              <span className="text-sm">Loading Lucid viewer…</span>
-            </div>
-          )}
-
-          {!loading && error && (
+          {embedUrl ? (
+            <>
+              <iframe
+                src={embedUrl}
+                title={page?.title || 'Lucid Diagram'}
+                className="h-full w-full border-0"
+                allow="fullscreen"
+                referrerPolicy="no-referrer"
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              />
+              {/* Info banner for cookie-based embed */}
+              <div className="absolute bottom-4 left-4 right-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 text-sm">
+                <p className="text-blue-800 dark:text-blue-300">
+                  <strong>Note:</strong> You must be signed into Lucid to view this diagram. 
+                  If you don't see the content, <a href="https://lucid.app" target="_blank" rel="noopener noreferrer" className="underline">sign in to Lucid</a> first.
+                </p>
+              </div>
+            </>
+          ) : (
             <div className="flex flex-col items-center gap-3 text-center">
               <AlertCircle className="h-8 w-8 text-red-500" />
-              <p className="max-w-sm text-sm text-red-500">{error}</p>
+              <p className="max-w-sm text-sm text-red-500">Unable to load diagram</p>
             </div>
-          )}
-
-          {!loading && !error && embedUrl && (
-            <iframe
-              src={embedUrl}
-              title={page?.title || 'Lucid Diagram'}
-              className="h-full w-full border-0"
-              allow="fullscreen"
-              referrerPolicy="no-referrer"
-            />
           )}
         </div>
       </div>
@@ -101,9 +102,6 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
   const [selectedIndex, setSelectedIndex] = useState(null);
   const [embedState, setEmbedState] = useState({
     open: false,
-    loading: false,
-    token: null,
-    error: null,
     page: null
   });
 
@@ -249,38 +247,18 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     }
   };
 
-  const handleOpenPage = async (page) => {
+  const handleOpenPage = (page) => {
     if (!documentId) {
       return;
     }
 
     setSelectedIndex(page.index);
-    setEmbedState({ open: true, loading: true, token: null, error: null, page });
-
-    try {
-      const tokenResponse = await requestLucidEmbedToken(documentId, {
-        pageId: page.id,
-        permissions: ['view']
-      });
-
-      const tokenValue = tokenResponse?.token || tokenResponse?.embedToken || tokenResponse?.accessToken;
-      if (!tokenValue) {
-        throw new Error('Embed token not returned from Lucid');
-      }
-
-      setEmbedState((prev) => ({ ...prev, loading: false, token: tokenValue }));
-    } catch (tokenError) {
-      console.error('Failed to request Lucid embed token:', tokenError);
-      setEmbedState((prev) => ({
-        ...prev,
-        loading: false,
-        error: tokenError.message || 'Failed to load Lucid viewer'
-      }));
-    }
+    // Open modal with cookie-based embed (no token needed)
+    setEmbedState({ open: true, page });
   };
 
   const closeEmbed = () => {
-    setEmbedState({ open: false, loading: false, token: null, error: null, page: null });
+    setEmbedState({ open: false, page: null });
   };
 
   const openInLucidChart = () => {
@@ -412,9 +390,6 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
       <EmbedModal
         isOpen={embedState.open}
         onClose={closeEmbed}
-        loading={embedState.loading}
-        error={embedState.error}
-        token={embedState.token}
         documentId={documentId}
         page={embedState.page}
       />

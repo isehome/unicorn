@@ -17,6 +17,7 @@ import {
   exportDocumentPage
 } from '../services/lucidApi';
 import LucidIframeEmbed from './LucidIframeEmbed';
+import LucidImageDisplay from './LucidImageDisplay';
 
 const LucidDiagnostic = () => {
   const { mode } = useTheme();
@@ -31,6 +32,8 @@ const LucidDiagnostic = () => {
   const [testResults, setTestResults] = useState([]);
   const [downloadingPages, setDownloadingPages] = useState({});
   const [showEmbed, setShowEmbed] = useState(false);
+  const [showImageDisplay, setShowImageDisplay] = useState(false);
+  const [embedMethod, setEmbedMethod] = useState('token'); // 'cookie', 'token', or 'public'
 
   const addTestResult = (test, success, message, data = null) => {
     setTestResults(prev => [...prev, {
@@ -547,30 +550,96 @@ const LucidDiagnostic = () => {
           
           <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
             <p className="text-sm text-green-800 dark:text-green-300 font-medium mb-2">
-              ✅ Working Alternative: Iframe Embed
+              ✅ Display Methods Available
             </p>
-            <p className="text-sm text-green-700 dark:text-green-400">
-              You can display Lucid charts without any API permissions using the iframe embed method. This works with any Lucid account.
-            </p>
+            
+            <div className="space-y-2 text-sm">
+              <div>
+                <p className="text-green-700 dark:text-green-400">
+                  <strong>1. PNG Export:</strong> Display charts as images (API required)
+                </p>
+              </div>
+              
+              <div>
+                <p className="text-green-700 dark:text-green-400">
+                  <strong>2. Iframe Embed - Three Options:</strong>
+                </p>
+                <ul className="ml-4 mt-1 space-y-1 text-green-600 dark:text-green-500">
+                  <li>• <strong>Token-based:</strong> No public share or login required!</li>
+                  <li>• <strong>Cookie-based:</strong> Works if user has Lucid access</li>
+                  <li>• <strong>Public:</strong> Only if document is publicly shared</li>
+                </ul>
+              </div>
+            </div>
+            
             {documentId && (
-              <button
-                onClick={() => setShowEmbed(!showEmbed)}
-                className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
-              >
-                <Eye className="w-4 h-4" />
-                {showEmbed ? 'Hide' : 'Show'} Embed Demo
-              </button>
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => {
+                      setShowImageDisplay(!showImageDisplay);
+                      setShowEmbed(false);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors"
+                  >
+                    <ImageIcon className="w-4 h-4" />
+                    {showImageDisplay ? 'Hide' : 'Show'} PNG Display
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowEmbed(!showEmbed);
+                      setShowImageDisplay(false);
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors"
+                  >
+                    <Eye className="w-4 h-4" />
+                    {showEmbed ? 'Hide' : 'Show'} Iframe Embed
+                  </button>
+                </div>
+                
+                {showEmbed && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-600 dark:text-gray-400">Embed method:</span>
+                    <select
+                      value={embedMethod}
+                      onChange={(e) => setEmbedMethod(e.target.value)}
+                      className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="token">Token (No public share needed)</option>
+                      <option value="cookie">Cookie (User must have access)</option>
+                      <option value="public">Public (Requires public share)</option>
+                    </select>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
         
+        {/* PNG Display Demo */}
+        {showImageDisplay && documentId && (
+          <div className="mt-6">
+            <LucidImageDisplay 
+              documentId={documentId}
+              title="Lucid Chart PNG Display (No Public Share Required)"
+              height="600px"
+              dpi={96}
+            />
+          </div>
+        )}
+
         {/* Iframe Embed Demo */}
         {showEmbed && documentId && (
           <div className="mt-6">
             <LucidIframeEmbed 
               documentId={documentId}
-              title="Lucid Chart Embed Demo (No API Required)"
+              title={`Lucid Chart Iframe Embed (${
+                embedMethod === 'token' ? 'Token-based - No Public Share' : 
+                embedMethod === 'cookie' ? 'Cookie-based - No Public Share' : 
+                'Public Link'
+              })`}
               height="600px"
+              embedMethod={embedMethod}
             />
           </div>
         )}
