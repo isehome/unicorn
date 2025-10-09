@@ -22,9 +22,18 @@ module.exports = async function handler(req, res) {
 
   const apiKey = process.env.UNIFI_API_KEY;
   
+  console.log('Environment variables:', {
+    hasUnifiApiKey: !!apiKey,
+    hasControllerUrl: !!process.env.UNIFI_CONTROLLER_URL,
+    allEnvKeys: Object.keys(process.env).filter(k => k.includes('UNIFI'))
+  });
+  
   if (!apiKey) {
-    console.error('REACT_APP_UNIFI_API_KEY not configured');
-    return res.status(500).json({ error: 'API key not configured' });
+    console.error('UNIFI_API_KEY not configured');
+    return res.status(500).json({ 
+      error: 'API key not configured',
+      debug: 'UNIFI_API_KEY environment variable is missing'
+    });
   }
 
   const { endpoint, action, siteId, controllerUrl } = req.method === 'POST' ? req.body : req.query;
@@ -81,9 +90,15 @@ module.exports = async function handler(req, res) {
 
   } catch (error) {
     console.error('Error fetching from UniFi API:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      url: `${baseUrl}${endpoint}`
+    });
     return res.status(500).json({
       error: 'Failed to fetch data',
-      message: error.message
+      message: error.message,
+      details: error.toString()
     });
   }
 }
