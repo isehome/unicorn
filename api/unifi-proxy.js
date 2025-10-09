@@ -3,9 +3,9 @@
  * Keeps the API key secure on the backend
  */
 
-const UNIFI_API_BASE_URL = process.env.REACT_APP_UNIFI_CONTROLLER_URL || 'https://api.ui.com';
+const UNIFI_API_BASE_URL = process.env.UNIFI_CONTROLLER_URL || 'https://api.ui.com';
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.REACT_APP_UNIFI_API_KEY;
+  const apiKey = process.env.UNIFI_API_KEY;
   
   if (!apiKey) {
     console.error('REACT_APP_UNIFI_API_KEY not configured');
