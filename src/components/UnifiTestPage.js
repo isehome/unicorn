@@ -124,16 +124,30 @@ const UnifiTestPage = () => {
       setError(null);
       
       const response = await unifiApi.fetchSites(controllerUrl);
-      console.log('Sites response:', response);
-      console.log('Sites data structure:', JSON.stringify(response, null, 2));
+      console.log('=== FULL SITES RESPONSE ===');
+      console.log('Raw response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Is array?:', Array.isArray(response));
+      console.log('Response.data:', response.data);
+      console.log('Response.data type:', typeof response.data);
       
       // Sites might be in response.data or directly in response
       const sitesData = response.data || response;
+      console.log('=== SITES DATA ===');
+      console.log('Sites data:', sitesData);
+      console.log('Sites count:', sitesData?.length);
+      
+      if (sitesData && sitesData.length > 0) {
+        console.log('=== FIRST SITE FULL STRUCTURE ===');
+        console.log(JSON.stringify(sitesData[0], null, 2));
+        console.log('=== AVAILABLE FIELDS ===');
+        console.log('Object keys:', Object.keys(sitesData[0]));
+      }
+      
       setSites(Array.isArray(sitesData) ? sitesData : []);
       
       // Auto-select first site if available
       if (sitesData && sitesData.length > 0) {
-        console.log('First site data:', sitesData[0]);
         setSelectedSite(sitesData[0].id);
         // Don't auto-load devices/clients yet until we fix the endpoint
         // await loadSiteData(sitesData[0].id, controllerUrl);
