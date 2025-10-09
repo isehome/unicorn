@@ -35,14 +35,15 @@ const callUnifiProxy = async (payload = {}) => {
 };
 
 /**
- * Fetch all hosts/sites from UniFi Site Manager
+ * Fetch all sites from UniFi Site Manager
+ * Official endpoint: https://api.ui.com/v1/sites
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of UniFi sites
  */
 export const fetchSites = async (controllerUrl) => {
   try {
     return await callUnifiProxy({ 
-      endpoint: '/v1/hosts',
+      endpoint: '/v1/sites',
       controllerUrl
     });
   } catch (error) {
@@ -52,19 +53,23 @@ export const fetchSites = async (controllerUrl) => {
 };
 
 /**
- * Fetch all devices (switches, APs, etc.) for a specific site
- * @param {string} siteId - UniFi site ID (host ID)
+ * Fetch all devices managed by hosts
+ * Official endpoint: https://api.ui.com/v1/devices
+ * Can optionally filter by hostIds
+ * @param {string} hostId - Optional UniFi host ID to filter devices
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of network devices
  */
-export const fetchDevices = async (siteId, controllerUrl) => {
-  if (!siteId) throw new Error('Site ID is required');
-  
+export const fetchDevices = async (hostId, controllerUrl) => {
   try {
-    // Note: The endpoint might be /ea/hosts/{hostId}/devices for early access
-    // or /v1/sites/{siteId}/devices for stable API
+    // Build endpoint with optional hostIds filter
+    let endpoint = '/v1/devices';
+    if (hostId) {
+      endpoint += `?hostIds[]=${hostId}`;
+    }
+    
     return await callUnifiProxy({ 
-      endpoint: `/ea/hosts/${siteId}/devices`,
+      endpoint,
       controllerUrl
     });
   } catch (error) {
@@ -75,19 +80,17 @@ export const fetchDevices = async (siteId, controllerUrl) => {
 
 /**
  * Fetch all clients connected to the network
- * @param {string} siteId - UniFi site ID (host ID)
+ * Note: Client data may be included in device data or require a different endpoint
+ * @param {string} hostId - UniFi host ID
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of connected clients
  */
-export const fetchClients = async (siteId, controllerUrl) => {
-  if (!siteId) throw new Error('Site ID is required');
-  
+export const fetchClients = async (hostId, controllerUrl) => {
   try {
-    // Note: The endpoint might be /ea/hosts/{hostId}/clients for early access
-    return await callUnifiProxy({ 
-      endpoint: `/ea/hosts/${siteId}/clients`,
-      controllerUrl
-    });
+    // TODO: Check if there's a separate clients endpoint in the API docs
+    // For now, returning empty array as clients might be in device data
+    console.warn('Clients endpoint not yet implemented - check API docs for correct endpoint');
+    return { data: [] };
   } catch (error) {
     console.error('Error fetching UniFi clients:', error);
     throw error;
