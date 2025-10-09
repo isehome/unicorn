@@ -98,7 +98,8 @@ const PMProjectViewEnhanced = () => {
     portal_proposal_url: '',
     one_drive_photos: '',
     one_drive_files: '',
-    one_drive_procurement: ''
+    one_drive_procurement: '',
+    unifi_url: ''
   });
 
   // Lucid integration state
@@ -208,7 +209,8 @@ const PMProjectViewEnhanced = () => {
           portal_proposal_url: currentProject.portal_proposal_url || '',
           one_drive_photos: currentProject.one_drive_photos || '',
           one_drive_files: currentProject.one_drive_files || '',
-          one_drive_procurement: currentProject.one_drive_procurement || ''
+          one_drive_procurement: currentProject.one_drive_procurement || '',
+          unifi_url: currentProject.unifi_url || ''
         });
 
         // Load milestones
@@ -294,6 +296,7 @@ const PMProjectViewEnhanced = () => {
         one_drive_photos: formData.one_drive_photos || null,
         one_drive_files: formData.one_drive_files || null,
         one_drive_procurement: formData.one_drive_procurement || null,
+        unifi_url: formData.unifi_url || null,
         lucid_document_id: lucidDocId,
         lucid_document_url: lucidDocUrl
       };
@@ -1354,6 +1357,26 @@ const PMProjectViewEnhanced = () => {
                              bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                              focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Users className="w-4 h-4 inline mr-1" />
+                    UniFi Network URL
+                  </label>
+                  <input
+                    type="url"
+                    name="unifi_url"
+                    value={formData.unifi_url}
+                    onChange={handleInputChange}
+                    placeholder="https://unifi.ui.com/..."
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Link to UniFi Network Controller for this project
+                  </p>
                 </div>
               </div>
             </div>

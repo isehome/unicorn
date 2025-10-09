@@ -31,6 +31,7 @@ const AuthCallback = lazy(() => import('./components/AuthCallback'));
 const IssuesListPageOptimized = lazy(() => import('./components/IssuesListPageOptimized'));
 const TodosListPage = lazy(() => import('./components/TodosListPage'));
 const LucidDiagnostic = lazy(() => import('./components/LucidDiagnostic'));
+const UnifiTestPage = lazy(() => import('./components/UnifiTestPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -197,6 +198,14 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <LucidDiagnostic />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/unifi-test"
+            element={
+              <ProtectedRoute>
+                <UnifiTestPage />
               </ProtectedRoute>
             }
           />

@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
 import wireDropService from '../services/wireDropService';
+import unifiService from '../services/unifiService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import { 
@@ -61,6 +62,14 @@ const WireDropDetailEnhanced = () => {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // UniFi Port Assignment
+  const [availableSwitches, setAvailableSwitches] = useState([]);
+  const [selectedSwitch, setSelectedSwitch] = useState(null);
+  const [availablePorts, setAvailablePorts] = useState([]);
+  const [selectedPort, setSelectedPort] = useState(null);
+  const [cableLabel, setCableLabel] = useState('');
+  const [patchPanelPort, setPatchPanelPort] = useState('');
 
   const styles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
@@ -124,7 +133,24 @@ const WireDropDetailEnhanced = () => {
   useEffect(() => {
     loadWireDrop();
     loadEquipmentTypes();
+    loadSwitches();
   }, [id]);
+
+  const loadSwitches = async () => {
+    if (!wireDrop?.project_id) return;
+    
+    try {
+      const { data } = await supabase
+        .from('unifi_switches')
+        .select('*, unifi_switch_ports(*)')
+        .eq('project_id', wireDrop.project_id)
+        .eq('is_active', true);
+      
+      setAvailableSwitches(data || []);
+    } catch (err) {
+      console.error('Failed to load switches:', err);
+    }
+  };
 
   const loadWireDrop = async () => {
     try {
@@ -1208,6 +1234,122 @@ const WireDropDetailEnhanced = () => {
                     style={styles.input}
                   />
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Network Port Assignment Section */}
+        {!editing && (
+          <div className="rounded-2xl overflow-hidden" style={styles.card}>
+            <div className="p-6">
+              <h4 className="font-semibold mb-3 flex items-center gap-2" style={styles.textPrimary}>
+                <Network size={20} />
+                Network Port Assignment
+              </h4>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
+                    Switch
+                  </label>
+                  <select
+                    value={selectedSwitch || ''}
+                    onChange={(e) => {
+                      setSelectedSwitch(e.target.value);
+                      const sw = availableSwitches.find(s => s.id === e.target.value);
+                      setAvailablePorts(sw?.unifi_switch_ports || []);
+                      setSelectedPort(null);
+                    }}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                  >
+                    <option value="">-- Select Switch --</option>
+                    {availableSwitches.map(sw => (
+                      <option key={sw.id} value={sw.id}>
+                        {sw.device_name} ({sw.location || 'No location'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {availablePorts.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
+                      Port
+                    </label>
+                    <select
+                      value={selectedPort || ''}
+                      onChange={(e) => setSelectedPort(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      style={styles.input}
+                    >
+                      <option value="">-- Select Port --</option>
+                      {availablePorts.map(port => (
+                        <option key={port.id} value={port.id}>
+                          Port {port.port_idx} {port.port_name ? `(${port.port_name})` : ''} 
+                          {port.vlan_id ? ` - VLAN ${port.vlan_id}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
+                    Cable Label
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., CAT6-101-A"
+                    value={cableLabel}
+                    onChange={(e) => setCableLabel(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
+                    Patch Panel Port
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., PP1-24"
+                    value={patchPanelPort}
+                    onChange={(e) => setPatchPanelPort(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                  />
+                </div>
+
+                <Button
+                  onClick={async () => {
+                    if (!selectedPort) {
+                      alert('Please select a port');
+                      return;
+                    }
+                    try {
+                      await unifiService.linkWireDropToPort(id, selectedPort, {
+                        cableLabel,
+                        patchPanelPort
+                      });
+                      alert('Port assignment saved!');
+                      setCableLabel('');
+                      setPatchPanelPort('');
+                      setSelectedPort(null);
+                      setSelectedSwitch(null);
+                      setAvailablePorts([]);
+                    } catch (err) {
+                      alert('Failed to save port assignment: ' + err.message);
+                    }
+                  }}
+                  variant="primary"
+                  icon={Cable}
+                  className="w-full"
+                >
+                  Assign Port
+                </Button>
               </div>
             </div>
           </div>
