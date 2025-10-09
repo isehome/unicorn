@@ -53,7 +53,7 @@ export const fetchSites = async (controllerUrl) => {
 
 /**
  * Fetch all devices (switches, APs, etc.) for a specific site
- * @param {string} siteId - UniFi site ID
+ * @param {string} siteId - UniFi site ID (host ID)
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of network devices
  */
@@ -61,8 +61,10 @@ export const fetchDevices = async (siteId, controllerUrl) => {
   if (!siteId) throw new Error('Site ID is required');
   
   try {
+    // Note: The endpoint might be /ea/hosts/{hostId}/devices for early access
+    // or /v1/sites/{siteId}/devices for stable API
     return await callUnifiProxy({ 
-      endpoint: `/v1/hosts/${siteId}/devices`,
+      endpoint: `/ea/hosts/${siteId}/devices`,
       controllerUrl
     });
   } catch (error) {
@@ -73,7 +75,7 @@ export const fetchDevices = async (siteId, controllerUrl) => {
 
 /**
  * Fetch all clients connected to the network
- * @param {string} siteId - UniFi site ID
+ * @param {string} siteId - UniFi site ID (host ID)
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of connected clients
  */
@@ -81,8 +83,9 @@ export const fetchClients = async (siteId, controllerUrl) => {
   if (!siteId) throw new Error('Site ID is required');
   
   try {
+    // Note: The endpoint might be /ea/hosts/{hostId}/clients for early access
     return await callUnifiProxy({ 
-      endpoint: `/v1/hosts/${siteId}/clients`,
+      endpoint: `/ea/hosts/${siteId}/clients`,
       controllerUrl
     });
   } catch (error) {
