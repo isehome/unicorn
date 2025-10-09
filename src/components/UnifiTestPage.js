@@ -48,9 +48,9 @@ const UnifiTestPage = () => {
       
       const { data, error: fetchError } = await supabase
         .from('projects')
-        .select('id, project_name, unifi_url')
+        .select('id, project_number, unifi_url')
         .not('unifi_url', 'is', null)
-        .order('project_name');
+        .order('project_number');
       
       if (fetchError) throw fetchError;
       
@@ -272,7 +272,7 @@ const UnifiTestPage = () => {
               <option value="">Choose a project...</option>
               {projects.map(project => (
                 <option key={project.id} value={project.id}>
-                  {project.project_name}
+                  {project.project_number}
                 </option>
               ))}
             </select>
