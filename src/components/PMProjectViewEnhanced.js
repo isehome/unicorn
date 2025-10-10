@@ -960,24 +960,59 @@ const PMProjectViewEnhanced = () => {
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
       {/* Project Header */}
       <div style={sectionStyles.card} className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {project.name}
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {project.project_number && `Project #${project.project_number} • `}
-              {project.client && `Client: ${project.client}`}
-            </p>
+        <div className="flex justify-between items-start gap-6 mb-4">
+          {/* Left side: Project info and UniFi button */}
+          <div className="flex-1 flex items-center gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                {project.name}
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400">
+                {project.project_number && `Project #${project.project_number} • `}
+                {project.client && `Client: ${project.client}`}
+              </p>
+            </div>
+            
+            {/* UniFi Button */}
+            {formData.unifi_url && (
+              <a
+                href={formData.unifi_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 
+                         text-white rounded-lg transition-colors shadow-sm"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
+                </svg>
+                <span className="font-medium">UniFi Site</span>
+              </a>
+            )}
           </div>
-          <Button
-            onClick={() => editMode ? handleSave() : setEditMode(true)}
-            variant={editMode ? 'primary' : 'secondary'}
-            icon={editMode ? Save : Edit}
-            disabled={saving}
-          >
-            {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
-          </Button>
+
+          {/* Right side: Progress gauges and edit button */}
+          <div className="flex items-center gap-4">
+            {/* Progress Gauges - Right third */}
+            <div className="w-64 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Progress
+              </h3>
+              <div className="space-y-1.5">
+                <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
+                <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
+                <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
+              </div>
+            </div>
+
+            <Button
+              onClick={() => editMode ? handleSave() : setEditMode(true)}
+              variant={editMode ? 'primary' : 'secondary'}
+              icon={editMode ? Save : Edit}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
+            </Button>
+          </div>
         </div>
 
         {/* Project Information Form */}

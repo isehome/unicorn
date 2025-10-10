@@ -36,6 +36,25 @@ const UnifiTestPage = () => {
   const [devices, setDevices] = useState([]);
   const [clients, setClients] = useState([]);
   const [error, setError] = useState(null);
+  const [parsedConsoleId, setParsedConsoleId] = useState(null);
+
+  // Parse console ID from UniFi URL
+  const parseUnifiUrl = (url) => {
+    if (!url) return null;
+    
+    try {
+      // Example URL: https://unifi.ui.com/consoles/6C63F82BC2D10000000008E7C92D00000000096176EB0000000067E300F0:1380092638/network/default/dashboard
+      // Extract the console ID between /consoles/ and /network/
+      const match = url.match(/\/consoles\/([^\/]+)/);
+      if (match && match[1]) {
+        console.log('Parsed console ID:', match[1]);
+        return match[1];
+      }
+    } catch (err) {
+      console.error('Error parsing UniFi URL:', err);
+    }
+    return null;
+  };
 
   useEffect(() => {
     loadProjects();
@@ -75,6 +94,11 @@ const UnifiTestPage = () => {
     setSites([]);
     setDevices([]);
     setClients([]);
+    
+    // Parse console ID from the URL
+    const consoleId = parseUnifiUrl(project.unifi_url);
+    setParsedConsoleId(consoleId);
+    
     await testConnection(project.unifi_url);
   };
 
@@ -89,6 +113,11 @@ const UnifiTestPage = () => {
     setSites([]);
     setDevices([]);
     setClients([]);
+    
+    // Parse console ID from the URL
+    const consoleId = parseUnifiUrl(manualUrl);
+    setParsedConsoleId(consoleId);
+    
     await testConnection(manualUrl);
   };
 
@@ -130,10 +159,21 @@ const UnifiTestPage = () => {
       
       setSites(Array.isArray(sitesData) ? sitesData : []);
       
-      // Auto-select first site if available
+      // If we have a parsed console ID, try to auto-select that host
+      if (parsedConsoleId && sitesData && sitesData.length > 0) {
+        const matchingHost = sitesData.find(site => site.hostId === parsedConsoleId);
+        if (matchingHost) {
+          console.log('Found matching host for console ID:', parsedConsoleId);
+          setSelectedSite(matchingHost.hostId);
+          await loadSiteData(matchingHost.hostId, controllerUrl);
+          return;
+        }
+      }
+      
+      // Otherwise, auto-select first site if available
       if (sitesData && sitesData.length > 0) {
-        setSelectedSite(sitesData[0].id);
-        await loadSiteData(sitesData[0].id, controllerUrl);
+        setSelectedSite(sitesData[0].hostId || sitesData[0].id);
+        await loadSiteData(sitesData[0].hostId || sitesData[0].id, controllerUrl);
       }
     } catch (err) {
       console.error('Failed to load sites:', err);
@@ -151,15 +191,20 @@ const UnifiTestPage = () => {
       setLoading(true);
       setError(null);
       
-      // Load devices
-      const devicesResponse = await unifiApi.fetchDevices(siteId, url);
-      console.log('Devices response:', devicesResponse);
-      setDevices(devicesResponse.data || []);
+      // Find the selected host/site in the sites array
+      // The devices are already included in the host object!
+      const selectedHost = sites.find(site => site.hostId === siteId || site.id === siteId);
       
-      // Load clients
-      const clientsResponse = await unifiApi.fetchClients(siteId, url);
-      console.log('Clients response:', clientsResponse);
-      setClients(clientsResponse.data || []);
+      if (selectedHost && selectedHost.devices) {
+        console.log('Found devices in host object:', selectedHost.devices);
+        setDevices(selectedHost.devices);
+      } else {
+        console.log('No devices found in host object');
+        setDevices([]);
+      }
+      
+      // Clients endpoint not available in this API
+      setClients([]);
     } catch (err) {
       console.error('Failed to load site data:', err);
       setError(err.message);
@@ -238,11 +283,17 @@ const UnifiTestPage = () => {
           </Button>
 
           {useManualUrl && manualUrl && (
-            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
               <p className="text-sm text-blue-800 dark:text-blue-300">
                 <span className="font-medium">Testing with:</span>{' '}
-                <span className="font-mono">{manualUrl}</span>
+                <span className="font-mono text-xs break-all">{manualUrl}</span>
               </p>
+              {parsedConsoleId && (
+                <p className="text-sm text-blue-800 dark:text-blue-300">
+                  <span className="font-medium">Parsed Console ID:</span>{' '}
+                  <span className="font-mono text-xs break-all">{parsedConsoleId}</span>
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -281,11 +332,17 @@ const UnifiTestPage = () => {
             </select>
             
             {selectedProject && !useManualUrl && (
-              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-2">
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   <span className="font-medium">UniFi URL:</span>{' '}
-                  <span className="text-gray-900 dark:text-white">{selectedProject.unifi_url}</span>
+                  <span className="text-gray-900 dark:text-white text-xs break-all">{selectedProject.unifi_url}</span>
                 </p>
+                {parsedConsoleId && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    <span className="font-medium">Parsed Console ID:</span>{' '}
+                    <span className="text-gray-900 dark:text-white font-mono text-xs break-all">{parsedConsoleId}</span>
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -390,8 +447,8 @@ const UnifiTestPage = () => {
             >
               <option value="">Choose a site...</option>
               {sites.map(site => (
-                <option key={site.id} value={site.id}>
-                  {site.reportedState?.name || site.reportedState?.hostname || 'Unnamed Site'}
+                <option key={site.hostId} value={site.hostId}>
+                  {site.hostName || 'Unnamed Site'} ({site.devices?.length || 0} devices)
                 </option>
               ))}
             </select>
@@ -400,17 +457,17 @@ const UnifiTestPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sites.map(site => (
               <div
-                key={site.id}
+                key={site.hostId}
                 className={`p-4 rounded-lg border transition-colors cursor-pointer ${
-                  selectedSite === site.id
+                  selectedSite === site.hostId
                     ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-300 dark:border-violet-700'
                     : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
                 }`}
                 onClick={() => {
-                  setSelectedSite(site.id);
+                  setSelectedSite(site.hostId);
                   const url = useManualUrl ? manualUrl : selectedProject?.unifi_url;
                   if (url) {
-                    loadSiteData(site.id, url);
+                    loadSiteData(site.hostId, url);
                   }
                 }}
               >
@@ -418,10 +475,10 @@ const UnifiTestPage = () => {
                   <Globe className="w-4 h-4 text-gray-600 dark:text-gray-400 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 dark:text-white truncate">
-                      {site.reportedState?.name || site.reportedState?.hostname || 'Unnamed Site'}
+                      {site.hostName || 'Unnamed Site'}
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                      {site.reportedState?.hostname || site.id.substring(0, 20)}
+                      {site.devices?.length || 0} devices
                     </p>
                   </div>
                 </div>
@@ -473,11 +530,16 @@ const UnifiTestPage = () => {
                         <span className="font-medium">MAC:</span> {device.mac || 'N/A'}
                       </div>
                       <div>
-                        <span className="font-medium">Type:</span> {device.type || 'N/A'}
+                        <span className="font-medium">Status:</span> {device.status || 'N/A'}
                       </div>
-                      {device.num_port && (
+                      {device.version && (
                         <div>
-                          <span className="font-medium">Ports:</span> {device.num_port}
+                          <span className="font-medium">Version:</span> {device.version}
+                        </div>
+                      )}
+                      {device.productLine && (
+                        <div>
+                          <span className="font-medium">Product:</span> {device.productLine}
                         </div>
                       )}
                     </div>
@@ -513,13 +575,13 @@ const UnifiTestPage = () => {
                         {client.hostname || client.name || 'Unknown Client'}
                       </p>
                       {client.is_wired !== undefined && (
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${
-                          client.is_wired
-                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                            : 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                        }`}>
-                          {client.is_wired ? 'Wired' : 'Wireless'}
-                        </span>
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${
+                        device.status === 'online'
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                      }`}>
+                        {device.status || 'Unknown'}
+                      </span>
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-sm text-gray-600 dark:text-gray-400">
