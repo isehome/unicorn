@@ -209,15 +209,21 @@ const UnifiTestPage = () => {
       setLoading(true);
       setError(null);
       
-      // Find the selected host/site in the sites array
-      // The devices are already included in the host object!
-      const selectedHost = sites.find(site => site.hostId === siteId || site.id === siteId);
+      console.log('Loading devices for hostId:', siteId);
       
-      if (selectedHost && selectedHost.devices) {
-        console.log('Found devices in host object:', selectedHost.devices);
-        setDevices(selectedHost.devices);
+      // Call the /v1/devices endpoint with hostIds[] parameter
+      const devicesResponse = await unifiApi.fetchDevices(siteId, url);
+      console.log('Devices response:', devicesResponse);
+      
+      // The API returns { data: [...devices...] }
+      const devicesData = devicesResponse.data || devicesResponse;
+      console.log('Devices data:', devicesData);
+      
+      if (Array.isArray(devicesData) && devicesData.length > 0) {
+        console.log('Found devices:', devicesData.length);
+        setDevices(devicesData);
       } else {
-        console.log('No devices found in host object');
+        console.log('No devices found for this host');
         setDevices([]);
       }
       
@@ -387,10 +393,9 @@ const UnifiTestPage = () => {
                 <p className="text-blue-600 dark:text-blue-400">Host {idx + 1}:</p>
                 <p className="text-gray-700 dark:text-gray-300">• hostId: {site.hostId}</p>
                 <p className="text-gray-700 dark:text-gray-300">• hostName: {site.hostName || 'N/A'}</p>
-                <p className="text-gray-700 dark:text-gray-300">• devices count: {site.devices?.length || 0}</p>
-                {site.devices && site.devices.length > 0 && (
-                  <p className="text-gray-700 dark:text-gray-300">• device names: {site.devices.map(d => d.name || d.model).join(', ')}</p>
-                )}
+                <p className="text-gray-700 dark:text-gray-300 text-xs mt-1">
+                  (Devices will be loaded separately when host is selected)
+                </p>
               </div>
             ))}
           </div>
@@ -496,7 +501,7 @@ const UnifiTestPage = () => {
               <option value="">Choose a site...</option>
               {sites.map(site => (
                 <option key={site.hostId} value={site.hostId}>
-                  {site.hostName || 'Unnamed Site'} ({site.devices?.length || 0} devices)
+                  {site.hostName || 'Unnamed Site'}
                 </option>
               ))}
             </select>
@@ -526,7 +531,7 @@ const UnifiTestPage = () => {
                       {site.hostName || 'Unnamed Site'}
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                      {site.devices?.length || 0} devices
+                      Click to load devices
                     </p>
                   </div>
                 </div>

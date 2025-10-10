@@ -58,21 +58,24 @@ export const fetchSites = async (controllerUrl) => {
  * Official endpoint: https://api.ui.com/v1/devices
  * Can optionally filter by hostIds
  * @param {string} hostId - Optional UniFi host ID to filter devices
- * @param {string} controllerUrl - UniFi controller base URL
- * @returns {Promise<Array>} List of network devices
+ * @param {string} controllerUrl - UniFi controller base URL (not used, kept for compatibility)
+ * @returns {Promise<Object>} Response with devices data
  */
-export const fetchDevices = async (hostId, controllerUrl) => {
+export const fetchDevices = async (hostId, controllerUrl = null) => {
   try {
-    // Build endpoint with optional hostIds filter
+    // Build endpoint with hostIds filter
     let endpoint = '/v1/devices';
     if (hostId) {
-      endpoint += `?hostIds[]=${hostId}`;
+      endpoint += `?hostIds[]=${encodeURIComponent(hostId)}`;
     }
     
-    return await callUnifiProxy({ 
+    console.log('Fetching devices with endpoint:', endpoint);
+    const result = await callUnifiProxy({ 
       endpoint,
-      controllerUrl
+      controllerUrl // This is ignored by proxy but kept for backward compatibility
     });
+    console.log('Devices API response:', result);
+    return result;
   } catch (error) {
     console.error('Error fetching UniFi devices:', error);
     throw error;
