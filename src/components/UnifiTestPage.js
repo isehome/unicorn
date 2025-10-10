@@ -124,33 +124,16 @@ const UnifiTestPage = () => {
       setError(null);
       
       const response = await unifiApi.fetchSites(controllerUrl);
-      console.log('=== FULL SITES RESPONSE ===');
-      console.log('Raw response:', response);
-      console.log('Response type:', typeof response);
-      console.log('Is array?:', Array.isArray(response));
-      console.log('Response.data:', response.data);
-      console.log('Response.data type:', typeof response.data);
       
-      // Sites might be in response.data or directly in response
+      // The response has data array with host objects
       const sitesData = response.data || response;
-      console.log('=== SITES DATA ===');
-      console.log('Sites data:', sitesData);
-      console.log('Sites count:', sitesData?.length);
-      
-      if (sitesData && sitesData.length > 0) {
-        console.log('=== FIRST SITE FULL STRUCTURE ===');
-        console.log(JSON.stringify(sitesData[0], null, 2));
-        console.log('=== AVAILABLE FIELDS ===');
-        console.log('Object keys:', Object.keys(sitesData[0]));
-      }
       
       setSites(Array.isArray(sitesData) ? sitesData : []);
       
       // Auto-select first site if available
       if (sitesData && sitesData.length > 0) {
         setSelectedSite(sitesData[0].id);
-        // Don't auto-load devices/clients yet until we fix the endpoint
-        // await loadSiteData(sitesData[0].id, controllerUrl);
+        await loadSiteData(sitesData[0].id, controllerUrl);
       }
     } catch (err) {
       console.error('Failed to load sites:', err);
@@ -408,7 +391,7 @@ const UnifiTestPage = () => {
               <option value="">Choose a site...</option>
               {sites.map(site => (
                 <option key={site.id} value={site.id}>
-                  {site.name || site.description || site.id}
+                  {site.reportedState?.name || site.reportedState?.hostname || 'Unnamed Site'}
                 </option>
               ))}
             </select>
@@ -435,10 +418,10 @@ const UnifiTestPage = () => {
                   <Globe className="w-4 h-4 text-gray-600 dark:text-gray-400 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 dark:text-white truncate">
-                      {site.name || site.description || 'Unnamed Site'}
+                      {site.reportedState?.name || site.reportedState?.hostname || 'Unnamed Site'}
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                      ID: {site.id}
+                      {site.reportedState?.hostname || site.id.substring(0, 20)}
                     </p>
                   </div>
                 </div>
