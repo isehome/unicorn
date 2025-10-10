@@ -152,28 +152,46 @@ const UnifiTestPage = () => {
       setLoading(true);
       setError(null);
       
+      console.log('Loading sites from:', controllerUrl);
       const response = await unifiApi.fetchSites(controllerUrl);
+      console.log('Full API Response:', JSON.stringify(response, null, 2));
       
       // The response has data array with host objects
       const sitesData = response.data || response;
+      console.log('Sites data:', sitesData);
+      console.log('Number of sites:', sitesData?.length);
+      
+      if (sitesData && sitesData.length > 0) {
+        console.log('First site structure:', sitesData[0]);
+        console.log('First site hostId:', sitesData[0].hostId);
+        console.log('First site hostName:', sitesData[0].hostName);
+        console.log('First site devices:', sitesData[0].devices);
+      }
       
       setSites(Array.isArray(sitesData) ? sitesData : []);
       
       // If we have a parsed console ID, try to auto-select that host
       if (parsedConsoleId && sitesData && sitesData.length > 0) {
+        console.log('Looking for host with console ID:', parsedConsoleId);
         const matchingHost = sitesData.find(site => site.hostId === parsedConsoleId);
         if (matchingHost) {
           console.log('Found matching host for console ID:', parsedConsoleId);
+          console.log('Matching host:', matchingHost);
           setSelectedSite(matchingHost.hostId);
           await loadSiteData(matchingHost.hostId, controllerUrl);
           return;
+        } else {
+          console.log('No matching host found for console ID:', parsedConsoleId);
+          console.log('Available hostIds:', sitesData.map(s => s.hostId));
         }
       }
       
       // Otherwise, auto-select first site if available
       if (sitesData && sitesData.length > 0) {
-        setSelectedSite(sitesData[0].hostId || sitesData[0].id);
-        await loadSiteData(sitesData[0].hostId || sitesData[0].id, controllerUrl);
+        const firstHostId = sitesData[0].hostId || sitesData[0].id;
+        console.log('Auto-selecting first site with hostId:', firstHostId);
+        setSelectedSite(firstHostId);
+        await loadSiteData(firstHostId, controllerUrl);
       }
     } catch (err) {
       console.error('Failed to load sites:', err);
@@ -345,6 +363,36 @@ const UnifiTestPage = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Debug Info */}
+      {sites.length > 0 && (
+        <div style={sectionStyles.card} className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle className="w-5 h-5 text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Debug Info
+            </h2>
+          </div>
+          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg font-mono text-xs overflow-auto">
+            <p className="mb-2 text-gray-900 dark:text-white font-semibold">API Response Summary:</p>
+            <p className="text-gray-700 dark:text-gray-300">Total hosts: {sites.length}</p>
+            <p className="text-gray-700 dark:text-gray-300 mb-2">Parsed Console ID: {parsedConsoleId || 'None'}</p>
+            
+            <p className="mb-2 mt-4 text-gray-900 dark:text-white font-semibold">Available Hosts:</p>
+            {sites.map((site, idx) => (
+              <div key={idx} className="mb-3 p-2 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                <p className="text-blue-600 dark:text-blue-400">Host {idx + 1}:</p>
+                <p className="text-gray-700 dark:text-gray-300">• hostId: {site.hostId}</p>
+                <p className="text-gray-700 dark:text-gray-300">• hostName: {site.hostName || 'N/A'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• devices count: {site.devices?.length || 0}</p>
+                {site.devices && site.devices.length > 0 && (
+                  <p className="text-gray-700 dark:text-gray-300">• device names: {site.devices.map(d => d.name || d.model).join(', ')}</p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
