@@ -35,19 +35,20 @@ const callUnifiProxy = async (payload = {}) => {
 };
 
 /**
- * Fetch all sites from UniFi Site Manager
- * Official endpoint: https://api.ui.com/v1/sites
+ * Fetch all hosts from UniFi Site Manager
+ * Official endpoint: https://api.ui.com/v1/hosts
+ * Each host has a hostname (UUID) that identifies it
  * @param {string} controllerUrl - UniFi controller base URL
- * @returns {Promise<Array>} List of UniFi sites
+ * @returns {Promise<Array>} List of UniFi hosts
  */
 export const fetchSites = async (controllerUrl) => {
   try {
     return await callUnifiProxy({ 
-      endpoint: '/v1/sites',
+      endpoint: '/v1/hosts',
       controllerUrl
     });
   } catch (error) {
-    console.error('Error fetching UniFi sites:', error);
+    console.error('Error fetching UniFi hosts:', error);
     throw error;
   }
 };
