@@ -42,11 +42,12 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Endpoint is required' });
   }
 
-  // Use provided controller URL or fall back to environment variable
-  const baseUrl = controllerUrl || UNIFI_API_BASE_URL;
+  // ALWAYS use the static API URL - we don't use controllerUrl as a base
+  // The controllerUrl parameter is only used by the frontend to parse console IDs
+  const baseUrl = UNIFI_API_BASE_URL;
 
   if (!baseUrl) {
-    return res.status(400).json({ error: 'Controller URL is required' });
+    return res.status(400).json({ error: 'API base URL not configured' });
   }
 
   try {
