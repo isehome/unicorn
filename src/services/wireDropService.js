@@ -15,11 +15,22 @@ class WireDropService {
         .from('wire_drops')
         .select(`
           *,
+          project_room:project_room_id (*),
           projects(name, id),
           wire_drop_stages(*),
           wire_drop_room_end(*),
-          wire_drop_head_end(*)
+          wire_drop_head_end(*),
+          wire_drop_equipment_links (
+            id,
+            link_side,
+            sort_order,
+            project_equipment (
+              *,
+              project_rooms(name, is_headend)
+            )
+          )
         `)
+        .order('sort_order', { ascending: true, foreignTable: 'wire_drop_equipment_links' })
         .eq('project_id', projectId)
         .order('room_name, drop_name');
 
@@ -47,11 +58,22 @@ class WireDropService {
         .from('wire_drops')
         .select(`
           *,
+          project_room:project_room_id (*),
           projects(name, id),
           wire_drop_stages(*),
           wire_drop_room_end(*),
-          wire_drop_head_end(*)
+          wire_drop_head_end(*),
+          wire_drop_equipment_links (
+            id,
+            link_side,
+            sort_order,
+            project_equipment (
+              *,
+              project_rooms(name, is_headend)
+            )
+          )
         `)
+        .order('sort_order', { ascending: true, foreignTable: 'wire_drop_equipment_links' })
         .eq('id', wireDropId)
         .single();
 
@@ -90,7 +112,8 @@ class WireDropService {
           schematic_reference: wireDropData.schematic_reference,
           room_end_equipment: wireDropData.room_end_equipment,
           head_end_equipment: wireDropData.head_end_equipment,
-          notes: wireDropData.notes
+          notes: wireDropData.notes,
+          project_room_id: wireDropData.project_room_id || null
         })
         .select()
         .single();
@@ -565,6 +588,90 @@ class WireDropService {
       return true;
     } catch (error) {
       console.error('Failed to delete wire drop:', error);
+      throw error;
+    }
+  }
+  async getEquipmentLinks(wireDropId) {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drop_equipment_links')
+        .select(`
+          id,
+          link_side,
+          sort_order,
+          project_equipment (
+            *,
+            project_rooms(name, is_headend)
+          )
+        `)
+        .eq('wire_drop_id', wireDropId)
+        .order('sort_order', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Failed to fetch wire drop equipment links:', error);
+      throw error;
+    }
+  }
+
+  async updateEquipmentLinks(wireDropId, linkSide, equipmentIds = []) {
+    try {
+      const { data: existingLinks, error: existingError } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('id, project_equipment_id')
+        .eq('wire_drop_id', wireDropId)
+        .eq('link_side', linkSide);
+
+      if (existingError) throw existingError;
+
+      const existingIds = new Set((existingLinks || []).map((link) => link.project_equipment_id));
+      const desiredIds = new Set((equipmentIds || []).filter(Boolean));
+
+      const toInsert = Array.from(desiredIds)
+        .filter((id) => !existingIds.has(id))
+        .map((id) => ({
+          wire_drop_id: wireDropId,
+          project_equipment_id: id,
+          link_side: linkSide,
+          created_by: null
+        }));
+
+      const toRemove = (existingLinks || [])
+        .filter((link) => !desiredIds.has(link.project_equipment_id))
+        .map((link) => link.id);
+
+      if (toInsert.length > 0) {
+        const { error: insertError } = await supabase
+          .from('wire_drop_equipment_links')
+          .insert(toInsert);
+        if (insertError) throw insertError;
+      }
+
+      if (toRemove.length > 0) {
+        const { error: deleteError } = await supabase
+          .from('wire_drop_equipment_links')
+          .delete()
+          .in('id', toRemove);
+        if (deleteError) throw deleteError;
+      }
+
+      if (equipmentIds.length > 0) {
+        await Promise.all(
+          equipmentIds.map((equipmentId, index) =>
+            supabase
+              .from('wire_drop_equipment_links')
+              .update({ sort_order: index })
+              .eq('wire_drop_id', wireDropId)
+              .eq('project_equipment_id', equipmentId)
+              .eq('link_side', linkSide)
+          )
+        );
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to update wire drop equipment links:', error);
       throw error;
     }
   }

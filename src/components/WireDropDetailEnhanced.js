@@ -1,15 +1,14 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
 import wireDropService from '../services/wireDropService';
 import unifiService from '../services/unifiService';
+import { projectEquipmentService } from '../services/projectEquipmentService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import { 
-  MapPin,
-  Zap, 
   Camera, 
   Upload, 
   CheckCircle,
@@ -19,11 +18,9 @@ import {
   X,
   Loader,
   Network,
-  Building,
   Monitor,
   Server,
   Cable,
-  Info,
   Clock,
   User,
   AlertCircle,
@@ -32,6 +29,9 @@ import {
   Trash2,
   Lock
 } from 'lucide-react';
+
+const normalizeRoomName = (value) =>
+  typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, ' ') : '';
 
 const WireDropDetailEnhanced = () => {
   const { id } = useParams();
@@ -49,15 +49,19 @@ const WireDropDetailEnhanced = () => {
   const [editForm, setEditForm] = useState({});
   
   // Equipment states
-  const [roomEndData, setRoomEndData] = useState({});
-  const [headEndData, setHeadEndData] = useState({});
-  const [equipmentTypes, setEquipmentTypes] = useState({ room: [], head: [] });
+  const [projectEquipment, setProjectEquipment] = useState([]);
+  const [roomEquipmentSelection, setRoomEquipmentSelection] = useState([]);
+  const [headEquipmentSelection, setHeadEquipmentSelection] = useState([]);
+  const [equipmentLoading, setEquipmentLoading] = useState(false);
+  const [equipmentError, setEquipmentError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
   const [completingCommission, setCompletingCommission] = useState(false);
   const [commissionNotes, setCommissionNotes] = useState('');
+  const [savingRoomEquipment, setSavingRoomEquipment] = useState(false);
+  const [savingHeadEquipment, setSavingHeadEquipment] = useState(false);
   
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -130,29 +134,40 @@ const WireDropDetailEnhanced = () => {
     };
   }, [mode, palette, sectionStyles]);
 
-  useEffect(() => {
-    loadWireDrop();
-    loadEquipmentTypes();
-    loadSwitches();
-  }, [id]);
+  const loadProjectEquipmentOptions = useCallback(
+    async (projectId) => {
+      try {
+        setEquipmentLoading(true);
+        setEquipmentError(null);
+        const data = await projectEquipmentService.fetchProjectEquipment(projectId);
+        setProjectEquipment(data || []);
+      } catch (err) {
+        console.error('Failed to load project equipment:', err);
+        setEquipmentError(err.message || 'Failed to load project equipment');
+      } finally {
+        setEquipmentLoading(false);
+      }
+    },
+    []
+  );
 
-  const loadSwitches = async () => {
-    if (!wireDrop?.project_id) return;
-    
+  const loadSwitches = useCallback(async (projectId) => {
+    if (!projectId) return;
+
     try {
       const { data } = await supabase
         .from('unifi_switches')
         .select('*, unifi_switch_ports(*)')
-        .eq('project_id', wireDrop.project_id)
+        .eq('project_id', projectId)
         .eq('is_active', true);
       
       setAvailableSwitches(data || []);
     } catch (err) {
       console.error('Failed to load switches:', err);
     }
-  };
+  }, []);
 
-  const loadWireDrop = async () => {
+  const loadWireDrop = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -169,32 +184,36 @@ const WireDropDetailEnhanced = () => {
         notes: data.notes || ''
       });
       
-      // Set equipment data
-      if (data.wire_drop_room_end?.length > 0) {
-        setRoomEndData(data.wire_drop_room_end[0] || {});
-      }
-      if (data.wire_drop_head_end?.length > 0) {
-        setHeadEndData(data.wire_drop_head_end[0] || {});
-      }
+      const equipmentLinks = (data.wire_drop_equipment_links || []).filter(
+        (link) => link?.project_equipment?.id
+      );
+      const roomLinks = equipmentLinks
+        .filter((link) => link.link_side === 'room_end')
+        .map((link) => link.project_equipment.id);
+      const headLinks = equipmentLinks
+        .filter((link) => link.link_side === 'head_end')
+        .map((link) => link.project_equipment.id);
+
+      setRoomEquipmentSelection(Array.from(new Set(roomLinks)));
+      setHeadEquipmentSelection(Array.from(new Set(headLinks)));
     } catch (err) {
       console.error('Failed to load wire drop:', err);
       setError(err.message || 'Failed to load wire drop details');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  const loadEquipmentTypes = async () => {
-    try {
-      const [roomTypes, headTypes] = await Promise.all([
-        wireDropService.getEquipmentTypes('room_end'),
-        wireDropService.getEquipmentTypes('head_end')
-      ]);
-      setEquipmentTypes({ room: roomTypes, head: headTypes });
-    } catch (err) {
-      console.error('Failed to load equipment types:', err);
+  useEffect(() => {
+    loadWireDrop();
+  }, [loadWireDrop]);
+
+  useEffect(() => {
+    if (wireDrop?.project_id) {
+      loadProjectEquipmentOptions(wireDrop.project_id);
+      loadSwitches(wireDrop.project_id);
     }
-  };
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches]);
 
   const handleSave = async () => {
     try {
@@ -320,23 +339,166 @@ const WireDropDetailEnhanced = () => {
     }
   };
 
+  const toggleRoomEquipment = (equipmentId) => {
+    setRoomEquipmentSelection((prev) => {
+      if (!equipmentId) return prev;
+      return prev.includes(equipmentId)
+        ? prev.filter((idValue) => idValue !== equipmentId)
+        : [...prev, equipmentId];
+    });
+  };
+
+  const toggleHeadEquipment = (equipmentId) => {
+    setHeadEquipmentSelection((prev) => {
+      if (!equipmentId) return prev;
+      return prev.includes(equipmentId)
+        ? prev.filter((idValue) => idValue !== equipmentId)
+        : [...prev, equipmentId];
+    });
+  };
+
+  const dropRoomNormalized = useMemo(() => {
+    if (wireDrop?.project_room?.name) {
+      return normalizeRoomName(wireDrop.project_room.name);
+    }
+    return normalizeRoomName(wireDrop?.room_name);
+  }, [wireDrop?.project_room?.name, wireDrop?.room_name]);
+
+  const nonHeadEquipment = useMemo(
+    () => projectEquipment.filter((item) => !item.project_rooms?.is_headend),
+    [projectEquipment]
+  );
+
+  const matchingRoomEquipment = useMemo(
+    () =>
+      nonHeadEquipment.filter((item) => {
+        if (wireDrop?.project_room_id) {
+          return item.project_rooms?.id === wireDrop.project_room_id;
+        }
+        return normalizeRoomName(item.project_rooms?.name) === dropRoomNormalized;
+      }),
+    [nonHeadEquipment, wireDrop?.project_room_id, dropRoomNormalized]
+  );
+
+  const otherRoomEquipment = useMemo(
+    () =>
+      nonHeadEquipment.filter((item) => {
+        if (wireDrop?.project_room_id) {
+          return item.project_rooms?.id !== wireDrop.project_room_id;
+        }
+        return normalizeRoomName(item.project_rooms?.name) !== dropRoomNormalized;
+      }),
+    [nonHeadEquipment, wireDrop?.project_room_id, dropRoomNormalized]
+  );
+
+  const headEndEquipmentOptions = useMemo(
+    () => projectEquipment.filter((item) => item.project_rooms?.is_headend),
+    [projectEquipment]
+  );
+
+  const otherHeadEquipment = useMemo(
+    () => projectEquipment.filter((item) => !item.project_rooms?.is_headend),
+    [projectEquipment]
+  );
+
+  const selectedRoomEquipmentDetails = useMemo(
+    () =>
+      projectEquipment.filter((item) =>
+        (roomEquipmentSelection || []).includes(item.id)
+      ),
+    [projectEquipment, roomEquipmentSelection]
+  );
+
+  const selectedHeadEquipmentDetails = useMemo(
+    () =>
+      projectEquipment.filter((item) =>
+        (headEquipmentSelection || []).includes(item.id)
+      ),
+    [projectEquipment, headEquipmentSelection]
+  );
+
+  const getEquipmentCardClasses = useCallback(
+    (selected, variant) => {
+      const base = 'cursor-pointer rounded-lg border p-3 transition-all text-sm shadow-sm';
+      const variants = {
+        match: selected
+          ? 'border-green-500 bg-green-50 dark:border-green-400 dark:bg-green-900/30'
+          : 'border-green-200 bg-white dark:border-green-700/40 dark:bg-gray-900',
+        other: selected
+          ? 'border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-900/30'
+          : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
+        head: selected
+          ? 'border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-900/30'
+          : 'border-purple-200 bg-white dark:border-purple-700/40 dark:bg-gray-900',
+        neutral: selected
+          ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/30'
+          : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900'
+      };
+      return `${base} ${variants[variant] || variants.neutral}`;
+    },
+    []
+  );
+
+  const renderEquipmentCard = useCallback(
+    (item, variant, isSelected, onToggle) => (
+      <div
+        key={item.id}
+        className={getEquipmentCardClasses(isSelected, variant)}
+        onClick={() => onToggle(item.id)}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">{item.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {[item.manufacturer, item.model].filter(Boolean).join(' • ') || 'No manufacturer'}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              {item.project_rooms?.name || 'Unassigned room'} • Qty: {item.planned_quantity || 0}
+            </p>
+          </div>
+          <div
+            className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
+              isSelected
+                ? 'border-transparent bg-green-500 text-white'
+                : 'border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-800'
+            }`}
+          >
+            {isSelected ? <CheckCircle className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+          </div>
+        </div>
+        {item.description && (
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.description}</p>
+        )}
+      </div>
+    ),
+    [getEquipmentCardClasses]
+  );
+
   const handleSaveRoomEnd = async () => {
     try {
-      await wireDropService.updateRoomEnd(id, roomEndData);
-      alert('Room end information saved');
+      setSavingRoomEquipment(true);
+      await wireDropService.updateEquipmentLinks(id, 'room_end', roomEquipmentSelection);
+      alert('Room end equipment updated');
+      await loadWireDrop();
     } catch (err) {
-      console.error('Failed to save room end:', err);
-      alert('Failed to save room end information');
+      console.error('Failed to save room end equipment:', err);
+      alert(err.message || 'Failed to save room end equipment');
+    } finally {
+      setSavingRoomEquipment(false);
     }
   };
 
   const handleSaveHeadEnd = async () => {
     try {
-      await wireDropService.updateHeadEnd(id, headEndData);
-      alert('Head end information saved');
+      setSavingHeadEquipment(true);
+      await wireDropService.updateEquipmentLinks(id, 'head_end', headEquipmentSelection);
+      alert('Head end equipment updated');
+      await loadWireDrop();
     } catch (err) {
-      console.error('Failed to save head end:', err);
-      alert('Failed to save head end information');
+      console.error('Failed to save head end equipment:', err);
+      alert(err.message || 'Failed to save head end equipment');
+    } finally {
+      setSavingHeadEquipment(false);
     }
   };
 
@@ -529,9 +691,9 @@ const WireDropDetailEnhanced = () => {
                         </Button>
                       </div>
                     </div>
-                    {wireDrop.room_name && (
+                    {(wireDrop.project_room?.name || wireDrop.room_name) && (
                       <p className="text-lg mt-1" style={styles.textSecondary}>
-                        {wireDrop.room_name}
+                        {wireDrop.project_room?.name || wireDrop.room_name}
                       </p>
                     )}
                   </>
@@ -616,7 +778,7 @@ const WireDropDetailEnhanced = () => {
                         
                         // Editable Core Fields (may originate from Lucid but can be edited)
                         { name: 'Wire Type', key: 'type', value: wireDrop.type, editable: true, source: wireDrop.shape_data?.['Wire Type'] ? 'lucid' : 'manual' },
-                        { name: 'Room Name', key: 'room_name', value: wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
+                        { name: 'Room Name', key: 'room_name', value: wireDrop.project_room?.name || wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
                         { name: 'Drop Name', key: 'drop_name', value: wireDrop.drop_name, editable: true, source: wireDrop.shape_data?.['Drop Name'] ? 'lucid' : 'manual' },
                         { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
                         { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.shape_data?.Location ? 'lucid' : 'manual' },
@@ -1028,213 +1190,240 @@ const WireDropDetailEnhanced = () => {
             </div>
           </div>
         )}
-
         {activeTab === 'room-end' && (
           <div className="rounded-2xl overflow-hidden" style={styles.card}>
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold flex items-center gap-2" style={styles.textPrimary}>
                   <Monitor size={20} />
                   Room End Equipment
                 </h3>
-                <Button 
-                  variant="primary" 
-                  icon={Save} 
+                <Button
+                  variant="primary"
+                  icon={Save}
                   size="sm"
                   onClick={handleSaveRoomEnd}
+                  disabled={savingRoomEquipment || equipmentLoading}
                 >
-                  Save Room End
+                  {savingRoomEquipment ? 'Saving…' : 'Save Room End'}
                 </Button>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Equipment Type
-                  </label>
-                  <select
-                    value={roomEndData.equipment_type || ''}
-                    onChange={(e) => setRoomEndData(prev => ({ ...prev, equipment_type: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  >
-                    <option value="">Select equipment</option>
-                    {equipmentTypes.room.map(type => (
-                      <option key={type.id} value={type.equipment_type}>
-                        {type.equipment_type}
-                      </option>
-                    ))}
-                  </select>
+              {equipmentError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200">
+                  {equipmentError}
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Equipment Name
-                  </label>
-                  <input
-                    type="text"
-                    value={roomEndData.equipment_name || ''}
-                    onChange={(e) => setRoomEndData(prev => ({ ...prev, equipment_name: e.target.value }))}
-                    placeholder="e.g., Living Room Speaker"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
+              {equipmentLoading ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">Loading equipment options…</p>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Selected equipment
+                    </h4>
+                    {selectedRoomEquipmentDetails.length === 0 ? (
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        No equipment linked to this wire drop yet.
+                      </p>
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedRoomEquipmentDetails.map((item) => (
+                          <span
+                            key={item.id}
+                            className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-200"
+                          >
+                            {item.name}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleRoomEquipment(item.id);
+                              }}
+                              className="text-green-700 hover:text-green-900 dark:text-green-200 dark:hover:text-green-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Model
-                  </label>
-                  <input
-                    type="text"
-                    value={roomEndData.equipment_model || ''}
-                    onChange={(e) => setRoomEndData(prev => ({ ...prev, equipment_model: e.target.value }))}
-                    placeholder="Model number"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Equipment in {wireDrop.project_room?.name || wireDrop.room_name || 'this room'}
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Items imported for this room appear first and are highlighted in green.
+                      </p>
+                      <div className="space-y-2">
+                        {matchingRoomEquipment.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No equipment imported for this room yet.
+                          </p>
+                        ) : (
+                          matchingRoomEquipment.map((item) =>
+                            renderEquipmentCard(
+                              item,
+                              'match',
+                              roomEquipmentSelection.includes(item.id),
+                              toggleRoomEquipment
+                            )
+                          )
+                        )}
+                      </div>
+                    </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Location Details
-                  </label>
-                  <input
-                    type="text"
-                    value={roomEndData.location_details || ''}
-                    onChange={(e) => setRoomEndData(prev => ({ ...prev, location_details: e.target.value }))}
-                    placeholder="Specific location in room"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Notes
-                  </label>
-                  <textarea
-                    value={roomEndData.notes || ''}
-                    onChange={(e) => setRoomEndData(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Additional notes about room equipment"
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-              </div>
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Other room equipment
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Select any additional room-side equipment from the project.
+                      </p>
+                      <div className="space-y-2">
+                        {otherRoomEquipment.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No other room equipment available.
+                          </p>
+                        ) : (
+                          otherRoomEquipment.map((item) =>
+                            renderEquipmentCard(
+                              item,
+                              'other',
+                              roomEquipmentSelection.includes(item.id),
+                              toggleRoomEquipment
+                            )
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}
 
         {activeTab === 'head-end' && (
           <div className="rounded-2xl overflow-hidden" style={styles.card}>
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-4">
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold flex items-center gap-2" style={styles.textPrimary}>
                   <Server size={20} />
                   Head End Equipment
                 </h3>
-                <Button 
-                  variant="primary" 
-                  icon={Save} 
+                <Button
+                  variant="primary"
+                  icon={Save}
                   size="sm"
                   onClick={handleSaveHeadEnd}
+                  disabled={savingHeadEquipment || equipmentLoading}
                 >
-                  Save Head End
+                  {savingHeadEquipment ? 'Saving…' : 'Save Head End'}
                 </Button>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Equipment Type
-                  </label>
-                  <select
-                    value={headEndData.equipment_type || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, equipment_type: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  >
-                    <option value="">Select equipment</option>
-                    {equipmentTypes.head.map(type => (
-                      <option key={type.id} value={type.equipment_type}>
-                        {type.equipment_type}
-                      </option>
-                    ))}
-                  </select>
+              {equipmentError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200">
+                  {equipmentError}
                 </div>
+              )}
 
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Equipment Name
-                  </label>
-                  <input
-                    type="text"
-                    value={headEndData.equipment_name || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, equipment_name: e.target.value }))}
-                    placeholder="e.g., Network Switch"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
+              {equipmentLoading ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">Loading equipment options…</p>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      Selected head-end equipment
+                    </h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      The same device can be linked to multiple wire drops if needed.
+                    </p>
+                    {selectedHeadEquipmentDetails.length === 0 ? (
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        No head-end equipment linked yet.
+                      </p>
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedHeadEquipmentDetails.map((item) => (
+                          <span
+                            key={item.id}
+                            className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
+                          >
+                            {item.name}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleHeadEquipment(item.id);
+                              }}
+                              className="text-purple-600 hover:text-purple-800 dark:text-purple-200 dark:hover:text-purple-100"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Port/Connection
-                  </label>
-                  <input
-                    type="text"
-                    value={headEndData.port_connection || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, port_connection: e.target.value }))}
-                    placeholder="e.g., Port 12"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Rack Location
-                  </label>
-                  <input
-                    type="text"
-                    value={headEndData.rack_location || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, rack_location: e.target.value }))}
-                    placeholder="e.g., Rack A, U12"
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Network Configuration
-                  </label>
-                  <textarea
-                    value={headEndData.network_config || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, network_config: e.target.value }))}
-                    placeholder="VLAN, IP range, or other network details"
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
-                    Notes
-                  </label>
-                  <textarea
-                    value={headEndData.notes || ''}
-                    onChange={(e) => setHeadEndData(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder="Additional notes about head end equipment"
-                    rows={3}
-                    className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                    style={styles.input}
-                  />
-                </div>
-              </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Head-end rooms
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Equipment imported for network, rack, and structured wiring locations.
+                      </p>
+                      <div className="space-y-2">
+                        {headEndEquipmentOptions.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No head-end equipment available.
+                          </p>
+                        ) : (
+                          headEndEquipmentOptions.map((item) =>
+                            renderEquipmentCard(
+                              item,
+                              'head',
+                              headEquipmentSelection.includes(item.id),
+                              toggleHeadEquipment
+                            )
+                          )
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        Other equipment
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Include additional devices that terminate at the head-end.
+                      </p>
+                      <div className="space-y-2">
+                        {otherHeadEquipment.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No additional equipment available.
+                          </p>
+                        ) : (
+                          otherHeadEquipment.map((item) =>
+                            renderEquipmentCard(
+                              item,
+                              'neutral',
+                              headEquipmentSelection.includes(item.id),
+                              toggleHeadEquipment
+                            )
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,10 +6,12 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
+import { projectRoomsService } from '../services/projectRoomsService';
 import { supabase } from '../lib/supabase';
-import { contactsService } from '../services/supabaseService';
+import { normalizeRoomName, similarityScore } from '../utils/roomUtils';
 import Button from './ui/Button';
 import LucidChartCarousel from './LucidChartCarousel';
+import ProjectEquipmentManager from './ProjectEquipmentManager';
 import { 
   Save, 
   ExternalLink, 
@@ -30,10 +32,8 @@ import {
   ChevronUp,
   ChevronDown,
   GripVertical,
-  Download,
   RefreshCw,
-  Link,
-  Search
+  Link
 } from 'lucide-react';
 
 // Progress Bar Component
@@ -58,13 +58,40 @@ const ProgressBar = ({ label, percentage }) => {
   );
 };
 
+const getShapeCustomValue = (shape, key) => {
+  const customData = shape?.customData || shape?.data || {};
+  const target = key.toLowerCase();
+  for (const dataKey in customData) {
+    if (!Object.prototype.hasOwnProperty.call(customData, dataKey)) continue;
+    const value = customData[dataKey];
+    if (typeof dataKey === 'string' && dataKey.toLowerCase().trim() === target) {
+      return value;
+    }
+  }
+  return null;
+};
+
+const extractShapeRoomName = (shape) =>
+  getShapeCustomValue(shape, 'Room Name') || getShapeCustomValue(shape, 'Room') || '';
+
+const extractShapeLocation = (shape) =>
+  getShapeCustomValue(shape, 'Location') || '';
+
+const extractShapeType = (shape) =>
+  getShapeCustomValue(shape, 'Type') || getShapeCustomValue(shape, 'Wire Type') || 'CAT6';
+
+const extractShapeFloor = (shape) =>
+  getShapeCustomValue(shape, 'Floor') || '';
+
+const extractShapeDevice = (shape) =>
+  getShapeCustomValue(shape, 'Device') || '';
+
 const PMProjectViewEnhanced = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { mode } = useTheme();
   const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
-  const { useMemo } = React;
   
   const [project, setProject] = useState(null);
   const [phases, setPhases] = useState([]);
@@ -103,7 +130,6 @@ const PMProjectViewEnhanced = () => {
   });
 
   // Lucid integration state
-  const [lucidData, setLucidData] = useState(null);
   const [lucidLoading, setLucidLoading] = useState(false);
   const [lucidError, setLucidError] = useState(null);
   const [droppableShapes, setDroppableShapes] = useState([]);
@@ -124,19 +150,220 @@ const PMProjectViewEnhanced = () => {
     email: '',
     phone: ''
   });
+  const [projectRooms, setProjectRooms] = useState([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [unmatchedRoomEntries, setUnmatchedRoomEntries] = useState([]);
+  const [roomAssignments, setRoomAssignments] = useState({});
+  const [roomAliasSaving, setRoomAliasSaving] = useState(null);
 
-  // Load project data and related information
-  useEffect(() => {
-    loadProjectData();
-    loadTimeData();
-    loadPhasesAndStatuses();
-    loadContacts();
-    loadProgress();
-    
-    // Refresh time data every 30 seconds
-    const interval = setInterval(loadTimeData, 30000);
-    return () => clearInterval(interval);
+  const loadProjectRooms = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setRoomsLoading(true);
+      const rooms = await projectRoomsService.fetchRoomsWithAliases(projectId);
+      setProjectRooms(rooms);
+    } catch (error) {
+      console.error('Failed to load project rooms:', error);
+    } finally {
+      setRoomsLoading(false);
+    }
   }, [projectId]);
+
+  const roomsByNormalized = useMemo(() => {
+    const map = new Map();
+    projectRooms.forEach((room) => {
+      const normalized = room.normalized_name || normalizeRoomName(room.name);
+      if (normalized) {
+        map.set(normalized, room);
+      }
+    });
+    return map;
+  }, [projectRooms]);
+
+  const aliasLookup = useMemo(() => {
+    const map = new Map();
+    projectRooms.forEach((room) => {
+      (room.project_room_aliases || []).forEach((alias) => {
+        if (alias?.normalized_alias) {
+          map.set(alias.normalized_alias, room);
+        } else if (alias?.alias) {
+          map.set(normalizeRoomName(alias.alias), room);
+        }
+      });
+    });
+    return map;
+  }, [projectRooms]);
+
+  const allRoomOptions = useMemo(
+    () =>
+      projectRooms.map((room) => ({
+        value: room.id,
+        label: room.name,
+        isHeadEnd: room.is_headend
+      })),
+    [projectRooms]
+  );
+
+  const suggestRoomMatch = useCallback(
+    (normalizedName) => {
+      if (!normalizedName) return null;
+      let best = null;
+      projectRooms.forEach((room) => {
+        const candidate = room.normalized_name || normalizeRoomName(room.name);
+        if (!candidate) return;
+        const score = similarityScore(normalizedName, candidate);
+        if (!best || score > best.score) {
+          best = { room, score };
+        }
+      });
+      return best;
+    },
+    [projectRooms]
+  );
+
+  const resolveRoomForName = useCallback(
+    (roomName) => {
+      const normalized = normalizeRoomName(roomName);
+      if (!normalized) return null;
+      if (aliasLookup.has(normalized)) {
+        return { room: aliasLookup.get(normalized), matchedBy: 'alias' };
+      }
+      if (roomsByNormalized.has(normalized)) {
+        return { room: roomsByNormalized.get(normalized), matchedBy: 'direct' };
+      }
+      return null;
+    },
+    [aliasLookup, roomsByNormalized]
+  );
+
+  useEffect(() => {
+    if (!droppableShapes || droppableShapes.length === 0) {
+      setUnmatchedRoomEntries([]);
+      setRoomAssignments({});
+      return;
+    }
+
+    const roomNameMap = new Map();
+    droppableShapes.forEach((shape) => {
+      const roomName = extractShapeRoomName(shape);
+      if (!roomName) return;
+      const normalized = normalizeRoomName(roomName);
+      if (!normalized) return;
+      const entry = roomNameMap.get(normalized) || { normalized, samples: [] };
+      if (!entry.samples.includes(roomName)) {
+        entry.samples.push(roomName);
+      }
+      roomNameMap.set(normalized, entry);
+    });
+
+    const unmatched = [];
+    roomNameMap.forEach((entry) => {
+      if (roomsByNormalized.has(entry.normalized) || aliasLookup.has(entry.normalized)) {
+        return;
+      }
+      const suggestion = suggestRoomMatch(entry.normalized);
+      unmatched.push({ ...entry, suggestion });
+    });
+
+    setUnmatchedRoomEntries(unmatched);
+    setRoomAssignments((prev) => {
+      const next = {};
+      unmatched.forEach((entry) => {
+        if (prev[entry.normalized]) {
+          next[entry.normalized] = prev[entry.normalized];
+        } else if (entry.suggestion && entry.suggestion.score >= 0.72) {
+          next[entry.normalized] = { type: 'existing', roomId: entry.suggestion.room.id };
+        }
+      });
+      return next;
+    });
+  }, [droppableShapes, roomsByNormalized, aliasLookup, suggestRoomMatch]);
+
+  const handleRoomSelectionChange = (normalized, value, entry) => {
+    setRoomAssignments((prev) => {
+      const next = { ...prev };
+      if (!value) {
+        delete next[normalized];
+        return next;
+      }
+
+      if (value === '__new__') {
+        next[normalized] = {
+          type: 'new',
+          name: entry.samples[0] || '',
+          isHeadend: false
+        };
+      } else {
+        next[normalized] = {
+          type: 'existing',
+          roomId: value
+        };
+      }
+      return next;
+    });
+  };
+
+  const handleNewRoomNameChange = (normalized, name) => {
+    setRoomAssignments((prev) => ({
+      ...prev,
+      [normalized]: {
+        type: 'new',
+        name,
+        isHeadend: prev[normalized]?.isHeadend || false
+      }
+    }));
+  };
+
+  const handleNewRoomHeadendToggle = (normalized, checked) => {
+    setRoomAssignments((prev) => ({
+      ...prev,
+      [normalized]: {
+        type: 'new',
+        name: prev[normalized]?.name || '',
+        isHeadend: checked
+      }
+    }));
+  };
+
+  const handleRoomAliasApply = async (entry) => {
+    const selection = roomAssignments[entry.normalized];
+    if (!selection) {
+      alert('Select a room mapping before saving.');
+      return;
+    }
+
+    try {
+      setRoomAliasSaving(entry.normalized);
+      if (selection.type === 'existing' && selection.roomId) {
+        await projectRoomsService.upsertAliases(
+          projectId,
+          selection.roomId,
+          entry.samples,
+          user?.id || null
+        );
+      } else if (selection.type === 'new') {
+        const nameToUse = selection.name?.trim() || entry.samples[0];
+        const newRoom = await projectRoomsService.createRoom(projectId, {
+          name: nameToUse,
+          is_headend: selection.isHeadend,
+          createdBy: user?.id || null
+        });
+        await projectRoomsService.upsertAliases(
+          projectId,
+          newRoom.id,
+          entry.samples,
+          user?.id || null
+        );
+      }
+
+      await loadProjectRooms();
+    } catch (error) {
+      console.error('Failed to save room alias mapping:', error);
+      alert(error.message || 'Failed to save room alias mapping');
+    } finally {
+      setRoomAliasSaving(null);
+    }
+  };
 
   // Auto-open client picker when entering edit mode
   useEffect(() => {
@@ -146,7 +373,7 @@ const PMProjectViewEnhanced = () => {
     } else if (!editMode) {
       setShowClientPicker(false);
     }
-  }, [editMode]);
+  }, [editMode, formData.client]);
 
   const loadContacts = async () => {
     try {
@@ -360,7 +587,23 @@ const PMProjectViewEnhanced = () => {
       setSaving(false);
     }
   };
-  
+
+  useEffect(() => {
+    loadProjectData();
+    loadTimeData();
+    loadPhasesAndStatuses();
+    loadContacts();
+    loadProgress();
+
+    const interval = setInterval(loadTimeData, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  useEffect(() => {
+    loadProjectRooms();
+  }, [loadProjectRooms]);
+
   const updateClientStakeholder = async (contact) => {
     try {
       console.log('========================================');
@@ -730,7 +973,6 @@ const PMProjectViewEnhanced = () => {
 
       // Fetch document contents
       const docData = await fetchDocumentContents(documentId);
-      setLucidData(docData);
 
       // Extract shapes
       const shapes = extractShapes(docData);
@@ -812,39 +1054,52 @@ const PMProjectViewEnhanced = () => {
     const errors = [];
     const created = [];
     const updated = [];
+    const aliasUpsertsByRoom = new Map();
 
     try {
       for (const shapeId of selectedShapes) {
-        const shape = droppableShapes.find(s => s.id === shapeId);
+        const shape = droppableShapes.find((s) => s.id === shapeId);
         if (!shape) continue;
 
-        // Extract data from shape (case-insensitive)
-        const customData = shape.customData || {};
-        
-        // Helper to get case-insensitive custom data value
-        const getCustomValue = (key) => {
-          for (const k in customData) {
-            if (k.toLowerCase().trim() === key.toLowerCase()) {
-              return customData[k];
-            }
+        const shapeName =
+          shape.text ||
+          getShapeCustomValue(shape, 'Drop Name') ||
+          `Drop ${shape.id.substring(0, 8)}`;
+        const roomNameRaw = extractShapeRoomName(shape);
+        const location = extractShapeLocation(shape);
+        const type = extractShapeType(shape);
+        const floor = extractShapeFloor(shape);
+        const device = extractShapeDevice(shape);
+
+        const resolvedRoom = resolveRoomForName(roomNameRaw);
+        const canonicalRoomName = resolvedRoom?.room?.name || roomNameRaw;
+
+        if (resolvedRoom?.room) {
+          const aliasNormalized = normalizeRoomName(roomNameRaw);
+          const canonicalNormalized = normalizeRoomName(resolvedRoom.room.name);
+          if (
+            aliasNormalized &&
+            canonicalNormalized &&
+            aliasNormalized !== canonicalNormalized
+          ) {
+            const aliasSet =
+              aliasUpsertsByRoom.get(resolvedRoom.room.id) || new Set();
+            aliasSet.add(roomNameRaw);
+            aliasUpsertsByRoom.set(resolvedRoom.room.id, aliasSet);
           }
-          return null;
-        };
-        
-        const shapeName = shape.text || getCustomValue('Drop Name') || `Drop ${shape.id.substring(0, 8)}`;
-        const roomName = getCustomValue('Room Name') || getCustomValue('Room') || '';
-        const location = getCustomValue('Location') || '';
-        const type = getCustomValue('Type') || getCustomValue('Wire Type') || 'CAT6';
-        
+        }
+
         // Create notes field to store all Lucid shape data that we can't store in columns
         const shapeMetadata = {
           pageId: shape.pageId,
           pageTitle: shape.pageTitle,
           position: shape.position,
           size: shape.size,
-          customData: customData,
-          floor: getCustomValue('Floor') || '',
-          device: getCustomValue('Device') || ''
+          customData: shape.customData || {},
+          floor,
+          device,
+          matchedProjectRoomId: resolvedRoom?.room?.id || null,
+          matchedProjectRoomName: resolvedRoom?.room?.name || null
         };
         
         const notesContent = `Lucid Shape Data: ${JSON.stringify(shapeMetadata)}`;
@@ -858,10 +1113,11 @@ const PMProjectViewEnhanced = () => {
             .from('wire_drops')
             .update({
               name: shapeName,
-              room_name: roomName,
+              room_name: canonicalRoomName,
               drop_name: shapeName,
-              location: location,
-              type: type,
+              location: location || canonicalRoomName,
+              type,
+              project_room_id: resolvedRoom?.room?.id || null,
               notes: notesContent,
               updated_at: new Date().toISOString()
             })
@@ -878,10 +1134,11 @@ const PMProjectViewEnhanced = () => {
           // Use the service to create wire drop properly with stages
           const wireDropData = {
             drop_name: shapeName,
-            room_name: roomName,
-            location: location,
-            type: type,
+            room_name: canonicalRoomName,
+            location: location || canonicalRoomName,
+            type,
             lucid_shape_id: shape.id,
+            project_room_id: resolvedRoom?.room?.id || null,
             notes: notesContent
           };
 
@@ -891,6 +1148,25 @@ const PMProjectViewEnhanced = () => {
           } catch (createError) {
             errors.push(`Failed to create wire drop for ${shapeName}: ${createError.message}`);
           }
+        }
+      }
+
+      // Record any new aliases discovered during creation
+      if (aliasUpsertsByRoom.size > 0) {
+        try {
+          await Promise.all(
+            Array.from(aliasUpsertsByRoom.entries()).map(([roomId, aliases]) =>
+              projectRoomsService.upsertAliases(
+                projectId,
+                roomId,
+                Array.from(aliases),
+                user?.id || null
+              )
+            )
+          );
+          await loadProjectRooms();
+        } catch (aliasError) {
+          console.error('Failed to save room aliases from Lucid import:', aliasError);
         }
       }
 
@@ -1787,24 +2063,27 @@ const PMProjectViewEnhanced = () => {
                         />
                       </th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Shape Name</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Location</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Location</th>
+                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Matched Room</th>
+                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
+                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {droppableShapes.map((shape) => {
                       const linked = isShapeLinked(shape.id);
-                      const wireDrop = getLinkedWireDrop(shape.id);
-                      const shapeName = shape.text || `Drop ${shape.id.substring(0, 8)}`;
-                      const location = shape.customData?.Location || shape.customData?.location || '-';
-                      const type = shape.customData?.Type || shape.customData?.type || 'CAT6';
+                          const wireDrop = getLinkedWireDrop(shape.id);
+                          const shapeName = shape.text || getShapeCustomValue(shape, 'Drop Name') || `Drop ${shape.id.substring(0, 8)}`;
+                          const roomName = extractShapeRoomName(shape);
+                          const location = extractShapeLocation(shape) || '-';
+                          const type = extractShapeType(shape);
+                          const resolvedRoom = resolveRoomForName(roomName);
 
-                      return (
-                        <tr 
-                          key={shape.id} 
-                          className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
+                          return (
+                            <tr
+                              key={shape.id}
+                              className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
                         >
                           <td className="px-4 py-3">
                             <input
@@ -1821,12 +2100,30 @@ const PMProjectViewEnhanced = () => {
                           <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
                             {location}
                           </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                            {type}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                            {shape.pageTitle || 'Page ' + (shape.pageId?.substring(0, 8) || '?')}
-                          </td>
+                              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                                {type}
+                              </td>
+                              <td className="px-4 py-3">
+                                {resolvedRoom ? (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                                    resolvedRoom.matchedBy === 'alias'
+                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                  }`}>
+                                    {resolvedRoom.room.name}
+                                    {resolvedRoom.matchedBy === 'alias' ? (
+                                      <span className="text-[10px] uppercase tracking-wide">alias</span>
+                                    ) : null}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
+                                    Unmatched
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                                {shape.pageTitle || 'Page ' + (shape.pageId?.substring(0, 8) || '?')}
+                              </td>
                           <td className="px-4 py-3">
                             {linked ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
@@ -1858,6 +2155,131 @@ const PMProjectViewEnhanced = () => {
           )}
         </div>
       )}
+
+      {unmatchedRoomEntries.length > 0 && (
+        <div style={sectionStyles.card} className="p-6">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Room Name Alignment
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                We found Lucid shapes with room names that don&apos;t match existing project rooms.
+                Map them to a room or create a new one so imported equipment can attach automatically.
+              </p>
+            </div>
+            {roomsLoading && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Loader className="w-4 h-4 animate-spin" />
+                Updating rooms…
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-4">
+            {unmatchedRoomEntries.map((entry) => {
+              const selection = roomAssignments[entry.normalized];
+              const suggestion = entry.suggestion;
+              const selectValue =
+                selection?.type === 'existing'
+                  ? selection.roomId
+                  : selection?.type === 'new'
+                    ? '__new__'
+                    : '';
+
+              return (
+                <div
+                  key={entry.normalized}
+                  className="rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    {entry.samples.map((sample) => (
+                      <span
+                        key={`${entry.normalized}-${sample}`}
+                        className="inline-flex items-center rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
+                      >
+                        {sample}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Map to project room
+                      </label>
+                      <select
+                        value={selectValue}
+                        onChange={(event) =>
+                          handleRoomSelectionChange(entry.normalized, event.target.value, entry)
+                        }
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      >
+                        <option value="">Select a room…</option>
+                        {allRoomOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                            {option.isHeadEnd ? ' • Head End' : ''}
+                          </option>
+                        ))}
+                        <option value="__new__">Create new room…</option>
+                      </select>
+                      {suggestion && suggestion.score >= 0.72 && !selection && (
+                        <p className="mt-2 text-xs text-green-600 dark:text-green-400">
+                          Suggested match: {suggestion.room.name} ({Math.round(suggestion.score * 100)}%
+                          similarity)
+                        </p>
+                      )}
+                    </div>
+
+                    {selection?.type === 'new' && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            New room name
+                          </label>
+                          <input
+                            type="text"
+                            value={selection.name}
+                            onChange={(event) =>
+                              handleNewRoomNameChange(entry.normalized, event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                          />
+                        </div>
+                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                          <input
+                            type="checkbox"
+                            checked={selection.isHeadend}
+                            onChange={(event) =>
+                              handleNewRoomHeadendToggle(entry.normalized, event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-800"
+                          />
+                          Head-end room
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleRoomAliasApply(entry)}
+                      loading={roomAliasSaving === entry.normalized}
+                    >
+                      Save Mapping
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <ProjectEquipmentManager projectId={projectId} />
 
       {/* Action Buttons */}
       <div className="flex gap-4">
