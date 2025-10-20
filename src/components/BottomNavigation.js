@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Activity, QrCode, Home, Settings } from 'lucide-react';
+import { Users, Activity, QrCode, Home, Settings, Boxes } from 'lucide-react';
 
 const BottomNavigation = () => {
   const navigate = useNavigate();
@@ -8,6 +8,7 @@ const BottomNavigation = () => {
 
   const navItems = [
     { icon: Home, label: 'Home', path: '/' },
+    { icon: Boxes, label: 'Parts', path: '/parts' },
     { icon: Users, label: 'People', path: '/people' },
     { icon: Activity, label: 'UniFi Test', path: '/unifi-test' },
     { icon: QrCode, label: 'Lucid Test', path: '/lucid-test' },
@@ -19,7 +20,9 @@ const BottomNavigation = () => {
       <div className="flex justify-around items-center">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === '/'
+            ? location.pathname === '/'
+            : location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           
           return (
             <button

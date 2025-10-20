@@ -764,7 +764,15 @@ export const timeLogsService = {
 export const projectProgressService = {
   async getProjectProgress(projectId) {
     try {
-      if (!supabase) return { prewire: 0, trim: 0, commission: 0 };
+      const baseProgress = {
+        prewire: 0,
+        trim: 0,
+        commission: 0,
+        ordered: 0,
+        onsite: 0,
+      };
+
+      if (!supabase) return baseProgress;
       
       // Get all wire drops with their stages
       const { data: wireDrops, error } = await supabase
@@ -773,7 +781,7 @@ export const projectProgressService = {
         .eq('project_id', projectId);
         
       if (error || !wireDrops || wireDrops.length === 0) {
-        return { prewire: 0, trim: 0, commission: 0 };
+        return baseProgress;
       }
       
       // Calculate progress for each stage
@@ -793,14 +801,43 @@ export const projectProgressService = {
         });
       });
       
-      return {
-        prewire: Math.round((prewireComplete / totalDrops) * 100),
-        trim: Math.round((trimComplete / totalDrops) * 100),
-        commission: Math.round((commissionComplete / totalDrops) * 100)
-      };
+      baseProgress.prewire = Math.round((prewireComplete / totalDrops) * 100);
+      baseProgress.trim = Math.round((trimComplete / totalDrops) * 100);
+      baseProgress.commission = Math.round((commissionComplete / totalDrops) * 100);
+
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('project_equipment')
+        .select('id, equipment_type, is_active, ordered_confirmed, onsite_confirmed')
+        .eq('project_id', projectId);
+
+      if (!equipmentError && Array.isArray(equipment) && equipment.length > 0) {
+        const trackable = equipment.filter(
+          (item) =>
+            item.is_active !== false &&
+            (!item.equipment_type || item.equipment_type === 'part' || item.equipment_type === 'other')
+        );
+
+        const denominator = trackable.length;
+
+        if (denominator > 0) {
+          const orderedCount = trackable.filter((item) => item.ordered_confirmed).length;
+          const onsiteCount = trackable.filter((item) => item.onsite_confirmed).length;
+
+          baseProgress.ordered = Math.round((orderedCount / denominator) * 100);
+          baseProgress.onsite = Math.round((onsiteCount / denominator) * 100);
+        }
+      }
+
+      return baseProgress;
     } catch (error) {
       console.error('Failed to get project progress:', error);
-      return { prewire: 0, trim: 0, commission: 0 };
+      return {
+        prewire: 0,
+        trim: 0,
+        commission: 0,
+        ordered: 0,
+        onsite: 0,
+      };
     }
   }
 };

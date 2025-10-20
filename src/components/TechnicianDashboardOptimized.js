@@ -116,10 +116,12 @@ const ProjectCard = memo(({
         </div>
 
         {/* Right side - Progress Bars */}
-        <div className="flex flex-col justify-center space-y-1.5 w-48">
+        <div className="flex flex-col justify-center space-y-1.5 w-52">
           <ProgressBar label="Prewire" percentage={progress?.prewire || 0} />
           <ProgressBar label="Trim" percentage={progress?.trim || 0} />
           <ProgressBar label="Commission" percentage={progress?.commission || 0} />
+          <ProgressBar label="Ordered" percentage={progress?.ordered || 0} />
+          <ProgressBar label="Onsite" percentage={progress?.onsite || 0} />
         </div>
       </div>
     </div>
@@ -160,7 +162,7 @@ const TechnicianDashboardOptimized = () => {
           progressData[project.id] = progress;
         } catch (error) {
           console.error(`Failed to load progress for project ${project.id}:`, error);
-          progressData[project.id] = { prewire: 0, trim: 0, commission: 0 };
+          progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
         }
       }
       setProjectProgress(progressData);

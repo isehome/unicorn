@@ -185,7 +185,21 @@ export function AuthProvider({ children }) {
         console.log('[Auth] MSAL initialized successfully');
 
         // Handle redirect promise (for popup/redirect flows)
-        const response = await msalInstance.handleRedirectPromise();
+        let response = null;
+        try {
+          response = await msalInstance.handleRedirectPromise();
+        } catch (redirectError) {
+          if (redirectError?.errorCode === 'hash_empty_error') {
+            console.warn('[Auth] Redirect hash empty, clearing stale interaction status');
+            try {
+              localStorage.removeItem('msal.interaction.status');
+            } catch (storageError) {
+              console.warn('[Auth] Unable to clear msal.interaction.status:', storageError);
+            }
+          } else {
+            throw redirectError;
+          }
+        }
         
         if (response) {
           console.log('[Auth] Login successful via redirect/popup');

@@ -6,7 +6,7 @@
 
 import { supabase } from '../lib/supabase';
 import { fetchDocumentContents, exportDocumentPage, calculateContentBoundingBox } from './lucidApi';
-import { uploadFloorPlanImage } from './storageService';
+import { sharePointStorageService } from './sharePointStorageService';
 
 /**
  * Get image dimensions from blob
@@ -81,9 +81,14 @@ export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiK
         // Get image dimensions
         const imageDimensions = await getImageDimensions(imageBlob);
         
-        // Upload to Supabase Storage
-        console.log(`Uploading image for page ${i + 1}...`);
-        const imageUrl = await uploadFloorPlanImage(imageBlob, projectId, page.id);
+        // Upload to SharePoint
+        console.log(`Uploading image for page ${i + 1} to SharePoint...`);
+        const imageUrl = await sharePointStorageService.uploadFloorPlan(
+          projectId,
+          page.id,
+          page.title || `Floor ${i + 1}`,
+          imageBlob
+        );
         
         // Save to lucid_pages table
         console.log(`Saving page ${i + 1} metadata to database...`);

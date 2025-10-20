@@ -83,7 +83,7 @@ const PMDashboard = () => {
           progressData[project.id] = progress;
         } catch (error) {
           console.error(`Failed to load progress for project ${project.id}:`, error);
-          progressData[project.id] = { prewire: 0, trim: 0, commission: 0 };
+          progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
         }
       }
       setProjectProgress(progressData);
@@ -427,7 +427,7 @@ const PMDashboard = () => {
           ) : (
             <div className="space-y-3">
               {filteredProjects.map((project) => {
-                const progress = projectProgress[project.id] || { prewire: 0, trim: 0, commission: 0 };
+                const progress = projectProgress[project.id] || { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
                 
                 return (
                   <div
@@ -493,10 +493,12 @@ const PMDashboard = () => {
                       </div>
                       
                       {/* Progress Bars */}
-                      <div className="flex flex-col justify-center space-y-1.5 w-48 flex-shrink-0">
+                      <div className="flex flex-col justify-center space-y-1.5 w-56 flex-shrink-0">
                         <ProgressBar label="Prewire" percentage={progress.prewire || 0} />
                         <ProgressBar label="Trim" percentage={progress.trim || 0} />
                         <ProgressBar label="Commission" percentage={progress.commission || 0} />
+                        <ProgressBar label="Ordered" percentage={progress.ordered || 0} />
+                        <ProgressBar label="Onsite" percentage={progress.onsite || 0} />
                       </div>
                       
                       <div className="flex items-center flex-shrink-0">

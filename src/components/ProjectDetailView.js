@@ -30,7 +30,7 @@ import {
   Mail,
   Phone,
   Building,
-  Map,
+  Map as MapIcon,
   Check,
   X,
   Pencil,
@@ -48,6 +48,8 @@ import {
   projectProgressService
 } from '../services/supabaseService';
 import { enhancedStyles } from '../styles/styleSystem';
+import { projectRoomsService } from '../services/projectRoomsService';
+import { normalizeRoomName } from '../utils/roomUtils';
 import TodoDetailModal from './TodoDetailModal';
 import EquipmentManager from './EquipmentManager';
 import SecureDataManager from './SecureDataManager';
@@ -214,7 +216,13 @@ const ProjectDetailView = () => {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showEquipmentManager, setShowEquipmentManager] = useState(false);
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
-  const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
+  const [projectProgress, setProjectProgress] = useState({
+    prewire: 0,
+    trim: 0,
+    commission: 0,
+    ordered: 0,
+    onsite: 0
+  });
 
   const refreshStakeholders = useCallback(async () => {
     try {
@@ -238,6 +246,7 @@ const ProjectDetailView = () => {
         .from('wire_drops')
         .select(`
           *,
+          project_room:project_rooms(*),
           wire_drop_stages(
             stage_type,
             completed,
@@ -250,15 +259,82 @@ const ProjectDetailView = () => {
         .eq('project_id', id)
         .order('uid');
 
-      const [wireDropsResult, todoResult, issuesResult] = await Promise.all([
+      const [
+        wireDropsResult,
+        projectRooms,
+        todoResult,
+        issuesResult
+      ] = await Promise.all([
         wireDropPromise,
+        projectRoomsService.fetchRoomsWithAliases(id),
         projectTodosService.getForProject(id),
         issuesService.getAll(id)
       ]);
 
       if (wireDropsResult?.error) throw wireDropsResult.error;
 
-      setWireDrops(wireDropsResult?.data || []);
+      const rooms = Array.isArray(projectRooms) ? projectRooms : [];
+      const roomsById = new Map();
+      const aliasLookup = new Map();
+
+      rooms.forEach((room) => {
+        if (room?.id) {
+          roomsById.set(room.id, room);
+        }
+        const normalizedName = room?.normalized_name || normalizeRoomName(room?.name);
+        if (normalizedName && !aliasLookup.has(normalizedName)) {
+          aliasLookup.set(normalizedName, room);
+        }
+        (room?.project_room_aliases || []).forEach((alias) => {
+          const normalizedAlias =
+            alias?.normalized_alias || normalizeRoomName(alias?.alias);
+          if (normalizedAlias && !aliasLookup.has(normalizedAlias)) {
+            aliasLookup.set(normalizedAlias, room);
+          }
+        });
+      });
+
+      const annotatedWireDrops = (wireDropsResult?.data || []).map((drop) => {
+        let resolvedRoom = null;
+        if (drop?.project_room?.id) {
+          resolvedRoom = drop.project_room;
+        } else if (drop?.project_room_id && roomsById.has(drop.project_room_id)) {
+          resolvedRoom = roomsById.get(drop.project_room_id);
+        } else {
+          const candidateNames = [
+            drop?.room_name,
+            drop?.location,
+            drop?.shape_data?.['Room Name'],
+            drop?.shape_data?.room,
+            drop?.shape_data?.Room,
+            drop?.shape_data?.['Drop Location']
+          ];
+
+          for (const name of candidateNames) {
+            const normalized = normalizeRoomName(name);
+            if (normalized && aliasLookup.has(normalized)) {
+              resolvedRoom = aliasLookup.get(normalized);
+              break;
+            }
+          }
+        }
+
+        if (resolvedRoom) {
+          return {
+            ...drop,
+            project_room: resolvedRoom,
+            project_room_id: resolvedRoom.id,
+            room_name: resolvedRoom.name || drop.room_name
+          };
+        }
+
+        return {
+          ...drop,
+          room_name: drop?.room_name && drop.room_name !== 'Unassigned room' ? drop.room_name : null
+        };
+      });
+
+      setWireDrops(annotatedWireDrops);
       setTodos(todoResult || []);
       setIssues(Array.isArray(issuesResult) ? issuesResult : []);
       
@@ -268,7 +344,7 @@ const ProjectDetailView = () => {
         setProjectProgress(progress);
       } catch (progressError) {
         console.error('Failed to load progress:', progressError);
-        setProjectProgress({ prewire: 0, trim: 0, commission: 0 });
+        setProjectProgress({ prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 });
       }
     } catch (err) {
       console.error('Failed to load project detail:', err);
@@ -352,13 +428,49 @@ const ProjectDetailView = () => {
   };
 
   const filteredWireDrops = useMemo(() => {
-    if (!wireDropQuery) return wireDrops;
-    const query = wireDropQuery.toLowerCase();
-    return wireDrops.filter((drop) =>
-      [drop.name, drop.location, drop.uid, drop.type]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(query))
-    );
+    const list = Array.isArray(wireDrops) ? [...wireDrops] : [];
+    const query = (wireDropQuery || '').trim().toLowerCase();
+
+    const matchesQuery = (drop) => {
+      if (!query) return true;
+      const values = [
+        drop.project_room?.name,
+        drop.room_name,
+        drop.drop_name,
+        drop.name,
+        drop.location,
+        drop.uid,
+        drop.type
+      ];
+      return values
+        .filter((value) => value !== null && value !== undefined)
+        .some((value) => String(value).toLowerCase().includes(query));
+    };
+
+    const filtered = list.filter(matchesQuery);
+
+    const getRoomKey = (drop) =>
+      (drop.project_room?.name || drop.room_name || '').toLowerCase();
+    const getDropKey = (drop) =>
+      (drop.drop_name || drop.name || '').toLowerCase();
+
+    return filtered.sort((a, b) => {
+      const roomA = getRoomKey(a);
+      const roomB = getRoomKey(b);
+      if (roomA && roomB && roomA !== roomB) {
+        return roomA.localeCompare(roomB);
+      }
+      if (roomA && !roomB) return -1;
+      if (!roomA && roomB) return 1;
+      const dropA = getDropKey(a);
+      const dropB = getDropKey(b);
+      if (dropA && dropB && dropA !== dropB) {
+        return dropA.localeCompare(dropB);
+      }
+      if (dropA && !dropB) return -1;
+      if (!dropA && dropB) return 1;
+      return 0;
+    });
   }, [wireDrops, wireDropQuery]);
 
   const openTodos = useMemo(
@@ -602,7 +714,7 @@ const ProjectDetailView = () => {
               )}
               {person.address && (
                 <div className="flex items-center gap-2">
-                  <Map size={14} style={styles.textSecondary} />
+                  <MapIcon size={14} style={styles.textSecondary} />
                   <button
                     onClick={(e) => { e.stopPropagation(); onContactAction?.('address', person.address); }}
                     className="hover:underline text-left"
@@ -1327,6 +1439,8 @@ const ProjectDetailView = () => {
             <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
             <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
             <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
+            <ProgressBar label="Ordered" percentage={projectProgress.ordered || 0} />
+            <ProgressBar label="Onsite" percentage={projectProgress.onsite || 0} />
           </div>
         </div>
 
@@ -1413,10 +1527,18 @@ const ProjectDetailView = () => {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium" style={styles.textPrimary}>
-                            {drop.room_name || drop.name || 'Wire drop'}
-                            {drop.drop_name && ` - ${drop.drop_name}`}
+                            {drop.project_room?.name || drop.room_name || 'Unassigned room'}
                           </p>
-                          <p className="text-xs" style={styles.textSecondary}>{drop.location}</p>
+                          {(drop.drop_name || drop.name) && (
+                            <p className="text-sm font-medium" style={styles.textSecondary}>
+                              {drop.drop_name || drop.name}
+                            </p>
+                          )}
+                          {drop.location && (
+                            <p className="text-xs" style={styles.subtleText}>
+                              {drop.location}
+                            </p>
+                          )}
                         </div>
                         <span className="text-xs px-2 py-1 rounded-full" style={styles.badge}>
                           {drop.uid || '—'}

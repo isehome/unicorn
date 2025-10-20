@@ -157,57 +157,134 @@ export const extractShapes = (documentData) => {
   }
 
   const shapes = [];
-  
-  documentData.pages.forEach(page => {
-    // Handle both old and new API structure
-    const shapesList = page.shapes || page.items?.shapes || [];
-    
-    if (Array.isArray(shapesList)) {
-      shapesList.forEach(shape => {
-        // Extract text from textAreas if present
-        let text = '';
-        if (shape.textAreas && Array.isArray(shape.textAreas)) {
-          text = shape.textAreas
-            .map(ta => ta.text)
-            .filter(Boolean)
-            .join(' ');
-        } else if (shape.text) {
-          text = shape.text;
+  const shapeIndex = new Map();
+
+  const normalizeCustomEntryValue = (entry) => {
+    if (!entry) return '';
+    if (entry.value !== undefined) return entry.value;
+    if (Array.isArray(entry.values)) {
+      return entry.values.map((v) => normalizeCustomEntryValue(v)).filter(Boolean).join(', ');
+    }
+    if (entry.text !== undefined) return entry.text;
+    if (entry.displayValue !== undefined) return entry.displayValue;
+    if (typeof entry === 'object') return JSON.stringify(entry);
+    return entry;
+  };
+
+  const toCustomDataObject = (source) => {
+    if (!source) return {};
+    if (Array.isArray(source)) {
+      const result = {};
+      source.forEach((item) => {
+        if (item && item.key) {
+          result[item.key] = normalizeCustomEntryValue(item);
         }
-        
-        // Convert customData array to object if needed
-        let customDataObj = {};
-        if (Array.isArray(shape.customData)) {
-          shape.customData.forEach(item => {
-            if (item.key && item.value !== undefined) {
-              customDataObj[item.key] = item.value;
-            }
-          });
-        } else if (shape.customData && typeof shape.customData === 'object') {
-          customDataObj = shape.customData;
-        }
-        
-        shapes.push({
-          id: shape.id,
-          pageId: page.id,
-          pageTitle: page.title,
-          class: shape.class,
-          text: text,
-          textAreas: shape.textAreas || [],
-          boundingBox: shape.boundingBox || {},
-          customData: customDataObj,
-          rawCustomData: shape.customData, // Keep original format for reference
-          // Additional metadata for wire drop matching
-          position: {
-            x: shape.boundingBox?.x || 0,
-            y: shape.boundingBox?.y || 0
-          },
-          size: {
-            width: shape.boundingBox?.w || 0,
-            height: shape.boundingBox?.h || 0
-          }
-        });
       });
+      return result;
+    }
+    if (typeof source === 'object') {
+      return source;
+    }
+    return {};
+  };
+
+  const extractText = (shape) => {
+    if (!shape) return '';
+    if (shape.textAreas && Array.isArray(shape.textAreas)) {
+      return shape.textAreas
+        .map((ta) => ta?.text)
+        .filter(Boolean)
+        .join(' ');
+    }
+    return shape.text || shape.name || shape.title || '';
+  };
+
+  const recordShape = (shape, page, context = {}) => {
+    if (!shape || !shape.id) return;
+
+    const customDataObj = toCustomDataObject(shape.customData);
+    const normalized = {
+      id: shape.id,
+      pageId: page.id,
+      pageTitle: page.title,
+      class: shape.class || shape.type || null,
+      type: shape.type || null,
+      text: extractText(shape),
+      textAreas: shape.textAreas || [],
+      boundingBox: shape.boundingBox || {},
+      customData: customDataObj,
+      rawCustomData: shape.customData,
+      position: shape.position,
+      size: shape.size,
+      lineSource: shape.lineSource,
+      lineTarget: shape.lineTarget,
+      data: shape.data || {},
+      isGroup: shape.type === 'group' || shape.class === 'group',
+      groupId: context.parentGroupId || null,
+      groupName: context.parentGroupName || null
+    };
+
+    if (shapeIndex.has(shape.id)) {
+      const existingIndex = shapeIndex.get(shape.id);
+      const existingShape = shapes[existingIndex];
+      shapes[existingIndex] = {
+        ...existingShape,
+        ...normalized,
+        customData: {
+          ...existingShape.customData,
+          ...normalized.customData
+        },
+        groupId: existingShape.groupId || normalized.groupId,
+        groupName: existingShape.groupName || normalized.groupName
+      };
+    } else {
+      shapeIndex.set(shape.id, shapes.length);
+      shapes.push(normalized);
+    }
+  };
+
+  const traverseItems = (items, page, context = {}) => {
+    if (!items) return;
+
+    if (Array.isArray(items)) {
+      items.forEach((item) => {
+        recordShape(item, page, context);
+
+        const childContext = {
+          parentGroupId: item?.id || context.parentGroupId || null,
+          parentGroupName: extractText(item) || context.parentGroupName || null
+        };
+
+        traverseItems(item?.items, page, childContext);
+        if (Array.isArray(item?.shapes)) {
+          traverseItems(item.shapes, page, childContext);
+        }
+        if (Array.isArray(item?.groups)) {
+          traverseItems(item.groups, page, childContext);
+        }
+        if (Array.isArray(item?.children)) {
+          traverseItems(item.children, page, childContext);
+        }
+      });
+      return;
+    }
+
+    const processList = (list) => {
+      if (!Array.isArray(list)) return;
+      traverseItems(list, page, context);
+    };
+
+    processList(items.shapes);
+    processList(items.groups);
+  };
+
+  documentData.pages.forEach((page) => {
+    if (page.shapes || page.groups) {
+      traverseItems({ shapes: page.shapes || [], groups: page.groups || [] }, page);
+    }
+
+    if (page.items) {
+      traverseItems(page.items, page);
     }
   });
 

@@ -6,8 +6,10 @@ import { useAuth } from '../contexts/AuthContext';
 import wireDropService from '../services/wireDropService';
 import unifiService from '../services/unifiService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
+import { projectRoomsService } from '../services/projectRoomsService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
+import CachedSharePointImage from './CachedSharePointImage';
 import { 
   Camera, 
   Upload, 
@@ -50,11 +52,13 @@ const WireDropDetailEnhanced = () => {
   
   // Equipment states
   const [projectEquipment, setProjectEquipment] = useState([]);
+  const [projectRooms, setProjectRooms] = useState([]);
   const [roomEquipmentSelection, setRoomEquipmentSelection] = useState([]);
   const [headEquipmentSelection, setHeadEquipmentSelection] = useState([]);
   const [equipmentLoading, setEquipmentLoading] = useState(false);
   const [equipmentError, setEquipmentError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showFullRecord, setShowFullRecord] = useState(false);
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
@@ -151,6 +155,19 @@ const WireDropDetailEnhanced = () => {
     []
   );
 
+  const loadProjectRooms = useCallback(
+    async (projectId) => {
+      if (!projectId) return;
+      try {
+        const rooms = await projectRoomsService.fetchRoomsWithAliases(projectId);
+        setProjectRooms(rooms || []);
+      } catch (err) {
+        console.error('Failed to load project rooms:', err);
+      }
+    },
+    []
+  );
+
   const loadSwitches = useCallback(async (projectId) => {
     if (!projectId) return;
 
@@ -212,8 +229,9 @@ const WireDropDetailEnhanced = () => {
     if (wireDrop?.project_id) {
       loadProjectEquipmentOptions(wireDrop.project_id);
       loadSwitches(wireDrop.project_id);
+      loadProjectRooms(wireDrop.project_id);
     }
-  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches]);
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms]);
 
   const handleSave = async () => {
     try {
@@ -357,48 +375,154 @@ const WireDropDetailEnhanced = () => {
     });
   };
 
-  const dropRoomNormalized = useMemo(() => {
-    if (wireDrop?.project_room?.name) {
-      return normalizeRoomName(wireDrop.project_room.name);
+  const roomsById = useMemo(() => {
+    const map = new Map();
+    projectRooms.forEach((room) => {
+      if (room?.id) {
+        map.set(room.id, room);
+      }
+    });
+    return map;
+  }, [projectRooms]);
+
+  const aliasLookup = useMemo(() => {
+    const map = new Map();
+    projectRooms.forEach((room) => {
+      if (!room) return;
+
+      const normalizedName = normalizeRoomName(room.name);
+      if (normalizedName && !map.has(normalizedName)) {
+        map.set(normalizedName, room);
+      }
+
+      if (room.normalized_name && !map.has(room.normalized_name)) {
+        map.set(room.normalized_name, room);
+      }
+
+      (room.project_room_aliases || []).forEach((alias) => {
+        const aliasValue = alias?.alias || alias?.normalized_alias;
+        const normalizedAlias = normalizeRoomName(aliasValue);
+        if (normalizedAlias && !map.has(normalizedAlias)) {
+          map.set(normalizedAlias, room);
+        }
+        if (alias?.normalized_alias && !map.has(alias.normalized_alias)) {
+          map.set(alias.normalized_alias, room);
+        }
+      });
+    });
+    return map;
+  }, [projectRooms]);
+
+  const resolvedDropRoom = useMemo(() => {
+    if (!wireDrop) return null;
+
+    if (wireDrop.project_room_id && roomsById.has(wireDrop.project_room_id)) {
+      return roomsById.get(wireDrop.project_room_id);
     }
-    return normalizeRoomName(wireDrop?.room_name);
-  }, [wireDrop?.project_room?.name, wireDrop?.room_name]);
+
+    if (wireDrop.project_room?.id && roomsById.has(wireDrop.project_room.id)) {
+      return roomsById.get(wireDrop.project_room.id);
+    }
+
+    const candidateNames = [
+      wireDrop.room_name,
+      wireDrop.location,
+      wireDrop.wire_drop_room_end?.room_name,
+      wireDrop.wire_drop_head_end?.room_name
+    ].filter(Boolean);
+
+    for (const name of candidateNames) {
+      const normalized = normalizeRoomName(name);
+      if (!normalized) continue;
+      const matchedRoom = aliasLookup.get(normalized);
+      if (matchedRoom) {
+        return matchedRoom;
+      }
+    }
+
+    return null;
+  }, [wireDrop, roomsById, aliasLookup]);
+
+  const doesEquipmentMatchRoom = useCallback(
+    (equipment, room) => {
+      if (!equipment || !room) return false;
+
+      if (equipment.room_id && equipment.room_id === room.id) return true;
+      if (equipment.project_rooms?.id && equipment.project_rooms.id === room.id) return true;
+
+      const candidateNames = [
+        equipment.project_rooms?.name,
+        equipment.room_name,
+        equipment.location
+      ].filter(Boolean);
+
+      for (const name of candidateNames) {
+        const normalized = normalizeRoomName(name);
+        if (!normalized) continue;
+        const matchedRoom = aliasLookup.get(normalized);
+        if (matchedRoom?.id === room.id) return true;
+      }
+
+      return false;
+    },
+    [aliasLookup]
+  );
+
+  const selectableEquipment = useMemo(
+    () =>
+      projectEquipment.filter(
+        (item) => item.global_part?.is_wire_drop_visible !== false
+      ),
+    [projectEquipment]
+  );
 
   const nonHeadEquipment = useMemo(
-    () => projectEquipment.filter((item) => !item.project_rooms?.is_headend),
-    [projectEquipment]
+    () => selectableEquipment.filter((item) => !item.project_rooms?.is_headend),
+    [selectableEquipment]
   );
 
-  const matchingRoomEquipment = useMemo(
-    () =>
-      nonHeadEquipment.filter((item) => {
-        if (wireDrop?.project_room_id) {
-          return item.project_rooms?.id === wireDrop.project_room_id;
-        }
-        return normalizeRoomName(item.project_rooms?.name) === dropRoomNormalized;
-      }),
-    [nonHeadEquipment, wireDrop?.project_room_id, dropRoomNormalized]
-  );
+  const roomEquipmentBuckets = useMemo(() => {
+    const buckets = {
+      matches: [],
+      matchesSelected: [],
+      others: []
+    };
 
-  const otherRoomEquipment = useMemo(
-    () =>
-      nonHeadEquipment.filter((item) => {
-        if (wireDrop?.project_room_id) {
-          return item.project_rooms?.id !== wireDrop.project_room_id;
+    const selectedSet = new Set(roomEquipmentSelection);
+
+    const sorter = (a, b) => (a.name || '').localeCompare(b.name || '');
+
+    nonHeadEquipment.forEach((item) => {
+      if (resolvedDropRoom && doesEquipmentMatchRoom(item, resolvedDropRoom)) {
+        if (selectedSet.has(item.id)) {
+          buckets.matchesSelected.push(item);
+        } else {
+          buckets.matches.push(item);
         }
-        return normalizeRoomName(item.project_rooms?.name) !== dropRoomNormalized;
-      }),
-    [nonHeadEquipment, wireDrop?.project_room_id, dropRoomNormalized]
-  );
+      } else {
+        buckets.others.push(item);
+      }
+    });
+
+    buckets.matches.sort(sorter);
+    buckets.matchesSelected.sort(sorter);
+    buckets.others.sort(sorter);
+
+    return buckets;
+  }, [nonHeadEquipment, resolvedDropRoom, doesEquipmentMatchRoom, roomEquipmentSelection]);
+
+  const matchingRoomEquipment = roomEquipmentBuckets.matches;
+  const usedRoomEquipment = roomEquipmentBuckets.matchesSelected;
+  const otherRoomEquipment = roomEquipmentBuckets.others;
 
   const headEndEquipmentOptions = useMemo(
-    () => projectEquipment.filter((item) => item.project_rooms?.is_headend),
-    [projectEquipment]
+    () => selectableEquipment.filter((item) => item.project_rooms?.is_headend),
+    [selectableEquipment]
   );
 
   const otherHeadEquipment = useMemo(
-    () => projectEquipment.filter((item) => !item.project_rooms?.is_headend),
-    [projectEquipment]
+    () => selectableEquipment.filter((item) => !item.project_rooms?.is_headend),
+    [selectableEquipment]
   );
 
   const selectedRoomEquipmentDetails = useMemo(
@@ -420,13 +544,18 @@ const WireDropDetailEnhanced = () => {
   const getEquipmentCardClasses = useCallback(
     (selected, variant) => {
       const base = 'cursor-pointer rounded-lg border p-3 transition-all text-sm shadow-sm';
+
+      if (variant === 'matchUsed') {
+        return `${base} border-gray-300 bg-gray-100 text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300`;
+      }
+
       const variants = {
         match: selected
           ? 'border-green-500 bg-green-50 dark:border-green-400 dark:bg-green-900/30'
-          : 'border-green-200 bg-white dark:border-green-700/40 dark:bg-gray-900',
+          : 'border-green-200 bg-green-50 dark:border-green-700/40 dark:bg-green-900/20',
         other: selected
           ? 'border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-900/30'
-          : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900',
+          : 'border-purple-300 bg-purple-50 dark:border-purple-500/50 dark:bg-purple-900/20',
         head: selected
           ? 'border-purple-500 bg-purple-50 dark:border-purple-400 dark:bg-purple-900/30'
           : 'border-purple-200 bg-white dark:border-purple-700/40 dark:bg-gray-900',
@@ -459,8 +588,14 @@ const WireDropDetailEnhanced = () => {
           <div
             className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full border ${
               isSelected
-                ? 'border-transparent bg-green-500 text-white'
-                : 'border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-800'
+                ? variant === 'matchUsed'
+                  ? 'border-transparent bg-gray-400 text-white'
+                  : variant === 'other' || variant === 'head'
+                    ? 'border-transparent bg-purple-500 text-white'
+                    : 'border-transparent bg-green-500 text-white'
+                : variant === 'other' || variant === 'head'
+                  ? 'border-purple-200 bg-white text-purple-400 dark:border-purple-500/60 dark:bg-gray-900 dark:text-purple-300'
+                  : 'border-gray-300 bg-white text-gray-400 dark:border-gray-600 dark:bg-gray-800'
             }`}
           >
             {isSelected ? <CheckCircle className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
@@ -748,135 +883,6 @@ const WireDropDetailEnhanced = () => {
                   </div>
                 </div>
 
-                {/* Complete Wire Drop Record */}
-                <div className="mb-4">
-                  <h3 className="text-xs font-semibold mb-3" style={styles.textPrimary}>
-                    COMPLETE WIRE DROP RECORD (All Database Fields)
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Define all wire drop fields with metadata */}
-                    {(() => {
-                      const allFields = [
-                        // System/Locked Fields
-                        { name: 'Record ID', key: 'id', value: wireDrop.id, locked: true, source: 'system' },
-                        { name: 'Project ID', key: 'project_id', value: wireDrop.project_id, locked: true, source: 'system' },
-                        { name: 'Created At', key: 'created_at', value: wireDrop.created_at ? new Date(wireDrop.created_at).toLocaleDateString() : null, locked: true, source: 'system' },
-                        { name: 'Updated At', key: 'updated_at', value: wireDrop.updated_at ? new Date(wireDrop.updated_at).toLocaleDateString() : null, locked: true, source: 'system' },
-                        
-                        // Generated Fields
-                        { name: 'UID', key: 'uid', value: wireDrop.uid, locked: true, source: 'generated', description: 'Auto-generated from room & drop names' },
-                        
-                        // Lucid Association Fields (locked)
-                        { name: 'Lucid Shape ID', key: 'lucid_shape_id', value: wireDrop.lucid_shape_id, locked: true, source: 'lucid_link', description: 'Links to Lucid shape' },
-                        { name: 'Lucid Page ID', key: 'lucid_page_id', value: wireDrop.lucid_page_id, locked: true, source: 'lucid_link', description: 'Lucid page/floor reference' },
-                        
-                        // Lucid Position Data (locked)
-                        { name: 'Shape X', key: 'shape_x', value: wireDrop.shape_x, locked: true, source: 'lucid_position' },
-                        { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
-                        { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
-                        { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
-                        
-                        // Editable Core Fields (may originate from Lucid but can be edited)
-                        { name: 'Wire Type', key: 'type', value: wireDrop.type, editable: true, source: wireDrop.shape_data?.['Wire Type'] ? 'lucid' : 'manual' },
-                        { name: 'Room Name', key: 'room_name', value: wireDrop.project_room?.name || wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
-                        { name: 'Drop Name', key: 'drop_name', value: wireDrop.drop_name, editable: true, source: wireDrop.shape_data?.['Drop Name'] ? 'lucid' : 'manual' },
-                        { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
-                        { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.shape_data?.Location ? 'lucid' : 'manual' },
-                        { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.shape_data?.Floor ? 'lucid' : 'manual' },
-                        { name: 'Notes', key: 'notes', value: wireDrop.notes, editable: true, source: 'manual' },
-                        
-                        // Additional fields that might exist
-                        { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.shape_data?.Device ? 'lucid' : 'manual' },
-                        { name: 'QR Code URL', key: 'qr_code_url', value: wireDrop.qr_code_url, editable: true, source: 'manual' },
-                        { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.shape_data?.['IS Drop'] ? 'lucid' : 'manual' },
-                        { name: 'Schematic Reference', key: 'schematic_reference', value: wireDrop.schematic_reference, editable: true, source: 'manual' },
-                        
-                        // Legacy photo fields (from original schema)
-                        { name: 'Prewire Photo (Legacy)', key: 'prewire_photo', value: wireDrop.prewire_photo, locked: true, source: 'legacy', description: 'Old photo system' },
-                        { name: 'Installed Photo (Legacy)', key: 'installed_photo', value: wireDrop.installed_photo, locked: true, source: 'legacy', description: 'Old photo system' },
-                      ];
-
-                      const getFieldStyle = (field) => {
-                        // Determine color based on source
-                        if (field.source === 'lucid' || field.source === 'lucid_link' || field.source === 'lucid_position') {
-                          // Green for Lucid-sourced data
-                          return {
-                            borderColor: mode === 'dark' ? '#16a34a' : '#86efac',
-                            backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(134, 239, 172, 0.2)',
-                            labelColor: mode === 'dark' ? '#86efac' : '#15803d',
-                            valueColor: mode === 'dark' ? '#bbf7d0' : '#166534'
-                          };
-                        } else {
-                          // Purple for database/manual fields
-                          return {
-                            borderColor: mode === 'dark' ? '#9333ea' : '#c084fc',
-                            backgroundColor: mode === 'dark' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(192, 132, 252, 0.2)',
-                            labelColor: mode === 'dark' ? '#c084fc' : '#7c3aed',
-                            valueColor: mode === 'dark' ? '#e9d5ff' : '#6b21a8'
-                          };
-                        }
-                      };
-
-                      return allFields.map((field) => {
-                        // Skip null/undefined values unless it's a boolean field
-                        if (field.value === null || field.value === undefined) {
-                          if (field.key !== 'is_drop') return null;
-                        }
-                        
-                        const style = getFieldStyle(field);
-                        
-                        return (
-                          <div 
-                            key={field.key} 
-                            className="px-3 py-2 rounded-lg border-2 relative"
-                            style={{
-                              borderColor: style.borderColor,
-                              backgroundColor: style.backgroundColor
-                            }}
-                            title={field.description || ''}
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <span className="text-xs font-medium" style={{ color: style.labelColor }}>
-                                  {field.name}:
-                                </span>
-                                <p className="text-sm font-semibold break-all" style={{ color: style.valueColor }}>
-                                  {field.value || '(empty)'}
-                                </p>
-                                {field.source && (
-                                  <span className="text-xs opacity-60" style={{ color: style.labelColor }}>
-                                    Source: {field.source}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="ml-2 flex-shrink-0">
-                                {field.locked ? (
-                                  <Lock size={12} className="text-gray-500" title="System/Locked Field" />
-                                ) : field.editable ? (
-                                  <Edit size={12} className="text-blue-500" title="Editable Field" />
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }).filter(Boolean);
-                    })()}
-                  </div>
-                </div>
-
-                {/* Raw Lucid Shape Data */}
-                {wireDrop.shape_data && Object.keys(wireDrop.shape_data).length > 0 && (
-                  <div className="mb-4">
-                    <h3 className="text-xs font-semibold mb-3 text-green-600 dark:text-green-400">
-                      RAW LUCID SHAPE DATA (shape_data JSONB field)
-                    </h3>
-                    <div className="p-3 rounded-lg border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">
-                      <pre className="text-xs overflow-x-auto text-green-900 dark:text-green-100">
-                        {JSON.stringify(wireDrop.shape_data, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -955,10 +961,12 @@ const WireDropDetailEnhanced = () => {
                     ) : (
                       <>
                         <div className="relative group">
-                          <img 
-                            src={prewireStage.photo_url} 
-                            alt="Prewire" 
-                            className="w-full h-48 object-cover rounded-lg"
+                          <CachedSharePointImage
+                            sharePointUrl={prewireStage.photo_url}
+                            displayType="thumbnail"
+                            size="medium"
+                            alt="Prewire"
+                            className="w-full h-48 rounded-lg"
                           />
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
                             <Button 
@@ -1052,10 +1060,12 @@ const WireDropDetailEnhanced = () => {
                     ) : (
                       <>
                         <div className="relative group">
-                          <img 
-                            src={trimOutStage.photo_url} 
-                            alt="Trim Out" 
-                            className="w-full h-48 object-cover rounded-lg"
+                          <CachedSharePointImage
+                            sharePointUrl={trimOutStage.photo_url}
+                            displayType="thumbnail"
+                            size="medium"
+                            alt="Trim Out"
+                            className="w-full h-48 rounded-lg"
                           />
                           <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
                             <Button 
@@ -1254,25 +1264,42 @@ const WireDropDetailEnhanced = () => {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
                       <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        Equipment in {wireDrop.project_room?.name || wireDrop.room_name || 'this room'}
+                        Equipment in {resolvedDropRoom?.name || wireDrop.project_room?.name || wireDrop.room_name || 'this room'}
                       </h4>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Items imported for this room appear first and are highlighted in green.
                       </p>
                       <div className="space-y-2">
-                        {matchingRoomEquipment.length === 0 ? (
+                        {matchingRoomEquipment.length === 0 && usedRoomEquipment.length === 0 ? (
                           <p className="text-xs text-gray-500 dark:text-gray-400">
                             No equipment imported for this room yet.
                           </p>
                         ) : (
-                          matchingRoomEquipment.map((item) =>
-                            renderEquipmentCard(
-                              item,
-                              'match',
-                              roomEquipmentSelection.includes(item.id),
-                              toggleRoomEquipment
-                            )
-                          )
+                          <>
+                            {matchingRoomEquipment.map((item) =>
+                              renderEquipmentCard(
+                                item,
+                                'match',
+                                roomEquipmentSelection.includes(item.id),
+                                toggleRoomEquipment
+                              )
+                            )}
+                            {usedRoomEquipment.length > 0 && (
+                              <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700/60">
+                                <p className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                  Already linked to this wire drop
+                                </p>
+                                {usedRoomEquipment.map((item) =>
+                                  renderEquipmentCard(
+                                    item,
+                                    'matchUsed',
+                                    true,
+                                    toggleRoomEquipment
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -1543,6 +1570,140 @@ const WireDropDetailEnhanced = () => {
             </div>
           </div>
         )}
+
+        {/* Complete Wire Drop Record */}
+        <div className="rounded-2xl overflow-hidden mt-6" style={styles.card}>
+          <div
+            className="flex items-center justify-between gap-3 p-4 border-b"
+            style={{ borderColor: styles.card.borderColor }}
+          >
+            <div>
+              <h3 className="text-sm font-semibold" style={styles.textPrimary}>
+                COMPLETE WIRE DROP RECORD (All Database Fields)
+              </h3>
+              <p className="text-xs" style={styles.subtleText}>
+                View every stored field plus raw Lucid shape data.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowFullRecord((prev) => !prev)}
+            >
+              {showFullRecord ? 'Hide Details' : 'Show Details'}
+            </Button>
+          </div>
+
+          {showFullRecord && (
+            <div className="p-4 space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                {(() => {
+                  const allFields = [
+                    { name: 'Record ID', key: 'id', value: wireDrop.id, locked: true, source: 'system' },
+                    { name: 'Project ID', key: 'project_id', value: wireDrop.project_id, locked: true, source: 'system' },
+                    { name: 'Created At', key: 'created_at', value: wireDrop.created_at ? new Date(wireDrop.created_at).toLocaleDateString() : null, locked: true, source: 'system' },
+                    { name: 'Updated At', key: 'updated_at', value: wireDrop.updated_at ? new Date(wireDrop.updated_at).toLocaleDateString() : null, locked: true, source: 'system' },
+                    { name: 'UID', key: 'uid', value: wireDrop.uid, locked: true, source: 'generated', description: 'Auto-generated from room & drop names' },
+                    { name: 'Lucid Shape ID', key: 'lucid_shape_id', value: wireDrop.lucid_shape_id, locked: true, source: 'lucid_link', description: 'Links to Lucid shape' },
+                    { name: 'Lucid Page ID', key: 'lucid_page_id', value: wireDrop.lucid_page_id, locked: true, source: 'lucid_link', description: 'Lucid page/floor reference' },
+                    { name: 'Shape X', key: 'shape_x', value: wireDrop.shape_x, locked: true, source: 'lucid_position' },
+                    { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
+                    { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
+                    { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
+                    { name: 'Wire Type', key: 'type', value: wireDrop.type, editable: true, source: wireDrop.shape_data?.['Wire Type'] ? 'lucid' : 'manual' },
+                    { name: 'Room Name', key: 'room_name', value: wireDrop.project_room?.name || wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
+                    { name: 'Drop Name', key: 'drop_name', value: wireDrop.drop_name, editable: true, source: wireDrop.shape_data?.['Drop Name'] ? 'lucid' : 'manual' },
+                    { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
+                    { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.shape_data?.Location ? 'lucid' : 'manual' },
+                    { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.shape_data?.Floor ? 'lucid' : 'manual' },
+                    { name: 'Notes', key: 'notes', value: wireDrop.notes, editable: true, source: 'manual' },
+                    { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.shape_data?.Device ? 'lucid' : 'manual' },
+                    { name: 'QR Code URL', key: 'qr_code_url', value: wireDrop.qr_code_url, editable: true, source: 'manual' },
+                    { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.shape_data?.['IS Drop'] ? 'lucid' : 'manual' },
+                    { name: 'Schematic Reference', key: 'schematic_reference', value: wireDrop.schematic_reference, editable: true, source: 'manual' },
+                    { name: 'Prewire Photo (Legacy)', key: 'prewire_photo', value: wireDrop.prewire_photo, locked: true, source: 'legacy', description: 'Old photo system' },
+                    { name: 'Installed Photo (Legacy)', key: 'installed_photo', value: wireDrop.installed_photo, locked: true, source: 'legacy', description: 'Old photo system' }
+                  ];
+
+                  const getFieldStyle = (field) => {
+                    if (field.source === 'lucid' || field.source === 'lucid_link' || field.source === 'lucid_position') {
+                      return {
+                        borderColor: mode === 'dark' ? '#16a34a' : '#86efac',
+                        backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(134, 239, 172, 0.2)',
+                        labelColor: mode === 'dark' ? '#86efac' : '#15803d',
+                        valueColor: mode === 'dark' ? '#bbf7d0' : '#166534'
+                      };
+                    }
+                    return {
+                      borderColor: mode === 'dark' ? '#9333ea' : '#c084fc',
+                      backgroundColor: mode === 'dark' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(192, 132, 252, 0.2)',
+                      labelColor: mode === 'dark' ? '#c084fc' : '#7c3aed',
+                      valueColor: mode === 'dark' ? '#e9d5ff' : '#6b21a8'
+                    };
+                  };
+
+                  return allFields
+                    .map((field) => {
+                      if (field.value === null || field.value === undefined) {
+                        if (field.key !== 'is_drop') return null;
+                      }
+
+                      const style = getFieldStyle(field);
+
+                      return (
+                        <div
+                          key={field.key}
+                          className="px-3 py-2 rounded-lg border-2 relative"
+                          style={{
+                            borderColor: style.borderColor,
+                            backgroundColor: style.backgroundColor
+                          }}
+                          title={field.description || ''}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <span className="text-xs font-medium" style={{ color: style.labelColor }}>
+                                {field.name}:
+                              </span>
+                              <p className="text-sm font-semibold break-all" style={{ color: style.valueColor }}>
+                                {field.value || '(empty)'}
+                              </p>
+                              {field.source && (
+                                <span className="text-xs opacity-60" style={{ color: style.labelColor }}>
+                                  Source: {field.source}
+                                </span>
+                              )}
+                            </div>
+                            <div className="ml-2 flex-shrink-0">
+                              {field.locked ? (
+                                <Lock size={12} className="text-gray-500" title="System/Locked Field" />
+                              ) : field.editable ? (
+                                <Edit size={12} className="text-blue-500" title="Editable Field" />
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                    .filter(Boolean);
+                })()}
+              </div>
+
+              {wireDrop.shape_data && Object.keys(wireDrop.shape_data).length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold mb-2 text-green-600 dark:text-green-400">
+                    RAW LUCID SHAPE DATA (shape_data JSONB field)
+                  </h4>
+                  <div className="p-3 rounded-lg border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">
+                    <pre className="text-xs overflow-x-auto text-green-900 dark:text-green-100">
+                      {JSON.stringify(wireDrop.shape_data, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (

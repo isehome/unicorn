@@ -36,7 +36,15 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  const { endpoint, action, siteId, controllerUrl } = req.method === 'POST' ? req.body : req.query;
+  const {
+    endpoint,
+    action,
+    siteId,
+    controllerUrl,
+    method = 'GET',
+    body: upstreamBody,
+    headers: upstreamHeaders
+  } = req.method === 'POST' ? req.body : req.query;
 
   if (!endpoint) {
     return res.status(400).json({ error: 'Endpoint is required' });
@@ -53,16 +61,28 @@ module.exports = async function handler(req, res) {
   try {
     let url = `${baseUrl}${endpoint}`;
     
-    console.log('Calling UniFi API:', url);
+    console.log('Calling UniFi API:', url, 'method:', method);
 
-    const response = await fetch(url, {
-      method: 'GET',
+    const fetchOptions = {
+      method: method?.toUpperCase() || 'GET',
       headers: {
         'X-API-KEY': apiKey,
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...(upstreamHeaders || {})
       }
-    });
+    };
+
+    if (fetchOptions.method === 'GET') {
+      // Remove content-type for GET to avoid potential issues
+      delete fetchOptions.headers['Content-Type'];
+    } else if (upstreamBody !== undefined && upstreamBody !== null) {
+      fetchOptions.body = typeof upstreamBody === 'string'
+        ? upstreamBody
+        : JSON.stringify(upstreamBody);
+    }
+
+    const response = await fetch(url, fetchOptions);
 
     if (!response.ok) {
       const errorText = await response.text();

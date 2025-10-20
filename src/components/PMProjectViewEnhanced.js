@@ -58,30 +58,96 @@ const ProgressBar = ({ label, percentage }) => {
   );
 };
 
+const normalizeFieldKey = (value) =>
+  typeof value === 'string'
+    ? value
+        .toLowerCase()
+        .replace(/[_\s-]+/g, '')
+        .trim()
+    : '';
+
+const extractFieldValue = (raw) => {
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean') {
+    return raw;
+  }
+
+  if (Array.isArray(raw)) {
+    return raw
+      .map(extractFieldValue)
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  if (typeof raw === 'object') {
+    if ('value' in raw) return extractFieldValue(raw.value);
+    if ('text' in raw) return extractFieldValue(raw.text);
+    if ('displayValue' in raw) return extractFieldValue(raw.displayValue);
+    if ('values' in raw) return extractFieldValue(raw.values);
+  }
+
+  return '';
+};
+
 const getShapeCustomValue = (shape, key) => {
-  const customData = shape?.customData || shape?.data || {};
-  const target = key.toLowerCase();
-  for (const dataKey in customData) {
-    if (!Object.prototype.hasOwnProperty.call(customData, dataKey)) continue;
-    const value = customData[dataKey];
-    if (typeof dataKey === 'string' && dataKey.toLowerCase().trim() === target) {
-      return value;
+  if (!shape) return '';
+
+  const target = normalizeFieldKey(key);
+  if (!target) return '';
+
+  const candidateSources = [
+    shape.customData,
+    shape.rawCustomData,
+    shape.data,
+    shape.properties,
+    shape.metadata
+  ];
+
+  for (const source of candidateSources) {
+    if (!source || typeof source !== 'object') continue;
+
+    for (const dataKey in source) {
+      if (!Object.prototype.hasOwnProperty.call(source, dataKey)) continue;
+      const normalizedKey = normalizeFieldKey(dataKey);
+      if (!normalizedKey) continue;
+
+      if (normalizedKey === target) {
+        const value = extractFieldValue(source[dataKey]);
+        if (value !== '') return value;
+      }
     }
   }
-  return null;
+
+  return '';
 };
 
 const extractShapeRoomName = (shape) =>
-  getShapeCustomValue(shape, 'Room Name') || getShapeCustomValue(shape, 'Room') || '';
+  getShapeCustomValue(shape, 'Room Name') ||
+  getShapeCustomValue(shape, 'Room') ||
+  getShapeCustomValue(shape, 'RoomName') ||
+  getShapeCustomValue(shape, 'Drop Location') ||
+  '';
 
 const extractShapeLocation = (shape) =>
-  getShapeCustomValue(shape, 'Location') || '';
+  getShapeCustomValue(shape, 'Location') ||
+  getShapeCustomValue(shape, 'Drop Location') ||
+  '';
 
-const extractShapeType = (shape) =>
-  getShapeCustomValue(shape, 'Type') || getShapeCustomValue(shape, 'Wire Type') || 'CAT6';
+const extractShapeDropType = (shape) =>
+  getShapeCustomValue(shape, 'Drop Type') ||
+  getShapeCustomValue(shape, 'DropType') ||
+  getShapeCustomValue(shape, 'Type') ||
+  '';
+
+const extractShapeWireType = (shape) =>
+  getShapeCustomValue(shape, 'Wire Type') ||
+  getShapeCustomValue(shape, 'WireType') ||
+  getShapeCustomValue(shape, 'Cable Type') ||
+  getShapeCustomValue(shape, 'Cable') ||
+  '';
 
 const extractShapeFloor = (shape) =>
-  getShapeCustomValue(shape, 'Floor') || '';
+  getShapeCustomValue(shape, 'Floor') || getShapeCustomValue(shape, 'Level') || '';
 
 const extractShapeDevice = (shape) =>
   getShapeCustomValue(shape, 'Device') || '';
@@ -137,6 +203,9 @@ const PMProjectViewEnhanced = () => {
   const [existingWireDrops, setExistingWireDrops] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
   const [showLucidSection, setShowLucidSection] = useState(false);
+  const [lucidDataCollapsed, setLucidDataCollapsed] = useState(false);
+  const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(false);
+  const [equipmentCollapsed, setEquipmentCollapsed] = useState(false);
   
   // Client selection state
   const [showClientPicker, setShowClientPicker] = useState(false);
@@ -202,6 +271,11 @@ const PMProjectViewEnhanced = () => {
         isHeadEnd: room.is_headend
       })),
     [projectRooms]
+  );
+
+  const linkedDropCount = useMemo(
+    () => existingWireDrops.filter((wd) => wd.lucid_shape_id).length,
+    [existingWireDrops]
   );
 
   const suggestRoomMatch = useCallback(
@@ -978,26 +1052,18 @@ const PMProjectViewEnhanced = () => {
       const shapes = extractShapes(docData);
       
       // Filter shapes that have IS Drop = true (case-insensitive for both key and value)
-      const droppable = shapes.filter(shape => {
-        const customData = shape.customData || {};
-        
-        // Check for "IS Drop" key in various cases
-        let isDropValue = null;
-        for (const key in customData) {
-          if (key.toLowerCase().trim() === 'is drop') {
-            isDropValue = customData[key];
-            break;
-          }
-        }
-        
-        // Check if value is truthy (case-insensitive)
-        if (isDropValue === null || isDropValue === undefined) {
-          return false;
-        }
-        
+      const droppable = shapes.filter((shape) => {
+        const isDropValue = getShapeCustomValue(shape, 'IS Drop');
+        if (isDropValue === '') return false;
+
         const valueStr = String(isDropValue).toLowerCase().trim();
-        console.log('Shape:', shape.id, 'IS Drop value:', isDropValue, 'Type:', typeof isDropValue);
-        return valueStr === 'true' || valueStr === 'yes' || valueStr === '1' || isDropValue === true || isDropValue === 1;
+        return (
+          valueStr === 'true' ||
+          valueStr === 'yes' ||
+          valueStr === '1' ||
+          isDropValue === true ||
+          isDropValue === 1
+        );
       });
 
       setDroppableShapes(droppable);
@@ -1067,12 +1133,18 @@ const PMProjectViewEnhanced = () => {
           `Drop ${shape.id.substring(0, 8)}`;
         const roomNameRaw = extractShapeRoomName(shape);
         const location = extractShapeLocation(shape);
-        const type = extractShapeType(shape);
-        const floor = extractShapeFloor(shape);
-        const device = extractShapeDevice(shape);
+        const dropType = extractShapeDropType(shape);
+        const wireType = extractShapeWireType(shape) || 'CAT6';
+  const floor = extractShapeFloor(shape);
+  const device = extractShapeDevice(shape);
 
         const resolvedRoom = resolveRoomForName(roomNameRaw);
         const canonicalRoomName = resolvedRoom?.room?.name || roomNameRaw;
+        const locationValue =
+          canonicalRoomName ||
+          roomNameRaw ||
+          location ||
+          'Unassigned';
 
         if (resolvedRoom?.room) {
           const aliasNormalized = normalizeRoomName(roomNameRaw);
@@ -1096,6 +1168,10 @@ const PMProjectViewEnhanced = () => {
           position: shape.position,
           size: shape.size,
           customData: shape.customData || {},
+          locationOriginal: location || null,
+          locationResolved: locationValue,
+          dropType,
+          wireType,
           floor,
           device,
           matchedProjectRoomId: resolvedRoom?.room?.id || null,
@@ -1115,8 +1191,8 @@ const PMProjectViewEnhanced = () => {
               name: shapeName,
               room_name: canonicalRoomName,
               drop_name: shapeName,
-              location: location || canonicalRoomName,
-              type,
+              location: locationValue,
+              type: wireType,
               project_room_id: resolvedRoom?.room?.id || null,
               notes: notesContent,
               updated_at: new Date().toISOString()
@@ -1132,12 +1208,12 @@ const PMProjectViewEnhanced = () => {
           }
         } else {
           // Use the service to create wire drop properly with stages
-          const wireDropData = {
-            drop_name: shapeName,
-            room_name: canonicalRoomName,
-            location: location || canonicalRoomName,
-            type,
-            lucid_shape_id: shape.id,
+        const wireDropData = {
+          drop_name: shapeName,
+          room_name: canonicalRoomName,
+          location: locationValue,
+          type: wireType,
+          lucid_shape_id: shape.id,
             project_room_id: resolvedRoom?.room?.id || null,
             notes: notesContent
           };
@@ -2063,27 +2139,35 @@ const PMProjectViewEnhanced = () => {
                         />
                       </th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Shape Name</th>
-                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Location</th>
-                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
-                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Matched Room</th>
-                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
-                          <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Drop Type</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Wire Type</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Lucid ID</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {droppableShapes.map((shape) => {
                       const linked = isShapeLinked(shape.id);
-                          const wireDrop = getLinkedWireDrop(shape.id);
-                          const shapeName = shape.text || getShapeCustomValue(shape, 'Drop Name') || `Drop ${shape.id.substring(0, 8)}`;
-                          const roomName = extractShapeRoomName(shape);
-                          const location = extractShapeLocation(shape) || '-';
-                          const type = extractShapeType(shape);
-                          const resolvedRoom = resolveRoomForName(roomName);
+                      const wireDrop = getLinkedWireDrop(shape.id);
+                      const shapeName =
+                        shape.text ||
+                        getShapeCustomValue(shape, 'Drop Name') ||
+                        `Drop ${shape.id.substring(0, 8)}`;
+                      const roomName = extractShapeRoomName(shape);
+                      const resolvedRoom = resolveRoomForName(roomName);
+                      const canonicalRoomName = resolvedRoom?.room?.name || roomName || '—';
+                      const dropType = extractShapeDropType(shape) || 'Unspecified';
+                      const wireType = extractShapeWireType(shape) || 'Unspecified';
+                      const dbRoomName = wireDrop?.room_name || wireDrop?.location || null;
+                      const dbDropType = wireDrop?.drop_type || null;
+                      const dbWireType = wireDrop?.type || null;
 
-                          return (
-                            <tr
-                              key={shape.id}
-                              className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
+                      return (
+                        <tr
+                          key={shape.id}
+                          className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
                         >
                           <td className="px-4 py-3">
                             <input
@@ -2097,43 +2181,54 @@ const PMProjectViewEnhanced = () => {
                           <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
                             {shapeName}
                           </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                            {location}
+                          <td className="px-4 py-3">
+                            <div className="text-green-600 dark:text-green-400 text-sm">{canonicalRoomName}</div>
+                            {dbRoomName && (
+                              <div className="text-xs text-purple-500 dark:text-purple-300">
+                                Wire Drop: {dbRoomName}
+                              </div>
+                            )}
                           </td>
-                              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                                {type}
-                              </td>
-                              <td className="px-4 py-3">
-                                {resolvedRoom ? (
-                                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                                    resolvedRoom.matchedBy === 'alias'
-                                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                      : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                  }`}>
-                                    {resolvedRoom.room.name}
-                                    {resolvedRoom.matchedBy === 'alias' ? (
-                                      <span className="text-[10px] uppercase tracking-wide">alias</span>
-                                    ) : null}
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-xs">
-                                    Unmatched
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                                {shape.pageTitle || 'Page ' + (shape.pageId?.substring(0, 8) || '?')}
-                              </td>
+                          <td className="px-4 py-3">
+                            <div className="text-green-600 dark:text-green-400 text-sm">{dropType}</div>
+                            {dbDropType && (
+                              <div className="text-xs text-purple-500 dark:text-purple-300">
+                                Wire Drop: {dbDropType}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-green-600 dark:text-green-400 text-sm">{wireType}</div>
+                            {dbWireType && (
+                              <div className="text-xs text-purple-500 dark:text-purple-300">
+                                Wire Drop: {dbWireType}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-xs font-mono text-green-600 dark:text-green-400">{shape.id}</div>
+                            {wireDrop?.id && (
+                              <div className="text-[11px] font-mono text-purple-500 dark:text-purple-300 mt-1">
+                                Drop ID: {wireDrop.id}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-mono">
+                            {shape.pageTitle || `Page ${shape.pageId?.substring(0, 8) || '?'}`}
+                          </td>
                           <td className="px-4 py-3">
                             {linked ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                             bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                <CheckCircle className="w-3 h-3" />
-                                Linked to {wireDrop?.name}
-                              </span>
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Linked
+                                </span>
+                                <div className="text-xs text-purple-500 dark:text-purple-300">
+                                  {wireDrop?.drop_name || wireDrop?.name || 'Existing wire drop'}
+                                </div>
+                              </div>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                             bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
                                 Available
                               </span>
                             )}
@@ -2156,130 +2251,31 @@ const PMProjectViewEnhanced = () => {
         </div>
       )}
 
-      {unmatchedRoomEntries.length > 0 && (
-        <div style={sectionStyles.card} className="p-6">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Room Name Alignment
-              </h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                We found Lucid shapes with room names that don&apos;t match existing project rooms.
-                Map them to a room or create a new one so imported equipment can attach automatically.
-              </p>
-            </div>
-            {roomsLoading && (
-              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                <Loader className="w-4 h-4 animate-spin" />
-                Updating rooms…
-              </div>
-            )}
+
+      {/* Portal Equipment & Labor Section */}
+      <div style={sectionStyles.card} className="p-6">
+        <button
+          type="button"
+          onClick={() => setEquipmentCollapsed((prev) => !prev)}
+          className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+        >
+          <div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">Portal Equipment &amp; Labor</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Import proposal CSVs to populate room equipment and technician labor budgets.
+            </p>
           </div>
+          <ChevronDown
+            className={`w-5 h-5 text-gray-500 transition-transform ${equipmentCollapsed ? '' : 'rotate-180'}`}
+          />
+        </button>
 
-          <div className="mt-4 space-y-4">
-            {unmatchedRoomEntries.map((entry) => {
-              const selection = roomAssignments[entry.normalized];
-              const suggestion = entry.suggestion;
-              const selectValue =
-                selection?.type === 'existing'
-                  ? selection.roomId
-                  : selection?.type === 'new'
-                    ? '__new__'
-                    : '';
-
-              return (
-                <div
-                  key={entry.normalized}
-                  className="rounded-lg border border-gray-200 bg-gray-50 p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {entry.samples.map((sample) => (
-                      <span
-                        key={`${entry.normalized}-${sample}`}
-                        className="inline-flex items-center rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-200"
-                      >
-                        {sample}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Map to project room
-                      </label>
-                      <select
-                        value={selectValue}
-                        onChange={(event) =>
-                          handleRoomSelectionChange(entry.normalized, event.target.value, entry)
-                        }
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                      >
-                        <option value="">Select a room…</option>
-                        {allRoomOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                            {option.isHeadEnd ? ' • Head End' : ''}
-                          </option>
-                        ))}
-                        <option value="__new__">Create new room…</option>
-                      </select>
-                      {suggestion && suggestion.score >= 0.72 && !selection && (
-                        <p className="mt-2 text-xs text-green-600 dark:text-green-400">
-                          Suggested match: {suggestion.room.name} ({Math.round(suggestion.score * 100)}%
-                          similarity)
-                        </p>
-                      )}
-                    </div>
-
-                    {selection?.type === 'new' && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            New room name
-                          </label>
-                          <input
-                            type="text"
-                            value={selection.name}
-                            onChange={(event) =>
-                              handleNewRoomNameChange(entry.normalized, event.target.value)
-                            }
-                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
-                          />
-                        </div>
-                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                          <input
-                            type="checkbox"
-                            checked={selection.isHeadend}
-                            onChange={(event) =>
-                              handleNewRoomHeadendToggle(entry.normalized, event.target.checked)
-                            }
-                            className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-800"
-                          />
-                          Head-end room
-                        </label>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleRoomAliasApply(entry)}
-                      loading={roomAliasSaving === entry.normalized}
-                    >
-                      Save Mapping
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+        {!equipmentCollapsed && (
+          <div className="mt-4">
+            <ProjectEquipmentManager projectId={projectId} embedded />
           </div>
-        </div>
-      )}
-
-      <ProjectEquipmentManager projectId={projectId} />
+        )}
+      </div>
 
       {/* Action Buttons */}
       <div className="flex gap-4">

@@ -5,6 +5,8 @@ import { supabase } from '../lib/supabase';
  * Handles Prewire, Trim Out, and Commission stages
  */
 
+let supportsShapeDataColumn = true;
+
 class WireDropService {
   /**
    * Get all wire drops for a project with stages and equipment data
@@ -98,25 +100,44 @@ class WireDropService {
       const uid = this.generateUID(wireDropData.room_name, wireDropData.drop_name);
 
       // Create the wire drop
-      const { data: wireDrop, error: createError } = await supabase
+      const insertPayload = {
+        project_id: projectId,
+        uid,
+        name: wireDropData.drop_name,
+        room_name: wireDropData.room_name,
+        drop_name: wireDropData.drop_name,
+        location: wireDropData.location || wireDropData.room_name,
+        type: wireDropData.type || 'CAT6',
+        lucid_shape_id: wireDropData.lucid_shape_id,
+        schematic_reference: wireDropData.schematic_reference,
+        room_end_equipment: wireDropData.room_end_equipment,
+        head_end_equipment: wireDropData.head_end_equipment,
+        notes: wireDropData.notes,
+        project_room_id: wireDropData.project_room_id || null
+      };
+
+      if (supportsShapeDataColumn && wireDropData.shape_data !== undefined) {
+        insertPayload.shape_data = wireDropData.shape_data;
+      }
+
+      let { data: wireDrop, error: createError } = await supabase
         .from('wire_drops')
-        .insert({
-          project_id: projectId,
-          uid,
-          name: wireDropData.drop_name,
-          room_name: wireDropData.room_name,
-          drop_name: wireDropData.drop_name,
-          location: wireDropData.location || wireDropData.room_name,
-          type: wireDropData.type || 'CAT6',
-          lucid_shape_id: wireDropData.lucid_shape_id,
-          schematic_reference: wireDropData.schematic_reference,
-          room_end_equipment: wireDropData.room_end_equipment,
-          head_end_equipment: wireDropData.head_end_equipment,
-          notes: wireDropData.notes,
-          project_room_id: wireDropData.project_room_id || null
-        })
+        .insert(insertPayload)
         .select()
         .single();
+
+      if (createError && supportsShapeDataColumn && createError.message?.includes('shape_data')) {
+        console.warn('[wireDropService] shape_data column missing; inserting without shape data payload.');
+        supportsShapeDataColumn = false;
+        const retryPayload = { ...insertPayload };
+        delete retryPayload.shape_data;
+
+        ({ data: wireDrop, error: createError } = await supabase
+          .from('wire_drops')
+          .insert(retryPayload)
+          .select()
+          .single());
+      }
 
       if (createError) throw createError;
 
@@ -288,51 +309,34 @@ class WireDropService {
       // Get current user info for attribution
       const currentUser = await this.getCurrentUserInfo();
       
-      // Get the configured bucket name
-      const bucketName = this.getStorageBucket();
+      // Get wire drop to determine project ID
+      const wireDrop = await this.getWireDrop(wireDropId);
+      if (!wireDrop || !wireDrop.project_id) {
+        throw new Error('Wire drop not found or project ID missing');
+      }
       
-      // Generate unique filename with proper extension
-      const fileExtension = photoFile.name?.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `wire-drops/${wireDropId}/${stageType}_${Date.now()}.${fileExtension}`;
+      // Import SharePoint storage service dynamically to avoid circular dependencies
+      const { sharePointStorageService } = await import('./sharePointStorageService');
       
-      console.log(`Uploading photo to bucket: ${bucketName}, file: ${fileName}`);
+      console.log(`Uploading photo to SharePoint for wire drop: ${wireDropId}, stage: ${stageType}`);
       
-      // First, try to upload to Supabase storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(bucketName)
-        .upload(fileName, photoFile, {
-          contentType: photoFile.type,
-          cacheControl: '3600',
-          upsert: true
-        });
+      // Upload to SharePoint
+      const sharePointUrl = await sharePointStorageService.uploadWireDropPhoto(
+        wireDrop.project_id,
+        wireDropId,
+        stageType,
+        photoFile
+      );
 
-      if (uploadError) {
-        console.warn('Supabase storage upload failed:', uploadError);
-        
-        // Check if the bucket exists, if not provide better error message
-        if (uploadError.message?.includes('Bucket not found')) {
-          console.error(`Storage bucket "${bucketName}" not found. Please create the bucket in Supabase dashboard.`);
-          throw new Error(`Photo storage bucket "${bucketName}" not found. Please contact support.`);
-        }
-        
-        // For other storage errors, still throw - don't use blob URLs as they're temporary
-        throw new Error(`Photo upload failed: ${uploadError.message}`);
+      if (!sharePointUrl) {
+        throw new Error('Failed to get SharePoint URL for uploaded photo');
       }
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from(bucketName)
-        .getPublicUrl(fileName);
-
-      if (!urlData.publicUrl) {
-        throw new Error('Failed to generate public URL for uploaded photo');
-      }
-
-      console.log('Photo uploaded successfully:', urlData.publicUrl);
+      console.log('Photo uploaded successfully to SharePoint:', sharePointUrl);
 
       // Update stage with photo URL and mark as complete
       return await this.updateStage(wireDropId, stageType, {
-        photo_url: urlData.publicUrl,
+        photo_url: sharePointUrl,
         completed: true,
         completed_by: currentUser
       });

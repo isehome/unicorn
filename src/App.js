@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
 import BottomNavigation from './components/BottomNavigation';
 import LoadingSpinner from './components/ui/LoadingSpinner';
+import { thumbnailCache } from './lib/thumbnailCache';
 import './index.css';
 
 // Lazy load all route components
@@ -32,6 +33,8 @@ const IssuesListPageOptimized = lazy(() => import('./components/IssuesListPageOp
 const TodosListPage = lazy(() => import('./components/TodosListPage'));
 const LucidDiagnostic = lazy(() => import('./components/LucidDiagnostic'));
 const UnifiTestPage = lazy(() => import('./components/UnifiTestPage'));
+const PartsListPage = lazy(() => import('./components/PartsListPage'));
+const PartDetailPage = lazy(() => import('./components/PartDetailPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -110,6 +113,22 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <PeopleManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/parts"
+            element={
+              <ProtectedRoute>
+                <PartsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/parts/:partId"
+            element={
+              <ProtectedRoute>
+                <PartDetailPage />
               </ProtectedRoute>
             }
           />
@@ -219,6 +238,26 @@ const AppRoutes = () => {
 };
 
 function App() {
+  // Background cleanup of expired thumbnail cache entries
+  useEffect(() => {
+    const cleanupCache = async () => {
+      try {
+        await thumbnailCache.cleanup();
+        console.log('[App] Thumbnail cache cleanup completed');
+      } catch (error) {
+        console.error('[App] Failed to cleanup thumbnail cache:', error);
+      }
+    };
+
+    // Run cleanup on mount (non-blocking)
+    cleanupCache();
+
+    // Optionally run periodic cleanup (every 24 hours)
+    const interval = setInterval(cleanupCache, 24 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>

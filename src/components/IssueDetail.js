@@ -10,7 +10,8 @@ import {
   issueStakeholderTagsService,
   projectStakeholdersService
 } from '../services/supabaseService';
-import { supabase, uploadPublicImage, toThumb } from '../lib/supabase';
+import { supabase, toThumb } from '../lib/supabase';
+import { sharePointStorageService } from '../services/sharePointStorageService';
 import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
 
 const IssueDetail = () => {
@@ -223,16 +224,33 @@ const IssueDetail = () => {
     if (!file || !issue?.id) return;
     try {
       setUploading(true);
-      const path = `issues/${issue.id}/${Date.now()}`;
-      const url = await uploadPublicImage(file, path);
+      setError('');
+      
+      // Upload to SharePoint
+      const sharePointUrl = await sharePointStorageService.uploadIssuePhoto(
+        projectId,
+        issue.id,
+        file,
+        '' // Optional photo description
+      );
+      
+      // Save to database
       const { data, error } = await supabase
         .from('issue_photos')
-        .insert([{ issue_id: issue.id, url, file_name: file.name, content_type: file.type, size_bytes: file.size }])
+        .insert([{ 
+          issue_id: issue.id, 
+          url: sharePointUrl, 
+          file_name: file.name, 
+          content_type: file.type, 
+          size_bytes: file.size 
+        }])
         .select()
         .single();
+      
       if (error) throw error;
       setPhotos(prev => [...prev, data]);
     } catch (e) {
+      console.error('Failed to upload issue photo:', e);
       setError(e.message || 'Failed to upload photo');
     } finally {
       setUploading(false);

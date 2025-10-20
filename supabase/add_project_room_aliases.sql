@@ -12,11 +12,14 @@ create table if not exists public.project_room_aliases (
   normalized_alias text generated always as (
     lower(trim(regexp_replace(alias, '\s+', ' ', 'g')))
   ) stored,
-  created_by uuid references public.profiles(id) on delete set null,
+  created_by uuid,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   constraint project_room_aliases_unique unique (project_id, normalized_alias)
 );
+
+alter table public.project_room_aliases
+  drop constraint if exists project_room_aliases_created_by_fkey;
 
 alter table public.project_room_aliases enable row level security;
 

@@ -1,0 +1,26 @@
+You are helping a teammate understand how the Unicorn PM project page synchronizes Lucid shapes with imported equipment rooms.
+
+Key facts:
+1. Project rooms + aliases
+   • Supabase migration `supabase/add_project_room_aliases.sql` creates `project_room_aliases` and links `wire_drops.project_room_id` so every drop can reference the canonical room.
+   • `projectRoomsService.fetchRoomsWithAliases(projectId)` returns each project room and its aliases. Helpers live in `src/services/projectRoomsService.js`.
+   • Room names are normalized with `normalizeRoomName` in `src/utils/roomUtils.js` (lowercase, whitespace collapsed). `similarityScore`/`levenshtein` provide fuzzy suggestions.
+
+2. CSV equipment import
+   • `projectEquipmentService.importCsv` (see `src/services/projectEquipmentService.js`) ensures rooms exist, then saves aliases for any mismatched spellings found in the CSV. Every alias is upserted into `project_room_aliases` so later Lucid imports can match.
+
+3. Lucid shape ingest (PMProjectViewEnhanced)
+   • Fetching shape data inspects the Lucid custom fields **Room Name**, **Room**, and **Drop Location** (whichever exists first). The table now shows the shape ID, the field name that supplied the room value, and the matched canonical room.
+   • New wire drops created from shapes pass `project_room_id` into `wireDropService.createWireDrop`, so the drop is tied to the canonical room.
+   • If a Lucid shape’s room didn’t match, the “Room Name Alignment” card lists the raw values + detected field names and lets users map the shape name to an existing room or create a new room+alias. Saving uses `projectRoomsService` to upsert aliases (and create rooms when needed).
+
+4. Wire drop detail view
+   • When loading a drop, `wireDropService.getWireDrop` now selects `project_room` data. Matching equipment uses `project_room_id`, so head-end/room-end tabs only show equipment for that canonical room.
+
+How to test quickly:
+- Go to `/pm/project/:id` and click “Fetch Shape Data”.
+- Review the “Room Name Alignment” section. Map any Lucid room names to the correct project room (or create new ones).
+- Create wire drops from selected shapes; verify they appear with the correct room tag in the Lucid table.
+- Open `/wire-drops/:dropId`: the “Equipment in … room” list should auto-filter based on the linked project room, and the badge shows whether the match was direct or via alias.
+
+Deployment note: the changes were committed as "new equipment link test." and pushed to Vercel (https://unicorn-nbwqqiwgg-isehomes-projects.vercel.app).

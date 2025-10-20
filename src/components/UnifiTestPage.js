@@ -37,6 +37,279 @@ const UnifiTestPage = () => {
   const [clients, setClients] = useState([]);
   const [error, setError] = useState(null);
   const [parsedConsoleId, setParsedConsoleId] = useState(null);
+  const [deviceSource, setDeviceSource] = useState(null);
+
+  const cleanString = (value) => (typeof value === 'string' ? value.trim() : value);
+
+  const getHostDisplayName = (host) => {
+    const reported = host?.reportedState;
+    const candidates = [
+      cleanString(host?.hostName),
+      cleanString(reported?.hostname),
+      cleanString(reported?.name),
+      cleanString(host?.hostname),
+      cleanString(host?.name),
+      cleanString(host?.userData?.fullName),
+      cleanString(host?.hardware?.name),
+      cleanString(host?.hardware?.shortname),
+      cleanString(host?.id),
+      cleanString(reported?.controller_uuid),
+    ];
+
+    const display = candidates.find((value) => typeof value === 'string' && value.length > 0);
+    return display || 'Unnamed Host';
+  };
+
+  const getSiteDisplayName = (site, host) => {
+    const reported = host?.reportedState;
+    const candidates = [
+      cleanString(site?.siteName),
+      cleanString(site?.name),
+      cleanString(site?.displayName),
+      cleanString(site?.description),
+      cleanString(site?.locationName),
+      cleanString(reported?.hostname),
+      cleanString(reported?.name),
+      cleanString(host?.userData?.fullName)
+    ];
+
+    const display = candidates.find((value) => typeof value === 'string' && value.length > 0);
+    return display || null;
+  };
+
+  const parseUidb = (uidb) => {
+    if (!uidb) return {};
+    if (typeof uidb === 'object') {
+      const stringValue = uidb.id || uidb.guid || uidb.value || null;
+      if (!stringValue) return {};
+      return parseUidb(stringValue);
+    }
+    if (typeof uidb !== 'string') return {};
+
+    const parts = uidb.split(':').filter(Boolean);
+    if (parts.length === 0) return {};
+
+    const hostId = parts[0] || null;
+    const siteId = parts[1] || null;
+
+    return {
+      hostId,
+      siteId,
+      hostSiteId: hostId && siteId ? `${hostId}:${siteId}` : hostId || null
+    };
+  };
+
+  const normalizeHostsToSites = (hosts = []) => {
+    const normalized = [];
+    const seen = new Set();
+
+    const pushEntry = ({ host, hostId, siteId, hostSiteId, siteName, rawSite }) => {
+      const resolvedHostId =
+        hostId ||
+        host?.hostId ||
+        host?.id ||
+        host?.uid ||
+        host?.controllerId ||
+        host?.controller_id ||
+        null;
+
+      const resolvedHostSiteId = hostSiteId || (resolvedHostId && siteId ? `${resolvedHostId}:${siteId}` : resolvedHostId);
+      if (!resolvedHostSiteId || seen.has(resolvedHostSiteId)) return;
+
+      const hostName = getHostDisplayName(host);
+      const siteDisplayName = getSiteDisplayName(rawSite, host) || siteName || hostName;
+      const [resolvedConsoleId, resolvedSiteSuffix] = (resolvedHostSiteId || '').split(':');
+      const ipAddress = cleanString(
+        host?.reportedState?.ip ||
+        host?.ipAddress ||
+        host?.reportedState?.ipAddrs?.find?.((value) => typeof value === 'string' && value.trim().length > 0) ||
+        host?.reportedState?.wans?.find?.((wan) => wan?.ipv4)?.ipv4
+      ) || null;
+      const locationText = cleanString(
+        host?.reportedState?.location?.text ||
+        host?.location?.text ||
+        (typeof host?.reportedState?.location === 'string' ? host?.reportedState?.location : null)
+      ) || null;
+      const firmware = cleanString(
+        host?.reportedState?.version ||
+        host?.reportedState?.hardware?.version ||
+        host?.hardware?.firmwareVersion
+      ) || null;
+
+      seen.add(resolvedHostSiteId);
+      normalized.push({
+        hostId: resolvedHostId,
+        hostName,
+        siteId: siteId || null,
+        siteName: siteDisplayName || siteId || hostName,
+        hostSiteId: resolvedHostSiteId,
+        consoleId: resolvedConsoleId || resolvedHostId || null,
+        siteSuffix: resolvedSiteSuffix || null,
+        siteLabel: siteDisplayName || hostName,
+        ipAddress,
+        firmware,
+        location: locationText,
+        mac: host?.reportedState?.mac || host?.mac || host?.hardware?.mac || null,
+        controllerStatus: host?.reportedState?.state || host?.state || null,
+        devices: Array.isArray(host?.devices) ? host.devices : [],
+        controllers: Array.isArray(host?.reportedState?.controllers) ? host.reportedState.controllers : [],
+        rawHost: host || null,
+        rawSite: rawSite || null
+      });
+    };
+
+    hosts.forEach((host) => {
+      const hostUidb = parseUidb(
+        host?.uidb ||
+        host?.reportedState?.uidb ||
+        host?.reportedState?.controller_uuid ||
+        host?.id
+      );
+      const baseHostId =
+        host?.hostId ||
+        host?.id ||
+        host?.uid ||
+        hostUidb.hostId ||
+        host?.controllerId ||
+        host?.controller_id ||
+        host?.reportedState?.controller_uuid ||
+        null;
+
+      const fallbackHostName = getHostDisplayName(host);
+
+      const siteCollections = [
+        Array.isArray(host?.sites) ? host.sites : [],
+        Array.isArray(host?.hostSites) ? host.hostSites : [],
+        Array.isArray(host?.controllerSites) ? host.controllerSites : [],
+        Array.isArray(host?.reportedState?.sites) ? host.reportedState.sites : [],
+        Array.isArray(host?.reportedState?.hostSites) ? host.reportedState.hostSites : []
+      ].find((collection) => collection.length > 0);
+
+      if (siteCollections && siteCollections.length > 0) {
+        siteCollections.forEach((site) => {
+          const siteUidb = parseUidb(site?.uidb);
+          const siteId =
+            site?.siteId ||
+            site?.id ||
+            site?.site_id ||
+            siteUidb.siteId ||
+            site?.uid ||
+            null;
+
+          const siteName =
+            site?.siteName ||
+            site?.name ||
+            site?.displayName ||
+            site?.description ||
+            siteId ||
+            fallbackHostName;
+
+          pushEntry({
+            host,
+            hostId: baseHostId || hostUidb.hostId,
+            siteId,
+            hostSiteId: siteUidb.hostSiteId,
+            siteName,
+            rawSite: site
+          });
+        });
+        return;
+      }
+
+      if (Array.isArray(host?.devices) && host.devices.length > 0) {
+        host.devices.forEach((device) => {
+          const deviceUidb = parseUidb(device?.uidb);
+          pushEntry({
+            host,
+            hostId: deviceUidb.hostId || baseHostId,
+            siteId: deviceUidb.siteId,
+            hostSiteId: deviceUidb.hostSiteId || device?.uidb,
+            siteName: device?.siteName || device?.name || device?.model || deviceUidb.siteId,
+            rawSite: device
+          });
+        });
+        return;
+      }
+
+      pushEntry({
+        host,
+        hostId: baseHostId,
+        siteId: null,
+        hostSiteId: baseHostId,
+        siteName: fallbackHostName,
+        rawSite: null
+      });
+    });
+
+    return normalized;
+  };
+
+  const getDeviceIdentifiers = (device = {}) => {
+    const uidbInfo = parseUidb(device?.uidb);
+
+    const hostId =
+      cleanString(device?.hostId) ||
+      cleanString(device?.host_id) ||
+      cleanString(uidbInfo.hostId);
+
+    const siteId =
+      cleanString(device?.siteId) ||
+      cleanString(device?.site_id) ||
+      cleanString(device?.site?.id) ||
+      cleanString(uidbInfo.siteId);
+
+    const consoleId =
+      cleanString(device?.consoleId) ||
+      cleanString(device?.console_id) ||
+      (hostId ? cleanString(hostId.split(':')[0]) : null) ||
+      cleanString(uidbInfo.hostId);
+
+    const hostSiteId =
+      cleanString(device?.hostSiteId) ||
+      cleanString(device?.host_site_id) ||
+      cleanString(uidbInfo.hostSiteId) ||
+      (hostId && siteId ? `${hostId}:${siteId}` : null);
+
+    const siteName =
+      cleanString(device?.siteName) ||
+      cleanString(device?.site?.name) ||
+      cleanString(device?.site?.displayName);
+
+    return {
+      consoleId,
+      hostId,
+      hostSiteId,
+      siteId,
+      siteName
+    };
+  };
+
+  const filterDevicesForSite = (devicesList = [], siteInfo = null) => {
+    if (!Array.isArray(devicesList)) return [];
+    if (!siteInfo) return [...devicesList];
+
+    return devicesList.filter((device) => {
+      const identifiers = getDeviceIdentifiers(device);
+
+      if (siteInfo.hostSiteId && identifiers.hostSiteId && identifiers.hostSiteId === siteInfo.hostSiteId) {
+        return true;
+      }
+
+      if (siteInfo.siteSuffix && identifiers.siteId && identifiers.siteId === siteInfo.siteSuffix) {
+        return true;
+      }
+
+      if (!siteInfo.siteSuffix && siteInfo.consoleId && identifiers.consoleId && identifiers.consoleId === siteInfo.consoleId) {
+        return true;
+      }
+
+      if (!siteInfo.siteSuffix && siteInfo.hostId && identifiers.hostId && identifiers.hostId === siteInfo.hostId) {
+        return true;
+      }
+
+      return false;
+    });
+  };
 
   // Parse console ID from UniFi URL
   const parseUnifiUrl = (url) => {
@@ -91,6 +364,8 @@ const UnifiTestPage = () => {
     setSelectedProject(project);
     setUseManualUrl(false);
     setConnectionStatus(null);
+    setSelectedSite('');
+    setDeviceSource(null);
     setSites([]);
     setDevices([]);
     setClients([]);
@@ -110,6 +385,8 @@ const UnifiTestPage = () => {
     setUseManualUrl(true);
     setSelectedProject(null);
     setConnectionStatus(null);
+    setSelectedSite('');
+    setDeviceSource(null);
     setSites([]);
     setDevices([]);
     setClients([]);
@@ -156,42 +433,50 @@ const UnifiTestPage = () => {
       const response = await unifiApi.fetchSites(controllerUrl);
       console.log('Full API Response:', JSON.stringify(response, null, 2));
       
-      // The response has data array with host objects
-      const sitesData = response.data || response;
-      console.log('Sites data:', sitesData);
-      console.log('Number of sites:', sitesData?.length);
-      
-      if (sitesData && sitesData.length > 0) {
-        console.log('First site structure:', sitesData[0]);
-        console.log('First site hostId:', sitesData[0].hostId);
-        console.log('First site hostName:', sitesData[0].hostName);
-        console.log('First site devices:', sitesData[0].devices);
+      // The API has data array with host objects
+      const rawSites = response.data || response;
+      const sitesArray = Array.isArray(rawSites) ? rawSites : [];
+
+      console.log('Number of hosts returned:', sitesArray.length);
+
+      if (sitesArray.length > 0) {
+        console.log('First host structure:', sitesArray[0]);
       }
-      
-      setSites(Array.isArray(sitesData) ? sitesData : []);
-      
-      // If we have a parsed console ID, try to auto-select that host
-      if (parsedConsoleId && sitesData && sitesData.length > 0) {
+
+      const normalizedSites = normalizeHostsToSites(sitesArray);
+      console.log('Normalized site entries:', normalizedSites);
+
+      setSites(normalizedSites);
+
+      if (normalizedSites.length === 0) {
+        console.warn('No site entries were derived from host data');
+        return;
+      }
+
+      let defaultSite = normalizedSites[0];
+
+      if (parsedConsoleId) {
         console.log('Looking for host with console ID:', parsedConsoleId);
-        const matchingHost = sitesData.find(site => site.hostId === parsedConsoleId);
-        if (matchingHost) {
-          console.log('Found matching host for console ID:', parsedConsoleId);
-          console.log('Matching host:', matchingHost);
-          setSelectedSite(matchingHost.hostId);
-          await loadSiteData(matchingHost.hostId, controllerUrl);
-          return;
+        const matchingSite = normalizedSites.find((site) => {
+          if (!site) return false;
+          if (site.consoleId === parsedConsoleId) return true;
+          if (site.hostId === parsedConsoleId) return true;
+          if (site.hostSiteId?.startsWith(`${parsedConsoleId}:`)) return true;
+          return false;
+        });
+
+        if (matchingSite) {
+          console.log('Found matching site for console ID:', matchingSite);
+          defaultSite = matchingSite;
         } else {
-          console.log('No matching host found for console ID:', parsedConsoleId);
-          console.log('Available hostIds:', sitesData.map(s => s.hostId));
+          console.log('No matching site found for console ID:', parsedConsoleId);
+          console.log('Available hostSiteIds:', normalizedSites.map((site) => site.hostSiteId));
         }
       }
-      
-      // Otherwise, auto-select first site if available
-      if (sitesData && sitesData.length > 0) {
-        const firstHostId = sitesData[0].hostId || sitesData[0].id;
-        console.log('Auto-selecting first site with hostId:', firstHostId);
-        setSelectedSite(firstHostId);
-        await loadSiteData(firstHostId, controllerUrl);
+
+      if (defaultSite) {
+        setSelectedSite(defaultSite.hostSiteId);
+        await loadSiteData(defaultSite.hostSiteId, controllerUrl, defaultSite);
       }
     } catch (err) {
       console.error('Failed to load sites:', err);
@@ -201,30 +486,108 @@ const UnifiTestPage = () => {
     }
   };
 
-  const loadSiteData = async (siteId, controllerUrl) => {
+  const loadSiteData = async (siteId, controllerUrl, providedSite) => {
     const url = controllerUrl || (useManualUrl ? manualUrl : selectedProject?.unifi_url);
     if (!url) return;
+
+    const siteEntry =
+      providedSite ||
+      sites.find(site => site.hostSiteId === siteId || site.hostId === siteId);
+
+    const requestHostId = siteEntry?.hostSiteId || siteId;
+    const fallbackDevices = Array.isArray(siteEntry?.devices) ? siteEntry.devices : [];
+    const fallbackLabel = siteEntry?.siteLabel || siteEntry?.hostName || requestHostId;
+    const hostIdsForRequest = Array.from(
+      new Set(
+        [
+          siteEntry?.hostSiteId,
+          siteEntry?.consoleId,
+          siteEntry?.hostId,
+          requestHostId
+        ].filter(Boolean)
+      )
+    );
 
     try {
       setLoading(true);
       setError(null);
+      setDeviceSource(null);
       
-      console.log('Loading devices for hostId:', siteId);
+      console.log('Loading devices for hostId:', requestHostId);
       
-      // Call the /v1/devices endpoint with hostIds[] parameter
-      const devicesResponse = await unifiApi.fetchDevices(siteId, url);
-      console.log('Devices response:', devicesResponse);
+      // Call the /v1/devices endpoint with hostIds filter
+      const devicesResult = await unifiApi.fetchDevices(hostIdsForRequest, url, {
+        fetchAll: true,
+        pageSize: 200
+      });
+      console.log('Devices response summary:', {
+        pagesFetched: devicesResult?.pagesFetched,
+        total: devicesResult?.data?.length,
+        nextToken: devicesResult?.nextToken
+      });
       
       // The API returns { data: [...devices...] }
-      const devicesData = devicesResponse.data || devicesResponse;
-      console.log('Devices data:', devicesData);
-      
-      if (Array.isArray(devicesData) && devicesData.length > 0) {
-        console.log('Found devices:', devicesData.length);
-        setDevices(devicesData);
+      const devicesData =
+        devicesResult?.data ||
+        devicesResult?.raw?.data ||
+        devicesResult?.raw?.devices ||
+        devicesResult?.raw?.items ||
+        [];
+      console.log('Devices data length:', devicesData.length);
+
+      const apiDevices = Array.isArray(devicesData) ? devicesData : [];
+      const filteredApiDevices = filterDevicesForSite(apiDevices, siteEntry);
+
+      if (filteredApiDevices.length > 0) {
+        console.log('Found devices from API:', apiDevices.length, 'Filtered devices:', filteredApiDevices.length);
+        setDevices(filteredApiDevices);
+        setDeviceSource({
+          type: 'api',
+          rawCount: apiDevices.length,
+          filteredCount: filteredApiDevices.length,
+          note: apiDevices.length !== filteredApiDevices.length
+            ? 'Filtered device list to the selected site hostId/siteId.'
+            : null
+        });
+      } else if (apiDevices.length > 0) {
+        console.log('API returned devices but none matched the selected site. Raw count:', apiDevices.length);
+        setDevices([]);
+        setDeviceSource({
+          type: 'apiNoMatch',
+          rawCount: apiDevices.length,
+          filteredCount: 0,
+          note: 'Devices were returned by the API, but none matched the selected site.'
+        });
+      } else if (fallbackDevices.length > 0) {
+        const fallbackFiltered = filterDevicesForSite(fallbackDevices, siteEntry);
+        if (fallbackFiltered.length > 0) {
+          console.log(`Using fallback devices from host payload for ${fallbackLabel}`);
+          setDevices(fallbackFiltered);
+          setDeviceSource({
+            type: 'hostPayload',
+            rawCount: fallbackDevices.length,
+            filteredCount: fallbackFiltered.length,
+            note: fallbackDevices.length !== fallbackFiltered.length ? 'Filtered to the selected site (host payload).' : null
+          });
+        } else {
+          console.log(`Host payload devices did not match the selected site. Total devices in payload: ${fallbackDevices.length}`);
+          setDevices([]);
+          setDeviceSource({
+            type: 'hostPayloadNoMatch',
+            rawCount: fallbackDevices.length,
+            filteredCount: 0,
+            note: 'Devices were present in the host payload, but none matched the selected site.'
+          });
+        }
       } else {
         console.log('No devices found for this host');
         setDevices([]);
+        setDeviceSource({
+          type: 'empty',
+          rawCount: 0,
+          filteredCount: 0,
+          note: 'The UniFi API did not return any devices.'
+        });
       }
       
       // Clients endpoint not available in this API
@@ -232,6 +595,12 @@ const UnifiTestPage = () => {
     } catch (err) {
       console.error('Failed to load site data:', err);
       setError(err.message);
+      setDeviceSource({
+        type: 'error',
+        rawCount: 0,
+        filteredCount: 0,
+        message: err.message
+      });
     } finally {
       setLoading(false);
     }
@@ -242,7 +611,8 @@ const UnifiTestPage = () => {
     setSelectedSite(siteId);
     const url = useManualUrl ? manualUrl : selectedProject?.unifi_url;
     if (siteId && url) {
-      loadSiteData(siteId, url);
+      const targetSite = sites.find(site => site.hostSiteId === siteId);
+      loadSiteData(siteId, url, targetSite);
     }
   };
 
@@ -338,9 +708,9 @@ const UnifiTestPage = () => {
               Choose a project to test
             </label>
             <select
-              value={selectedProject?.id || ''}
+              value={selectedProject ? String(selectedProject.id) : ''}
               onChange={(e) => {
-                const project = projects.find(p => p.id === e.target.value);
+                const project = projects.find(p => String(p.id) === e.target.value);
                 if (project) handleProjectSelect(project);
               }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
@@ -349,7 +719,7 @@ const UnifiTestPage = () => {
             >
               <option value="">Choose a project...</option>
               {projects.map(project => (
-                <option key={project.id} value={project.id}>
+                <option key={project.id} value={String(project.id)}>
                   {project.project_number}
                 </option>
               ))}
@@ -384,15 +754,30 @@ const UnifiTestPage = () => {
           </div>
           <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg font-mono text-xs overflow-auto">
             <p className="mb-2 text-gray-900 dark:text-white font-semibold">API Response Summary:</p>
-            <p className="text-gray-700 dark:text-gray-300">Total hosts: {sites.length}</p>
+            <p className="text-gray-700 dark:text-gray-300">Total site entries: {sites.length}</p>
             <p className="text-gray-700 dark:text-gray-300 mb-2">Parsed Console ID: {parsedConsoleId || 'None'}</p>
             
-            <p className="mb-2 mt-4 text-gray-900 dark:text-white font-semibold">Available Hosts:</p>
+            <p className="mb-2 mt-4 text-gray-900 dark:text-white font-semibold">Available Sites:</p>
             {sites.map((site, idx) => (
-              <div key={idx} className="mb-3 p-2 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
-                <p className="text-blue-600 dark:text-blue-400">Host {idx + 1}:</p>
+              <div key={site.hostSiteId || idx} className="mb-3 p-2 bg-white dark:bg-gray-700 rounded border border-gray-200 dark:border-gray-600">
+                <p className="text-blue-600 dark:text-blue-400">Site {idx + 1}:</p>
                 <p className="text-gray-700 dark:text-gray-300">• hostId: {site.hostId}</p>
+                <p className="text-gray-700 dark:text-gray-300">• siteId: {site.siteId || 'N/A'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• hostSiteId: {site.hostSiteId}</p>
+                <p className="text-gray-700 dark:text-gray-300">• consoleId: {site.consoleId || 'N/A'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• siteSuffix: {site.siteSuffix || 'N/A'}</p>
                 <p className="text-gray-700 dark:text-gray-300">• hostName: {site.hostName || 'N/A'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• siteName: {site.siteName || 'N/A'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• IP: {site.ipAddress || 'Unknown'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• Location: {site.location || 'Unknown'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• Firmware: {site.firmware || 'Unknown'}</p>
+                <p className="text-gray-700 dark:text-gray-300">• Controllers: {site.controllers?.length || 0}</p>
+                {site.controllers?.length ? (
+                  <p className="text-gray-700 dark:text-gray-300">
+                    • Controller Names: {site.controllers.map(controller => cleanString(controller?.name) || 'unknown').join(', ')}
+                  </p>
+                ) : null}
+                <p className="text-gray-700 dark:text-gray-300">• Devices (host payload): {site.devices?.length || 0}</p>
                 <p className="text-gray-700 dark:text-gray-300 text-xs mt-1">
                   (Devices will be loaded separately when host is selected)
                 </p>
@@ -500,8 +885,8 @@ const UnifiTestPage = () => {
             >
               <option value="">Choose a site...</option>
               {sites.map(site => (
-                <option key={site.hostId} value={site.hostId}>
-                  {site.hostName || 'Unnamed Site'}
+                <option key={site.hostSiteId} value={site.hostSiteId}>
+                  {`${site.siteLabel || site.siteName || site.hostName || 'Unnamed Site'}${site.location ? ` – ${site.location}` : ''}`}
                 </option>
               ))}
             </select>
@@ -510,17 +895,17 @@ const UnifiTestPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {sites.map(site => (
               <div
-                key={site.hostId}
+                key={site.hostSiteId}
                 className={`p-4 rounded-lg border transition-colors cursor-pointer ${
-                  selectedSite === site.hostId
+                  selectedSite === site.hostSiteId
                     ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-300 dark:border-violet-700'
                     : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
                 }`}
                 onClick={() => {
-                  setSelectedSite(site.hostId);
+                  setSelectedSite(site.hostSiteId);
                   const url = useManualUrl ? manualUrl : selectedProject?.unifi_url;
                   if (url) {
-                    loadSiteData(site.hostId, url);
+                    loadSiteData(site.hostSiteId, url, site);
                   }
                 }}
               >
@@ -528,11 +913,37 @@ const UnifiTestPage = () => {
                   <Globe className="w-4 h-4 text-gray-600 dark:text-gray-400 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 dark:text-white truncate">
-                      {site.hostName || 'Unnamed Site'}
+                      {site.siteLabel || site.siteName || site.hostName || 'Unnamed Site'}
                     </p>
                     <p className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                      Click to load devices
+                      Hostname: {site.hostName || 'Unknown'}
                     </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                      Console ID: {site.consoleId || 'N/A'}
+                    </p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                      hostSiteId: {site.hostSiteId}
+                    </p>
+                    {site.siteSuffix && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                        Site Suffix: {site.siteSuffix}
+                      </p>
+                    )}
+                    {site.location && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                        Location: {site.location}
+                      </p>
+                    )}
+                    {site.ipAddress && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                        IP: {site.ipAddress}
+                      </p>
+                    )}
+                    {site.firmware && (
+                      <p className="text-[11px] text-gray-500 dark:text-gray-500 truncate">
+                        Firmware: {site.firmware}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -551,12 +962,66 @@ const UnifiTestPage = () => {
             </h2>
           </div>
 
+          {deviceSource && (
+            <div
+              className={`mb-3 text-sm px-3 py-2 rounded-lg border ${
+                deviceSource.type === 'api'
+                  ? 'text-green-700 bg-green-50 border-green-200 dark:text-green-300 dark:bg-green-900/20 dark:border-green-800'
+                  : deviceSource.type === 'hostPayload'
+                  ? 'text-blue-700 bg-blue-50 border-blue-200 dark:text-blue-300 dark:bg-blue-900/20 dark:border-blue-800'
+                  : deviceSource.type === 'apiNoMatch' || deviceSource.type === 'hostPayloadNoMatch'
+                  ? 'text-yellow-700 bg-yellow-50 border-yellow-200 dark:text-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-800'
+                  : deviceSource.type === 'error'
+                  ? 'text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-900/20 dark:border-red-800'
+                  : 'text-gray-700 bg-gray-50 border-gray-200 dark:text-gray-300 dark:bg-gray-800/40 dark:border-gray-700'
+              }`}
+            >
+              <p className="font-medium">
+                {(() => {
+                  switch (deviceSource.type) {
+                    case 'api':
+                      return 'Devices loaded via UniFi API (GET /v1/devices).';
+                    case 'hostPayload':
+                      return 'Devices loaded from host payload (API returned no records).';
+                    case 'apiNoMatch':
+                      return 'No API devices matched the selected site.';
+                    case 'hostPayloadNoMatch':
+                      return 'Host payload devices did not match the selected site.';
+                    case 'empty':
+                      return 'The UniFi API did not return any devices for this host.';
+                    case 'error':
+                      return 'Failed to load devices from the UniFi API.';
+                    default:
+                      return 'Device source information unavailable.';
+                  }
+                })()}
+              </p>
+              {(deviceSource.rawCount !== undefined || deviceSource.filteredCount !== undefined) && (
+                <p className="mt-1 text-xs opacity-80">
+                  Raw devices: {deviceSource.rawCount ?? 'N/A'} • After site filter: {deviceSource.filteredCount ?? 'N/A'}
+                </p>
+              )}
+              {deviceSource.note && (
+                <p className="mt-1 text-xs opacity-80">
+                  {deviceSource.note}
+                </p>
+              )}
+              {deviceSource.message && (
+                <p className="mt-1 text-xs opacity-80">
+                  Error: {deviceSource.message}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
-            {devices.map(device => (
-              <div
-                key={device.mac || device.id}
-                className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
-              >
+            {devices.map(device => {
+              const identifiers = getDeviceIdentifiers(device);
+              return (
+                <div
+                  key={device.mac || device.id}
+                  className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -595,11 +1060,28 @@ const UnifiTestPage = () => {
                           <span className="font-medium">Product:</span> {device.productLine}
                         </div>
                       )}
+                      <div>
+                        <span className="font-medium">Site:</span>{' '}
+                        {identifiers.siteName || identifiers.siteId || 'N/A'}
+                      </div>
+                      <div>
+                        <span className="font-medium">Site ID:</span>{' '}
+                        {identifiers.siteId || 'N/A'}
+                      </div>
+                      <div>
+                        <span className="font-medium">Host Site:</span>{' '}
+                        {identifiers.hostSiteId || 'N/A'}
+                      </div>
+                      <div>
+                        <span className="font-medium">Console ID:</span>{' '}
+                        {identifiers.consoleId || 'N/A'}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -688,8 +1170,15 @@ const UnifiTestPage = () => {
         <div style={sectionStyles.card} className="p-8 text-center">
           <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
           <p className="text-gray-600 dark:text-gray-400">
-            No devices or clients found for this site.
+            {deviceSource?.type === 'error'
+              ? 'Failed to load devices for this site. Check console logs for details.'
+              : 'No devices or clients were returned for this site.'}
           </p>
+          {deviceSource?.note && (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-500">
+              {deviceSource.note}
+            </p>
+          )}
         </div>
       )}
     </div>

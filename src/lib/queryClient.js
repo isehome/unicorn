@@ -39,6 +39,8 @@ export const queryKeys = {
   wireDrops: (projectId) => ['wire-drops', projectId],
   userProjects: (email) => ['user-projects', email],
   calendarEvents: ['calendar-events'],
+  parts: ['global-parts'],
+  part: (id) => ['global-part', id],
 };
 
 // Helper to invalidate related queries

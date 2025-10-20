@@ -4,7 +4,8 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Filter, Plus, Loader } from 'lucide-react';
+import { Search, Filter, Plus, Loader, Trash2 } from 'lucide-react';
+import { wireDropService } from '../services/wireDropService';
 
 const WireDropsList = () => {
   const { mode } = useTheme();
@@ -20,6 +21,7 @@ const WireDropsList = () => {
   const [error, setError] = useState(null);
   const [project, setProject] = useState(null);
   const [showFloorFilter, setShowFloorFilter] = useState(false);
+  const [deletingDropId, setDeletingDropId] = useState(null);
 
   // Reload data on mount and whenever we return to this page
   useEffect(() => {
@@ -159,6 +161,24 @@ const WireDropsList = () => {
     navigate(`/wire-drops/new${projectId ? `?project=${projectId}` : ''}`);
   };
 
+  const handleDeleteDrop = async (event, dropId) => {
+    event.stopPropagation();
+    if (!dropId) return;
+    const confirmed = window.confirm('Delete this wire drop? This action cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      setDeletingDropId(dropId);
+      await wireDropService.deleteWireDrop(dropId);
+      setAllDrops((prev) => prev.filter((drop) => drop.id !== dropId));
+    } catch (err) {
+      console.error('Failed to delete wire drop:', err);
+      alert(err.message || 'Failed to delete wire drop');
+    } finally {
+      setDeletingDropId(null);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -291,7 +311,7 @@ const WireDropsList = () => {
                             </span>
                           )}
                         </div>
-                        
+
                         {/* Project name if viewing all projects */}
                         {drop.projects?.name && !projectId && (
                           <p className="text-xs text-violet-600 dark:text-violet-400 mt-2">
@@ -299,8 +319,19 @@ const WireDropsList = () => {
                           </p>
                         )}
                       </div>
-                      
+
                       <div className="text-right space-y-2">
+                        <div className="flex justify-end">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            icon={Trash2}
+                            onClick={(event) => handleDeleteDrop(event, drop.id)}
+                            loading={deletingDropId === drop.id}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                         <div className="flex gap-1 justify-end mb-1">
                           <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${
                             prewireComplete 
