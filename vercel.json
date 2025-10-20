@@ -1,7 +1,9 @@
 {
   "build": {
     "env": {
-      "CI": "false"
+      "CI": "false",
+      "GENERATE_SOURCEMAP": "false",
+      "DISABLE_ESLINT_PLUGIN": "true"
     }
   },
   "functions": {
