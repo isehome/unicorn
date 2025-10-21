@@ -53,11 +53,10 @@ class SharePointStorageService {
       const folderName = `${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}`;
       const subPath = `wire_drops/${folderName}`;
       
-      // Create filename with stage and timestamp
-      const timestamp = this.formatTimestamp(new Date());
+      // Create consistent filename WITHOUT timestamp so it replaces the existing file
       const stagePrefix = stageType.toUpperCase();
       const extension = this.getFileExtension(file.name);
-      const filename = `${stagePrefix}_${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}_${timestamp}.${extension}`;
+      const filename = `${stagePrefix}_${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}.${extension}`;
       
       // Debug logging
       console.log('SharePoint Upload Debug:', {
