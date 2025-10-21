@@ -230,8 +230,21 @@ class SharePointStorageService {
           throw new Error('No URL returned from upload');
         }
         
-        console.log(`Successfully uploaded ${filename} to SharePoint`);
-        return result.url;
+        console.log(`Successfully uploaded ${filename} to SharePoint with metadata:`, {
+          url: result.url,
+          driveId: result.driveId,
+          itemId: result.itemId
+        });
+        
+        // Return complete metadata for thumbnail generation
+        return {
+          url: result.url,
+          driveId: result.driveId,
+          itemId: result.itemId,
+          name: result.name,
+          webUrl: result.webUrl,
+          size: result.size
+        };
         
       } catch (error) {
         lastError = error;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Camera, Plus, Search, Eye, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { sharePointStorageService } from '../../services/sharePointStorageService';
 import Button from '../../components/ui/Button';
 
 const WireDropsModule = ({ projectId }) => {
@@ -45,10 +46,18 @@ const WireDropsModule = ({ projectId }) => {
       if (!file) return;
 
       try {
-        const photoUrl = URL.createObjectURL(file);
+        // Upload to SharePoint
+        const stageType = photoType === 'prewire_photo' ? 'prewire' : 'installed';
+        const sharePointUrl = await sharePointStorageService.uploadWireDropPhoto(
+          projectId,
+          dropId,
+          stageType,
+          file
+        );
         
+        // Update database with SharePoint URL
         const updateData = {};
-        updateData[photoType] = photoUrl;
+        updateData[photoType] = sharePointUrl;
         
         const { error } = await supabase
           .from('wire_drops')
@@ -168,15 +177,26 @@ const WireDropsModule = ({ projectId }) => {
                       <Camera className="w-4 h-4 text-violet-500" />
                     </button>
                     {drop.prewire_photo && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFullscreenImage(drop.prewire_photo);
-                        }}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                      >
-                        <Eye className="w-4 h-4 text-blue-500" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFullscreenImage(drop.prewire_photo);
+                          }}
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                        >
+                          <Eye className="w-4 h-4 text-blue-500" />
+                        </button>
+                        <img
+                          src={sharePointStorageService.getThumbnailUrl(drop.prewire_photo, 'small')}
+                          alt="Prewire thumbnail"
+                          className="w-8 h-8 object-cover rounded border"
+                          onError={(e) => {
+                            // Fallback to full image if thumbnail fails
+                            e.target.src = drop.prewire_photo;
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
                   
@@ -197,15 +217,26 @@ const WireDropsModule = ({ projectId }) => {
                       <Camera className="w-4 h-4 text-violet-500" />
                     </button>
                     {drop.installed_photo && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFullscreenImage(drop.installed_photo);
-                        }}
-                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
-                      >
-                        <Eye className="w-4 h-4 text-blue-500" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFullscreenImage(drop.installed_photo);
+                          }}
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                        >
+                          <Eye className="w-4 h-4 text-blue-500" />
+                        </button>
+                        <img
+                          src={sharePointStorageService.getThumbnailUrl(drop.installed_photo, 'small')}
+                          alt="Installed thumbnail"
+                          className="w-8 h-8 object-cover rounded border"
+                          onError={(e) => {
+                            // Fallback to full image if thumbnail fails
+                            e.target.src = drop.installed_photo;
+                          }}
+                        />
+                      </div>
                     )}
                   </div>
                 </div>

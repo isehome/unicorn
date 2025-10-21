@@ -23,6 +23,8 @@ const THUMBNAIL_SIZES = {
 
 const CachedSharePointImage = ({
   sharePointUrl,
+  sharePointDriveId = null, // NEW: SharePoint drive ID for proper thumbnail generation
+  sharePointItemId = null,  // NEW: SharePoint item ID for proper thumbnail generation
   displayType = 'thumbnail', // 'thumbnail' | 'full' | 'auto'
   size = 'medium', // 'small' | 'medium' | 'large'
   alt = 'Image',
@@ -98,23 +100,32 @@ const CachedSharePointImage = ({
             return;
           }
 
-          // Generate SharePoint thumbnail URL
-          // SharePoint embed URLs support thumbnail parameters
-          const sizeConfig = THUMBNAIL_SIZES[size] || THUMBNAIL_SIZES.medium;
-          
-          // For embed URLs (format: https://tenant.sharepoint.com/:i:/g/...)
-          // Try adding thumbnail parameters
-          let thumbnailUrl;
-          if (sharePointUrl.includes('/:i:/') || sharePointUrl.includes('/:x:/')) {
-            // This is an embed link - try direct thumbnail access
-            thumbnailUrl = `${sharePointUrl}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
+          // NEW: If we have SharePoint metadata, use the proper Graph API thumbnail endpoint
+          if (sharePointDriveId && sharePointItemId) {
+            const thumbnailUrl = `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(sharePointDriveId)}&itemId=${encodeURIComponent(sharePointItemId)}&size=${size}`;
+            console.log('Using Graph API thumbnail:', thumbnailUrl);
+            if (isMounted) {
+              setImageSrc(thumbnailUrl);
+            }
           } else {
-            // For other URLs, try the proxy with size parameters
-            thumbnailUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
-          }
+            // FALLBACK: Old behavior for photos uploaded before metadata was stored
+            console.warn('No SharePoint metadata available, using fallback thumbnail method');
+            const sizeConfig = THUMBNAIL_SIZES[size] || THUMBNAIL_SIZES.medium;
+            
+            // For embed URLs (format: https://tenant.sharepoint.com/:i:/g/...)
+            // Try adding thumbnail parameters (may not work)
+            let thumbnailUrl;
+            if (sharePointUrl.includes('/:i:/') || sharePointUrl.includes('/:x:/')) {
+              // This is an embed link - try direct thumbnail access
+              thumbnailUrl = `${sharePointUrl}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
+            } else {
+              // For other URLs, try the proxy with size parameters
+              thumbnailUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
+            }
 
-          if (isMounted) {
-            setImageSrc(thumbnailUrl);
+            if (isMounted) {
+              setImageSrc(thumbnailUrl);
+            }
           }
         }
       } catch (err) {

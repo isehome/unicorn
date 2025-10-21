@@ -1223,6 +1223,8 @@ const WireDropDetailEnhanced = () => {
                         <div className="relative group">
                           <CachedSharePointImage
                             sharePointUrl={prewireStage.photo_url}
+                            sharePointDriveId={prewireStage.sharepoint_drive_id}
+                            sharePointItemId={prewireStage.sharepoint_item_id}
                             displayType="thumbnail"
                             size="medium"
                             alt="Prewire"
@@ -1322,6 +1324,8 @@ const WireDropDetailEnhanced = () => {
                         <div className="relative group">
                           <CachedSharePointImage
                             sharePointUrl={trimOutStage.photo_url}
+                            sharePointDriveId={trimOutStage.sharepoint_drive_id}
+                            sharePointItemId={trimOutStage.sharepoint_item_id}
                             displayType="thumbnail"
                             size="medium"
                             alt="Trim Out"

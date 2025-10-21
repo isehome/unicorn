@@ -146,11 +146,26 @@ module.exports = async (req, res) => {
       // Format: https://{tenant}.sharepoint.com/:i:/g/{path}
       const embedUrl = embedLink.link && embedLink.link.webUrl ? embedLink.link.webUrl : item.webUrl
       
-      res.status(200).json({ url: embedUrl })
+      // Return complete metadata for proper thumbnail generation
+      res.status(200).json({ 
+        url: embedUrl,
+        driveId: driveId,
+        itemId: item.id,
+        name: item.name,
+        webUrl: item.webUrl,
+        size: item.size
+      })
     } catch (linkError) {
       // Fallback to webUrl if embed link creation fails
       console.error('Failed to create embed link:', linkError.message)
-      res.status(200).json({ url: item.webUrl })
+      res.status(200).json({ 
+        url: item.webUrl,
+        driveId: driveId,
+        itemId: item.id,
+        name: item.name,
+        webUrl: item.webUrl,
+        size: item.size
+      })
     }
   } catch (e) {
     res.status(500).json({ error: e.message })

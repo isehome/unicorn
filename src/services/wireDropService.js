@@ -379,24 +379,30 @@ class WireDropService {
       
       console.log(`Uploading photo to SharePoint for wire drop: ${wireDropId}, stage: ${stageType}`);
       
-      // Upload to SharePoint
-      const sharePointUrl = await sharePointStorageService.uploadWireDropPhoto(
+      // Upload to SharePoint - now returns metadata object
+      const uploadResult = await sharePointStorageService.uploadWireDropPhoto(
         wireDrop.project_id,
         wireDropId,
         stageType,
         photoFile
       );
 
-      if (!sharePointUrl) {
+      if (!uploadResult || !uploadResult.url) {
         throw new Error('Failed to get SharePoint URL for uploaded photo');
       }
 
-      console.log('Photo uploaded successfully to SharePoint:', sharePointUrl);
+      console.log('Photo uploaded successfully to SharePoint:', uploadResult.url);
+      console.log('SharePoint metadata:', {
+        driveId: uploadResult.driveId,
+        itemId: uploadResult.itemId
+      });
 
-      // Update stage with photo URL and mark as complete
+      // Update stage with photo URL, metadata, and mark as complete
       // Use provided user name or fall back to 'Unknown User'
       return await this.updateStage(wireDropId, stageType, {
-        photo_url: sharePointUrl,
+        photo_url: uploadResult.url,
+        sharepoint_drive_id: uploadResult.driveId,
+        sharepoint_item_id: uploadResult.itemId,
         completed: true,
         completed_by: currentUserName || 'Unknown User'
       });
