@@ -4,13 +4,22 @@
  * Smart image component with:
  * - IndexedDB thumbnail caching
  * - Lazy loading via Intersection Observer
- * - Fallback chain (cached → live thumbnail → full image)
+ * - Thumbnail-first loading (lightweight)
+ * - Full resolution on demand
  * - Skeleton loader
  * - Error handling
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import { thumbnailCache } from '../lib/thumbnailCache';
+
+// SharePoint thumbnail size configurations
+const THUMBNAIL_SIZES = {
+  small: { width: 96, height: 96 },
+  medium: { width: 300, height: 300 },
+  large: { width: 800, height: 800 }
+};
 
 const CachedSharePointImage = ({
   sharePointUrl,
@@ -19,12 +28,14 @@ const CachedSharePointImage = ({
   alt = 'Image',
   className = '',
   onClick = null,
-  style = {}
+  style = {},
+  showFullOnClick = true // Enable full resolution view on click
 }) => {
   const [imageSrc, setImageSrc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [showingFull, setShowingFull] = useState(false);
   const imgRef = useRef(null);
   const observerRef = useRef(null);
 
@@ -70,18 +81,47 @@ const CachedSharePointImage = ({
         setLoading(true);
         setError(null);
 
-        // Use image proxy to handle SharePoint authentication server-side
-        // This allows images to be embedded without requiring user to be logged into SharePoint
-        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
-        
-        if (isMounted) {
-          setImageSrc(proxyUrl);
+        // Don't load full resolution unless explicitly requested
+        if (showingFull || displayType === 'full') {
+          // Use proxy for full resolution (requires auth)
+          const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
+          if (isMounted) {
+            setImageSrc(proxyUrl);
+          }
+        } else {
+          // First check cache for thumbnail
+          const cached = await thumbnailCache.get(sharePointUrl, size);
+          if (cached && isMounted) {
+            // Use cached thumbnail (base64 data URL)
+            setImageSrc(`data:${cached.type};base64,${cached.thumbnailData}`);
+            setLoading(false);
+            return;
+          }
+
+          // Generate SharePoint thumbnail URL
+          // SharePoint embed URLs support thumbnail parameters
+          const sizeConfig = THUMBNAIL_SIZES[size] || THUMBNAIL_SIZES.medium;
+          
+          // For embed URLs (format: https://tenant.sharepoint.com/:i:/g/...)
+          // Try adding thumbnail parameters
+          let thumbnailUrl;
+          if (sharePointUrl.includes('/:i:/') || sharePointUrl.includes('/:x:/')) {
+            // This is an embed link - try direct thumbnail access
+            thumbnailUrl = `${sharePointUrl}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
+          } else {
+            // For other URLs, try the proxy with size parameters
+            thumbnailUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
+          }
+
+          if (isMounted) {
+            setImageSrc(thumbnailUrl);
+          }
         }
       } catch (err) {
         console.error('Failed to load image:', err);
         if (isMounted) {
           setError(err.message);
-          // Fallback to full image URL on error
+          // Try direct URL as last resort
           setImageSrc(sharePointUrl);
         }
       } finally {
@@ -96,13 +136,18 @@ const CachedSharePointImage = ({
     return () => {
       isMounted = false;
     };
-  }, [isVisible, sharePointUrl, displayType, size]);
+  }, [isVisible, sharePointUrl, displayType, size, showingFull]);
 
   // Handle image load error - try fallback
-  const handleImageError = () => {
-    if (displayType !== 'full' && sharePointUrl !== imageSrc) {
-      // Try loading full image as fallback
-      console.warn('Thumbnail failed, falling back to full image');
+  const handleImageError = async () => {
+    console.warn('Image load failed, trying fallback:', imageSrc);
+    
+    // If thumbnail failed, try proxy
+    if (!imageSrc?.includes('/api/image-proxy')) {
+      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
+      setImageSrc(proxyUrl);
+    } else if (sharePointUrl !== imageSrc) {
+      // Last resort: try direct URL
       setImageSrc(sharePointUrl);
     } else {
       setError('Failed to load image');
@@ -111,9 +156,41 @@ const CachedSharePointImage = ({
   };
 
   // Handle successful image load
-  const handleImageLoad = () => {
+  const handleImageLoad = async () => {
     setLoading(false);
     setError(null);
+    
+    // Cache the thumbnail if it loaded successfully and isn't already cached
+    if (!showingFull && displayType !== 'full' && imageSrc && !imageSrc.startsWith('data:')) {
+      try {
+        // Get the image as base64 for caching
+        const img = imgRef.current?.querySelector('img');
+        if (img) {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          ctx.drawImage(img, 0, 0);
+          const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+          await thumbnailCache.set(sharePointUrl, base64, size, 'image/jpeg');
+        }
+      } catch (err) {
+        // Caching failed, but image loaded - not critical
+        console.warn('Failed to cache thumbnail:', err);
+      }
+    }
+  };
+
+  // Handle click to show full resolution
+  const handleClick = (e) => {
+    if (showFullOnClick && !showingFull && displayType !== 'full') {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowingFull(true);
+    }
+    if (onClick) {
+      onClick(e);
+    }
   };
 
   if (!sharePointUrl) {
@@ -134,8 +211,8 @@ const CachedSharePointImage = ({
     <div 
       ref={imgRef}
       className={`relative overflow-hidden ${className}`}
-      style={style}
-      onClick={onClick}
+      style={{ ...style, cursor: showFullOnClick && !showingFull ? 'zoom-in' : style.cursor }}
+      onClick={handleClick}
     >
       {/* Skeleton loader */}
       {loading && (
@@ -168,10 +245,35 @@ const CachedSharePointImage = ({
         />
       )}
 
-      {/* Cached indicator (optional, can be removed) */}
-      {process.env.NODE_ENV === 'development' && imageSrc?.startsWith('data:') && !loading && (
-        <div className="absolute top-1 right-1 bg-green-500 text-white text-xs px-1 rounded opacity-75">
-          Cached
+      {/* Indicators */}
+      {process.env.NODE_ENV === 'development' && !loading && (
+        <>
+          {imageSrc?.startsWith('data:') && (
+            <div className="absolute top-1 right-1 bg-green-500 text-white text-xs px-1 rounded opacity-75">
+              Cached
+            </div>
+          )}
+          {showingFull && (
+            <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-1 rounded opacity-75">
+              Full
+            </div>
+          )}
+          {!showingFull && displayType !== 'full' && (
+            <div className="absolute bottom-1 right-1 bg-gray-700 text-white text-xs px-1 rounded opacity-50">
+              {size}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Click hint overlay */}
+      {showFullOnClick && !showingFull && !loading && !error && displayType !== 'full' && (
+        <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-all pointer-events-none flex items-center justify-center">
+          <div className="opacity-0 hover:opacity-100 transition-opacity">
+            <svg className="w-8 h-8 text-white drop-shadow-lg" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+            </svg>
+          </div>
         </div>
       )}
     </div>
