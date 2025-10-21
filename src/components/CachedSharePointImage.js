@@ -70,17 +70,12 @@ const CachedSharePointImage = ({
         setLoading(true);
         setError(null);
 
-        // Determine what to load based on displayType
-        if (displayType === 'full') {
-          // Load full image directly
-          setImageSrc(sharePointUrl);
-        } else if (displayType === 'thumbnail' || displayType === 'auto') {
-          // SharePoint thumbnail API requires authentication even for shared links
-          // For now, use the full image URL which works with organization sharing
-          // TODO: Implement proper authenticated thumbnail fetching
-          if (isMounted) {
-            setImageSrc(sharePointUrl);
-          }
+        // Use image proxy to handle SharePoint authentication server-side
+        // This allows images to be embedded without requiring user to be logged into SharePoint
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
+        
+        if (isMounted) {
+          setImageSrc(proxyUrl);
         }
       } catch (err) {
         console.error('Failed to load image:', err);
