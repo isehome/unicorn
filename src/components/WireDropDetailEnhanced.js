@@ -1220,7 +1220,7 @@ const WireDropDetailEnhanced = () => {
                       </div>
                     ) : (
                       <>
-                        <div className="relative group">
+                        <div className="space-y-2">
                           <CachedSharePointImage
                             sharePointUrl={prewireStage.photo_url}
                             sharePointDriveId={prewireStage.sharepoint_drive_id}
@@ -1228,21 +1228,20 @@ const WireDropDetailEnhanced = () => {
                             displayType="thumbnail"
                             size="medium"
                             alt="Prewire"
-                            className="w-full h-48 rounded-lg"
+                            className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            showFullOnClick={true}
                           />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
-                            <Button 
-                              variant="primary" 
-                              icon={RefreshCw} 
-                              size="sm"
-                              onClick={() => handlePhotoUpload('prewire', true)}
-                              loading={uploadingStage === 'prewire'}
-                              disabled={uploadingStage === 'prewire'}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              Replace Photo
-                            </Button>
-                          </div>
+                          <Button 
+                            variant="secondary" 
+                            icon={RefreshCw} 
+                            size="sm"
+                            onClick={() => handlePhotoUpload('prewire', true)}
+                            loading={uploadingStage === 'prewire'}
+                            disabled={uploadingStage === 'prewire'}
+                            className="w-full"
+                          >
+                            Replace Photo
+                          </Button>
                         </div>
                         {prewireStage.completed_at && (
                           <div className="text-xs space-y-1" style={styles.textSecondary}>
@@ -1321,7 +1320,7 @@ const WireDropDetailEnhanced = () => {
                       </div>
                     ) : (
                       <>
-                        <div className="relative group">
+                        <div className="space-y-2">
                           <CachedSharePointImage
                             sharePointUrl={trimOutStage.photo_url}
                             sharePointDriveId={trimOutStage.sharepoint_drive_id}
@@ -1329,21 +1328,20 @@ const WireDropDetailEnhanced = () => {
                             displayType="thumbnail"
                             size="medium"
                             alt="Trim Out"
-                            className="w-full h-48 rounded-lg"
+                            className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                            showFullOnClick={true}
                           />
-                          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded-lg flex items-center justify-center">
-                            <Button 
-                              variant="primary" 
-                              icon={RefreshCw} 
-                              size="sm"
-                              onClick={() => handlePhotoUpload('trim_out', true)}
-                              loading={uploadingStage === 'trim_out'}
-                              disabled={uploadingStage === 'trim_out'}
-                              className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              Replace Photo
-                            </Button>
-                          </div>
+                          <Button 
+                            variant="secondary" 
+                            icon={RefreshCw} 
+                            size="sm"
+                            onClick={() => handlePhotoUpload('trim_out', true)}
+                            loading={uploadingStage === 'trim_out'}
+                            disabled={uploadingStage === 'trim_out'}
+                            className="w-full"
+                          >
+                            Replace Photo
+                          </Button>
                         </div>
                         {trimOutStage.completed_at && (
                           <div className="text-xs space-y-1" style={styles.textSecondary}>

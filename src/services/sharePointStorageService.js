@@ -84,7 +84,7 @@ class SharePointStorageService {
    * @param {string} issueId - Issue UUID
    * @param {File} file - Image file
    * @param {string} photoDescription - Optional description for filename
-   * @returns {Promise<string>} SharePoint URL
+   * @returns {Promise<{url: string, driveId: string, itemId: string, name: string, webUrl: string, size: number}>} SharePoint metadata
    */
   async uploadIssuePhoto(projectId, issueId, file, photoDescription = '') {
     try {
@@ -113,10 +113,10 @@ class SharePointStorageService {
       const extension = this.getFileExtension(file.name);
       const filename = `ISSUE_${this.sanitizeForFileName(issueTitle)}${description}_${timestamp}.${extension}`;
       
-      // Upload to SharePoint
-      const url = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
+      // Upload to SharePoint - returns metadata object
+      const metadata = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
       
-      return url;
+      return metadata;
     } catch (error) {
       console.error('Failed to upload issue photo:', error);
       throw new Error(`Issue photo upload failed: ${error.message}`);
@@ -129,7 +129,7 @@ class SharePointStorageService {
    * @param {string} pageId - Lucid page ID
    * @param {string} pageTitle - Page title for naming
    * @param {Blob} imageBlob - Image data
-   * @returns {Promise<string>} SharePoint URL
+   * @returns {Promise<{url: string, driveId: string, itemId: string, name: string, webUrl: string, size: number}>} SharePoint metadata
    */
   async uploadFloorPlan(projectId, pageId, pageTitle, imageBlob) {
     try {
@@ -149,10 +149,10 @@ class SharePointStorageService {
       // Convert blob to File object for upload
       const file = new File([imageBlob], filename, { type: 'image/png' });
       
-      // Upload to SharePoint
-      const url = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
+      // Upload to SharePoint - returns metadata object
+      const metadata = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
       
-      return url;
+      return metadata;
     } catch (error) {
       console.error('Failed to upload floor plan:', error);
       throw new Error(`Floor plan upload failed: ${error.message}`);

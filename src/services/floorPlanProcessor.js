@@ -81,16 +81,16 @@ export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiK
         // Get image dimensions
         const imageDimensions = await getImageDimensions(imageBlob);
         
-        // Upload to SharePoint
+        // Upload to SharePoint - returns metadata object
         console.log(`Uploading image for page ${i + 1} to SharePoint...`);
-        const imageUrl = await sharePointStorageService.uploadFloorPlan(
+        const metadata = await sharePointStorageService.uploadFloorPlan(
           projectId,
           page.id,
           page.title || `Floor ${i + 1}`,
           imageBlob
         );
         
-        // Save to lucid_pages table
+        // Save to lucid_pages table with SharePoint metadata
         console.log(`Saving page ${i + 1} metadata to database...`);
         const { data: cachedPage, error } = await supabase
           .from('lucid_pages')
@@ -99,7 +99,9 @@ export async function processAndCacheFloorPlans(projectId, lucidDocumentId, apiK
             page_id: page.id,
             page_title: page.title || `Floor ${i + 1}`,
             page_index: i,
-            image_url: imageUrl,
+            image_url: metadata.url,
+            sharepoint_drive_id: metadata.driveId,
+            sharepoint_item_id: metadata.itemId,
             image_width: imageDimensions.width,
             image_height: imageDimensions.height,
             bounding_box: boundingBox,

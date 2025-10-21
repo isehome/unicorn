@@ -227,23 +227,25 @@ const IssueDetail = () => {
       setUploading(true);
       setError('');
       
-      // Upload to SharePoint
-      const sharePointUrl = await sharePointStorageService.uploadIssuePhoto(
+      // Upload to SharePoint - returns metadata object
+      const metadata = await sharePointStorageService.uploadIssuePhoto(
         projectId,
         issue.id,
         file,
         '' // Optional photo description
       );
       
-      // Save to database
+      // Save to database with SharePoint metadata
       const { data, error } = await supabase
         .from('issue_photos')
         .insert([{ 
           issue_id: issue.id, 
-          url: sharePointUrl, 
-          file_name: file.name, 
+          url: metadata.url,
+          sharepoint_drive_id: metadata.driveId,
+          sharepoint_item_id: metadata.itemId,
+          file_name: metadata.name || file.name, 
           content_type: file.type, 
-          size_bytes: file.size 
+          size_bytes: metadata.size || file.size 
         }])
         .select()
         .single();
@@ -559,22 +561,19 @@ const IssueDetail = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.map((p) => (
-              <a 
-                key={p.id} 
-                href={p.url} 
-                target="_blank" 
-                rel="noreferrer" 
-                className="block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors"
-              >
+              <div key={p.id} className="block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors">
                 <CachedSharePointImage
                   sharePointUrl={p.url}
+                  sharePointDriveId={p.sharepoint_drive_id}
+                  sharePointItemId={p.sharepoint_item_id}
                   displayType="thumbnail"
                   size="medium"
                   alt={p.file_name || 'Issue photo'}
-                  className="w-full h-28"
+                  className="w-full h-28 cursor-pointer"
                   style={{ minHeight: '7rem' }}
+                  showFullOnClick={true}
                 />
-              </a>
+              </div>
             ))}
           </div>
         )}
