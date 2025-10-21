@@ -132,9 +132,11 @@ module.exports = async (req, res) => {
     const buffer = Buffer.from(fileBase64, 'base64')
     const item = await uploadBufferToItem(token, driveId, finalParentId, filename, buffer, contentType)
 
-    // Get direct embeddable URL
-    // Try download URL first (best for embedding), fallback to webUrl
-    const embedUrl = item['@microsoft.graph.downloadUrl'] || item.webUrl
+    // Get the item again with downloadUrl included
+    const itemWithDownloadUrl = await graph(token, `/drives/${driveId}/items/${item.id}`)
+    
+    // Use download URL (direct link that works in img tags)
+    const embedUrl = itemWithDownloadUrl['@microsoft.graph.downloadUrl'] || itemWithDownloadUrl.webUrl
     
     res.status(200).json({ url: embedUrl })
   } catch (e) {
