@@ -132,13 +132,26 @@ module.exports = async (req, res) => {
     const buffer = Buffer.from(fileBase64, 'base64')
     const item = await uploadBufferToItem(token, driveId, finalParentId, filename, buffer, contentType)
 
-    // Get the item again with downloadUrl included
-    const itemWithDownloadUrl = await graph(token, `/drives/${driveId}/items/${item.id}`)
-    
-    // Use download URL (direct link that works in img tags)
-    const embedUrl = itemWithDownloadUrl['@microsoft.graph.downloadUrl'] || itemWithDownloadUrl.webUrl
-    
-    res.status(200).json({ url: embedUrl })
+    // Create an embed link (permanent, works in img tags without auth)
+    try {
+      const embedLink = await graph(token, `/drives/${driveId}/items/${item.id}/createLink`, {
+        method: 'POST',
+        body: JSON.stringify({ 
+          type: 'embed',
+          scope: 'organization'
+        })
+      })
+      
+      // The embed link has a webUrl that can be used in img src
+      // Format: https://{tenant}.sharepoint.com/:i:/g/{path}
+      const embedUrl = embedLink.link && embedLink.link.webUrl ? embedLink.link.webUrl : item.webUrl
+      
+      res.status(200).json({ url: embedUrl })
+    } catch (linkError) {
+      // Fallback to webUrl if embed link creation fails
+      console.error('Failed to create embed link:', linkError.message)
+      res.status(200).json({ url: item.webUrl })
+    }
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
