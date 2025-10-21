@@ -59,6 +59,7 @@ const WireDropDetailEnhanced = () => {
   const [equipmentError, setEquipmentError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [showFullRecord, setShowFullRecord] = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
@@ -190,13 +191,49 @@ const WireDropDetailEnhanced = () => {
       setError(null);
       
       const data = await wireDropService.getWireDrop(id);
+      
+      console.log('[WireDropDetail] Raw data from service:', {
+        hasShapeData: !!data.shape_data,
+        hasNotes: !!data.notes,
+        notesLength: data.notes?.length,
+        notesPreview: data.notes?.substring(0, 100)
+      });
+      
+      // Parse shape_data from notes if it's a JSON string
+      if (!data.shape_data && data.notes) {
+        try {
+          const parsed = JSON.parse(data.notes);
+          if (parsed && typeof parsed === 'object') {
+            data.shape_data = parsed;
+            console.log('[WireDropDetail] Successfully parsed shape_data from notes:', {
+              hasCustomData: !!parsed.customData,
+              customDataKeys: parsed.customData ? Object.keys(parsed.customData) : [],
+              wireTypeFromCustomData: parsed.customData?.['Wire Type'],
+              roomNameFromCustomData: parsed.customData?.['Room Name'],
+              dropTypeFromCustomData: parsed.customData?.['Drop Type'],
+              fullParsed: parsed
+            });
+          }
+        } catch (e) {
+          console.log('[WireDropDetail] Failed to parse notes as JSON:', e);
+        }
+      } else if (data.shape_data) {
+        console.log('[WireDropDetail] shape_data already exists:', {
+          hasCustomData: !!data.shape_data.customData,
+          customDataKeys: data.shape_data.customData ? Object.keys(data.shape_data.customData) : [],
+          fullShapeData: data.shape_data
+        });
+      }
+      
       setWireDrop(data);
       setEditForm({
         room_name: data.room_name || '',
         drop_name: data.drop_name || '',
-        location: data.location || '',
-        type: data.type || '',
-        lucid_shape_id: data.lucid_shape_id || '',
+        wire_type: data.wire_type || '',
+        drop_type: data.drop_type || '',
+        install_note: data.install_note || '',
+        floor: data.floor || '',
+        qr_code_url: data.qr_code_url || '',
         schematic_reference: data.schematic_reference || '',
         notes: data.notes || ''
       });
@@ -251,9 +288,11 @@ const WireDropDetailEnhanced = () => {
     setEditForm({
       room_name: wireDrop.room_name || '',
       drop_name: wireDrop.drop_name || '',
-      location: wireDrop.location || '',
-      type: wireDrop.type || '',
-      lucid_shape_id: wireDrop.lucid_shape_id || '',
+      wire_type: wireDrop.wire_type || '',
+      drop_type: wireDrop.drop_type || '',
+      install_note: wireDrop.install_note || '',
+      floor: wireDrop.floor || '',
+      qr_code_url: wireDrop.qr_code_url || '',
       schematic_reference: wireDrop.schematic_reference || '',
       notes: wireDrop.notes || ''
     });
@@ -803,34 +842,63 @@ const WireDropDetailEnhanced = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between">
-                      <h1 className="text-2xl font-bold" style={styles.textPrimary}>
-                        {wireDrop.name || 'Wire Drop'}
-                      </h1>
-                      <div className="flex gap-2">
-                        <Button 
-                          variant="danger" 
-                          icon={Trash2} 
-                          onClick={() => setShowDeleteConfirm(true)}
-                          size="sm"
-                        >
-                          Delete
-                        </Button>
-                        <Button 
-                          variant="primary" 
-                          icon={Edit} 
-                          onClick={() => setEditing(true)}
-                          size="sm"
-                        >
-                          Edit
-                        </Button>
+                    <div className="flex items-start gap-4">
+                      {/* Color circle from Lucid shape */}
+                      {(wireDrop.shape_fill_color || wireDrop.shape_color) && (
+                        <div 
+                          className="w-12 h-12 rounded-full flex-shrink-0 shadow-sm"
+                          style={{
+                            backgroundColor: wireDrop.shape_fill_color || wireDrop.shape_color
+                          }}
+                          title="Color from Lucid diagram"
+                        />
+                      )}
+                      
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h1 className="text-2xl font-bold" style={styles.textPrimary}>
+                            {wireDrop.drop_name || wireDrop.name || 'Wire Drop'}
+                          </h1>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="danger" 
+                              icon={Trash2} 
+                              onClick={() => setShowDeleteConfirm(true)}
+                              size="sm"
+                            >
+                              Delete
+                            </Button>
+                            <Button 
+                              variant="primary" 
+                              icon={Edit} 
+                              onClick={() => setEditing(true)}
+                              size="sm"
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                        {(wireDrop.project_room?.name || wireDrop.room_name) && (
+                          <p className="text-lg mt-1" style={styles.textSecondary}>
+                            {wireDrop.project_room?.name || wireDrop.room_name}
+                          </p>
+                        )}
+                        {(wireDrop.drop_type || wireDrop.wire_type) && (
+                          <div className="flex gap-2 mt-2">
+                            {wireDrop.drop_type && (
+                              <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                {wireDrop.drop_type}
+                              </span>
+                            )}
+                            {wireDrop.wire_type && (
+                              <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                                {wireDrop.wire_type}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                    {(wireDrop.project_room?.name || wireDrop.room_name) && (
-                      <p className="text-lg mt-1" style={styles.textSecondary}>
-                        {wireDrop.project_room?.name || wireDrop.room_name}
-                      </p>
-                    )}
                   </>
                 )}
                 
@@ -898,6 +966,190 @@ const WireDropDetailEnhanced = () => {
                   {wireDrop.completion || 0}%
                 </div>
                 <div className="text-xs" style={styles.subtleText}>Complete</div>
+              </div>
+            )}
+
+            {/* Collapsible Lucid Metadata Section */}
+            {!editing && (wireDrop.shape_x || wireDrop.shape_y || wireDrop.shape_color || wireDrop.shape_fill_color) && (
+              <div className="border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
+                <button
+                  onClick={() => setShowMetadata(!showMetadata)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(191, 219, 254, 0.5)',
+                    borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.6)',
+                    borderWidth: 1,
+                    borderStyle: 'solid'
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold" style={{ color: mode === 'dark' ? '#60a5fa' : '#1e40af' }}>
+                      📍 Lucid Diagram Metadata
+                    </div>
+                    <span className="text-xs px-2 py-0.5 rounded-full" style={{
+                      backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(147, 197, 253, 0.4)',
+                      color: mode === 'dark' ? '#93c5fd' : '#1e40af'
+                    }}>
+                      For future "Show on Map" feature
+                    </span>
+                  </div>
+                  <div className="text-lg" style={{ color: mode === 'dark' ? '#60a5fa' : '#1e40af' }}>
+                    {showMetadata ? '▼' : '▶'}
+                  </div>
+                </button>
+
+                {showMetadata && (
+                  <div className="mt-3 p-4 rounded-lg space-y-4" style={{
+                    backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.05)' : 'rgba(239, 246, 255, 0.8)',
+                    borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(191, 219, 254, 0.6)',
+                    borderWidth: 1,
+                    borderStyle: 'solid'
+                  }}>
+                    {/* Shape Position Data */}
+                    {(wireDrop.shape_x || wireDrop.shape_y || wireDrop.shape_width || wireDrop.shape_height) && (
+                      <div>
+                        <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#1e40af' }}>
+                          Shape Position (for navigation)
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {wireDrop.shape_x && (
+                            <div className="px-3 py-2 rounded" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>X Position</div>
+                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                {wireDrop.shape_x}
+                              </div>
+                            </div>
+                          )}
+                          {wireDrop.shape_y && (
+                            <div className="px-3 py-2 rounded" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Y Position</div>
+                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                {wireDrop.shape_y}
+                              </div>
+                            </div>
+                          )}
+                          {wireDrop.shape_width && (
+                            <div className="px-3 py-2 rounded" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Width</div>
+                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                {wireDrop.shape_width}
+                              </div>
+                            </div>
+                          )}
+                          {wireDrop.shape_height && (
+                            <div className="px-3 py-2 rounded" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Height</div>
+                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                {wireDrop.shape_height}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Shape Color Data */}
+                    {(wireDrop.shape_color || wireDrop.shape_fill_color || wireDrop.shape_line_color) && (
+                      <div>
+                        <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#1e40af' }}>
+                          Shape Colors (visual metadata)
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                          {wireDrop.shape_color && (
+                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div 
+                                className="w-6 h-6 rounded border"
+                                style={{
+                                  backgroundColor: wireDrop.shape_color,
+                                  borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
+                                }}
+                              />
+                              <div className="flex-1">
+                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Color</div>
+                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                  {wireDrop.shape_color}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {wireDrop.shape_fill_color && (
+                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div 
+                                className="w-6 h-6 rounded border"
+                                style={{
+                                  backgroundColor: wireDrop.shape_fill_color,
+                                  borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
+                                }}
+                              />
+                              <div className="flex-1">
+                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Fill Color</div>
+                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                  {wireDrop.shape_fill_color}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {wireDrop.shape_line_color && (
+                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
+                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
+                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
+                              borderWidth: 1,
+                              borderStyle: 'solid'
+                            }}>
+                              <div 
+                                className="w-6 h-6 rounded border-2"
+                                style={{
+                                  borderColor: wireDrop.shape_line_color,
+                                  backgroundColor: 'transparent'
+                                }}
+                              />
+                              <div className="flex-1">
+                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Line Color</div>
+                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
+                                  {wireDrop.shape_line_color}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="pt-2 text-xs" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>
+                      💡 This data will enable future features like "Show this drop on floor plan" navigation
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1610,16 +1862,57 @@ const WireDropDetailEnhanced = () => {
                     { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
                     { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
                     { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
-                    { name: 'Wire Type', key: 'type', value: wireDrop.type, editable: true, source: wireDrop.shape_data?.['Wire Type'] ? 'lucid' : 'manual' },
-                    { name: 'Room Name', key: 'room_name', value: wireDrop.project_room?.name || wireDrop.room_name, editable: true, source: wireDrop.shape_data?.['Room Name'] || wireDrop.shape_data?.room ? 'lucid' : 'manual' },
-                    { name: 'Drop Name', key: 'drop_name', value: wireDrop.drop_name, editable: true, source: wireDrop.shape_data?.['Drop Name'] ? 'lucid' : 'manual' },
+                    { 
+                      name: 'Wire Type (Basic)', 
+                      key: 'type', 
+                      value: wireDrop.type, 
+                      editable: true, 
+                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
+                      description: 'Basic wire type field' 
+                    },
+                    { 
+                      name: 'Wire Type (Enhanced)', 
+                      key: 'wire_type', 
+                      value: wireDrop.wire_type, 
+                      editable: true, 
+                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
+                      description: 'Detailed wire type from Lucid' 
+                    },
+                    { 
+                      name: 'Room Name', 
+                      key: 'room_name', 
+                      value: wireDrop.project_room?.name || wireDrop.room_name, 
+                      editable: true, 
+                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual'
+                    },
+                    { 
+                      name: 'Drop Name', 
+                      key: 'drop_name', 
+                      value: wireDrop.drop_name, 
+                      editable: true, 
+                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
+                      description: 'Drop identifier from Lucid' 
+                    },
+                    { 
+                      name: 'Drop Type', 
+                      key: 'drop_type', 
+                      value: wireDrop.drop_type, 
+                      editable: true, 
+                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
+                      description: 'Type of drop (e.g., TV, Keypad, Camera)' 
+                    },
                     { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
-                    { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.shape_data?.Location ? 'lucid' : 'manual' },
-                    { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.shape_data?.Floor ? 'lucid' : 'manual' },
+                    { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
+                    { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
                     { name: 'Notes', key: 'notes', value: wireDrop.notes, editable: true, source: 'manual' },
-                    { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.shape_data?.Device ? 'lucid' : 'manual' },
+                    { name: 'Install Note', key: 'install_note', value: wireDrop.install_note, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual', description: 'Installation notes from Lucid' },
+                    { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual', description: 'Device type from Lucid' },
+                    { name: 'Shape Color', key: 'shape_color', value: wireDrop.shape_color, locked: true, source: 'lucid', description: 'Primary color from Lucid shape' },
+                    { name: 'Shape Fill Color', key: 'shape_fill_color', value: wireDrop.shape_fill_color, locked: true, source: 'lucid', description: 'Fill color from Lucid shape' },
+                    { name: 'Shape Line Color', key: 'shape_line_color', value: wireDrop.shape_line_color, locked: true, source: 'lucid', description: 'Line color from Lucid shape' },
+                    { name: 'Lucid Synced At', key: 'lucid_synced_at', value: wireDrop.lucid_synced_at ? new Date(wireDrop.lucid_synced_at).toLocaleString() : null, locked: true, source: 'lucid', description: 'Last sync from Lucid' },
                     { name: 'QR Code URL', key: 'qr_code_url', value: wireDrop.qr_code_url, editable: true, source: 'manual' },
-                    { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.shape_data?.['IS Drop'] ? 'lucid' : 'manual' },
+                    { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
                     { name: 'Schematic Reference', key: 'schematic_reference', value: wireDrop.schematic_reference, editable: true, source: 'manual' },
                     { name: 'Prewire Photo (Legacy)', key: 'prewire_photo', value: wireDrop.prewire_photo, locked: true, source: 'legacy', description: 'Old photo system' },
                     { name: 'Installed Photo (Legacy)', key: 'installed_photo', value: wireDrop.installed_photo, locked: true, source: 'legacy', description: 'Old photo system' }

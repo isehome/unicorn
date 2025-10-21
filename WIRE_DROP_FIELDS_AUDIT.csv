@@ -1,0 +1,89 @@
+Field Name,Database Column,Data Type,Source,Is Editable,Is Duplicate/Extra,Used In App,Description,Notes
+Record ID,id,UUID,System Generated,No,No,Yes,Unique identifier for wire drop record,Primary key
+Project ID,project_id,UUID,System,No,No,Yes,Links to projects table,Foreign key
+UID,uid,TEXT,Auto-generated,No,No,Yes,Human-readable unique ID generated from room + drop name,Format: ROOM-DROP-XXXX
+Created At,created_at,TIMESTAMPTZ,System,No,No,Yes,Record creation timestamp,Auto-set
+Updated At,updated_at,TIMESTAMPTZ,System,No,No,Yes,Last update timestamp,Auto-updated via trigger
+Lucid Shape ID,lucid_shape_id,TEXT,Lucid Import,No,No,Yes,Links to specific shape in Lucid diagram,Critical for sync
+Lucid Page ID,lucid_page_id,TEXT,Lucid Import,No,No,Yes,Links to specific page/floor in Lucid,Used for floor filtering
+Lucid Synced At,lucid_synced_at,TIMESTAMPTZ,Lucid Sync,No,No,Yes,Last time synced from Lucid,Tracks sync freshness
+Shape X,shape_x,NUMERIC,Lucid Import,No,No,Partial,X coordinate of shape in Lucid,Position metadata
+Shape Y,shape_y,NUMERIC,Lucid Import,No,No,Partial,Y coordinate of shape in Lucid,Position metadata
+Shape Width,shape_width,NUMERIC,Lucid Import,No,No,Partial,Width of shape in Lucid,Position metadata
+Shape Height,shape_height,NUMERIC,Lucid Import,No,No,Partial,Height of shape in Lucid,Position metadata
+Name,name,TEXT,Manual/Legacy,Yes,**DUPLICATE**,Minimal,Legacy name field - duplicates drop_name,**RECOMMEND REMOVE** - use drop_name instead
+Drop Name,drop_name,TEXT,Lucid Import/Manual,Yes,No,Yes,Drop identifier from Lucid (e.g. 'Living Room TV'),Primary field from Lucid customData
+Room Name,room_name,TEXT,Lucid Import/Manual,Yes,No,Yes,Room name from Lucid (e.g. 'Living Room'),Primary field from Lucid customData
+Location,location,TEXT,Lucid Import/Manual,Yes,**DUPLICATE**,Partial,Location details - often duplicates room_name,**RECOMMEND MERGE** with room_name
+Floor,floor,TEXT,Lucid Import/Manual,Yes,No,Yes,Floor identifier for filtering,Used for organization
+Type,type,TEXT,Lucid Import/Manual,Yes,**DUPLICATE**,Yes,Basic wire type field (e.g. 'CAT6'),**DUPLICATE** - conflicts with wire_type
+Wire Type,wire_type,TEXT,Lucid Import/Manual,Yes,**DUPLICATE**,Yes,Enhanced wire type from Lucid (e.g. '18/4'),**DUPLICATE** - conflicts with type
+Drop Type,drop_type,TEXT,Lucid Import/Manual,Yes,No,Yes,Type of drop (e.g. 'Keypad' 'TV' 'Camera'),From Lucid customData
+Device,device,TEXT,Lucid Import/Manual,Yes,Questionable,Partial,Device type from Lucid,**May overlap with drop_type**
+Install Note,install_note,TEXT,Lucid Import/Manual,Yes,No,Yes,Installation notes from Lucid,From Lucid customData
+Notes,notes,TEXT,Manual,Yes,Questionable,Yes,General notes field,**May overlap with install_note**
+IS Drop,is_drop,BOOLEAN,Lucid Import,No,No,Minimal,Boolean flag from Lucid indicating if it's a drop,Not heavily used
+Shape Color,shape_color,TEXT,Lucid Import,No,No,Minimal,Primary color of Lucid shape (hex),Metadata only
+Shape Fill Color,shape_fill_color,TEXT,Lucid Import,No,No,Minimal,Fill color of Lucid shape (hex),Metadata only
+Shape Line Color,shape_line_color,TEXT,Lucid Import,No,No,Minimal,Line color of Lucid shape (hex),Metadata only
+Shape Data,shape_data,JSONB,Lucid Import,No,No,Yes,Complete raw Lucid shape data for offline access,Full Lucid shape backup
+Prewire Photo,prewire_photo,TEXT,Legacy,No,**DEPRECATED**,No,Old photo system URL,**RECOMMEND REMOVE** - replaced by wire_drop_stages
+Installed Photo,installed_photo,TEXT,Legacy,No,**DEPRECATED**,No,Old photo system URL,**RECOMMEND REMOVE** - replaced by wire_drop_stages
+Room End Equipment,room_end_equipment,TEXT,Legacy,Yes,**DEPRECATED**,No,Legacy equipment field,**RECOMMEND REMOVE** - use wire_drop_equipment_links
+Head End Equipment,head_end_equipment,TEXT,Legacy,Yes,**DEPRECATED**,No,Legacy equipment field,**RECOMMEND REMOVE** - use wire_drop_equipment_links
+Schematic Reference,schematic_reference,TEXT,Manual,Yes,No,Partial,Reference to schematic/diagram,Rarely used
+QR Code URL,qr_code_url,TEXT,Manual,Yes,No,Partial,QR code for wire drop,Feature not fully implemented
+Project Room ID,project_room_id,UUID,System,No,No,Yes,Links to project_rooms table,Foreign key for room relationship
+
+SUMMARY OF DUPLICATE/PROBLEMATIC FIELDS:
+===========================================
+**CRITICAL DUPLICATES** (Choose one from each pair):
+1. name vs drop_name - RECOMMEND: Keep drop_name only (it's the Lucid field)
+2. type vs wire_type - RECOMMEND: Consolidate to single wire_type field
+3. location vs room_name - RECOMMEND: Keep room_name only or merge location as additional detail
+4. notes vs install_note - RECOMMEND: Keep both but clarify usage (notes=manual install_note=Lucid)
+5. device vs drop_type - RECOMMEND: Review if device is needed or if drop_type covers it
+
+**DEPRECATED/LEGACY FIELDS** (Safe to remove):
+1. prewire_photo - Replaced by wire_drop_stages table
+2. installed_photo - Replaced by wire_drop_stages table
+3. room_end_equipment - Replaced by wire_drop_equipment_links table
+4. head_end_equipment - Replaced by wire_drop_equipment_links table
+
+**METADATA FIELDS** (Keep but low priority):
+1. shape_color shape_fill_color shape_line_color - Visual metadata from Lucid
+2. shape_x shape_y shape_width shape_height - Position metadata from Lucid
+3. shape_data - Full Lucid backup (KEEP - important for offline/debugging)
+
+RECOMMENDED FIELD CONSOLIDATION PLAN:
+=====================================
+KEEP THESE CORE FIELDS:
+- id project_id uid created_at updated_at
+- lucid_shape_id lucid_page_id lucid_synced_at
+- drop_name (PRIMARY NAME - from Lucid customData 'Drop Name')
+- room_name (PRIMARY ROOM - from Lucid customData 'Room Name')
+- wire_type (SINGLE WIRE TYPE - consolidate type into this)
+- drop_type (from Lucid customData 'Drop Type')
+- install_note (from Lucid customData)
+- floor project_room_id
+- notes (for manual additions separate from Lucid)
+- shape_data (full Lucid backup)
+- schematic_reference qr_code_url (future features)
+
+REMOVE/DEPRECATE:
+- name (use drop_name)
+- type (consolidate into wire_type)
+- location (merge into room_name or notes)
+- device (if redundant with drop_type)
+- prewire_photo installed_photo (old system)
+- room_end_equipment head_end_equipment (old system)
+- is_drop (not critical)
+- shape colors and positions (unless specifically needed)
+
+MIGRATION STEPS:
+1. Data migration: Copy 'name' to 'drop_name' where drop_name is null
+2. Data migration: Merge 'type' and 'wire_type' into single wire_type field
+3. Data migration: Merge 'location' into notes where it adds info beyond room_name
+4. Remove deprecated columns after data migration
+5. Update application code to use consolidated fields only
+6. Update Lucid import to map to consolidated fields

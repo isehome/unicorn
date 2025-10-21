@@ -189,13 +189,25 @@ export function AuthProvider({ children }) {
         try {
           response = await msalInstance.handleRedirectPromise();
         } catch (redirectError) {
-          if (redirectError?.errorCode === 'hash_empty_error') {
-            console.warn('[Auth] Redirect hash empty, clearing stale interaction status');
+          if (redirectError?.errorCode === 'hash_empty_error' || 
+              redirectError?.errorMessage?.includes('Hash value cannot be processed')) {
+            console.warn('[Auth] Hash empty error detected, clearing all MSAL state');
             try {
-              localStorage.removeItem('msal.interaction.status');
+              // Clear all MSAL-related items from localStorage
+              const keysToRemove = [];
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith('msal.') || key.includes('login.windows'))) {
+                  keysToRemove.push(key);
+                }
+              }
+              keysToRemove.forEach(key => localStorage.removeItem(key));
+              console.log('[Auth] Cleared MSAL localStorage items:', keysToRemove.length);
             } catch (storageError) {
-              console.warn('[Auth] Unable to clear msal.interaction.status:', storageError);
+              console.warn('[Auth] Unable to clear MSAL state:', storageError);
             }
+            // Don't throw - treat as no authentication response
+            response = null;
           } else {
             throw redirectError;
           }

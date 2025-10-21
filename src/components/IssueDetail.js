@@ -10,8 +10,9 @@ import {
   issueStakeholderTagsService,
   projectStakeholdersService
 } from '../services/supabaseService';
-import { supabase, toThumb } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import CachedSharePointImage from './CachedSharePointImage';
 import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
 
 const IssueDetail = () => {
@@ -558,8 +559,21 @@ const IssueDetail = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.map((p) => (
-              <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="block rounded-xl overflow-hidden border">
-                <img src={toThumb(p.url, { width: 480, height: 320 })} alt={p.file_name || 'photo'} className="w-full h-28 object-cover" />
+              <a 
+                key={p.id} 
+                href={p.url} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors"
+              >
+                <CachedSharePointImage
+                  sharePointUrl={p.url}
+                  displayType="thumbnail"
+                  size="medium"
+                  alt={p.file_name || 'Issue photo'}
+                  className="w-full h-28"
+                  style={{ minHeight: '7rem' }}
+                />
               </a>
             ))}
           </div>

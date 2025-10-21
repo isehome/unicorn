@@ -1121,22 +1121,33 @@ const PMProjectViewEnhanced = () => {
     const created = [];
     const updated = [];
     const aliasUpsertsByRoom = new Map();
+    const dropCountByRoomAndType = new Map();
 
     try {
+      // First pass: count existing drops by room and type for auto-generation
+      const { data: existingDrops } = await supabase
+        .from('wire_drops')
+        .select('room_name, drop_type, drop_name')
+        .eq('project_id', projectId);
+      
+      if (existingDrops) {
+        existingDrops.forEach(drop => {
+          if (drop.room_name && drop.drop_type) {
+            const key = `${normalizeRoomName(drop.room_name)}_${drop.drop_type.toLowerCase()}`;
+            dropCountByRoomAndType.set(key, (dropCountByRoomAndType.get(key) || 0) + 1);
+          }
+        });
+      }
+
       for (const shapeId of selectedShapes) {
         const shape = droppableShapes.find((s) => s.id === shapeId);
         if (!shape) continue;
 
-        const shapeName =
-          shape.text ||
-          getShapeCustomValue(shape, 'Drop Name') ||
-          `Drop ${shape.id.substring(0, 8)}`;
+        // Extract basic properties that work with current database schema
         const roomNameRaw = extractShapeRoomName(shape);
         const location = extractShapeLocation(shape);
-        const dropType = extractShapeDropType(shape);
         const wireType = extractShapeWireType(shape) || 'CAT6';
-  const floor = extractShapeFloor(shape);
-  const device = extractShapeDevice(shape);
+        const dropType = extractShapeDropType(shape);
 
         const resolvedRoom = resolveRoomForName(roomNameRaw);
         const canonicalRoomName = resolvedRoom?.room?.name || roomNameRaw;
@@ -1145,6 +1156,10 @@ const PMProjectViewEnhanced = () => {
           roomNameRaw ||
           location ||
           'Unassigned';
+
+        // ALWAYS let the service auto-generate wire drop names using room+type+number
+        // Never use the Lucid shape name
+        const dropNameToUse = null;
 
         if (resolvedRoom?.room) {
           const aliasNormalized = normalizeRoomName(roomNameRaw);
@@ -1161,40 +1176,34 @@ const PMProjectViewEnhanced = () => {
           }
         }
 
-        // Create notes field to store all Lucid shape data that we can't store in columns
-        const shapeMetadata = {
-          pageId: shape.pageId,
-          pageTitle: shape.pageTitle,
-          position: shape.position,
-          size: shape.size,
-          customData: shape.customData || {},
-          locationOriginal: location || null,
-          locationResolved: locationValue,
-          dropType,
-          wireType,
-          floor,
-          device,
-          matchedProjectRoomId: resolvedRoom?.room?.id || null,
-          matchedProjectRoomName: resolvedRoom?.room?.name || null
-        };
-        
-        const notesContent = `Lucid Shape Data: ${JSON.stringify(shapeMetadata)}`;
-
         // Check if wire drop already exists for this shape
         const existingDrop = existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
         
         if (existingDrop) {
           // Update existing wire drop with latest data from Lucid
+          // Generate new name if room or type changed
+          let updatedDropName = existingDrop.drop_name;
+          if (canonicalRoomName && dropType && 
+              (existingDrop.room_name !== canonicalRoomName || existingDrop.drop_type !== dropType)) {
+            updatedDropName = await wireDropService.generateDropName(projectId, canonicalRoomName, dropType);
+          }
+          
           const { data, error } = await supabase
             .from('wire_drops')
             .update({
-              name: shapeName,
+              drop_name: updatedDropName || existingDrop.drop_name,
               room_name: canonicalRoomName,
-              drop_name: shapeName,
               location: locationValue,
-              type: wireType,
+              wire_type: wireType,
+              drop_type: dropType,
+              install_note: getShapeCustomValue(shape, 'Install Note') || 
+                            getShapeCustomValue(shape, 'Note') || null,
+              device: extractShapeDevice(shape),
+              shape_color: shape.style?.strokeColor || null,
+              shape_fill_color: shape.style?.fillColor || null,
+              shape_line_color: shape.style?.lineColor || null,
               project_room_id: resolvedRoom?.room?.id || null,
-              notes: notesContent,
+              lucid_synced_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
             .eq('id', existingDrop.id)
@@ -1202,27 +1211,48 @@ const PMProjectViewEnhanced = () => {
             .single();
 
           if (error) {
-            errors.push(`Failed to update wire drop for ${shapeName}: ${error.message}`);
+            errors.push(`Failed to update wire drop: ${error.message}`);
           } else {
             updated.push(data);
           }
         } else {
           // Use the service to create wire drop properly with stages
-        const wireDropData = {
-          drop_name: shapeName,
-          room_name: canonicalRoomName,
-          location: locationValue,
-          type: wireType,
-          lucid_shape_id: shape.id,
+          // The service will auto-generate drop_name based on room + type + number
+          
+          // Extract color from shape metadata - store in both places
+          const shapeColor = getShapeCustomValue(shape, 'Color') || 
+                            shape.shapeColor || 
+                            shape.fillColor ||
+                            shape.style?.fillColor || 
+                            shape.style?.strokeColor || 
+                            null;
+          
+          const wireDropData = {
+            room_name: canonicalRoomName,
+            drop_type: dropType,  // This is required for auto-generation
+            drop_name: dropNameToUse, // Always null - let service auto-generate
+            location: locationValue,
+            wire_type: wireType,
+            install_note: getShapeCustomValue(shape, 'Install Note') || 
+                          getShapeCustomValue(shape, 'Note') || null,
+            device: extractShapeDevice(shape),
+            // Store color in individual columns (fallback)
+            shape_color: shapeColor || shape.style?.strokeColor || null,
+            shape_fill_color: shape.fillColor || shape.style?.fillColor || null,
+            shape_line_color: shape.lineColor || shape.style?.lineColor || null,
+            // Store complete shape metadata including Color field
+            shape_data: shape.customData || null,
+            lucid_shape_id: shape.id,
+            lucid_page_id: shape.pageId || null,
             project_room_id: resolvedRoom?.room?.id || null,
-            notes: notesContent
+            lucid_synced_at: new Date().toISOString()
           };
 
           try {
             const wireDrop = await wireDropService.createWireDrop(projectId, wireDropData);
             created.push(wireDrop);
           } catch (createError) {
-            errors.push(`Failed to create wire drop for ${shapeName}: ${createError.message}`);
+            errors.push(`Failed to create wire drop: ${createError.message}`);
           }
         }
       }
@@ -2027,6 +2057,343 @@ const PMProjectViewEnhanced = () => {
         </div>
       </div>
 
+      {/* Room Synchronization Section - Always visible when project has data */}
+      {(projectRooms.length > 0 || droppableShapes.length > 0) && (
+        <div style={sectionStyles.card} className="p-6">
+          <button
+            type="button"
+            onClick={() => setRoomAssociationCollapsed((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+          >
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Room Matching: Lucid to CSV</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Map room names from Lucid diagrams to rooms imported from CSV equipment files
+              </p>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-gray-500 transition-transform ${roomAssociationCollapsed ? '' : 'rotate-180'}`}
+            />
+          </button>
+
+          {!roomAssociationCollapsed && (
+            <div className="mt-4 space-y-4">
+              {/* Get all unique Lucid room names */}
+              {(() => {
+                const roomNameMap = new Map();
+                droppableShapes.forEach((shape) => {
+                  const roomName = extractShapeRoomName(shape);
+                  if (!roomName) return;
+                  const normalized = normalizeRoomName(roomName);
+                  if (!normalized) return;
+                  const entry = roomNameMap.get(normalized) || { normalized, samples: [] };
+                  if (!entry.samples.includes(roomName)) {
+                    entry.samples.push(roomName);
+                  }
+                  roomNameMap.set(normalized, entry);
+                });
+
+                const lucidRoomEntries = Array.from(roomNameMap.values());
+
+                if (lucidRoomEntries.length === 0) {
+                  return (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        No Lucid rooms found yet. Fetch shape data to see rooms from your diagram.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Lucid Rooms ({lucidRoomEntries.length})
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        CSV Rooms Available: {projectRooms.length}
+                      </p>
+                    </div>
+
+                    {lucidRoomEntries.map((entry) => {
+                      const resolvedRoom = resolveRoomForName(entry.samples[0]);
+                      const isMatched = !!resolvedRoom?.room;
+                      const suggestion = suggestRoomMatch(entry.normalized);
+
+                      return (
+                        <div
+                          key={entry.normalized}
+                          className={`p-4 rounded-lg border ${
+                            isMatched
+                              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                {isMatched && (
+                                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                )}
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  Lucid Room: {entry.samples[0]}
+                                </p>
+                              </div>
+
+                              {isMatched && (
+                                <p className="text-xs text-green-700 dark:text-green-300 mb-2">
+                                  ✓ Matched to: {resolvedRoom.room.name}
+                                  {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
+                                </p>
+                              )}
+
+                              {!isMatched && suggestion && suggestion.score >= 0.5 && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
+                                  💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
+                                </p>
+                              )}
+
+                              <div className="flex gap-2 items-center">
+                                <select
+                                  value={
+                                    isMatched
+                                      ? resolvedRoom.room.id
+                                      : roomAssignments[entry.normalized]?.type === 'existing'
+                                      ? roomAssignments[entry.normalized].roomId
+                                      : roomAssignments[entry.normalized]?.type === 'new'
+                                      ? '__new__'
+                                      : ''
+                                  }
+                                  onChange={(e) =>
+                                    handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                  }
+                                  className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg 
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                >
+                                  <option value="">-- Select CSV Room or Create New --</option>
+                                  <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
+                                  <optgroup label="Existing CSV Rooms">
+                                    {projectRooms.map((room) => (
+                                      <option key={room.id} value={room.id}>
+                                        {room.name} {room.is_headend ? '(Head-End)' : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                </select>
+
+                                {roomAssignments[entry.normalized] && (
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => handleRoomAliasApply(entry)}
+                                    disabled={roomAliasSaving === entry.normalized}
+                                    loading={roomAliasSaving === entry.normalized}
+                                  >
+                                    {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                  </Button>
+                                )}
+                              </div>
+
+                              {/* New Room Configuration */}
+                              {roomAssignments[entry.normalized]?.type === 'new' && (
+                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
+                                  <input
+                                    type="text"
+                                    value={roomAssignments[entry.normalized]?.name || ''}
+                                    onChange={(e) =>
+                                      handleNewRoomNameChange(entry.normalized, e.target.value)
+                                    }
+                                    placeholder="Enter room name"
+                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                             bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                  />
+                                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input
+                                      type="checkbox"
+                                      checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                      onChange={(e) =>
+                                        handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                      }
+                                      className="rounded"
+                                    />
+                                    Mark as Head-End Room
+                                  </label>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Project Rooms Summary */}
+              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">
+                  Project Rooms ({projectRooms.length})
+                </h3>
+                {projectRooms.length === 0 ? (
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    No rooms have been created yet. Import Lucid wire drops or CSV equipment to create rooms.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {projectRooms.map((room) => (
+                      <div
+                        key={room.id}
+                        className="p-2 bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {room.name}
+                          </span>
+                          {room.is_headend && (
+                            <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded">
+                              Head-End
+                            </span>
+                          )}
+                        </div>
+                        {room.project_room_aliases && room.project_room_aliases.length > 0 && (
+                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Aliases: {room.project_room_aliases.map(a => a.alias).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Unmatched Rooms Section */}
+              {unmatchedRoomEntries.length > 0 && (
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                  <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
+                  </h3>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
+                    These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
+                  </p>
+                  
+                  <div className="space-y-3">
+                    {unmatchedRoomEntries.map((entry) => (
+                      <div
+                        key={entry.normalized}
+                        className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                              From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
+                            </p>
+                            
+                            {entry.suggestion && entry.suggestion.score >= 0.72 && (
+                              <p className="text-xs text-green-600 dark:text-green-400 mb-2">
+                                Suggested match: {entry.suggestion.room.name} (
+                                {Math.round(entry.suggestion.score * 100)}% similar)
+                              </p>
+                            )}
+
+                            <div className="flex gap-2 items-end">
+                              <div className="flex-1">
+                                <select
+                                  value={
+                                    roomAssignments[entry.normalized]?.type === 'existing'
+                                      ? roomAssignments[entry.normalized].roomId
+                                      : roomAssignments[entry.normalized]?.type === 'new'
+                                      ? '__new__'
+                                      : ''
+                                  }
+                                  onChange={(e) =>
+                                    handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                  }
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                >
+                                  <option value="">-- Select Action --</option>
+                                  <option value="__new__">Create New Room</option>
+                                  <optgroup label="Existing Rooms">
+                                    {allRoomOptions.map((opt) => (
+                                      <option key={opt.value} value={opt.value}>
+                                        {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                </select>
+                              </div>
+                              
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleRoomAliasApply(entry)}
+                                disabled={
+                                  !roomAssignments[entry.normalized] ||
+                                  roomAliasSaving === entry.normalized
+                                }
+                                loading={roomAliasSaving === entry.normalized}
+                              >
+                                {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                              </Button>
+                            </div>
+
+                            {/* New Room Name Input */}
+                            {roomAssignments[entry.normalized]?.type === 'new' && (
+                              <div className="mt-2 space-y-2">
+                                <input
+                                  type="text"
+                                  value={roomAssignments[entry.normalized]?.name || ''}
+                                  onChange={(e) =>
+                                    handleNewRoomNameChange(entry.normalized, e.target.value)
+                                  }
+                                  placeholder="Enter room name"
+                                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                />
+                                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                    onChange={(e) =>
+                                      handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                    }
+                                    className="rounded"
+                                  />
+                                  Mark as Head-End Room
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Matched Rooms Info */}
+              {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    <div>
+                      <p className="text-sm font-semibold text-green-900 dark:text-green-200">
+                        All Lucid rooms are matched!
+                      </p>
+                      <p className="text-xs text-green-700 dark:text-green-300">
+                        All room names from Lucid wire drops have been successfully matched to project rooms.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Lucid Integration Section */}
       {formData.wiring_diagram_url && (
         <div style={sectionStyles.card} className="p-6">
@@ -2114,6 +2481,27 @@ const PMProjectViewEnhanced = () => {
                   >
                     Deselect All
                   </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={RefreshCw}
+                    onClick={async () => {
+                      // Select all linked shapes and refresh them
+                      const linkedShapes = droppableShapes.filter(s => isShapeLinked(s.id));
+                      if (linkedShapes.length === 0) {
+                        alert('No linked wire drops to refresh');
+                        return;
+                      }
+                      setSelectedShapes(new Set(linkedShapes.map(s => s.id)));
+                      // Wait a tick then trigger the update
+                      setTimeout(() => {
+                        handleCreateWireDropsFromSelected();
+                      }, 100);
+                    }}
+                    disabled={batchCreating || !droppableShapes.some(s => isShapeLinked(s.id))}
+                  >
+                    Refresh All Linked
+                  </Button>
                 </div>
                 <Button
                   variant="primary"
@@ -2140,7 +2528,6 @@ const PMProjectViewEnhanced = () => {
                       </th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Shape Name</th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Drop Type</th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Wire Type</th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Lucid ID</th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
@@ -2158,10 +2545,8 @@ const PMProjectViewEnhanced = () => {
                       const roomName = extractShapeRoomName(shape);
                       const resolvedRoom = resolveRoomForName(roomName);
                       const canonicalRoomName = resolvedRoom?.room?.name || roomName || '—';
-                      const dropType = extractShapeDropType(shape) || 'Unspecified';
-                      const wireType = extractShapeWireType(shape) || 'Unspecified';
+                      const wireType = extractShapeWireType(shape) || 'CAT6';
                       const dbRoomName = wireDrop?.room_name || wireDrop?.location || null;
-                      const dbDropType = wireDrop?.drop_type || null;
                       const dbWireType = wireDrop?.type || null;
 
                       return (
@@ -2182,28 +2567,15 @@ const PMProjectViewEnhanced = () => {
                             {shapeName}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="text-green-600 dark:text-green-400 text-sm">{canonicalRoomName}</div>
-                            {dbRoomName && (
-                              <div className="text-xs text-purple-500 dark:text-purple-300">
-                                Wire Drop: {dbRoomName}
+                            <div className="text-sm text-gray-900 dark:text-white">{canonicalRoomName}</div>
+                            {dbRoomName && dbRoomName !== canonicalRoomName && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                DB: {dbRoomName}
                               </div>
                             )}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="text-green-600 dark:text-green-400 text-sm">{dropType}</div>
-                            {dbDropType && (
-                              <div className="text-xs text-purple-500 dark:text-purple-300">
-                                Wire Drop: {dbDropType}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-green-600 dark:text-green-400 text-sm">{wireType}</div>
-                            {dbWireType && (
-                              <div className="text-xs text-purple-500 dark:text-purple-300">
-                                Wire Drop: {dbWireType}
-                              </div>
-                            )}
+                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                            {wireType}
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-xs font-mono text-green-600 dark:text-green-400">{shape.id}</div>

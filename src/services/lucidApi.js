@@ -203,6 +203,14 @@ export const extractShapes = (documentData) => {
     if (!shape || !shape.id) return;
 
     const customDataObj = toCustomDataObject(shape.customData);
+    
+    // Extract color information from shape style or properties
+    const style = shape.style || {};
+    const properties = shape.properties || {};
+    const fillColor = style.fillColor || style.fill || properties.fillColor || properties.fill || null;
+    const lineColor = style.lineColor || style.stroke || properties.lineColor || properties.stroke || null;
+    const shapeColor = fillColor || lineColor || null;
+    
     const normalized = {
       id: shape.id,
       pageId: page.id,
@@ -219,6 +227,11 @@ export const extractShapes = (documentData) => {
       lineSource: shape.lineSource,
       lineTarget: shape.lineTarget,
       data: shape.data || {},
+      style: style,
+      properties: properties,
+      fillColor: fillColor,
+      lineColor: lineColor,
+      shapeColor: shapeColor,
       isGroup: shape.type === 'group' || shape.class === 'group',
       groupId: context.parentGroupId || null,
       groupName: context.parentGroupName || null

@@ -34,6 +34,8 @@ const PartsListPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState(initialFormState);
   const [formError, setFormError] = useState('');
+  const [editMode, setEditMode] = useState(false);
+  const [editedParts, setEditedParts] = useState({});
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
@@ -60,6 +62,24 @@ const PartsListPage = () => {
     },
     onError: (mutationError) => {
       setFormError(mutationError.message || 'Failed to create part.');
+    },
+  });
+
+  const updatePartsMutation = useMutation({
+    mutationFn: async (updates) => {
+      // Update all parts in parallel
+      const promises = Object.entries(updates).map(([partId, changes]) =>
+        partsService.update(partId, changes)
+      );
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+      setEditMode(false);
+      setEditedParts({});
+    },
+    onError: (mutationError) => {
+      setFormError(mutationError.message || 'Failed to update parts.');
     },
   });
 
@@ -126,15 +146,136 @@ const PartsListPage = () => {
     [formData, createMutation],
   );
 
+  const toggleEditMode = useCallback(() => {
+    if (editMode) {
+      // Cancel edit mode
+      setEditedParts({});
+      setEditMode(false);
+    } else {
+      // Enter edit mode
+      setEditMode(true);
+    }
+  }, [editMode]);
+
+  const handleWireDropVisibilityChange = useCallback((partId, currentValue) => {
+    setEditedParts((prev) => ({
+      ...prev,
+      [partId]: {
+        ...prev[partId],
+        is_wire_drop_visible: !currentValue,
+      },
+    }));
+  }, []);
+
+  const handleSaveChanges = useCallback(() => {
+    if (Object.keys(editedParts).length === 0) {
+      setEditMode(false);
+      return;
+    }
+    updatePartsMutation.mutate(editedParts);
+  }, [editedParts, updatePartsMutation]);
+
   const renderPartCard = (part) => {
     const quantity = Number(part.quantity_available ?? part.quantity_on_hand ?? 0);
-      const totalOnHand = Number(part.quantity_on_hand ?? 0);
-      const reserved = Number(part.quantity_reserved ?? 0);
+    const totalOnHand = Number(part.quantity_on_hand ?? 0);
+    const reserved = Number(part.quantity_reserved ?? 0);
+    
+    // Determine the current visibility value (edited or original)
+    const currentVisibility = editedParts[part.id]?.is_wire_drop_visible !== undefined
+      ? editedParts[part.id].is_wire_drop_visible
+      : part.is_wire_drop_visible !== false;
 
+    const isModified = editedParts[part.id] !== undefined;
+
+    if (editMode) {
+      // Edit mode: show as non-clickable card with checkbox
       return (
-        <button
+        <div
           key={part.id}
-          onClick={() => navigate(`/parts/${part.id}`)}
+          className={`p-4 rounded-xl border transition-all space-y-3 ${
+            isModified ? 'ring-2 ring-violet-500 shadow-lg' : ''
+          }`}
+          style={styles.card}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide"
+                style={{ color: styles.highlight }}
+              >
+                <Boxes className="w-4 h-4" />
+                {part.part_number}
+              </div>
+              <h3 className="text-lg font-semibold mt-1"
+                style={{ color: styles.textPrimary }}
+              >
+                {part.name || part.model || 'Untitled Part'}
+              </h3>
+              {part.description && (
+                <p className="text-sm mt-1" style={{ color: styles.textSecondary }}>
+                  {part.description}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-4">
+              <div
+                className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
+                style={styles.muted}
+              >
+                <span className="font-semibold" style={{ color: styles.textPrimary }}>
+                  {quantity}
+                </span>
+                <span className="text-xs" style={{ color: styles.textSecondary }}>
+                  Available
+                </span>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={currentVisibility}
+                  onChange={() => handleWireDropVisibilityChange(part.id, currentVisibility)}
+                  className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-violet-600 dark:group-hover:text-violet-400">
+                  Show in<br/>Wire Drop
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            {part.manufacturer && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/10 text-violet-500">
+                <Building className="w-3 h-3" />
+                {part.manufacturer}
+              </span>
+            )}
+            {part.model && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 text-blue-500">
+                <Package className="w-3 h-3" />
+                {part.model}
+              </span>
+            )}
+            {part.category && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/10 text-amber-500">
+                <Layers className="w-3 h-3" />
+                {part.category}
+              </span>
+            )}
+            {isModified && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-violet-500/20 text-violet-600 dark:text-violet-400 font-semibold">
+                Modified
+              </span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Normal mode: clickable card
+    return (
+      <button
+        key={part.id}
+        onClick={() => navigate(`/parts/${part.id}`)}
         className="w-full text-left"
       >
         <div
@@ -221,19 +362,50 @@ const PartsListPage = () => {
             Parts Catalog
           </p>
           <p className="text-sm" style={{ color: styles.textSecondary }}>
-            Master list of parts and equipment with manuals, schematics, and install guidance.
+            {editMode
+              ? 'Edit mode: Toggle "Show in Wire Drop" for multiple parts, then save.'
+              : 'Master list of parts and equipment with manuals, schematics, and install guidance.'}
           </p>
         </div>
-        <Button
-          icon={Plus}
-          onClick={() => {
-            setFormError('');
-            setFormData(initialFormState);
-            setShowForm(true);
-          }}
-        >
-          Add Part
-        </Button>
+        <div className="flex items-center gap-2">
+          {editMode ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={toggleEditMode}
+                disabled={updatePartsMutation.isLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveChanges}
+                loading={updatePartsMutation.isLoading}
+                disabled={Object.keys(editedParts).length === 0}
+              >
+                Save Changes {Object.keys(editedParts).length > 0 && `(${Object.keys(editedParts).length})`}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="secondary"
+                onClick={toggleEditMode}
+              >
+                Edit Mode
+              </Button>
+              <Button
+                icon={Plus}
+                onClick={() => {
+                  setFormError('');
+                  setFormData(initialFormState);
+                  setShowForm(true);
+                }}
+              >
+                Add Part
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

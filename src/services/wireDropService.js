@@ -92,28 +92,95 @@ class WireDropService {
   }
 
   /**
+   * Generate automatic drop name based on room and drop type
+   * Format: "Room Name Drop Type #" (e.g., "Living Room Speaker 1")
+   */
+  async generateDropName(projectId, roomName, dropType) {
+    if (!roomName || !dropType) return '';
+    
+    try {
+      // Get existing wire drops for this project, room, and drop type
+      const { data: existingDrops, error } = await supabase
+        .from('wire_drops')
+        .select('drop_name, room_name, drop_type')
+        .eq('project_id', projectId)
+        .eq('room_name', roomName)
+        .eq('drop_type', dropType)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Extract numbers from existing drop names for this room/type combination
+      const existingNumbers = [];
+      const basePattern = `${roomName} ${dropType}`;
+      
+      (existingDrops || []).forEach(drop => {
+        if (drop.drop_name && drop.drop_name.startsWith(basePattern)) {
+          const match = drop.drop_name.match(/(\d+)$/);
+          if (match) {
+            existingNumbers.push(parseInt(match[1], 10));
+          }
+        }
+      });
+
+      // Find the next available number
+      let nextNumber = 1;
+      if (existingNumbers.length > 0) {
+        // Sort numbers and find the first gap, or use max + 1
+        existingNumbers.sort((a, b) => a - b);
+        for (let i = 0; i < existingNumbers.length; i++) {
+          if (existingNumbers[i] !== i + 1) {
+            nextNumber = i + 1;
+            break;
+          }
+        }
+        if (nextNumber === 1 && existingNumbers.length > 0) {
+          nextNumber = Math.max(...existingNumbers) + 1;
+        }
+      }
+
+      return `${roomName} ${dropType} ${nextNumber}`;
+    } catch (error) {
+      console.error('Failed to generate drop name:', error);
+      // Fallback to simple format
+      return `${roomName} ${dropType}`;
+    }
+  }
+
+  /**
    * Create new wire drop with initial stages
    */
   async createWireDrop(projectId, wireDropData) {
     try {
+      // Auto-generate drop name if not provided but room and type are available
+      let dropName = wireDropData.drop_name;
+      if (!dropName && wireDropData.room_name && wireDropData.drop_type) {
+        dropName = await this.generateDropName(projectId, wireDropData.room_name, wireDropData.drop_type);
+      }
+
       // Generate human-readable UID
-      const uid = this.generateUID(wireDropData.room_name, wireDropData.drop_name);
+      const uid = this.generateUID(wireDropData.room_name, dropName || wireDropData.drop_name);
 
       // Create the wire drop
       const insertPayload = {
         project_id: projectId,
         uid,
-        name: wireDropData.drop_name,
+        drop_name: dropName || wireDropData.drop_name,
         room_name: wireDropData.room_name,
-        drop_name: wireDropData.drop_name,
-        location: wireDropData.location || wireDropData.room_name,
-        type: wireDropData.type || 'CAT6',
+        wire_type: wireDropData.wire_type || null,
+        drop_type: wireDropData.drop_type || null,
+        install_note: wireDropData.install_note || null,
+        floor: wireDropData.floor || null,
+        shape_color: wireDropData.shape_color || null,
+        shape_fill_color: wireDropData.shape_fill_color || null,
+        shape_line_color: wireDropData.shape_line_color || null,
         lucid_shape_id: wireDropData.lucid_shape_id,
+        lucid_page_id: wireDropData.lucid_page_id || null,
+        lucid_synced_at: wireDropData.lucid_synced_at || null,
         schematic_reference: wireDropData.schematic_reference,
-        room_end_equipment: wireDropData.room_end_equipment,
-        head_end_equipment: wireDropData.head_end_equipment,
         notes: wireDropData.notes,
-        project_room_id: wireDropData.project_room_id || null
+        project_room_id: wireDropData.project_room_id || null,
+        qr_code_url: wireDropData.qr_code_url || null
       };
 
       if (supportsShapeDataColumn && wireDropData.shape_data !== undefined) {

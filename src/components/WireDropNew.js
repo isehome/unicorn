@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
+import { wireDropService } from '../services/wireDropService';
 import Button from './ui/Button';
 import { 
   Save, 
@@ -11,7 +12,10 @@ import {
   Zap,
   FileText,
   Hash,
-  Loader
+  Loader,
+  Home,
+  Wifi,
+  AlertCircle
 } from 'lucide-react';
 
 const WireDropNew = () => {
@@ -24,15 +28,45 @@ const WireDropNew = () => {
   
   const [loading, setLoading] = useState(false);
   const [project, setProject] = useState(null);
+  const [projectRooms, setProjectRooms] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [generatedName, setGeneratedName] = useState('');
+  const [namePreview, setNamePreview] = useState('');
   const [form, setForm] = useState({
     project_id: projectId || '',
-    name: '',
-    location: '',
-    type: '',
-    uid: '',
+    room_name: '',
+    drop_type: '',
+    drop_name: '', // Will be auto-generated
+    wire_type: '',
     notes: ''
   });
+
+  // Common drop types for quick selection
+  const dropTypes = [
+    'Speaker',
+    'Display',
+    'Access Point',
+    'Camera',
+    'Keypad',
+    'Sensor',
+    'Network',
+    'Power',
+    'Control',
+    'Other'
+  ];
+
+  // Common wire types
+  const wireTypes = [
+    'CAT6',
+    'CAT6A',
+    'Fiber',
+    'Coax',
+    '14/2 Speaker',
+    '16/2 Speaker',
+    '16/4 Speaker',
+    'Control',
+    'Other'
+  ];
 
   const styles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
@@ -67,39 +101,89 @@ const WireDropNew = () => {
         backgroundColor: mutedBackground,
         borderColor,
         color: textPrimary
+      },
+      typeButton: {
+        backgroundColor: 'transparent',
+        borderColor,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderRadius: '0.75rem',
+        padding: '0.75rem',
+        color: textSecondary,
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      },
+      typeButtonActive: {
+        backgroundColor: palette.accent,
+        borderColor: palette.accent,
+        color: '#FFFFFF',
+        transform: 'scale(1.02)'
       }
     };
   }, [mode, palette, sectionStyles]);
 
   useEffect(() => {
     if (projectId) {
-      loadProject();
+      loadProjectData();
     }
   }, [projectId]);
 
-  const loadProject = async () => {
+  useEffect(() => {
+    // Update name preview when room or type changes
+    if (form.room_name && form.drop_type) {
+      generateNamePreview();
+    } else {
+      setNamePreview('');
+    }
+  }, [form.room_name, form.drop_type]);
+
+  const loadProjectData = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      
+      // Load project details
+      const { data: projectData, error: projectError } = await supabase
         .from('projects')
         .select('id, name')
         .eq('id', projectId)
         .single();
 
-      if (error) throw error;
-      setProject(data);
+      if (projectError) throw projectError;
+      setProject(projectData);
+
+      // Load project rooms
+      const { data: roomsData, error: roomsError } = await supabase
+        .from('project_rooms')
+        .select('id, name, is_headend')
+        .eq('project_id', projectId)
+        .order('name');
+
+      if (roomsError) throw roomsError;
+      setProjectRooms(roomsData || []);
     } catch (err) {
-      console.error('Failed to load project:', err);
+      console.error('Failed to load project data:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const generateUID = () => {
-    // Generate a simple UID if not provided
-    const timestamp = Date.now().toString(36).toUpperCase();
-    const random = Math.random().toString(36).substring(2, 5).toUpperCase();
-    return `WD-${timestamp}-${random}`;
+  const generateNamePreview = async () => {
+    if (!form.room_name || !form.drop_type) {
+      setNamePreview('');
+      return;
+    }
+    
+    try {
+      const preview = await wireDropService.generateDropName(
+        projectId,
+        form.room_name,
+        form.drop_type
+      );
+      setNamePreview(preview);
+    } catch (err) {
+      console.error('Failed to generate name preview:', err);
+      setNamePreview(`${form.room_name} ${form.drop_type}`);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -110,34 +194,31 @@ const WireDropNew = () => {
       return;
     }
 
-    if (!form.name && !form.location) {
-      alert('Please provide at least a name or location');
+    if (!form.room_name) {
+      alert('Please select a room');
+      return;
+    }
+
+    if (!form.drop_type) {
+      alert('Please select a drop type');
       return;
     }
 
     try {
       setSaving(true);
       
-      // Generate UID if not provided
-      const uid = form.uid.trim() || generateUID();
-      
-      const { data, error } = await supabase
-        .from('wire_drops')
-        .insert([{
-          project_id: form.project_id,
-          name: form.name || null,
-          location: form.location || null,
-          type: form.type || null,
-          uid: uid,
-          notes: form.notes || null
-        }])
-        .select()
-        .single();
-
-      if (error) throw error;
+      // Use the wireDropService to create the wire drop
+      // The service will auto-generate the name based on room and type
+      const wireDrop = await wireDropService.createWireDrop(projectId, {
+        room_name: form.room_name,
+        drop_type: form.drop_type,
+        drop_name: form.drop_name || null, // Will be auto-generated if null
+        wire_type: form.wire_type || null,
+        notes: form.notes || null
+      });
 
       // Navigate to the new wire drop detail page
-      navigate(`/wire-drops/${data.id}`);
+      navigate(`/wire-drops/${wireDrop.id}`);
     } catch (err) {
       console.error('Failed to create wire drop:', err);
       alert(err.message || 'Failed to create wire drop');
@@ -166,7 +247,7 @@ const WireDropNew = () => {
 
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
-      <div className="px-4 pt-2 pb-8 space-y-6 max-w-2xl mx-auto">
+      <div className="px-4 pt-2 pb-8 space-y-6 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button 
@@ -181,9 +262,12 @@ const WireDropNew = () => {
         {/* Form Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>
           <div className="p-6">
-            <h1 className="text-2xl font-bold mb-6" style={styles.textPrimary}>
+            <h1 className="text-2xl font-bold mb-2" style={styles.textPrimary}>
               Create New Wire Drop
             </h1>
+            <p className="text-sm mb-6" style={styles.textSecondary}>
+              Select a room and drop type to automatically generate the wire drop name
+            </p>
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Project (if preselected) */}
@@ -198,93 +282,126 @@ const WireDropNew = () => {
                 </div>
               )}
 
-              {/* Name */}
+              {/* Room Selection */}
               <div>
-                <label htmlFor="name" className="block text-sm font-medium mb-2" style={styles.subtleText}>
-                  <FileText size={16} className="inline mr-2" />
-                  Name
+                <label htmlFor="room" className="flex items-center text-sm font-medium mb-2" style={styles.subtleText}>
+                  <Home size={16} className="mr-2" />
+                  Select Room *
                 </label>
-                <input
-                  id="name"
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g., Living Room Speaker"
-                  className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                  style={styles.input}
-                />
+                {projectRooms.length > 0 ? (
+                  <select
+                    id="room"
+                    value={form.room_name}
+                    onChange={(e) => setForm(prev => ({ ...prev, room_name: e.target.value }))}
+                    className="w-full px-3 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                    required
+                  >
+                    <option value="">Choose a room...</option>
+                    {projectRooms.map(room => (
+                      <option key={room.id} value={room.name}>
+                        {room.name}
+                        {room.is_headend && ' (Head End)'}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id="room"
+                    type="text"
+                    value={form.room_name}
+                    onChange={(e) => setForm(prev => ({ ...prev, room_name: e.target.value }))}
+                    placeholder="Enter room name"
+                    className="w-full px-3 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                    required
+                  />
+                )}
               </div>
 
-              {/* Location */}
+              {/* Drop Type Selection */}
               <div>
-                <label htmlFor="location" className="block text-sm font-medium mb-2" style={styles.subtleText}>
-                  <MapPin size={16} className="inline mr-2" />
-                  Location
+                <label className="flex items-center text-sm font-medium mb-2" style={styles.subtleText}>
+                  <Wifi size={16} className="mr-2" />
+                  Select Drop Type *
                 </label>
-                <input
-                  id="location"
-                  type="text"
-                  value={form.location}
-                  onChange={(e) => setForm(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="e.g., Living Room - West Wall"
-                  className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                  style={styles.input}
-                />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {dropTypes.map(type => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, drop_type: type }))}
+                      className="transition-all"
+                      style={{
+                        ...styles.typeButton,
+                        ...(form.drop_type === type ? styles.typeButtonActive : {})
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {form.drop_type === 'Other' && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom drop type"
+                    className="w-full mt-2 px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    style={styles.input}
+                    onChange={(e) => setForm(prev => ({ ...prev, drop_type: e.target.value }))}
+                  />
+                )}
               </div>
 
-              {/* Type */}
+              {/* Auto-generated Name Preview */}
+              {namePreview && (
+                <div className="p-4 rounded-lg border-2 border-violet-400/30" style={{ backgroundColor: palette.accent + '10' }}>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle size={16} style={{ color: palette.accent }} className="mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium" style={styles.textPrimary}>
+                        Auto-generated Name:
+                      </p>
+                      <p className="text-lg font-semibold mt-1" style={{ color: palette.accent }}>
+                        {namePreview}
+                      </p>
+                      <p className="text-xs mt-2" style={styles.subtleText}>
+                        This name will be automatically assigned when you create the wire drop
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Cable Type */}
               <div>
-                <label htmlFor="type" className="block text-sm font-medium mb-2" style={styles.subtleText}>
-                  <Zap size={16} className="inline mr-2" />
-                  Cable Type
+                <label htmlFor="wire_type" className="flex items-center text-sm font-medium mb-2" style={styles.subtleText}>
+                  <Zap size={16} className="mr-2" />
+                  Cable Type (Optional)
                 </label>
                 <select
-                  id="type"
-                  value={form.type}
-                  onChange={(e) => setForm(prev => ({ ...prev, type: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  id="wire_type"
+                  value={form.wire_type}
+                  onChange={(e) => setForm(prev => ({ ...prev, wire_type: e.target.value }))}
+                  className="w-full px-3 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
                   style={styles.input}
                 >
-                  <option value="">Select type (optional)</option>
-                  <option value="CAT6">CAT6</option>
-                  <option value="CAT6A">CAT6A</option>
-                  <option value="Fiber">Fiber</option>
-                  <option value="Coax">Coax</option>
-                  <option value="Speaker">Speaker Wire</option>
-                  <option value="Other">Other</option>
+                  <option value="">Select cable type (optional)</option>
+                  {wireTypes.map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
-              </div>
-
-              {/* UID */}
-              <div>
-                <label htmlFor="uid" className="block text-sm font-medium mb-2" style={styles.subtleText}>
-                  <Hash size={16} className="inline mr-2" />
-                  Unique Identifier (UID)
-                </label>
-                <input
-                  id="uid"
-                  type="text"
-                  value={form.uid}
-                  onChange={(e) => setForm(prev => ({ ...prev, uid: e.target.value }))}
-                  placeholder="e.g., WD-001 (auto-generated if empty)"
-                  className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                  style={styles.input}
-                />
-                <p className="text-xs mt-1" style={styles.subtleText}>
-                  Leave empty to auto-generate
-                </p>
               </div>
 
               {/* Notes */}
               <div>
                 <label htmlFor="notes" className="block text-sm font-medium mb-2" style={styles.subtleText}>
-                  Notes
+                  Installation Notes (Optional)
                 </label>
                 <textarea
                   id="notes"
                   value={form.notes}
                   onChange={(e) => setForm(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Additional notes or specifications"
+                  placeholder="Any special instructions or notes for installation"
                   rows={3}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
                   style={styles.input}
@@ -308,7 +425,7 @@ const WireDropNew = () => {
                   variant="primary"
                   icon={Save}
                   loading={saving}
-                  disabled={saving}
+                  disabled={saving || !form.room_name || !form.drop_type}
                   className="flex-1"
                 >
                   Create Wire Drop
@@ -316,6 +433,11 @@ const WireDropNew = () => {
               </div>
             </form>
           </div>
+        </div>
+
+        {/* Help Text */}
+        <div className="text-center text-xs" style={styles.subtleText}>
+          Wire drops will be automatically numbered if multiple drops of the same type exist in the same room
         </div>
       </div>
     </div>
