@@ -311,7 +311,11 @@ const WireDropDetailEnhanced = () => {
 
       try {
         setUploadingStage(stageType);
-        await wireDropService.uploadStagePhoto(id, stageType, file);
+        
+        // Get user display name from AuthContext
+        const currentUserName = user?.displayName || user?.email || user?.account?.username || 'Unknown User';
+        
+        await wireDropService.uploadStagePhoto(id, stageType, file, currentUserName);
         await loadWireDrop(); // Reload to get updated stages
         if (isReUpload) {
           alert('Photo updated successfully!');
@@ -382,9 +386,13 @@ const WireDropDetailEnhanced = () => {
   const handleCommissionComplete = async () => {
     try {
       setCompletingCommission(true);
+      
+      // Get user display name from AuthContext
+      const currentUserName = user?.displayName || user?.email || user?.account?.username || 'Unknown User';
+      
       await wireDropService.completeCommission(id, {
         notes: commissionNotes,
-        completed_by: user?.email || 'Unknown User'
+        completed_by: currentUserName
       });
       await loadWireDrop(); // Reload to get updated stages
       setCommissionNotes('');

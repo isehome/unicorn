@@ -341,23 +341,14 @@ class WireDropService {
 
   /**
    * Get current authenticated user information
+   * Note: This needs to be passed from the calling component that has access to useAuth()
+   * If not provided, returns 'Unknown User'
    */
   async getCurrentUserInfo() {
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser();
-      if (error || !user) return 'Unknown User';
-      
-      // For Microsoft/Azure auth, user metadata contains the actual name and email
-      const userDisplayName = user.user_metadata?.name || 
-                             user.user_metadata?.full_name || 
-                             user.email?.split('@')[0] || 
-                             'Unknown User';
-      
-      return userDisplayName;
-    } catch (error) {
-      console.error('Failed to get current user:', error);
-      return 'Unknown User';
-    }
+    // This method is kept for backward compatibility
+    // The actual user info should be passed from the component via completed_by parameter
+    console.warn('[wireDropService] getCurrentUserInfo called without user context. User should be passed from component.');
+    return 'Unknown User';
   }
 
   /**
@@ -370,12 +361,13 @@ class WireDropService {
 
   /**
    * Upload photo for a stage (prewire or trim_out)
+   * @param {string} wireDropId - Wire drop ID
+   * @param {string} stageType - Stage type (prewire or trim_out)
+   * @param {File} photoFile - Photo file to upload
+   * @param {string} currentUserName - Current user's display name (should be passed from component)
    */
-  async uploadStagePhoto(wireDropId, stageType, photoFile) {
+  async uploadStagePhoto(wireDropId, stageType, photoFile, currentUserName = null) {
     try {
-      // Get current user info for attribution
-      const currentUser = await this.getCurrentUserInfo();
-      
       // Get wire drop to determine project ID
       const wireDrop = await this.getWireDrop(wireDropId);
       if (!wireDrop || !wireDrop.project_id) {
@@ -402,10 +394,11 @@ class WireDropService {
       console.log('Photo uploaded successfully to SharePoint:', sharePointUrl);
 
       // Update stage with photo URL and mark as complete
+      // Use provided user name or fall back to 'Unknown User'
       return await this.updateStage(wireDropId, stageType, {
         photo_url: sharePointUrl,
         completed: true,
-        completed_by: currentUser
+        completed_by: currentUserName || 'Unknown User'
       });
     } catch (error) {
       console.error('Failed to upload photo:', error);
