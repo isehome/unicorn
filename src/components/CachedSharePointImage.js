@@ -75,21 +75,11 @@ const CachedSharePointImage = ({
           // Load full image directly
           setImageSrc(sharePointUrl);
         } else if (displayType === 'thumbnail' || displayType === 'auto') {
-          // Try to get cached thumbnail first
-          const cached = await sharePointStorageService.getCachedThumbnail(sharePointUrl, size);
-          
-          if (cached && isMounted) {
-            // Use cached thumbnail
-            setImageSrc(`data:${cached.type};base64,${cached.data}`);
-          } else if (isMounted) {
-            // Fall back to live thumbnail URL
-            const thumbnailUrl = sharePointStorageService.getThumbnailUrl(sharePointUrl, size);
-            if (thumbnailUrl) {
-              setImageSrc(thumbnailUrl);
-            } else {
-              // Ultimate fallback to full image
-              setImageSrc(sharePointUrl);
-            }
+          // SharePoint thumbnail API requires authentication even for shared links
+          // For now, use the full image URL which works with organization sharing
+          // TODO: Implement proper authenticated thumbnail fetching
+          if (isMounted) {
+            setImageSrc(sharePointUrl);
           }
         }
       } catch (err) {
