@@ -16,8 +16,8 @@ const BottomNavigation = () => {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-40">
-      <div className="flex justify-around items-center">
+    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <div className="flex justify-around items-center" style={{ minHeight: '60px' }}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.path === '/'
