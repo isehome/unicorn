@@ -12,6 +12,7 @@ import {
   Layers,
   Building,
   AlertCircle,
+  Wrench,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -36,6 +37,7 @@ const PartsListPage = () => {
   const [formError, setFormError] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editedParts, setEditedParts] = useState({});
+  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim'
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
@@ -106,21 +108,34 @@ const PartsListPage = () => {
   }, [theme, mode]);
 
   const filteredParts = useMemo(() => {
-    if (!search) return parts;
-    const term = search.toLowerCase();
-    return parts.filter((part) => {
-      return [
-        part.part_number,
-        part.name,
-        part.description,
-        part.manufacturer,
-        part.model,
-        part.category,
-      ]
-        .filter(Boolean)
-        .some((value) => value.toLowerCase().includes(term));
-    });
-  }, [parts, search]);
+    let filtered = parts;
+
+    // Apply phase filter
+    if (phaseFilter === 'prewire') {
+      filtered = filtered.filter(part => part.required_for_prewire === true);
+    } else if (phaseFilter === 'trim') {
+      filtered = filtered.filter(part => part.required_for_prewire !== true);
+    }
+
+    // Apply search filter
+    if (search) {
+      const term = search.toLowerCase();
+      filtered = filtered.filter((part) => {
+        return [
+          part.part_number,
+          part.name,
+          part.description,
+          part.manufacturer,
+          part.model,
+          part.category,
+        ]
+          .filter(Boolean)
+          .some((value) => value.toLowerCase().includes(term));
+      });
+    }
+
+    return filtered;
+  }, [parts, search, phaseFilter]);
 
   const handleFormChange = useCallback((key, value) => {
     setFormData((prev) => ({
@@ -167,6 +182,16 @@ const PartsListPage = () => {
     }));
   }, []);
 
+  const handlePrewireToggle = useCallback((partId, currentValue) => {
+    setEditedParts((prev) => ({
+      ...prev,
+      [partId]: {
+        ...prev[partId],
+        required_for_prewire: !currentValue,
+      },
+    }));
+  }, []);
+
   const handleSaveChanges = useCallback(() => {
     if (Object.keys(editedParts).length === 0) {
       setEditMode(false);
@@ -184,6 +209,10 @@ const PartsListPage = () => {
     const currentVisibility = editedParts[part.id]?.is_wire_drop_visible !== undefined
       ? editedParts[part.id].is_wire_drop_visible
       : part.is_wire_drop_visible !== false;
+
+    const currentPrewire = editedParts[part.id]?.required_for_prewire !== undefined
+      ? editedParts[part.id].required_for_prewire
+      : part.required_for_prewire === true;
 
     const isModified = editedParts[part.id] !== undefined;
 
@@ -204,6 +233,11 @@ const PartsListPage = () => {
               >
                 <Boxes className="w-4 h-4" />
                 {part.part_number}
+                {currentPrewire && (
+                  <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    Prewire
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-semibold mt-1"
                 style={{ color: styles.textPrimary }}
@@ -228,17 +262,31 @@ const PartsListPage = () => {
                   Available
                 </span>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={currentVisibility}
-                  onChange={() => handleWireDropVisibilityChange(part.id, currentVisibility)}
-                  className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                />
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-violet-600 dark:group-hover:text-violet-400">
-                  Show in<br/>Wire Drop
-                </span>
-              </label>
+              <div className="flex flex-col gap-3">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={currentVisibility}
+                    onChange={() => handleWireDropVisibilityChange(part.id, currentVisibility)}
+                    className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-violet-600 dark:group-hover:text-violet-400">
+                    Show in<br/>Wire Drop
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={currentPrewire}
+                    onChange={() => handlePrewireToggle(part.id, currentPrewire)}
+                    className="h-5 w-5 rounded border-gray-300 text-orange-600 focus:ring-orange-500 cursor-pointer"
+                  />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-orange-600 dark:group-hover:text-orange-400">
+                    <Wrench className="w-3 h-3 inline mr-1" />
+                    Prewire<br/>Required
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -289,6 +337,11 @@ const PartsListPage = () => {
               >
                 <Boxes className="w-4 h-4" />
                 {part.part_number}
+                {part.required_for_prewire && (
+                  <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                    Prewire
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-semibold mt-1"
                 style={{ color: styles.textPrimary }}
@@ -406,6 +459,41 @@ const PartsListPage = () => {
             </>
           )}
         </div>
+      </div>
+
+      {/* Phase Filter Buttons */}
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        <button
+          onClick={() => setPhaseFilter('all')}
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            phaseFilter === 'all'
+              ? 'bg-violet-600 text-white dark:bg-violet-500'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+          }`}
+        >
+          All Parts
+        </button>
+        <button
+          onClick={() => setPhaseFilter('prewire')}
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            phaseFilter === 'prewire'
+              ? 'bg-orange-600 text-white dark:bg-orange-500'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+          }`}
+        >
+          <Wrench className="w-4 h-4 inline mr-1" />
+          Prewire Prep
+        </button>
+        <button
+          onClick={() => setPhaseFilter('trim')}
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            phaseFilter === 'trim'
+              ? 'bg-violet-600 text-white dark:bg-violet-500'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+          }`}
+        >
+          Trim Prep
+        </button>
       </div>
 
       <div className="flex items-center gap-3">
