@@ -41,7 +41,8 @@ export default async function handler(req, res) {
     scale,
     format,
     dpi,
-    embedOptions = {}
+    embedOptions = {},
+    options = {}
   } = req.body;
   
   if (!documentId) {
@@ -204,8 +205,26 @@ export default async function handler(req, res) {
       });
     } else {
       // Default to getting document contents
-      const url = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+      const {
+        useBeta = true,
+        includeData = true,
+        includeStyles = false,
+        includeProperties = false,
+        betaFeature = null
+      } = options || {};
+
+      const searchParams = new URLSearchParams();
+      if (includeData) searchParams.set('includeData', 'true');
+      if (includeStyles) searchParams.set('includeStyles', 'true');
+      if (includeProperties) searchParams.set('includeProperties', 'true');
+      const query = searchParams.toString();
+
+      const basePath = `/documents/${documentId}/contents`;
+      const url = `${LUCID_API_BASE_URL}${basePath}${query ? `?${query}` : ''}`;
       headers['Content-Type'] = 'application/json';
+      if (useBeta && betaFeature) {
+        headers['Lucid-Beta-Feature'] = betaFeature;
+      }
       
       console.log('Calling Lucid API:', url);
       console.log('With headers:', JSON.stringify(headers, null, 2));

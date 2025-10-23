@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
+import { projectEquipmentService } from '../services/projectEquipmentService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
@@ -37,23 +38,32 @@ import {
 } from 'lucide-react';
 
 // Progress Bar Component
-const ProgressBar = ({ label, percentage }) => {
+const ProgressBar = ({ label, percentage, helper }) => {
   const getBarColor = (percent) => {
     if (percent < 33) return 'bg-red-500';
     if (percent < 67) return 'bg-yellow-500';
     return 'bg-green-500';
   };
 
+  const safePercentage = Math.min(100, Math.max(0, Math.round(Number(percentage) || 0)));
+
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-20">{label}</span>
-      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div 
-          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
-          style={{ width: `${percentage}%` }}
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
+        <span className="font-medium text-gray-700 dark:text-gray-300">{label}</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100">{safePercentage}%</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div
+          className={`h-full transition-all duration-300 ${getBarColor(safePercentage)}`}
+          style={{ width: `${safePercentage}%` }}
         />
       </div>
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
+      {helper && (
+        <div className="text-[10px] text-gray-500 dark:text-gray-500">
+          {helper}
+        </div>
+      )}
     </div>
   );
 };
@@ -152,6 +162,138 @@ const extractShapeFloor = (shape) =>
 const extractShapeDevice = (shape) =>
   getShapeCustomValue(shape, 'Device') || '';
 
+const normalizeHexColor = (value) => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(trimmed) ? trimmed.toUpperCase() : null;
+};
+
+const extractShapeColors = (shape) => {
+  if (!shape) {
+    return {
+      primary: null,
+      fill: null,
+      line: null,
+      candidates: []
+    };
+  }
+
+  const pickFirstHex = (...candidates) => {
+    for (const candidate of candidates) {
+      const normalized = normalizeHexColor(candidate);
+      if (candidate !== undefined) {
+        candidatesList.push({ source: 'auto', value: candidate });
+      }
+      if (normalized) return normalized;
+    }
+    return null;
+  };
+
+  const candidatesList = [];
+
+  const noteCandidate = (label, value) => {
+    if (value !== undefined && value !== null) {
+      candidatesList.push({ source: label, value });
+    }
+    return value;
+  };
+
+  return {
+    primary: pickFirstHex(
+      noteCandidate('customData.Shape Color', getShapeCustomValue(shape, 'Shape Color')),
+      noteCandidate('customData.Color', getShapeCustomValue(shape, 'Color')),
+      noteCandidate('shape.shapeColor', shape.shapeColor),
+      noteCandidate('shape.fillColor', shape.fillColor),
+      noteCandidate('style.fillColor', shape.style?.fillColor),
+      noteCandidate('style.strokeColor', shape.style?.strokeColor),
+      noteCandidate('properties.fillColor', shape.properties?.fillColor),
+      noteCandidate('properties.strokeColor', shape.properties?.strokeColor),
+      noteCandidate('shape.lineColor', shape.lineColor)
+    ),
+    fill: pickFirstHex(
+      noteCandidate('shape.fillColor', shape.fillColor),
+      noteCandidate('style.fillColor', shape.style?.fillColor),
+      noteCandidate('properties.fillColor', shape.properties?.fillColor)
+    ),
+    line: pickFirstHex(
+      noteCandidate('shape.lineColor', shape.lineColor),
+      noteCandidate('style.lineColor', shape.style?.lineColor),
+      noteCandidate('properties.lineColor', shape.properties?.lineColor),
+      noteCandidate('properties.strokeColor', shape.properties?.strokeColor)
+    ),
+    candidates: candidatesList
+  };
+};
+
+const numericOrNull = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+};
+
+const extractShapePositionInfo = (shape) => {
+  if (!shape || typeof shape !== 'object') {
+    return {
+      x: null,
+      y: null,
+      width: null,
+      height: null,
+      rotation: null
+    };
+  }
+
+  const boundingBox = shape.boundingBox || shape.bounds || shape.data?.boundingBox || {};
+  const position = shape.position || shape.data?.position || {};
+  const size = shape.size || boundingBox;
+
+  return {
+    x: numericOrNull(position.x ?? boundingBox.x ?? boundingBox.left ?? null),
+    y: numericOrNull(position.y ?? boundingBox.y ?? boundingBox.top ?? null),
+    width: numericOrNull(size.width ?? boundingBox.width ?? null),
+    height: numericOrNull(size.height ?? boundingBox.height ?? null),
+    rotation: numericOrNull(shape.rotation ?? shape.angle ?? shape.data?.rotation ?? null)
+  };
+};
+
+const buildShapeMetadataPayload = (shape, extras = {}) => {
+  if (!shape || typeof shape !== 'object') return null;
+
+  const payload = {
+    id: shape.id,
+    pageId: shape.pageId || null,
+    class: shape.class || shape.type || null,
+    type: shape.type || null,
+    text: shape.text || null,
+    textAreas: Array.isArray(shape.textAreas) ? shape.textAreas : null,
+    customData: shape.customData || null,
+    customDataObject: typeof shape.customData === 'object' && !Array.isArray(shape.customData)
+      ? shape.customData
+      : null,
+    rawCustomData: shape.rawCustomData || null,
+    style: shape.style || null,
+    properties: shape.properties || null,
+    boundingBox: shape.boundingBox || shape.bounds || null,
+    position: shape.position || null,
+    size: shape.size || null,
+    lineSource: shape.lineSource || null,
+    lineTarget: shape.lineTarget || null,
+    groupId: shape.groupId || null,
+    groupName: shape.groupName || null,
+    data: shape.data || null,
+    extractedColors: extras.shapeColors || null,
+    diagnostics: {
+      receivedKeys: Object.keys(shape || {}),
+      colorCandidates: extras.colorCandidates || null
+    }
+  };
+
+  return payload;
+};
+
 const PMProjectViewEnhanced = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -166,7 +308,8 @@ const PMProjectViewEnhanced = () => {
   const [timeData, setTimeData] = useState({
     summary: [],
     activeUsers: [],
-    totalHours: 0
+    totalHours: 0,
+    totalMinutes: 0
   });
   const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
   const [editMode, setEditMode] = useState(false);
@@ -203,9 +346,15 @@ const PMProjectViewEnhanced = () => {
   const [existingWireDrops, setExistingWireDrops] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
   const [showLucidSection, setShowLucidSection] = useState(false);
-  const [lucidDataCollapsed, setLucidDataCollapsed] = useState(false);
   const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(false);
   const [equipmentCollapsed, setEquipmentCollapsed] = useState(false);
+  const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
+  const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
+  const [laborSummary, setLaborSummary] = useState({
+    totalHours: 0,
+    totalMinutes: 0,
+    entries: []
+  });
   
   // Client selection state
   const [showClientPicker, setShowClientPicker] = useState(false);
@@ -262,6 +411,16 @@ const PMProjectViewEnhanced = () => {
     });
     return map;
   }, [projectRooms]);
+
+  const supportsShapePositionColumns = useMemo(
+    () => existingWireDrops.some((drop) => drop && Object.prototype.hasOwnProperty.call(drop, 'shape_x')),
+    [existingWireDrops]
+  );
+
+  const supportsShapeRotationColumn = useMemo(
+    () => existingWireDrops.some((drop) => drop && Object.prototype.hasOwnProperty.call(drop, 'shape_rotation')),
+    [existingWireDrops]
+  );
 
   const allRoomOptions = useMemo(
     () =>
@@ -376,6 +535,102 @@ const PMProjectViewEnhanced = () => {
       return next;
     });
   };
+
+  const quickLinks = useMemo(
+    () =>
+      [
+        { key: 'unifi', label: 'UniFi Site', url: formData.unifi_url, icon: ExternalLink },
+        { key: 'lucid', label: 'Lucid Diagram', url: formData.wiring_diagram_url, icon: Link },
+        { key: 'proposal', label: 'Proposal', url: formData.portal_proposal_url, icon: FileText },
+        { key: 'photos', label: 'Photos', url: formData.one_drive_photos, icon: Camera },
+        { key: 'files', label: 'Files', url: formData.one_drive_files, icon: FolderOpen },
+        { key: 'procurement', label: 'Procurement', url: formData.one_drive_procurement, icon: FolderOpen }
+      ].filter((item) => Boolean(item.url)),
+    [
+      formData.unifi_url,
+      formData.wiring_diagram_url,
+      formData.portal_proposal_url,
+      formData.one_drive_photos,
+      formData.one_drive_files,
+      formData.one_drive_procurement
+    ]
+  );
+
+  const resourceEntries = useMemo(
+    () => [
+      {
+        key: 'wiring_diagram_url',
+        label: 'Wiring Diagram URL',
+        icon: Link,
+        placeholder: 'https://lucid.app/...',
+        helper: null,
+        value: formData.wiring_diagram_url
+      },
+      {
+        key: 'portal_proposal_url',
+        label: 'Portal Proposal URL',
+        icon: FileText,
+        placeholder: 'https://...',
+        helper: null,
+        value: formData.portal_proposal_url
+      },
+      {
+        key: 'one_drive_photos',
+        label: 'OneDrive Photos',
+        icon: Camera,
+        placeholder: 'https://...',
+        helper: null,
+        value: formData.one_drive_photos
+      },
+      {
+        key: 'one_drive_files',
+        label: 'OneDrive Files',
+        icon: FolderOpen,
+        placeholder: 'https://...',
+        helper: null,
+        value: formData.one_drive_files
+      },
+      {
+        key: 'one_drive_procurement',
+        label: 'OneDrive Procurement',
+        icon: FolderOpen,
+        placeholder: 'https://...',
+        helper: null,
+        value: formData.one_drive_procurement
+      },
+      {
+        key: 'unifi_url',
+        label: 'UniFi Network URL',
+        icon: Users,
+        placeholder: 'https://unifi.ui.com/...',
+        helper: 'Link to UniFi Network Controller for this project',
+        value: formData.unifi_url
+      }
+    ],
+    [
+      formData.wiring_diagram_url,
+      formData.portal_proposal_url,
+      formData.one_drive_photos,
+      formData.one_drive_files,
+      formData.one_drive_procurement,
+      formData.unifi_url
+    ]
+  );
+
+  const currentClientContact = useMemo(() => {
+    if (!formData.client) {
+      return null;
+    }
+    if (selectedClient) {
+      return selectedClient;
+    }
+    return (
+      availableContacts.find(
+        (contact) =>
+          contact?.name === formData.client || contact?.company === formData.client
+      ) || null
+    );
+  }, [availableContacts, formData.client, selectedClient]);
 
   const handleNewRoomNameChange = (normalized, name) => {
     setRoomAssignments((prev) => ({
@@ -536,17 +791,28 @@ const PMProjectViewEnhanced = () => {
     try {
       // Get time summary for all users on this project
       const summary = await timeLogsService.getProjectTimeSummary(projectId);
-      
-      // Calculate total hours
-      const totalHours = summary.reduce((sum, user) => sum + (user.total_hours || 0), 0);
-      
+
+      // Calculate totals
+      const totalMinutes = summary.reduce((sum, user) => {
+        if (user.total_minutes !== undefined && user.total_minutes !== null) {
+          return sum + Number(user.total_minutes);
+        }
+        if (user.total_hours !== undefined && user.total_hours !== null) {
+          return sum + Number(user.total_hours) * 60;
+        }
+        return sum;
+      }, 0);
+
+      const totalHours = totalMinutes / 60;
+
       // Get currently checked-in users
-      const activeUsers = summary.filter(user => user.has_active_session);
-      
+      const activeUsers = summary.filter((user) => user.has_active_session);
+
       setTimeData({
         summary,
         activeUsers,
-        totalHours
+        totalHours,
+        totalMinutes
       });
     } catch (error) {
       console.error('Failed to load time data:', error);
@@ -562,6 +828,93 @@ const PMProjectViewEnhanced = () => {
       setProjectProgress({ prewire: 0, trim: 0, commission: 0 });
     }
   };
+
+  const loadEquipmentStats = useCallback(
+    async (incomingEquipment) => {
+      if (!projectId) {
+        setEquipmentStats({ total: 0, ordered: 0, received: 0 });
+        return;
+      }
+
+      try {
+        let equipmentItems = incomingEquipment;
+
+        if (!Array.isArray(equipmentItems)) {
+          const fetched = await projectEquipmentService.fetchProjectEquipment(projectId);
+          equipmentItems = fetched || [];
+        }
+
+        const stats = (equipmentItems || []).reduce(
+          (acc, item) => {
+            const type = (item?.equipment_type || '').toLowerCase();
+            if (type === 'labor') {
+              return acc;
+            }
+
+            const quantity = Number(item?.planned_quantity) || 0;
+            if (quantity <= 0) {
+              return acc;
+            }
+
+            acc.total += quantity;
+            if (item?.ordered_confirmed) {
+              acc.ordered += quantity;
+            }
+            if (item?.onsite_confirmed) {
+              acc.received += quantity;
+            }
+            return acc;
+          },
+          { total: 0, ordered: 0, received: 0 }
+        );
+
+        setEquipmentStats(stats);
+      } catch (error) {
+        console.error('Failed to load equipment stats:', error);
+        setEquipmentStats({ total: 0, ordered: 0, received: 0 });
+      }
+    },
+    [projectId]
+  );
+
+  const loadLaborSummary = useCallback(async () => {
+    if (!projectId) {
+      setLaborSummary({ totalHours: 0, totalMinutes: 0, entries: [] });
+      return;
+    }
+
+    try {
+      const laborData = await projectEquipmentService.fetchProjectLabor(projectId);
+      const entries = (laborData || []).map((item) => {
+        const hours = Number(item?.planned_hours || 0);
+        return {
+          id: item.id,
+          roomName: item.project_rooms?.name || 'Unassigned',
+          laborType: item.labor_type || 'Labor',
+          hours,
+          hourlyRate: Number(item?.hourly_rate || 0)
+        };
+      });
+      const totalHours = entries.reduce((sum, entry) => sum + entry.hours, 0);
+      const totalMinutes = Math.round(totalHours * 60);
+      setLaborSummary({ totalHours, totalMinutes, entries });
+    } catch (error) {
+      console.error('Failed to load labor summary:', error);
+      setLaborSummary({ totalHours: 0, totalMinutes: 0, entries: [] });
+    }
+  }, [projectId]);
+
+  const handleEquipmentChange = useCallback(
+    (equipmentList) => {
+      if (Array.isArray(equipmentList)) {
+        loadEquipmentStats(equipmentList);
+      } else {
+        loadEquipmentStats();
+      }
+      loadLaborSummary();
+    },
+    [loadEquipmentStats, loadLaborSummary]
+  );
 
   const handleSave = async () => {
     try {
@@ -677,6 +1030,14 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     loadProjectRooms();
   }, [loadProjectRooms]);
+
+  useEffect(() => {
+    loadEquipmentStats();
+  }, [loadEquipmentStats]);
+
+  useEffect(() => {
+    loadLaborSummary();
+  }, [loadLaborSummary]);
 
   const updateClientStakeholder = async (contact) => {
     try {
@@ -1187,25 +1548,62 @@ const PMProjectViewEnhanced = () => {
               (existingDrop.room_name !== canonicalRoomName || existingDrop.drop_type !== dropType)) {
             updatedDropName = await wireDropService.generateDropName(projectId, canonicalRoomName, dropType);
           }
+
+          const shapeColors = extractShapeColors(shape);
+          const positionInfo = extractShapePositionInfo(shape);
+          const shapeMetadata = buildShapeMetadataPayload(shape, {
+            shapeColors,
+            colorCandidates: shapeColors.candidates
+          });
+          const resolvedShapeColor =
+            shapeColors.primary ||
+            existingDrop.shape_color ||
+            existingDrop.shape_fill_color ||
+            null;
+          const resolvedFillColor =
+            shapeColors.fill ||
+            shapeColors.primary ||
+            existingDrop.shape_fill_color ||
+            existingDrop.shape_color ||
+            null;
+          const resolvedLineColor =
+            shapeColors.line ||
+            existingDrop.shape_line_color ||
+            null;
+          const shapeDataPayload = shapeMetadata || existingDrop.shape_data || null;
           
+          const updatePayload = {
+            drop_name: updatedDropName || existingDrop.drop_name,
+            room_name: canonicalRoomName,
+            location: locationValue,
+            wire_type: wireType,
+            drop_type: dropType,
+            install_note: getShapeCustomValue(shape, 'Install Note') || 
+                          getShapeCustomValue(shape, 'Note') || null,
+            device: extractShapeDevice(shape),
+            shape_color: resolvedShapeColor,
+            shape_fill_color: resolvedFillColor,
+            shape_line_color: resolvedLineColor,
+            shape_data: shapeDataPayload,
+            project_room_id: resolvedRoom?.room?.id || null,
+            lucid_synced_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          if (supportsShapePositionColumns) {
+            updatePayload.shape_x = positionInfo.x;
+            updatePayload.shape_y = positionInfo.y;
+            updatePayload.shape_width = positionInfo.width;
+            updatePayload.shape_height = positionInfo.height;
+          }
+
+          if (supportsShapeRotationColumn) {
+            updatePayload.shape_rotation = positionInfo.rotation;
+          }
+
           const { data, error } = await supabase
             .from('wire_drops')
-            .update({
-              drop_name: updatedDropName || existingDrop.drop_name,
-              room_name: canonicalRoomName,
-              location: locationValue,
-              wire_type: wireType,
-              drop_type: dropType,
-              install_note: getShapeCustomValue(shape, 'Install Note') || 
-                            getShapeCustomValue(shape, 'Note') || null,
-              device: extractShapeDevice(shape),
-              shape_color: shape.style?.strokeColor || null,
-              shape_fill_color: shape.style?.fillColor || null,
-              shape_line_color: shape.style?.lineColor || null,
-              project_room_id: resolvedRoom?.room?.id || null,
-              lucid_synced_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq('id', existingDrop.id)
             .select()
             .single();
@@ -1220,12 +1618,12 @@ const PMProjectViewEnhanced = () => {
           // The service will auto-generate drop_name based on room + type + number
           
           // Extract color from shape metadata - store in both places
-          const shapeColor = getShapeCustomValue(shape, 'Color') || 
-                            shape.shapeColor || 
-                            shape.fillColor ||
-                            shape.style?.fillColor || 
-                            shape.style?.strokeColor || 
-                            null;
+          const shapeColors = extractShapeColors(shape);
+          const positionInfo = extractShapePositionInfo(shape);
+          const shapeMetadata = buildShapeMetadataPayload(shape, {
+            shapeColors,
+            colorCandidates: shapeColors.candidates
+          });
           
           const wireDropData = {
             room_name: canonicalRoomName,
@@ -1237,16 +1635,27 @@ const PMProjectViewEnhanced = () => {
                           getShapeCustomValue(shape, 'Note') || null,
             device: extractShapeDevice(shape),
             // Store color in individual columns (fallback)
-            shape_color: shapeColor || shape.style?.strokeColor || null,
-            shape_fill_color: shape.fillColor || shape.style?.fillColor || null,
-            shape_line_color: shape.lineColor || shape.style?.lineColor || null,
+            shape_color: shapeColors.primary,
+            shape_fill_color: shapeColors.fill || shapeColors.primary,
+            shape_line_color: shapeColors.line,
             // Store complete shape metadata including Color field
-            shape_data: shape.customData || null,
+            shape_data: shapeMetadata,
             lucid_shape_id: shape.id,
             lucid_page_id: shape.pageId || null,
             project_room_id: resolvedRoom?.room?.id || null,
             lucid_synced_at: new Date().toISOString()
           };
+
+          if (supportsShapePositionColumns) {
+            wireDropData.shape_x = positionInfo.x;
+            wireDropData.shape_y = positionInfo.y;
+            wireDropData.shape_width = positionInfo.width;
+            wireDropData.shape_height = positionInfo.height;
+          }
+
+          if (supportsShapeRotationColumn) {
+            wireDropData.shape_rotation = positionInfo.rotation;
+          }
 
           try {
             const wireDrop = await wireDropService.createWireDrop(projectId, wireDropData);
@@ -1317,6 +1726,27 @@ const PMProjectViewEnhanced = () => {
     return existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
   };
 
+  const totalEquipmentPieces = equipmentStats.total || 0;
+  const orderedPieces = equipmentStats.ordered || 0;
+  const receivedPieces = equipmentStats.received || 0;
+  const orderedPercentage =
+    totalEquipmentPieces > 0 ? Math.round((orderedPieces / totalEquipmentPieces) * 100) : 0;
+  const receivedPercentage =
+    totalEquipmentPieces > 0 ? Math.round((receivedPieces / totalEquipmentPieces) * 100) : 0;
+  const orderedHelper =
+    totalEquipmentPieces > 0 ? `${orderedPieces} of ${totalEquipmentPieces} pieces ordered` : undefined;
+  const receivedHelper =
+    totalEquipmentPieces > 0 ? `${receivedPieces} of ${totalEquipmentPieces} pieces onsite` : undefined;
+  const totalLaborMinutes = Math.round(Number(laborSummary.totalMinutes || 0));
+  const loggedMinutes = Math.round(
+    timeData?.totalMinutes !== undefined
+      ? timeData.totalMinutes
+      : (timeData.totalHours || 0) * 60
+  );
+  const remainingMinutesRaw = totalLaborMinutes - loggedMinutes;
+  const remainingMinutes = remainingMinutesRaw > 0 ? remainingMinutesRaw : 0;
+  const overrunMinutes = remainingMinutesRaw < 0 ? Math.abs(remainingMinutesRaw) : 0;
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1341,463 +1771,524 @@ const PMProjectViewEnhanced = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
       {/* Project Header */}
-      <div style={sectionStyles.card} className="p-6">
-        <div className="flex justify-between items-start gap-6 mb-4">
-          {/* Left side: Project info and UniFi button */}
-          <div className="flex-1 flex items-center gap-4">
-            <div className="flex-1">
+      <div style={sectionStyles.card} className="p-6 space-y-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex-1 min-w-0 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {project.name}
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                {project.project_number && `Project #${project.project_number} • `}
-                {project.client && `Client: ${project.client}`}
-              </p>
+              {formData.project_number && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                  #{formData.project_number}
+                </span>
+              )}
             </div>
-            
-            {/* UniFi Button */}
-            {formData.unifi_url && (
-              <a
-                href={formData.unifi_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 
-                         text-white rounded-lg transition-colors shadow-sm"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/>
-                </svg>
-                <span className="font-medium">UniFi Site</span>
-              </a>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <Users className="h-3 w-3" />
+                {formData.client || 'Client not set'}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <Target className="h-3 w-3" />
+                {formData.phase || 'Phase not set'}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <CheckCircle className="h-3 w-3" />
+                {formData.status || 'Status not set'}
+              </span>
+            </div>
+            {(formData.address || formData.start_date || formData.end_date) && (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                {formData.address && <span>{formData.address}</span>}
+                {(formData.start_date || formData.end_date) && (
+                  <span className="inline-flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span>
+                      {formData.start_date || 'Start TBD'}
+                      <span className="mx-2 text-gray-400">→</span>
+                      {formData.end_date || 'End TBD'}
+                    </span>
+                  </span>
+                )}
+              </div>
             )}
           </div>
-
-          {/* Right side: Progress gauges and edit button */}
-          <div className="flex items-center gap-4">
-            {/* Progress Gauges - Right third */}
-            <div className="w-64 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <h3 className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Progress
-              </h3>
-              <div className="space-y-1.5">
-                <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
-                <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
-                <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
-              </div>
-            </div>
-
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start lg:flex-col lg:items-end">
             <Button
-              onClick={() => editMode ? handleSave() : setEditMode(true)}
+              onClick={() => (editMode ? handleSave() : setEditMode(true))}
               variant={editMode ? 'primary' : 'secondary'}
               icon={editMode ? Save : Edit}
               disabled={saving}
+              className="w-full sm:w-auto"
             >
               {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
             </Button>
           </div>
         </div>
 
-        {/* Project Information Form */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Project Name
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
+        {quickLinks.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {quickLinks.map(({ key, label, url, icon: Icon }) => (
+              <Button
+                key={key}
+                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                variant="ghost"
+                size="sm"
+                icon={Icon}
+                className="border border-gray-200 bg-white hover:border-violet-300 hover:text-violet-600 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-500"
+              >
+                {label}
+              </Button>
+            ))}
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Client
-            </label>
-            <div className="relative">
-              {!editMode ? (
-                <div className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white">
-                  {formData.client || <span className="text-gray-400">No client selected</span>}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
+          </div>
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
+          </div>
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
+          </div>
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <ProgressBar label="Ordered" percentage={orderedPercentage} helper={orderedHelper} />
+          </div>
+          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
+            <ProgressBar label="Received" percentage={receivedPercentage} helper={receivedHelper} />
+          </div>
+        </div>
+
+        {/* Project Overview */}
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                  Project Basics
+                </h2>
+                {editMode && (
+                  <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
+                    Editing
+                  </span>
+                )}
+              </div>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Project Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
                 </div>
-              ) : (
-                <div className="relative">
-                  <div className="flex gap-2">
-                    <div 
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                               hover:border-violet-500 dark:hover:border-violet-400 cursor-pointer
-                               flex items-center gap-2"
-                      onClick={() => setShowClientPicker(!showClientPicker)}
-                    >
-                      <Users className="w-4 h-4 text-gray-500" />
-                      {formData.client ? (
-                        <span className="flex-1">{formData.client}</span>
-                      ) : (
-                        <span className="flex-1 text-gray-500 dark:text-gray-400">
-                          Select or add client...
-                        </span>
-                      )}
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showClientPicker ? 'rotate-180' : ''}`} />
-                    </div>
-                    {formData.client && (
-                      <button
-                        type="button"
-                        onClick={handleClearClient}
-                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-400 hover:text-red-600 
-                                 dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-700"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* Dropdown */}
-                  {showClientPicker && (
-                    <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 
-                                  dark:border-gray-600 rounded-lg shadow-lg max-h-96 overflow-hidden">
-                      {/* Search bar */}
-                      <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-                        <input
-                          type="text"
-                          value={clientSearchTerm}
-                          onChange={(e) => setClientSearchTerm(e.target.value)}
-                          placeholder="Search contacts..."
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
-                                   bg-white dark:bg-gray-900 text-gray-900 dark:text-white
-                                   placeholder-gray-500 dark:placeholder-gray-400"
-                          autoFocus
-                          onClick={(e) => e.stopPropagation()}
-                        />
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Client
+                  </label>
+                  <div className="relative">
+                    {!editMode ? (
+                      <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
+                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+                        {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
                       </div>
-                      
-                      {/* Contact list */}
-                      <div className="max-h-60 overflow-y-auto">
-                        {filteredContacts.length === 0 ? (
-                          <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                            {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
+                    ) : (
+                      <div className="relative">
+                        <div className="flex gap-2">
+                          <div
+                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     hover:border-violet-500 dark:hover:border-violet-400 cursor-pointer
+                                     flex items-center gap-2"
+                            onClick={() => setShowClientPicker(!showClientPicker)}
+                          >
+                            <Users className="w-4 h-4 text-gray-500" />
+                            {formData.client ? (
+                              <span className="flex-1">{formData.client}</span>
+                            ) : (
+                              <span className="flex-1 text-gray-500 dark:text-gray-400">
+                                Select or add client...
+                              </span>
+                            )}
+                            <ChevronDown
+                              className={`w-4 h-4 text-gray-400 transition-transform ${
+                                showClientPicker ? 'rotate-180' : ''
+                              }`}
+                            />
                           </div>
-                        ) : (
-                          filteredContacts.map(contact => {
-                            const displayName = contact.name || contact.company || 'Unnamed Contact';
-                            
-                            return (
-                              <div 
-                                key={contact.id}
-                                className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer 
-                                         border-b border-gray-100 dark:border-gray-700 last:border-0"
-                                onClick={() => handleClientSelect(contact)}
-                              >
-                                <div className="font-medium text-gray-900 dark:text-white">
-                                  {displayName}
+                          {formData.client && (
+                            <button
+                              type="button"
+                              onClick={handleClearClient}
+                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                       bg-white dark:bg-gray-800 text-gray-400 hover:text-red-600 
+                                       dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-700"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {showClientPicker && (
+                          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 
+                                        dark:border-gray-600 rounded-lg shadow-lg max-h-96 overflow-hidden">
+                            <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                              <input
+                                type="text"
+                                value={clientSearchTerm}
+                                onChange={(e) => setClientSearchTerm(e.target.value)}
+                                placeholder="Search contacts..."
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
+                                         bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                         placeholder-gray-500 dark:placeholder-gray-400"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+
+                            <div className="max-h-60 overflow-y-auto">
+                              {filteredContacts.length === 0 ? (
+                                <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                                  {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
                                 </div>
-                                {contact.company && contact.name && (
-                                  <div className="text-sm text-gray-600 dark:text-gray-400">{contact.company}</div>
-                                )}
-                                {contact.email && (
-                                  <div className="text-sm text-gray-500 dark:text-gray-500">
-                                    {contact.email} {contact.phone && `• ${contact.phone}`}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
+                              ) : (
+                                filteredContacts.map((contact) => {
+                                  const displayName =
+                                    contact.name || contact.company || 'Unnamed Contact';
+
+                                  return (
+                                    <div
+                                      key={contact.id}
+                                      className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer 
+                                               border-b border-gray-100 dark:border-gray-700 last:border-0"
+                                      onClick={() => handleClientSelect(contact)}
+                                    >
+                                      <div className="font-medium text-gray-900 dark:text-white">
+                                        {displayName}
+                                      </div>
+                                      {contact.company && contact.name && (
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                                          {contact.company}
+                                        </div>
+                                      )}
+                                      {contact.email && (
+                                        <div className="text-sm text-gray-500 dark:text-gray-500">
+                                          {contact.email} {contact.phone && `• ${contact.phone}`}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+
+                            <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowNewContactForm(true);
+                                  setShowClientPicker(false);
+                                }}
+                                className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
+                                         flex items-center justify-center gap-2"
+                              >
+                                <Plus className="w-4 h-4" />
+                                Add New Contact
+                              </button>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Add new contact button */}
-                      <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Phase
+                      {editMode && (
                         <button
-                          type="button"
-                          onClick={() => {
-                            setShowNewContactForm(true);
-                            setShowClientPicker(false);
-                          }}
-                          className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
-                                   flex items-center justify-center gap-2"
+                          onClick={() => setShowPhaseModal(true)}
+                          className="ml-2 text-violet-600 hover:text-violet-700"
                         >
-                          <Plus className="w-4 h-4" />
-                          Add New Contact
+                          <Plus className="w-4 h-4 inline" />
                         </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+                      )}
+                    </label>
+                    <select
+                      name="phase"
+                      value={formData.phase}
+                      onChange={handleInputChange}
+                      disabled={!editMode}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Select Phase</option>
+                      {phases.map((phase) => (
+                        <option key={phase.id} value={phase.name}>
+                          {phase.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Address
-            </label>
-            <input
-              type="text"
-              name="address"
-              value={formData.address}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Phase
-              {editMode && (
-                <button
-                  onClick={() => setShowPhaseModal(true)}
-                  className="ml-2 text-violet-600 hover:text-violet-700"
-                >
-                  <Plus className="w-4 h-4 inline" />
-                </button>
-              )}
-            </label>
-            <select
-              name="phase"
-              value={formData.phase}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            >
-              <option value="">Select Phase</option>
-              {phases.map((phase) => (
-                <option key={phase.id} value={phase.name}>
-                  {phase.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Status
-              {editMode && (
-                <button
-                  onClick={() => setShowStatusModal(true)}
-                  className="ml-2 text-violet-600 hover:text-violet-700"
-                >
-                  <Plus className="w-4 h-4 inline" />
-                </button>
-              )}
-            </label>
-            <select
-              name="status"
-              value={formData.status}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            >
-              {/* Always include default options in case statuses table is empty */}
-              {statuses.length === 0 ? (
-                <>
-                  <option value="active">Active</option>
-                  <option value="on_hold">On Hold</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </>
-              ) : (
-                statuses.map((status) => (
-                  <option key={status.id} value={status.name}>
-                    {status.name}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Project Number
-            </label>
-            <input
-              type="text"
-              name="project_number"
-              value={formData.project_number}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Start Date
-            </label>
-            <input
-              type="date"
-              name="start_date"
-              value={formData.start_date}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              End Date
-            </label>
-            <input
-              type="date"
-              name="end_date"
-              value={formData.end_date}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Description
-            </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              disabled={!editMode}
-              rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-            />
-          </div>
-
-          {/* Setup URLs - Only visible in edit mode */}
-          {editMode && (
-            <div className="md:col-span-2 border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
-              <h3 className="text-sm font-semibold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
-                <Link className="w-4 h-4" />
-                Setup URLs
-              </h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <FileText className="w-4 h-4 inline mr-1" />
-                    Wiring Diagram URL (Lucid Chart)
-                  </label>
-                  <input
-                    type="url"
-                    name="wiring_diagram_url"
-                    value={formData.wiring_diagram_url}
-                    onChange={handleInputChange}
-                    placeholder="https://lucid.app/..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <FileText className="w-4 h-4 inline mr-1" />
-                    Portal Proposal URL
-                  </label>
-                  <input
-                    type="url"
-                    name="portal_proposal_url"
-                    value={formData.portal_proposal_url}
-                    onChange={handleInputChange}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <Camera className="w-4 h-4 inline mr-1" />
-                    OneDrive Photos
-                  </label>
-                  <input
-                    type="url"
-                    name="one_drive_photos"
-                    value={formData.one_drive_photos}
-                    onChange={handleInputChange}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <FolderOpen className="w-4 h-4 inline mr-1" />
-                    OneDrive Files
-                  </label>
-                  <input
-                    type="url"
-                    name="one_drive_files"
-                    value={formData.one_drive_files}
-                    onChange={handleInputChange}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <FolderOpen className="w-4 h-4 inline mr-1" />
-                    OneDrive Procurement
-                  </label>
-                  <input
-                    type="url"
-                    name="one_drive_procurement"
-                    value={formData.one_drive_procurement}
-                    onChange={handleInputChange}
-                    placeholder="https://..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    <Users className="w-4 h-4 inline mr-1" />
-                    UniFi Network URL
-                  </label>
-                  <input
-                    type="url"
-                    name="unifi_url"
-                    value={formData.unifi_url}
-                    onChange={handleInputChange}
-                    placeholder="https://unifi.ui.com/..."
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Link to UniFi Network Controller for this project
-                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Status
+                      {editMode && (
+                        <button
+                          onClick={() => setShowStatusModal(true)}
+                          className="ml-2 text-violet-600 hover:text-violet-700"
+                        >
+                          <Plus className="w-4 h-4 inline" />
+                        </button>
+                      )}
+                    </label>
+                    <select
+                      name="status"
+                      value={formData.status}
+                      onChange={handleInputChange}
+                      disabled={!editMode}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                    >
+                      {statuses.length === 0 ? (
+                        <>
+                          <option value="active">Active</option>
+                          <option value="on_hold">On Hold</option>
+                          <option value="completed">Completed</option>
+                          <option value="cancelled">Cancelled</option>
+                        </>
+                      ) : (
+                        statuses.map((status) => (
+                          <option key={status.id} value={status.name}>
+                            {status.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
-          )}
+
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                Schedule & Notes
+              </h2>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Project Number
+                  </label>
+                  <input
+                    type="text"
+                    name="project_number"
+                    value={formData.project_number}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    name="start_date"
+                    value={formData.start_date}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    name="end_date"
+                    value={formData.end_date}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Address
+                  </label>
+                  <input
+                    type="text"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    disabled={!editMode}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                Linked Resources
+              </h2>
+              <div className="mt-4 space-y-4">
+                {editMode ? (
+                  <div className="space-y-4">
+                    {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
+                      <div key={key}>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          <Icon className="w-4 h-4 inline mr-1" />
+                          {label}
+                        </label>
+                        <input
+                          type="url"
+                          name={key}
+                          value={value || ''}
+                          onChange={handleInputChange}
+                          placeholder={placeholder}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        />
+                        {helper && (
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {resourceEntries.map(({ key, label, icon: Icon, value }) => (
+                      <div
+                        key={key}
+                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                            <Icon className="w-4 h-4 text-violet-500" />
+                            {label}
+                          </div>
+                          {value ? (
+                            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
+                              {value}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Not set</p>
+                          )}
+                        </div>
+                        {value && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={ExternalLink}
+                            onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                          >
+                            Open
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    {resourceEntries.every(({ value }) => !value) && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        No URLs configured yet. Switch to edit mode to add links.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                Client Contact
+              </h2>
+              <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                {formData.client ? (
+                  <>
+                    <p className="text-base font-semibold text-gray-900 dark:text-white">
+                      {formData.client}
+                    </p>
+                    {currentClientContact ? (
+                      <div className="space-y-1 text-xs">
+                        {currentClientContact.company && (
+                          <p className="text-gray-500 dark:text-gray-400">
+                            Company: {currentClientContact.company}
+                          </p>
+                        )}
+                        {currentClientContact.email && (
+                          <p className="text-gray-500 dark:text-gray-400">
+                            Email: {currentClientContact.email}
+                          </p>
+                        )}
+                        {currentClientContact.phone && (
+                          <p className="text-gray-500 dark:text-gray-400">
+                            Phone: {currentClientContact.phone}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        No matching contact details found in your directory.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Client not set. Switch to edit mode to assign a primary contact.
+                  </p>
+                )}
+                {editMode && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Use the client picker above to search, link, or create a new contact.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1920,15 +2411,37 @@ const PMProjectViewEnhanced = () => {
 
       {/* Time Tracking Section */}
       <div style={sectionStyles.card} className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Time Tracking & Progress
-          </h2>
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Time Tracking & Progress</h2>
+          <div className="flex flex-wrap items-end gap-6">
             <div className="text-right">
-              <p className="text-sm text-gray-600 dark:text-gray-400">Total Project Time</p>
+              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Labor Budget
+              </p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {timeData.totalHours.toFixed(1)} hours
+                {formatDuration(totalLaborMinutes)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Logged
+              </p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {formatDuration(loggedMinutes)}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {remainingMinutesRaw < 0 ? 'Over Budget' : 'Remaining'}
+              </p>
+              <p
+                className={`text-sm font-semibold ${
+                  remainingMinutesRaw < 0 ? 'text-red-500' : 'text-emerald-500'
+                }`}
+              >
+                {remainingMinutesRaw < 0
+                  ? `-${formatDuration(overrunMinutes)}`
+                  : formatDuration(remainingMinutes)}
               </p>
             </div>
             <Button
@@ -1938,6 +2451,7 @@ const PMProjectViewEnhanced = () => {
               onClick={() => {
                 loadTimeData();
                 loadProgress();
+                loadLaborSummary();
               }}
             >
               Refresh
@@ -1955,6 +2469,83 @@ const PMProjectViewEnhanced = () => {
             <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
             <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
           </div>
+        </div>
+
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+          >
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Labor Budget</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {laborSummary.entries.length > 0
+                  ? `${laborSummary.entries.length} labor entries • ${formatDuration(totalLaborMinutes)} allocated`
+                  : 'No labor budget imported yet'}
+              </p>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-gray-500 transition-transform ${
+                laborBudgetCollapsed ? '' : 'rotate-180'
+              }`}
+            />
+          </button>
+
+          {!laborBudgetCollapsed && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+              {laborSummary.entries.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No labor entries imported from the portal CSV yet.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Labor Type</th>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hours</th>
+                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hourly Rate</th>
+                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Planned Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {laborSummary.entries.map((entry) => {
+                        const plannedCost = entry.hours * entry.hourlyRate;
+                        return (
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                            <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.laborType}</td>
+                            <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.roomName}</td>
+                            <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
+                              {entry.hours.toFixed(2)}h
+                            </td>
+                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
+                              {entry.hourlyRate ? `$${entry.hourlyRate.toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
+                              {entry.hourlyRate ? `$${plannedCost.toFixed(2)}` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-white">Total</td>
+                        <td className="px-4 py-2" />
+                        <td className="px-4 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                          {laborSummary.totalHours.toFixed(2)}h
+                        </td>
+                        <td className="px-4 py-2" />
+                        <td className="px-4 py-2" />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Currently Checked In Users */}
@@ -2644,7 +3235,11 @@ const PMProjectViewEnhanced = () => {
 
         {!equipmentCollapsed && (
           <div className="mt-4">
-            <ProjectEquipmentManager projectId={projectId} embedded />
+            <ProjectEquipmentManager
+              projectId={projectId}
+              embedded
+              onEquipmentChange={handleEquipmentChange}
+            />
           </div>
         )}
       </div>

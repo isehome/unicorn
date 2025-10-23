@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { Upload, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import Button from './ui/Button';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -23,36 +23,23 @@ const groupEquipmentByRoom = (equipment = []) => {
   }));
 };
 
-const summarizeLabor = (labor = []) => {
-  return labor.reduce(
-    (acc, item) => {
-      acc.totalHours += Number(item.planned_hours || 0);
-      acc.entries.push({
-        id: item.id,
-        roomName: item.project_rooms?.name || 'Unassigned',
-        laborType: item.labor_type,
-        hours: item.planned_hours || 0,
-        rate: item.hourly_rate || 0
-      });
-      return acc;
-    },
-    { totalHours: 0, entries: [] }
-  );
-};
-
 const formatCurrency = (value) =>
   Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value || 0));
 
 const formatNumber = (value) =>
   Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(Number(value || 0));
 
-const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete }) => {
+const ProjectEquipmentManager = ({
+  projectId,
+  embedded = false,
+  onImportComplete,
+  onEquipmentChange
+}) => {
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
   const { user } = useAuth();
 
   const [equipment, setEquipment] = useState([]);
-  const [labor, setLabor] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -65,21 +52,23 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
     setLoading(true);
     setError(null);
     try {
-      const [equipmentData, laborData, roomData] = await Promise.all([
+      const [equipmentData, roomData] = await Promise.all([
         projectEquipmentService.fetchProjectEquipment(projectId),
-        projectEquipmentService.fetchProjectLabor(projectId),
         projectEquipmentService.fetchRooms(projectId)
       ]);
-      setEquipment(equipmentData || []);
-      setLabor(laborData || []);
+      const normalizedEquipment = equipmentData || [];
+      setEquipment(normalizedEquipment);
       setRooms(roomData || []);
+      if (onEquipmentChange) {
+        onEquipmentChange(normalizedEquipment);
+      }
     } catch (err) {
       console.error('Failed to load project equipment:', err);
       setError(err.message || 'Failed to load equipment data');
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, onEquipmentChange]);
 
   useEffect(() => {
     loadData();
@@ -114,7 +103,6 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
   };
 
   const groupedEquipment = useMemo(() => groupEquipmentByRoom(equipment), [equipment]);
-  const laborSummary = useMemo(() => summarizeLabor(labor), [labor]);
 
   const handleStatusToggle = useCallback(
     async (equipmentId, field, value) => {
@@ -142,17 +130,21 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
           payload
         );
 
-        setEquipment((prev) =>
-          prev.map((item) =>
+        setEquipment((prev) => {
+          const next = prev.map((item) =>
             item.id === equipmentId ? { ...item, ...updatedRecord } : item
-          )
-        );
+          );
+          if (onEquipmentChange) {
+            onEquipmentChange(next);
+          }
+          return next;
+        });
       } catch (statusError) {
         console.error('Failed to update equipment status:', statusError);
         alert(statusError.message || 'Failed to update equipment status');
       }
     },
-    [equipment, user?.id]
+    [equipment, onEquipmentChange, user?.id]
   );
 
   const renderUploadStatus = () => {
@@ -318,45 +310,6 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
     ));
   };
 
-  const renderLaborSummary = () => {
-    if (!laborSummary.entries.length) {
-      return <p className="text-sm text-gray-500">No labor entries imported.</p>;
-    }
-
-    return (
-      <>
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-          <div className="flex items-center gap-2 font-medium">
-            <Clock className="h-4 w-4" />
-            Total planned hours
-          </div>
-          <span>{formatNumber(laborSummary.totalHours)} hrs</span>
-        </div>
-        <div className="space-y-2">
-          {laborSummary.entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="rounded-md border border-gray-100 bg-white px-3 py-2 text-xs shadow-sm dark:border-gray-700 dark:bg-gray-900"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{entry.laborType}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                    {entry.roomName}
-                  </p>
-                </div>
-                <div className="text-right text-gray-600 dark:text-gray-300">
-                  <p>{formatNumber(entry.hours)} hrs</p>
-                  <p>{formatCurrency(entry.rate)}/hr</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </>
-    );
-  };
-
   const containerStyle = embedded ? undefined : sectionStyles.card;
   const containerClasses = embedded ? 'space-y-6' : 'space-y-6 p-6';
 
@@ -493,15 +446,6 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-emerald-500" />
-            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              Labor budget
-            </h4>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-900">
-            {renderLaborSummary()}
-          </div>
         </div>
       </div>
     </div>
@@ -511,7 +455,8 @@ const ProjectEquipmentManager = ({ projectId, embedded = false, onImportComplete
 ProjectEquipmentManager.propTypes = {
   projectId: PropTypes.string,
   embedded: PropTypes.bool,
-  onImportComplete: PropTypes.func
+  onImportComplete: PropTypes.func,
+  onEquipmentChange: PropTypes.func
 };
 
 export default ProjectEquipmentManager;

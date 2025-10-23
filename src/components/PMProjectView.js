@@ -21,7 +21,13 @@ import {
   Camera,
   Download,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Link,
+  User,
+  Upload
 } from 'lucide-react';
 
 const PMProjectView = () => {
@@ -65,6 +71,22 @@ const PMProjectView = () => {
   const [lucidError, setLucidError] = useState(null);
   const [droppableShapes, setDroppableShapes] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
+
+  // Collapsible sections state - all default to collapsed (false)
+  const [sectionsExpanded, setSectionsExpanded] = useState({
+    basics: false,
+    schedule: false,
+    linkedResources: false,
+    clientContact: false,
+    roomMatching: false
+  });
+
+  const toggleSection = (section) => {
+    setSectionsExpanded(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Load project data, contacts, and time tracking info
   useEffect(() => {
@@ -379,346 +401,574 @@ const PMProjectView = () => {
           </div>
         </div>
 
-        {/* View Mode - Display Info */}
-        {!editMode ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Project Name
-                </label>
-                <p className="text-gray-900 dark:text-white">{project.name || '-'}</p>
+        {/* Collapsible Sections */}
+        <div className="space-y-3">
+          {/* Project Basics Section */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('basics')}
+              className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                       hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Project Basics</h3>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Client
-                </label>
-                <p className="text-gray-900 dark:text-white">{project.client || '-'}</p>
+              {sectionsExpanded.basics ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+            
+            {sectionsExpanded.basics && (
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                {!editMode ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Project Name
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{project.name || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Project Number
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{project.project_number || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Address
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{project.address || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Phase
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{project.phase || '-'}</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        Status
+                      </label>
+                      <p className="text-gray-900 dark:text-white capitalize">
+                        {project.status?.replace('_', ' ') || 'active'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Project Name *
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Project Number
+                      </label>
+                      <input
+                        type="text"
+                        name="project_number"
+                        value={formData.project_number}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Address *
+                      </label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={formData.address}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Phase
+                      </label>
+                      <select
+                        name="phase"
+                        value={formData.phase}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      >
+                        <option value="">Select Phase</option>
+                        <option value="Planning">Planning</option>
+                        <option value="Pre-Wire">Pre-Wire</option>
+                        <option value="Trim">Trim</option>
+                        <option value="Final">Final</option>
+                        <option value="Complete">Complete</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        value={formData.status}
+                        onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      >
+                        <option value="active">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Address
-                </label>
-                <p className="text-gray-900 dark:text-white">{project.address || '-'}</p>
+          {/* Schedule and Notes Section */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('schedule')}
+              className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                       hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Schedule and Notes</h3>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Project Number
-                </label>
-                <p className="text-gray-900 dark:text-white">{project.project_number || '-'}</p>
+              {sectionsExpanded.schedule ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+            
+            {sectionsExpanded.schedule && (
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                {!editMode ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          Start Date
+                        </label>
+                        <p className="text-gray-900 dark:text-white">
+                          {project.start_date ? new Date(project.start_date).toLocaleDateString() : '-'}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          End Date
+                        </label>
+                        <p className="text-gray-900 dark:text-white">
+                          {project.end_date ? new Date(project.end_date).toLocaleDateString() : '-'}
+                        </p>
+                      </div>
+                    </div>
+                    {project.description && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          Description / Notes
+                        </label>
+                        <p className="text-gray-900 dark:text-white whitespace-pre-wrap">{project.description}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Start Date
+                        </label>
+                        <input
+                          type="date"
+                          name="start_date"
+                          value={formData.start_date}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          End Date
+                        </label>
+                        <input
+                          type="date"
+                          name="end_date"
+                          value={formData.end_date}
+                          onChange={handleInputChange}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Description / Notes
+                      </label>
+                      <textarea
+                        name="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        rows={4}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        placeholder="Add project notes, requirements, or any other relevant information..."
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Phase
-                </label>
-                <p className="text-gray-900 dark:text-white">{project.phase || '-'}</p>
+          {/* Client Contact Section */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('clientContact')}
+              className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                       hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <User className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Client Contact</h3>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Status
-                </label>
-                <p className="text-gray-900 dark:text-white capitalize">{project.status?.replace('_', ' ') || 'active'}</p>
+              {sectionsExpanded.clientContact ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+            
+            {sectionsExpanded.clientContact && (
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                {!editMode ? (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                      Client
+                    </label>
+                    <p className="text-gray-900 dark:text-white">{project.client || '-'}</p>
+                    {project.client_contact_id && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        Contact ID: {project.client_contact_id}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Select Client Contact
+                    </label>
+                    <select
+                      name="client_contact_id"
+                      value={formData.client_contact_id}
+                      onChange={(e) => {
+                        const selectedContact = contacts.find(c => c.id === e.target.value);
+                        setFormData(prev => ({
+                          ...prev,
+                          client_contact_id: e.target.value,
+                          client: selectedContact ? (selectedContact.full_name || selectedContact.name || selectedContact.company || '') : ''
+                        }));
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    >
+                      <option value="">Select a client contact...</option>
+                      {contacts.map(contact => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name || contact.name || 'Unnamed'} 
+                          {contact.company && ` - ${contact.company}`}
+                          {contact.email && ` (${contact.email})`}
+                        </option>
+                      ))}
+                    </select>
+                    {contacts.length === 0 && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        No contacts available. Add contacts first to select as clients.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  Start Date
-                </label>
-                <p className="text-gray-900 dark:text-white">
-                  {project.start_date ? new Date(project.start_date).toLocaleDateString() : '-'}
-                </p>
+          {/* Linked Resources Section */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('linkedResources')}
+              className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                       hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Linked Resources</h3>
               </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  End Date
-                </label>
-                <p className="text-gray-900 dark:text-white">
-                  {project.end_date ? new Date(project.end_date).toLocaleDateString() : '-'}
-                </p>
+              {sectionsExpanded.linkedResources ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+            
+            {sectionsExpanded.linkedResources && (
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                {!editMode ? (
+                  <div className="space-y-3">
+                    {project.wiring_diagram_url && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          <FileText className="w-4 h-4 inline mr-1" />
+                          Wiring Diagram
+                        </label>
+                        <a 
+                          href={project.wiring_diagram_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                          View Diagram <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {project.portal_proposal_url && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          <FileText className="w-4 h-4 inline mr-1" />
+                          Portal Proposal
+                        </label>
+                        <a 
+                          href={project.portal_proposal_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                          View Proposal <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {project.one_drive_photos && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          <Camera className="w-4 h-4 inline mr-1" />
+                          OneDrive Photos
+                        </label>
+                        <a 
+                          href={project.one_drive_photos} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                          Open Photos Folder <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {project.one_drive_files && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          <FolderOpen className="w-4 h-4 inline mr-1" />
+                          OneDrive Files
+                        </label>
+                        <a 
+                          href={project.one_drive_files} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                          Open Files Folder <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {project.one_drive_procurement && (
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                          <FolderOpen className="w-4 h-4 inline mr-1" />
+                          OneDrive Procurement
+                        </label>
+                        <a 
+                          href={project.one_drive_procurement} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                          Open Procurement Folder <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+                    {!project.wiring_diagram_url && !project.portal_proposal_url && 
+                     !project.one_drive_photos && !project.one_drive_files && !project.one_drive_procurement && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                        No linked resources configured
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <FileText className="w-4 h-4 inline mr-1" />
+                        Wiring Diagram URL
+                      </label>
+                      <input
+                        type="url"
+                        name="wiring_diagram_url"
+                        value={formData.wiring_diagram_url}
+                        onChange={handleInputChange}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <FileText className="w-4 h-4 inline mr-1" />
+                        Portal Proposal URL
+                      </label>
+                      <input
+                        type="url"
+                        name="portal_proposal_url"
+                        value={formData.portal_proposal_url}
+                        onChange={handleInputChange}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <Camera className="w-4 h-4 inline mr-1" />
+                        OneDrive Photos Folder
+                      </label>
+                      <input
+                        type="url"
+                        name="one_drive_photos"
+                        value={formData.one_drive_photos}
+                        onChange={handleInputChange}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <FolderOpen className="w-4 h-4 inline mr-1" />
+                        OneDrive Files Folder
+                      </label>
+                      <input
+                        type="url"
+                        name="one_drive_files"
+                        value={formData.one_drive_files}
+                        onChange={handleInputChange}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <FolderOpen className="w-4 h-4 inline mr-1" />
+                        OneDrive Procurement Folder
+                      </label>
+                      <input
+                        type="url"
+                        name="one_drive_procurement"
+                        value={formData.one_drive_procurement}
+                        onChange={handleInputChange}
+                        placeholder="https://..."
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
+          </div>
 
-              {project.description && (
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                    Description
-                  </label>
-                  <p className="text-gray-900 dark:text-white whitespace-pre-wrap">{project.description}</p>
+          {/* Room Matching to CSV Section */}
+          <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('roomMatching')}
+              className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                       hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Upload className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Room Matching to CSV (Portal Upload)</h3>
+              </div>
+              {sectionsExpanded.roomMatching ? (
+                <ChevronUp className="w-5 h-5 text-gray-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-gray-500" />
+              )}
+            </button>
+            
+            {sectionsExpanded.roomMatching && (
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    This section is part of the Portal CSV Upload feature, which allows you to match room names 
+                    from Lucid Chart with room data from your Portal proposal CSV.
+                  </p>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <p className="text-sm text-blue-800 dark:text-blue-300 font-medium mb-2">
+                      <AlertCircle className="w-4 h-4 inline mr-1" />
+                      Feature in Development
+                    </p>
+                    <p className="text-sm text-blue-700 dark:text-blue-400">
+                      The CSV upload and room matching functionality will be available here soon. This will allow 
+                      you to upload your Portal proposal CSV and automatically match rooms with wire drops from 
+                      your Lucid Chart.
+                    </p>
+                  </div>
+                  {project.portal_proposal_url && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={ExternalLink}
+                      onClick={() => window.open(project.portal_proposal_url, '_blank')}
+                    >
+                      View Portal Proposal
+                    </Button>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* Edit Mode - Form Inputs */
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Project Name *
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Client
-              </label>
-              <select
-                name="client_contact_id"
-                value={formData.client_contact_id}
-                onChange={(e) => {
-                  const selectedContact = contacts.find(c => c.id === e.target.value);
-                  setFormData(prev => ({
-                    ...prev,
-                    client_contact_id: e.target.value,
-                    client: selectedContact ? (selectedContact.full_name || selectedContact.name || selectedContact.company || '') : ''
-                  }));
-                }}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              >
-                <option value="">Select a client contact...</option>
-                {contacts.map(contact => (
-                  <option key={contact.id} value={contact.id}>
-                    {contact.full_name || contact.name || 'Unnamed'} 
-                    {contact.company && ` - ${contact.company}`}
-                    {contact.email && ` (${contact.email})`}
-                  </option>
-                ))}
-              </select>
-              {contacts.length === 0 && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  No contacts available. Add contacts first to select as clients.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Address *
-              </label>
-              <input
-                type="text"
-                name="address"
-                value={formData.address}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Project Number
-              </label>
-              <input
-                type="text"
-                name="project_number"
-                value={formData.project_number}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Phase
-              </label>
-              <select
-                name="phase"
-                value={formData.phase}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              >
-                <option value="">Select Phase</option>
-                <option value="Planning">Planning</option>
-                <option value="Pre-Wire">Pre-Wire</option>
-                <option value="Trim">Trim</option>
-                <option value="Final">Final</option>
-                <option value="Complete">Complete</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Status
-              </label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              >
-                <option value="active">Active</option>
-                <option value="on_hold">On Hold</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Start Date
-              </label>
-              <input
-                type="date"
-                name="start_date"
-                value={formData.start_date}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                End Date
-              </label>
-              <input
-                type="date"
-                name="end_date"
-                value={formData.end_date}
-                onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Description
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Setup Information - Only shown in Edit Mode */}
-      {editMode && (
-        <div style={sectionStyles.card} className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Setup Information
-          </h2>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <FileText className="w-4 h-4 inline mr-1" />
-                Wiring Diagram URL
-              </label>
-              <input
-                type="url"
-                name="wiring_diagram_url"
-                value={formData.wiring_diagram_url}
-                onChange={handleInputChange}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <FileText className="w-4 h-4 inline mr-1" />
-                Portal Proposal URL
-              </label>
-              <input
-                type="url"
-                name="portal_proposal_url"
-                value={formData.portal_proposal_url}
-                onChange={handleInputChange}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <Camera className="w-4 h-4 inline mr-1" />
-                OneDrive Photos Folder
-              </label>
-              <input
-                type="url"
-                name="one_drive_photos"
-                value={formData.one_drive_photos}
-                onChange={handleInputChange}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <FolderOpen className="w-4 h-4 inline mr-1" />
-                OneDrive Files Folder
-              </label>
-              <input
-                type="url"
-                name="one_drive_files"
-                value={formData.one_drive_files}
-                onChange={handleInputChange}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                <FolderOpen className="w-4 h-4 inline mr-1" />
-                OneDrive Procurement Folder
-              </label>
-              <input
-                type="url"
-                name="one_drive_procurement"
-                value={formData.one_drive_procurement}
-                onChange={handleInputChange}
-                placeholder="https://..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-            </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Lucid Chart Integration Section */}
       {project.wiring_diagram_url && (

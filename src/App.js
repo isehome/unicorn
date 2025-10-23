@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
 import BottomNavigation from './components/BottomNavigation';
 import LoadingSpinner from './components/ui/LoadingSpinner';
+import Login from './components/Login';
 import { thumbnailCache } from './lib/thumbnailCache';
 import './index.css';
 
@@ -26,7 +27,6 @@ const WireDropsHub = lazy(() => import('./components/WireDropsHub'));
 const FloorPlanViewer = lazy(() => import('./pages/FloorPlanViewer'));
 const EquipmentListPage = lazy(() => import('./components/EquipmentListPage'));
 const SecureDataPage = lazy(() => import('./components/SecureDataPage'));
-const Login = lazy(() => import('./components/Login'));
 const SettingsPage = lazy(() => import('./components/SettingsPage'));
 const AuthCallback = lazy(() => import('./components/AuthCallback'));
 const IssuesListPageOptimized = lazy(() => import('./components/IssuesListPageOptimized'));

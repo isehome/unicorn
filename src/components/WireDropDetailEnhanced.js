@@ -31,6 +31,7 @@ import {
   Trash2,
   Lock
 } from 'lucide-react';
+import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 
 const normalizeRoomName = (value) =>
   typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, ' ') : '';
@@ -490,6 +491,10 @@ const WireDropDetailEnhanced = () => {
     return null;
   }, [wireDrop, roomsById, aliasLookup]);
 
+  const badgeColor = useMemo(() => getWireDropBadgeColor(wireDrop), [wireDrop]);
+  const badgeLetter = useMemo(() => getWireDropBadgeLetter(wireDrop), [wireDrop]);
+  const badgeTextColor = useMemo(() => getWireDropBadgeTextColor(badgeColor), [badgeColor]);
+
   const doesEquipmentMatchRoom = useCallback(
     (equipment, room) => {
       if (!equipment || !room) return false;
@@ -851,16 +856,19 @@ const WireDropDetailEnhanced = () => {
                 ) : (
                   <>
                     <div className="flex items-start gap-4">
-                      {/* Color circle from Lucid shape */}
-                      {(wireDrop.shape_fill_color || wireDrop.shape_color) && (
-                        <div 
-                          className="w-12 h-12 rounded-full flex-shrink-0 shadow-sm"
-                          style={{
-                            backgroundColor: wireDrop.shape_fill_color || wireDrop.shape_color
-                          }}
-                          title="Color from Lucid diagram"
-                        />
-                      )}
+                      {/* Lucid shape badge */}
+                      <div 
+                        className="w-14 h-14 rounded-full flex-shrink-0 shadow-md flex items-center justify-center select-none"
+                        style={{
+                          backgroundColor: badgeColor,
+                          border: '2px solid rgba(17, 24, 39, 0.08)',
+                          color: badgeTextColor
+                        }}
+                        title="Color from Lucid diagram"
+                        aria-hidden="true"
+                      >
+                        <span className="text-xl font-bold">{badgeLetter}</span>
+                      </div>
                       
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
@@ -919,6 +927,52 @@ const WireDropDetailEnhanced = () => {
                   </button>
                 )}
               </div>
+
+              {wireDrop.shape_data && typeof wireDrop.shape_data === 'object' && (
+                <div
+                  className="rounded-xl border p-4"
+                  style={{
+                    borderColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(22, 163, 74, 0.35)',
+                    backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(220, 252, 231, 0.35)'
+                  }}
+                >
+                  <h4 className="text-sm font-semibold mb-2" style={styles.textPrimary}>
+                    Lucid Style Diagnostics
+                  </h4>
+                  <div className="text-xs space-y-2" style={styles.subtleText}>
+                    <div>
+                      <span className="font-semibold text-green-700 dark:text-green-300 mr-1">Primary Color:</span>
+                      <span>{wireDrop.shape_color || wireDrop.shape_data?.extractedColors?.primary || '—'}</span>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-2">
+                      <div>
+                        <p className="font-semibold text-green-700 dark:text-green-300">Fill / Line</p>
+                        <p>Fill: {wireDrop.shape_fill_color || wireDrop.shape_data?.extractedColors?.fill || '—'}</p>
+                        <p>Line: {wireDrop.shape_line_color || wireDrop.shape_data?.extractedColors?.line || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-green-700 dark:text-green-300">Coordinates</p>
+                        <p>X: {wireDrop.shape_x ?? '—'} | Y: {wireDrop.shape_y ?? '—'}</p>
+                        <p>Width: {wireDrop.shape_width ?? '—'} | Height: {wireDrop.shape_height ?? '—'}</p>
+                        <p>Rotation: {wireDrop.shape_rotation ?? '—'}</p>
+                      </div>
+                    </div>
+                    {Array.isArray(wireDrop.shape_data?.diagnostics?.colorCandidates) && wireDrop.shape_data.diagnostics.colorCandidates.length > 0 && (
+                      <div>
+                        <p className="font-semibold text-green-700 dark:text-green-300">Color Candidates</p>
+                        <ul className="list-disc ml-5 space-y-1">
+                          {wireDrop.shape_data.diagnostics.colorCandidates.map((candidate, index) => (
+                            <li key={`${candidate.source}-${index}`}>
+                              <span className="font-medium">{candidate.source}:</span>{' '}
+                              <span>{candidate.value ?? 'null'}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Wire Drop Data and Shape Data Grid - Comprehensive View */}
@@ -1872,6 +1926,7 @@ const WireDropDetailEnhanced = () => {
                     { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
                     { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
                     { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
+                    { name: 'Shape Rotation', key: 'shape_rotation', value: wireDrop.shape_rotation, locked: true, source: 'lucid_position' },
                     { 
                       name: 'Wire Type (Basic)', 
                       key: 'type', 

@@ -4,8 +4,9 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Filter, Plus, Loader, Trash2 } from 'lucide-react';
+import { Search, Plus, Loader, Trash2 } from 'lucide-react';
 import { wireDropService } from '../services/wireDropService';
+import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 
 const WireDropsList = () => {
   const { mode } = useTheme();
@@ -91,7 +92,28 @@ const WireDropsList = () => {
 
       if (wireDropsError) throw wireDropsError;
 
-      setAllDrops(data || []);
+      const normalizedDrops = (data || []).map((drop) => {
+        if (drop.shape_data && typeof drop.shape_data === 'string') {
+          try {
+            return { ...drop, shape_data: JSON.parse(drop.shape_data) };
+          } catch {
+            return drop;
+          }
+        }
+        if (!drop.shape_data && drop.notes) {
+          try {
+            const parsed = JSON.parse(drop.notes);
+            if (parsed && typeof parsed === 'object') {
+              return { ...drop, shape_data: parsed };
+            }
+          } catch {
+            return drop;
+          }
+        }
+        return drop;
+      });
+
+      setAllDrops(normalizedDrops);
     } catch (err) {
       console.error('Failed to load wire drops:', err);
       setError(err.message || 'Failed to load wire drops');
@@ -272,6 +294,9 @@ const WireDropsList = () => {
             <div className="space-y-3">
               {filteredDrops.map((drop) => {
                 const { percentage, prewireComplete, installComplete, commissionComplete } = getDropCompletion(drop);
+                const badgeColor = getWireDropBadgeColor(drop);
+                const badgeLetter = getWireDropBadgeLetter(drop);
+                const badgeTextColor = getWireDropBadgeTextColor(badgeColor);
                 
                 return (
                   <div
@@ -279,35 +304,54 @@ const WireDropsList = () => {
                     className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
                     onClick={() => navigate(`/wire-drops/${drop.id}`)}
                   >
-                    <div className="flex justify-between items-start">
+                    <div className="flex gap-4 items-start">
+                      <div className="flex-shrink-0">
+                        <div
+                          className="w-14 h-14 rounded-full flex items-center justify-center shadow-md select-none"
+                          style={{
+                            backgroundColor: badgeColor,
+                            border: '2px solid rgba(17, 24, 39, 0.08)',
+                            color: badgeTextColor
+                          }}
+                          aria-hidden="true"
+                        >
+                          <span className="text-lg font-bold">{badgeLetter}</span>
+                        </div>
+                      </div>
+
                       <div className="flex-1">
                         {/* Wire Drop Name as main title */}
                         <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-1">
-                          {drop.name || 'Unnamed Drop'}
+                          {drop.drop_name || drop.name || 'Unnamed Drop'}
                         </h3>
                         
                         {/* Room Name underneath */}
-                        {drop.room_name && (
+                        {(drop.room_name || drop.project_room?.name) && (
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                            {drop.room_name}
+                            {drop.room_name || drop.project_room?.name}
                           </p>
                         )}
                         
                         {/* Wire Type and Floor as smaller text */}
-                        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                          {drop.type && (
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                          {drop.drop_type && (
                             <span className="flex items-center gap-1">
-                              <span className="font-medium">Type:</span> {drop.type}
+                              <span className="font-medium uppercase tracking-wide">Type:</span> {drop.drop_type}
+                            </span>
+                          )}
+                          {drop.wire_type && (
+                            <span className="flex items-center gap-1">
+                              <span className="font-medium uppercase tracking-wide">Wire:</span> {drop.wire_type}
                             </span>
                           )}
                           {drop.floor && (
                             <span className="flex items-center gap-1">
-                              <span className="font-medium">Floor:</span> {drop.floor}
+                              <span className="font-medium uppercase tracking-wide">Floor:</span> {drop.floor}
                             </span>
                           )}
                           {drop.location && (
                             <span className="flex items-center gap-1">
-                              <span className="font-medium">Location:</span> {drop.location}
+                              <span className="font-medium uppercase tracking-wide">Location:</span> {drop.location}
                             </span>
                           )}
                         </div>

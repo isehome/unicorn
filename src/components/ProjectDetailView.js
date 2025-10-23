@@ -36,7 +36,8 @@ import {
   Pencil,
   Shield,
   Key,
-  AlertCircle
+  AlertCircle,
+  ChevronDown
 } from 'lucide-react';
 import {
   projectsService,
@@ -47,9 +48,11 @@ import {
   issuesService,
   projectProgressService
 } from '../services/supabaseService';
+import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectRoomsService } from '../services/projectRoomsService';
 import { normalizeRoomName } from '../utils/roomUtils';
+import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import TodoDetailModal from './TodoDetailModal';
 import EquipmentManager from './EquipmentManager';
 import SecureDataManager from './SecureDataManager';
@@ -1552,62 +1555,9 @@ const ProjectDetailView = () => {
                   if (commissionComplete) completion += 33.34;
                   completion = Math.round(completion);
 
-                  // Extract the shape letter from shape_data or use first letter of drop type
-                  const getShapeLetter = () => {
-                    // Try to get from shape_data first (from Lucid)
-                    if (drop.shape_data?.text && drop.shape_data.text.length <= 2) {
-                      return drop.shape_data.text.toUpperCase();
-                    }
-                    // Try the drop_name if it's 1-2 characters
-                    if (drop.drop_name && drop.drop_name.length <= 2 && /^[A-Z]{1,2}$/i.test(drop.drop_name)) {
-                      return drop.drop_name.toUpperCase();
-                    }
-                    // Default to first letter of drop type
-                    if (drop.drop_type) {
-                      return drop.drop_type.charAt(0).toUpperCase();
-                    }
-                    return '?';
-                  };
-
-                  // Extract shape color - prioritize shape_data.Color, then fallback to direct columns
-                  const getShapeColor = () => {
-                    // FIRST PRIORITY: Check shape_data.Color (metadata from Lucid)
-                    if (drop.shape_data) {
-                      // Check for 'Color' field (capital C - exact match from Lucid metadata)
-                      if (drop.shape_data.Color) {
-                        const colorValue = drop.shape_data.Color;
-                        if (typeof colorValue === 'string' && colorValue.startsWith('#')) {
-                          return colorValue;
-                        }
-                      }
-                      
-                      // Check other possible color field variations in shape_data
-                      const colorFields = ['color', 'fillColor', 'fill_color', 'fillcolor', 'shapeColor', 'shape_color'];
-                      for (const field of colorFields) {
-                        const value = drop.shape_data[field];
-                        if (value && typeof value === 'string' && value.startsWith('#')) {
-                          return value;
-                        }
-                      }
-                    }
-                    
-                    // SECOND PRIORITY: Check direct color columns as fallback
-                    if (drop.shape_color && typeof drop.shape_color === 'string' && drop.shape_color.startsWith('#')) {
-                      return drop.shape_color;
-                    }
-                    if (drop.shape_fill_color && typeof drop.shape_fill_color === 'string' && drop.shape_fill_color.startsWith('#')) {
-                      return drop.shape_fill_color;
-                    }
-                    if (drop.fill_color && typeof drop.fill_color === 'string' && drop.fill_color.startsWith('#')) {
-                      return drop.fill_color;
-                    }
-                    
-                    // Default fallback color - neutral gray
-                    return '#6B7280';
-                  };
-
-                  const shapeLetter = getShapeLetter();
-                  const shapeColor = getShapeColor();
+                  const shapeLetter = getWireDropBadgeLetter(drop);
+                  const shapeColor = getWireDropBadgeColor(drop);
+                  const shapeTextColor = getWireDropBadgeTextColor(shapeColor);
                   
                   return (
                     <button
@@ -1623,10 +1573,11 @@ const ProjectDetailView = () => {
                             className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
                             style={{
                               backgroundColor: shapeColor,
-                              border: '2px solid rgba(0,0,0,0.1)'
+                              border: '2px solid rgba(0,0,0,0.1)',
+                              color: shapeTextColor
                             }}
                           >
-                            <span className="text-2xl font-bold text-white">
+                            <span className="text-2xl font-bold">
                               {shapeLetter}
                             </span>
                           </div>

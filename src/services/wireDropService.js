@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
  */
 
 let supportsShapeDataColumn = true;
+let supportsShapePositionColumns = true;
 
 class WireDropService {
   /**
@@ -183,6 +184,15 @@ class WireDropService {
         qr_code_url: wireDropData.qr_code_url || null
       };
 
+      const shapeMetrics = ['shape_x', 'shape_y', 'shape_width', 'shape_height', 'shape_rotation'];
+      if (supportsShapePositionColumns) {
+        shapeMetrics.forEach((metric) => {
+          if (wireDropData[metric] !== undefined) {
+            insertPayload[metric] = wireDropData[metric];
+          }
+        });
+      }
+
       if (supportsShapeDataColumn && wireDropData.shape_data !== undefined) {
         insertPayload.shape_data = wireDropData.shape_data;
       }
@@ -204,6 +214,26 @@ class WireDropService {
           .insert(retryPayload)
           .select()
           .single());
+      }
+
+      if (createError && supportsShapePositionColumns) {
+        const missingPositionColumn = shapeMetrics.find((metric) =>
+          createError.message?.includes(metric)
+        );
+        if (missingPositionColumn) {
+          console.warn('[wireDropService] shape position columns missing; retrying without shape metrics.');
+          supportsShapePositionColumns = false;
+          const retryPayload = { ...insertPayload };
+          shapeMetrics.forEach((metric) => delete retryPayload[metric]);
+          if (!supportsShapeDataColumn) {
+            delete retryPayload.shape_data;
+          }
+          ({ data: wireDrop, error: createError } = await supabase
+            .from('wire_drops')
+            .insert(retryPayload)
+            .select()
+            .single());
+        }
       }
 
       if (createError) throw createError;

@@ -17,6 +17,14 @@ const PROXY_ENDPOINT = PROXY_BASE_URL
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 const shouldUseProxy = () => !!PROXY_BASE_URL || !isDevelopment;
+const isLucidBetaEnabled = () => {
+  const flag = process.env.REACT_APP_LUCID_USE_BETA;
+  if (typeof flag === 'string') {
+    return flag.trim().toLowerCase() === 'true';
+  }
+  // Default to beta endpoint for richer style data unless explicitly disabled
+  return true;
+};
 
 const callLucidProxy = async (payload = {}) => {
   // The proxy endpoint can be either:
@@ -68,22 +76,34 @@ export const fetchDocumentContents = async (documentId) => {
   }
 
   const apiKey = process.env.REACT_APP_LUCID_API_KEY;
+  const useBeta = isLucidBetaEnabled();
+  const searchParams = new URLSearchParams();
+  searchParams.set('includeData', 'true');
+  if (useBeta) {
+    searchParams.set('includeStyles', 'true');
+    searchParams.set('includeProperties', 'true');
+  }
+  const queryString = searchParams.toString();
+  const contentsPath = `${LUCID_API_BASE_URL}/documents/${documentId}/contents`;
+  const requestUrl = queryString ? `${contentsPath}?${queryString}` : contentsPath;
 
   try {
     // Prefer proxy unless we're in local dev without an override
     if (!shouldUseProxy() && apiKey) {
       // Direct API call for local development
-      const response = await fetch(
-        `${LUCID_API_BASE_URL}/documents/${documentId}/contents`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Lucid-Api-Version': LUCID_API_VERSION,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const headers = {
+        'Authorization': `Bearer ${apiKey}`,
+        'Lucid-Api-Version': LUCID_API_VERSION,
+        'Content-Type': 'application/json'
+      };
+      if (useBeta) {
+        headers['Lucid-Beta-Feature'] = 'element-styles';
+      }
+
+      const response = await fetch(requestUrl, {
+        method: 'GET',
+        headers
+      });
 
       if (!response.ok) {
         switch (response.status) {
@@ -103,7 +123,16 @@ export const fetchDocumentContents = async (documentId) => {
       return await response.json();
     } else {
       // Use secure proxy for production (and optionally for dev via override)
-      return await callLucidProxy({ documentId });
+      return await callLucidProxy({
+        documentId,
+        options: {
+          useBeta,
+          includeData: true,
+          includeStyles: useBeta,
+          includeProperties: useBeta,
+          betaFeature: useBeta ? 'element-styles' : null
+        }
+      });
     }
   } catch (error) {
     // Re-throw errors with additional context
@@ -158,6 +187,18 @@ export const extractShapes = (documentData) => {
 
   const shapes = [];
   const shapeIndex = new Map();
+  const globalStyleMaps = [
+    documentData?.styles,
+    documentData?.styleMap,
+    documentData?.styleAssignments,
+    documentData?.data?.styles,
+    documentData?.data?.styleMap,
+    documentData?.data?.styleAssignments,
+    documentData?.data?.elementStyles,
+    documentData?.data?.elements,
+    documentData?.elementStyles,
+    documentData?.elements
+  ].filter(Boolean);
 
   const normalizeCustomEntryValue = (entry) => {
     if (!entry) return '';
@@ -199,16 +240,63 @@ export const extractShapes = (documentData) => {
     return shape.text || shape.name || shape.title || '';
   };
 
+  const resolveStyleFromMaps = (shape) => {
+    const merged = {};
+    if (!shape) {
+      return merged;
+    }
+
+    const candidateIds = [
+      shape.id,
+      shape.styleId,
+      shape.style_id,
+      shape.data?.styleId,
+      shape.data?.style_id
+    ].filter(Boolean);
+
+    globalStyleMaps.forEach((map) => {
+      if (!map || typeof map !== 'object') return;
+
+      candidateIds.forEach((candidate) => {
+        const direct = map[candidate];
+        if (direct && typeof direct === 'object') {
+          Object.assign(merged, direct);
+        }
+      });
+
+      if (map.elements && typeof map.elements === 'object') {
+        candidateIds.forEach((candidate) => {
+          const entry = map.elements[candidate];
+          if (entry && typeof entry === 'object') {
+            Object.assign(merged, entry);
+          }
+        });
+      }
+
+      if (map.assignments && typeof map.assignments === 'object') {
+        candidateIds.forEach((candidate) => {
+          const entry = map.assignments[candidate];
+          if (entry && typeof entry === 'object') {
+            Object.assign(merged, entry);
+          }
+        });
+      }
+    });
+
+    return merged;
+  };
+
   const recordShape = (shape, page, context = {}) => {
     if (!shape || !shape.id) return;
 
     const customDataObj = toCustomDataObject(shape.customData);
     
     // Extract color information from shape style or properties
-    const style = shape.style || {};
-    const properties = shape.properties || {};
+    const externalStyle = resolveStyleFromMaps(shape);
+    const style = { ...(shape.style || {}), ...externalStyle };
+    const properties = { ...(shape.properties || {}), ...(shape.data?.properties || {}) };
     const fillColor = style.fillColor || style.fill || properties.fillColor || properties.fill || null;
-    const lineColor = style.lineColor || style.stroke || properties.lineColor || properties.stroke || null;
+    const lineColor = style.lineColor || style.stroke || properties.lineColor || properties.stroke || style.borderColor || null;
     const shapeColor = fillColor || lineColor || null;
     
     const normalized = {
