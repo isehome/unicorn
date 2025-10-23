@@ -606,6 +606,7 @@ export const projectEquipmentService = {
           model,
           is_wire_drop_visible,
           is_inventory_item,
+          required_for_prewire,
           resource_links,
           attributes
         )
@@ -615,6 +616,83 @@ export const projectEquipmentService = {
 
     if (error) throw error;
     return data || [];
+  },
+
+  async fetchProjectEquipmentByPhase(projectId, phase = 'all') {
+    const { data, error } = await supabase
+      .from('project_equipment')
+      .select(`
+        *,
+        project_rooms(name, is_headend),
+        global_part:global_part_id (
+          id,
+          part_number,
+          name,
+          manufacturer,
+          model,
+          is_wire_drop_visible,
+          is_inventory_item,
+          required_for_prewire,
+          resource_links,
+          attributes
+        )
+      `)
+      .eq('project_id', projectId)
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    const equipment = data || [];
+
+    // Filter by phase if specified
+    if (phase === 'prewire') {
+      return equipment.filter(item => item.global_part?.required_for_prewire === true);
+    } else if (phase === 'trim') {
+      return equipment.filter(item => item.global_part?.required_for_prewire !== true);
+    }
+
+    return equipment;
+  },
+
+  categorizeEquipmentByPhase(equipment = []) {
+    const prewire = [];
+    const trim = [];
+
+    equipment.forEach(item => {
+      if (item.global_part?.required_for_prewire === true) {
+        prewire.push(item);
+      } else {
+        trim.push(item);
+      }
+    });
+
+    return { prewire, trim };
+  },
+
+  getPhaseStats(equipment = []) {
+    const { prewire, trim } = this.categorizeEquipmentByPhase(equipment);
+
+    const calculateStats = (items) => {
+      const total = items.length;
+      const ordered = items.filter(item => item.ordered_confirmed).length;
+      const onsite = items.filter(item => item.onsite_confirmed).length;
+      const totalQuantity = items.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
+      
+      return {
+        total,
+        ordered,
+        onsite,
+        totalQuantity,
+        orderedPercentage: total > 0 ? Math.round((ordered / total) * 100) : 0,
+        onsitePercentage: total > 0 ? Math.round((onsite / total) * 100) : 0
+      };
+    };
+
+    return {
+      prewire: calculateStats(prewire),
+      trim: calculateStats(trim),
+      all: calculateStats(equipment)
+    };
   },
 
   async fetchProjectLabor(projectId) {
@@ -666,11 +744,15 @@ export const projectEquipmentService = {
       .update(updates)
       .eq('id', equipmentId)
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Failed to update procurement status:', error);
       throw new Error(error.message || 'Failed to update procurement status');
+    }
+
+    if (!data) {
+      throw new Error('Equipment not found or update failed');
     }
 
     return data;

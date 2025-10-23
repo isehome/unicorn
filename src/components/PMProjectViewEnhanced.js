@@ -34,7 +34,9 @@ import {
   ChevronDown,
   GripVertical,
   RefreshCw,
-  Link
+  Link,
+  Upload,
+  Package
 } from 'lucide-react';
 
 // Progress Bar Component
@@ -346,8 +348,8 @@ const PMProjectViewEnhanced = () => {
   const [existingWireDrops, setExistingWireDrops] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
   const [showLucidSection, setShowLucidSection] = useState(false);
-  const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(false);
-  const [equipmentCollapsed, setEquipmentCollapsed] = useState(false);
+  const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(true);
+  const [equipmentCollapsed, setEquipmentCollapsed] = useState(true);
   const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
   const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
   const [laborSummary, setLaborSummary] = useState({
@@ -373,6 +375,23 @@ const PMProjectViewEnhanced = () => {
   const [unmatchedRoomEntries, setUnmatchedRoomEntries] = useState([]);
   const [roomAssignments, setRoomAssignments] = useState({});
   const [roomAliasSaving, setRoomAliasSaving] = useState(null);
+
+  // Collapsible sections state - all default to collapsed (true)
+  const [sectionsCollapsed, setSectionsCollapsed] = useState({
+    basics: true,
+    scheduleNotes: true,
+    linkedResources: true,
+    clientContact: true,
+    roomMatching: true,
+    timeTracking: true
+  });
+
+  const toggleSection = (section) => {
+    setSectionsCollapsed(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   const loadProjectRooms = useCallback(async () => {
     if (!projectId) return;
@@ -470,25 +489,37 @@ const PMProjectViewEnhanced = () => {
   );
 
   useEffect(() => {
-    if (!droppableShapes || droppableShapes.length === 0) {
-      setUnmatchedRoomEntries([]);
-      setRoomAssignments({});
-      return;
-    }
-
+    // Build room list from BOTH existing wire drops AND fresh Lucid data
     const roomNameMap = new Map();
-    droppableShapes.forEach((shape) => {
-      const roomName = extractShapeRoomName(shape);
+    
+    // First, get room names from existing wire drops (persistent data)
+    existingWireDrops.forEach((drop) => {
+      const roomName = drop.room_name;
       if (!roomName) return;
       const normalized = normalizeRoomName(roomName);
       if (!normalized) return;
-      const entry = roomNameMap.get(normalized) || { normalized, samples: [] };
+      const entry = roomNameMap.get(normalized) || { normalized, samples: [], source: 'wireDrop' };
       if (!entry.samples.includes(roomName)) {
         entry.samples.push(roomName);
       }
       roomNameMap.set(normalized, entry);
     });
+    
+    // Then add any additional rooms from Lucid shapes (if fetched)
+    droppableShapes.forEach((shape) => {
+      const roomName = extractShapeRoomName(shape);
+      if (!roomName) return;
+      const normalized = normalizeRoomName(roomName);
+      if (!normalized) return;
+      const entry = roomNameMap.get(normalized) || { normalized, samples: [], source: 'lucid' };
+      if (!entry.samples.includes(roomName)) {
+        entry.samples.push(roomName);
+      }
+      entry.source = 'both'; // Mark if it appears in both sources
+      roomNameMap.set(normalized, entry);
+    });
 
+    // Find unmatched rooms (not in project rooms or aliases)
     const unmatched = [];
     roomNameMap.forEach((entry) => {
       if (roomsByNormalized.has(entry.normalized) || aliasLookup.has(entry.normalized)) {
@@ -510,7 +541,7 @@ const PMProjectViewEnhanced = () => {
       });
       return next;
     });
-  }, [droppableShapes, roomsByNormalized, aliasLookup, suggestRoomMatch]);
+  }, [existingWireDrops, droppableShapes, roomsByNormalized, aliasLookup, suggestRoomMatch]);
 
   const handleRoomSelectionChange = (normalized, value, entry) => {
     setRoomAssignments((prev) => {
@@ -904,6 +935,25 @@ const PMProjectViewEnhanced = () => {
     }
   }, [projectId]);
 
+  const loadWireDrops = useCallback(async () => {
+    if (!projectId) {
+      setExistingWireDrops([]);
+      return;
+    }
+
+    try {
+      const { data: wireDrops } = await supabase
+        .from('wire_drops')
+        .select('*')
+        .eq('project_id', projectId);
+      
+      setExistingWireDrops(wireDrops || []);
+    } catch (error) {
+      console.error('Failed to load wire drops:', error);
+      setExistingWireDrops([]);
+    }
+  }, [projectId]);
+
   const handleEquipmentChange = useCallback(
     (equipmentList) => {
       if (Array.isArray(equipmentList)) {
@@ -1038,6 +1088,10 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     loadLaborSummary();
   }, [loadLaborSummary]);
+
+  useEffect(() => {
+    loadWireDrops();
+  }, [loadWireDrops]);
 
   const updateClientStakeholder = async (contact) => {
     try {
@@ -1865,18 +1919,34 @@ const PMProjectViewEnhanced = () => {
         {/* Project Overview */}
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                  Project Basics
-                </h2>
-                {editMode && (
-                  <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
-                    Editing
-                  </span>
+            {/* Project Basics - Collapsible */}
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+              <button
+                onClick={() => toggleSection('basics')}
+                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                    Project Basics
+                  </h2>
+                  {editMode && (
+                    <span className="text-xs font-medium text-violet-600 dark:text-violet-400 ml-2">
+                      Editing
+                    </span>
+                  )}
+                </div>
+                {sectionsCollapsed.basics ? (
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                ) : (
+                  <ChevronUp className="w-5 h-5 text-gray-500" />
                 )}
-              </div>
-              <div className="mt-4 space-y-4">
+              </button>
+              
+              {!sectionsCollapsed.basics && (
+              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Project Name
@@ -2084,98 +2154,138 @@ const PMProjectViewEnhanced = () => {
                   </div>
                 </div>
               </div>
+              </div>
+            )}
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                Schedule & Notes
-              </h2>
-              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Project Number
-                  </label>
-                  <input
-                    type="text"
-                    name="project_number"
-                    value={formData.project_number}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
+            {/* Schedule & Notes - Collapsible */}
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+              <button
+                onClick={() => toggleSection('scheduleNotes')}
+                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                    Schedule & Notes
+                  </h2>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    name="start_date"
-                    value={formData.start_date}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
+                {sectionsCollapsed.scheduleNotes ? (
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                ) : (
+                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                )}
+              </button>
+              
+              {!sectionsCollapsed.scheduleNotes && (
+                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Project Number
+                      </label>
+                      <input
+                        type="text"
+                        name="project_number"
+                        value={formData.project_number}
+                        onChange={handleInputChange}
+                        disabled={!editMode}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        name="start_date"
+                        value={formData.start_date}
+                        onChange={handleInputChange}
+                        disabled={!editMode}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        name="end_date"
+                        value={formData.end_date}
+                        onChange={handleInputChange}
+                        disabled={!editMode}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Address
+                      </label>
+                      <input
+                        type="text"
+                        name="address"
+                        value={formData.address}
+                        onChange={handleInputChange}
+                        disabled={!editMode}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Description
+                      </label>
+                      <textarea
+                        name="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        disabled={!editMode}
+                        rows={3}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    name="end_date"
-                    value={formData.end_date}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                Linked Resources
-              </h2>
-              <div className="mt-4 space-y-4">
+            {/* Linked Resources - Collapsible */}
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+              <button
+                onClick={() => toggleSection('linkedResources')}
+                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                    Linked Resources
+                  </h2>
+                </div>
+                {sectionsCollapsed.linkedResources ? (
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                ) : (
+                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                )}
+              </button>
+              
+              {!sectionsCollapsed.linkedResources && (
+              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+              <div className="space-y-4">
                 {editMode ? (
                   <div className="space-y-4">
                     {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
@@ -2240,13 +2350,33 @@ const PMProjectViewEnhanced = () => {
                   </div>
                 )}
               </div>
+              </div>
+            )}
             </div>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                Client Contact
-              </h2>
-              <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+            {/* Client Contact - Collapsible */}
+            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+              <button
+                onClick={() => toggleSection('clientContact')}
+                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                    Client Contact
+                  </h2>
+                </div>
+                {sectionsCollapsed.clientContact ? (
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                ) : (
+                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                )}
+              </button>
+              
+              {!sectionsCollapsed.clientContact && (
+              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
                 {formData.client ? (
                   <>
                     <p className="text-base font-semibold text-gray-900 dark:text-white">
@@ -2287,6 +2417,8 @@ const PMProjectViewEnhanced = () => {
                   </p>
                 )}
               </div>
+              </div>
+            )}
             </div>
           </div>
         </div>
@@ -2409,69 +2541,71 @@ const PMProjectViewEnhanced = () => {
         </div>
       </div>
 
-      {/* Time Tracking Section */}
+      {/* Time Tracking Section - Collapsible */}
       <div style={sectionStyles.card} className="p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Time Tracking & Progress</h2>
-          <div className="flex flex-wrap items-end gap-6">
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Labor Budget
-              </p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {formatDuration(totalLaborMinutes)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Logged
-              </p>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                {formatDuration(loggedMinutes)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                {remainingMinutesRaw < 0 ? 'Over Budget' : 'Remaining'}
-              </p>
-              <p
-                className={`text-sm font-semibold ${
-                  remainingMinutesRaw < 0 ? 'text-red-500' : 'text-emerald-500'
-                }`}
+        <button
+          onClick={() => toggleSection('timeTracking')}
+          className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+        >
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            Time Tracking & Progress
+          </h2>
+          {sectionsCollapsed.timeTracking ? (
+            <ChevronDown className="w-5 h-5 text-gray-500" />
+          ) : (
+            <ChevronUp className="w-5 h-5 text-gray-500" />
+          )}
+        </button>
+
+        {!sectionsCollapsed.timeTracking && (
+          <>
+            <div className="flex flex-wrap items-end gap-6 mb-4">
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Labor Budget
+                </p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">
+                  {formatDuration(totalLaborMinutes)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Logged
+                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {formatDuration(loggedMinutes)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {remainingMinutesRaw < 0 ? 'Over Budget' : 'Remaining'}
+                </p>
+                <p
+                  className={`text-sm font-semibold ${
+                    remainingMinutesRaw < 0 ? 'text-red-500' : 'text-emerald-500'
+                  }`}
+                >
+                  {remainingMinutesRaw < 0
+                    ? `-${formatDuration(overrunMinutes)}`
+                    : formatDuration(remainingMinutes)}
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Clock}
+                onClick={() => {
+                  loadTimeData();
+                  loadProgress();
+                  loadLaborSummary();
+                }}
               >
-                {remainingMinutesRaw < 0
-                  ? `-${formatDuration(overrunMinutes)}`
-                  : formatDuration(remainingMinutes)}
-              </p>
+                Refresh
+              </Button>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Clock}
-              onClick={() => {
-                loadTimeData();
-                loadProgress();
-                loadLaborSummary();
-              }}
-            >
-              Refresh
-            </Button>
-          </div>
-        </div>
 
-        {/* Project Progress Gauges */}
-        <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-            Project Progress
-          </h3>
-          <div className="space-y-2">
-            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
-            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
-            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
-          </div>
-        </div>
-
-        <div className="mb-6">
+            <div className="mb-6">
           <button
             type="button"
             onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
@@ -2546,151 +2680,427 @@ const PMProjectViewEnhanced = () => {
               )}
             </div>
           )}
+
+          </div>
+
+          {/* Currently Checked In Users */}
+          {timeData.activeUsers.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Currently Checked In ({timeData.activeUsers.length})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {timeData.activeUsers.map((user) => (
+                  <div
+                    key={user.user_email}
+                    className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 
+                             border border-green-200 dark:border-green-800 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {user.user_name || user.user_email}
+                        </p>
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          Checked in {formatLastActivity(user.active_session_start)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All Users Time Summary */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Time Summary by User
+            </h3>
+            {timeData.summary.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No time logged for this project yet
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Total Time</th>
+                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Last Activity</th>
+                      <th className="px-4 py-2 text-center text-gray-700 dark:text-gray-300">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {timeData.summary.map((user) => (
+                      <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">
+                              {user.user_name || 'Unknown'}
+                            </p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
+                              {user.user_email}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-white">
+                          {user.total_sessions}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-white">
+                          <span className="font-semibold">{user.total_hours}h</span>
+                          <span className="text-xs text-gray-500 ml-1">
+                            ({formatDuration(user.total_minutes)})
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                          {formatLastActivity(user.last_activity || user.last_check_out)}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {user.has_active_session ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
+                                           bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              <CheckCircle className="w-3 h-3" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
+                                           bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                              <XCircle className="w-3 h-3" />
+                              Inactive
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          </>
+        )}
+      </div>
+
+      {/* Project Data Import & Setup - Unified Section */}
+      <div style={sectionStyles.card} className="p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Upload className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Project Data Import & Setup
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              One-time setup: Import portal data and sync with Lucid diagrams
+            </p>
+          </div>
         </div>
 
-        {/* Currently Checked In Users */}
-        {timeData.activeUsers.length > 0 && (
+        {/* Step 1: Portal CSV Upload - GREEN */}
+        {/* Equipment Badge */}
+        <div className="mb-3">
+          <div className="inline-block p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+            <div className="flex items-center gap-2 mb-1">
+              <Package className="w-4 h-4 text-green-600 dark:text-green-400" />
+              <span className="text-xs font-medium text-green-900 dark:text-green-200">Equipment</span>
+            </div>
+            <p className="text-2xl font-bold text-green-900 dark:text-green-100">{totalEquipmentPieces}</p>
+            <p className="text-xs text-green-700 dark:text-green-300">
+              {orderedPieces} ordered, {receivedPieces} received
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setEquipmentCollapsed((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-left shadow-sm transition hover:bg-green-100 dark:hover:bg-green-900/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 dark:bg-green-600">
+                <span className="text-sm font-bold text-white">1</span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-green-900 dark:text-green-100">Upload Portal CSV</p>
+                <p className="text-xs text-green-700 dark:text-green-300">
+                  {totalEquipmentPieces > 0 
+                    ? `✓ Imported: ${projectRooms.length} rooms, ${totalEquipmentPieces} items, ${laborSummary.totalHours.toFixed(0)}h labor`
+                    : 'Import proposal CSV to populate equipment and labor budgets'}
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-green-600 dark:text-green-400 transition-transform ${
+                equipmentCollapsed ? '' : 'rotate-180'
+              }`}
+            />
+          </button>
+
+          {!equipmentCollapsed && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+              <ProjectEquipmentManager
+                projectId={projectId}
+                embedded
+                onEquipmentChange={handleEquipmentChange}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: Lucid Wire Drops Import - PURPLE */}
+        {formData.wiring_diagram_url && (
           <div className="mb-6">
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Currently Checked In ({timeData.activeUsers.length})
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {timeData.activeUsers.map((user) => (
-                <div
-                  key={user.user_email}
-                  className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 
-                           border border-green-200 dark:border-green-800 rounded-lg"
-                >
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+            {/* Wire Drops Badge */}
+            <div className="mb-3">
+              <div className="inline-block p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <Link className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="text-xs font-medium text-purple-900 dark:text-purple-200">Wire Drops</span>
+                </div>
+                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">{existingWireDrops.length}</p>
+                <p className="text-xs text-purple-700 dark:text-purple-300">
+                  {linkedDropCount} linked to Lucid
+                </p>
+              </div>
+            </div>
+
+            <div className="flex w-full items-center justify-between rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 dark:bg-purple-600">
+                  <span className="text-sm font-bold text-white">2</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">Import Lucid Wire Drops</p>
+                  <p className="text-xs text-purple-700 dark:text-purple-300">
+                    {droppableShapes.length > 0
+                      ? `✓ Found ${droppableShapes.length} wire drops from ${new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size} rooms`
+                      : 'Fetch shape data from Lucid diagram'}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={lucidLoading ? Loader : RefreshCw}
+                onClick={handleFetchLucidData}
+                disabled={lucidLoading}
+              >
+                {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
+              </Button>
+            </div>
+
+            {lucidError && (
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                </div>
+              </div>
+            )}
+
+            {showLucidSection && droppableShapes.length > 0 && (
+              <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-center mb-3">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleSelectAll}
+                      disabled={droppableShapes.every(s => isShapeLinked(s.id))}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleDeselectAll}
+                      disabled={selectedShapes.size === 0}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={batchCreating ? Loader : Plus}
+                    onClick={handleCreateWireDropsFromSelected}
+                    disabled={selectedShapes.size === 0 || batchCreating}
+                  >
+                    {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
+                  </Button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 dark:bg-gray-700">
+                      <tr>
+                        <th className="px-3 py-2 text-left">
+                          <input
+                            type="checkbox"
+                            onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
+                            checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
+                            className="rounded"
+                          />
+                        </th>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                      {droppableShapes.map((shape) => {
+                        const linked = isShapeLinked(shape.id);
+                        const wireDrop = getLinkedWireDrop(shape.id);
+                        const roomName = extractShapeRoomName(shape);
+                        const dropType = extractShapeDropType(shape);
+
+                        return (
+                          <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${linked ? 'opacity-60' : ''}`}>
+                            <td className="px-3 py-2">
+                              <input
+                                type="checkbox"
+                                checked={selectedShapes.has(shape.id)}
+                                onChange={() => handleShapeSelection(shape.id)}
+                                disabled={linked}
+                                className="rounded disabled:opacity-50"
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
+                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
+                            <td className="px-3 py-2">
+                              {linked ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Linked
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">Available</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Room Alignment - BLUE (Rooms) - Collapsible */}
+        <div className="mb-6">
+          {/* Rooms Badge */}
+          <div className="mb-3">
+            <div className="inline-block p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 mb-1">
+                <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-xs font-medium text-blue-900 dark:text-blue-200">Rooms</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
+              <p className="text-xs text-blue-700 dark:text-blue-300">
+                {unmatchedRoomEntries.length > 0 ? `${unmatchedRoomEntries.length} need alignment` : 'All aligned ✓'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => toggleSection('roomMatching')}
+            className="w-full flex items-center justify-between rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 shadow-sm 
+                     hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600">
+                <span className="text-sm font-bold text-white">3</span>
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Room Alignment: Match Lucid ↔ Portal CSV</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  {unmatchedRoomEntries.length > 0 
+                    ? `⚠️ ${unmatchedRoomEntries.length} Lucid room${unmatchedRoomEntries.length !== 1 ? 's' : ''} need${unmatchedRoomEntries.length === 1 ? 's' : ''} alignment`
+                    : droppableShapes.length > 0 ? '✓ All rooms aligned' : 'Fetch Lucid data to begin alignment'}
+                </p>
+              </div>
+            </div>
+            {sectionsCollapsed.roomMatching ? (
+              <ChevronDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            ) : (
+              <ChevronUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            )}
+          </button>
+
+          {!sectionsCollapsed.roomMatching && (
+            <div className="mt-3 p-4 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-white dark:bg-gray-900">
+              <div className="mb-4">
+                <h3 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-2">
+                  Room Alignment Tool
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Match room names from your Lucid diagram with rooms from the Portal CSV import. 
+                  This ensures wire drops and equipment are correctly organized by room.
+                </p>
+              </div>
+
+              {unmatchedRoomEntries.length > 0 ? (
+                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {user.user_name || user.user_email}
+                      <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
+                        Action Required
                       </p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        Checked in {formatLastActivity(user.active_session_start)}
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
                       </p>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              ) : null}
 
-        {/* All Users Time Summary */}
-        <div>
-          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Time Summary by User
-          </h3>
-          {timeData.summary.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No time logged for this project yet
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
-                    <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
-                    <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Total Time</th>
-                    <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Last Activity</th>
-                    <th className="px-4 py-2 text-center text-gray-700 dark:text-gray-300">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {timeData.summary.map((user) => (
-                    <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">
-                            {user.user_name || 'Unknown'}
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">
-                            {user.user_email}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
-                        {user.total_sessions}
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-white">
-                        <span className="font-semibold">{user.total_hours}h</span>
-                        <span className="text-xs text-gray-500 ml-1">
-                          ({formatDuration(user.total_minutes)})
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                        {formatLastActivity(user.last_activity || user.last_check_out)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {user.has_active_session ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                         bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                            <CheckCircle className="w-3 h-3" />
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                         bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
-                            <XCircle className="w-3 h-3" />
-                            Inactive
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Room Synchronization Section - Always visible when project has data */}
-      {(projectRooms.length > 0 || droppableShapes.length > 0) && (
-        <div style={sectionStyles.card} className="p-6">
-          <button
-            type="button"
-            onClick={() => setRoomAssociationCollapsed((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
-          >
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Room Matching: Lucid to CSV</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Map room names from Lucid diagrams to rooms imported from CSV equipment files
-              </p>
-            </div>
-            <ChevronDown
-              className={`w-5 h-5 text-gray-500 transition-transform ${roomAssociationCollapsed ? '' : 'rotate-180'}`}
-            />
-          </button>
-
-          {!roomAssociationCollapsed && (
-            <div className="mt-4 space-y-4">
-              {/* Get all unique Lucid room names */}
+              <div className="space-y-4">
+              {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
               {(() => {
                 const roomNameMap = new Map();
+                
+                // First get rooms from existing wire drops (persistent data)
+                existingWireDrops.forEach((drop) => {
+                  const roomName = drop.room_name;
+                  if (!roomName) return;
+                  const normalized = normalizeRoomName(roomName);
+                  if (!normalized) return;
+                  const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                  if (!entry.samples.includes(roomName)) {
+                    entry.samples.push(roomName);
+                  }
+                  entry.sourceCount.wireDrops++;
+                  roomNameMap.set(normalized, entry);
+                });
+                
+                // Then add rooms from Lucid shapes (if fetched)
                 droppableShapes.forEach((shape) => {
                   const roomName = extractShapeRoomName(shape);
                   if (!roomName) return;
                   const normalized = normalizeRoomName(roomName);
                   if (!normalized) return;
-                  const entry = roomNameMap.get(normalized) || { normalized, samples: [] };
+                  const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
                   if (!entry.samples.includes(roomName)) {
                     entry.samples.push(roomName);
                   }
+                  entry.sourceCount.lucid++;
                   roomNameMap.set(normalized, entry);
                 });
 
-                const lucidRoomEntries = Array.from(roomNameMap.values());
+                const allRoomEntries = Array.from(roomNameMap.values());
 
-                if (lucidRoomEntries.length === 0) {
+                if (allRoomEntries.length === 0) {
                   return (
                     <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                        No Lucid rooms found yet. Fetch shape data to see rooms from your diagram.
+                        No rooms found yet. Complete steps 1 & 2 to import room data.
                       </p>
                     </div>
                   );
@@ -2700,14 +3110,14 @@ const PMProjectViewEnhanced = () => {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                        Lucid Rooms ({lucidRoomEntries.length})
+                        All Rooms from Wire Drops ({allRoomEntries.length})
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         CSV Rooms Available: {projectRooms.length}
                       </p>
                     </div>
 
-                    {lucidRoomEntries.map((entry) => {
+                    {allRoomEntries.map((entry) => {
                       const resolvedRoom = resolveRoomForName(entry.samples[0]);
                       const isMatched = !!resolvedRoom?.room;
                       const suggestion = suggestRoomMatch(entry.normalized);
@@ -2727,9 +3137,16 @@ const PMProjectViewEnhanced = () => {
                                 {isMatched && (
                                   <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                                 )}
-                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                  Lucid Room: {entry.samples[0]}
-                                </p>
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    Room: {entry.samples[0]}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
+                                    {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
+                                    {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
+                                  </p>
+                                </div>
                               </div>
 
                               {isMatched && (
@@ -2759,8 +3176,10 @@ const PMProjectViewEnhanced = () => {
                                   onChange={(e) =>
                                     handleRoomSelectionChange(entry.normalized, e.target.value, entry)
                                   }
+                                  disabled={isMatched && !roomAssignments[entry.normalized]}
                                   className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                           disabled:opacity-75"
                                 >
                                   <option value="">-- Select CSV Room or Create New --</option>
                                   <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
@@ -2773,7 +3192,7 @@ const PMProjectViewEnhanced = () => {
                                   </optgroup>
                                 </select>
 
-                                {roomAssignments[entry.normalized] && (
+                                {!isMatched && roomAssignments[entry.normalized] && (
                                   <Button
                                     variant="primary"
                                     size="sm"
@@ -2782,6 +3201,22 @@ const PMProjectViewEnhanced = () => {
                                     loading={roomAliasSaving === entry.normalized}
                                   >
                                     {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                  </Button>
+                                )}
+                                
+                                {isMatched && (
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => {
+                                      // Allow editing of already matched rooms
+                                      setRoomAssignments(prev => ({
+                                        ...prev,
+                                        [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
+                                      }));
+                                    }}
+                                  >
+                                    Edit
                                   </Button>
                                 )}
                               </div>
@@ -2821,45 +3256,9 @@ const PMProjectViewEnhanced = () => {
                 );
               })()}
 
-              {/* Project Rooms Summary */}
-              <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-2">
-                  Project Rooms ({projectRooms.length})
-                </h3>
-                {projectRooms.length === 0 ? (
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    No rooms have been created yet. Import Lucid wire drops or CSV equipment to create rooms.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {projectRooms.map((room) => (
-                      <div
-                        key={room.id}
-                        className="p-2 bg-white dark:bg-gray-800 rounded border border-blue-200 dark:border-blue-700"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white">
-                            {room.name}
-                          </span>
-                          {room.is_headend && (
-                            <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded">
-                              Head-End
-                            </span>
-                          )}
-                        </div>
-                        {room.project_room_aliases && room.project_room_aliases.length > 0 && (
-                          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Aliases: {room.project_room_aliases.map(a => a.alias).join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* Unmatched Rooms Section */}
-              {unmatchedRoomEntries.length > 0 && (
+                {/* Unmatched Rooms Section */}
+                {unmatchedRoomEntries.length > 0 && (
                 <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
                   <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
@@ -2961,291 +3360,75 @@ const PMProjectViewEnhanced = () => {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Matched Rooms Info */}
-              {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                    <div>
-                      <p className="text-sm font-semibold text-green-900 dark:text-green-200">
-                        All Lucid rooms are matched!
-                      </p>
-                      <p className="text-xs text-green-700 dark:text-green-300">
-                        All room names from Lucid wire drops have been successfully matched to project rooms.
-                      </p>
+                {/* Matched Rooms Info */}
+                {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      <div>
+                        <p className="text-sm font-semibold text-green-900 dark:text-green-200">
+                          All Lucid rooms are matched!
+                        </p>
+                        <p className="text-xs text-green-700 dark:text-green-300">
+                          All room names from Lucid wire drops have been successfully matched to project rooms.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Show instructions when no data available */}
+                {droppableShapes.length === 0 && projectRooms.length === 0 && (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
+                    <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                      No Room Data Available Yet
+                    </p>
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      Complete Steps 1 & 2 above to import room data, then return here to align room names.
+                    </p>
+                  </div>
+                )}
+
+                {/* Summary of aligned rooms */}
+                {droppableShapes.length > 0 && projectRooms.length > 0 && (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
+                      Summary
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 text-center mb-3">
+                      <div>
+                        <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
+                        <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                          {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
+                        </p>
+                        <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
+                      </div>
+                    </div>
+                    {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
+                      <div className="flex items-center justify-center gap-2 p-2 bg-green-100 dark:bg-green-900/30 rounded">
+                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                        <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                          All rooms successfully aligned
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
-      )}
-
-      {/* Lucid Integration Section */}
-      {formData.wiring_diagram_url && (
-        <div style={sectionStyles.card} className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Lucid Wiring Diagram Integration
-            </h2>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={ExternalLink}
-                onClick={() => window.open(formData.wiring_diagram_url, '_blank')}
-              >
-                Open Diagram
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={lucidLoading ? Loader : RefreshCw}
-                onClick={handleFetchLucidData}
-                disabled={lucidLoading}
-              >
-                {lucidLoading ? 'Fetching...' : showLucidSection ? 'Refresh' : 'Fetch Shape Data'}
-              </Button>
-            </div>
-          </div>
-
-          {/* Document Info */}
-          <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="font-medium text-gray-600 dark:text-gray-400">URL:</span>
-                <p className="text-gray-900 dark:text-white break-all">{formData.wiring_diagram_url}</p>
-              </div>
-              <div>
-                <span className="font-medium text-gray-600 dark:text-gray-400">Document ID:</span>
-                <p className="text-gray-900 dark:text-white font-mono">
-                  {extractDocumentIdFromUrl(formData.wiring_diagram_url) || 'Not detected - check URL format'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {lucidError && (
-            <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                <div>
-                  <p className="font-semibold text-red-900 dark:text-red-200">Error fetching Lucid data</p>
-                  <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showLucidSection && droppableShapes.length > 0 && (
-            <div>
-              <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                <p className="text-sm text-blue-900 dark:text-blue-200">
-                  Found <strong>{droppableShapes.length}</strong> shapes with "IS Drop = true"
-                  {existingWireDrops.length > 0 && (
-                    <span> • <strong>{existingWireDrops.filter(wd => wd.lucid_shape_id).length}</strong> already have wire drops</span>
-                  )}
-                </p>
-              </div>
-
-              {/* Selection Controls */}
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleSelectAll}
-                    disabled={droppableShapes.every(s => isShapeLinked(s.id))}
-                  >
-                    Select All (Available)
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleDeselectAll}
-                    disabled={selectedShapes.size === 0}
-                  >
-                    Deselect All
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={RefreshCw}
-                    onClick={async () => {
-                      // Select all linked shapes and refresh them
-                      const linkedShapes = droppableShapes.filter(s => isShapeLinked(s.id));
-                      if (linkedShapes.length === 0) {
-                        alert('No linked wire drops to refresh');
-                        return;
-                      }
-                      setSelectedShapes(new Set(linkedShapes.map(s => s.id)));
-                      // Wait a tick then trigger the update
-                      setTimeout(() => {
-                        handleCreateWireDropsFromSelected();
-                      }, 100);
-                    }}
-                    disabled={batchCreating || !droppableShapes.some(s => isShapeLinked(s.id))}
-                  >
-                    Refresh All Linked
-                  </Button>
-                </div>
-                <Button
-                  variant="primary"
-                  icon={batchCreating ? Loader : Plus}
-                  onClick={handleCreateWireDropsFromSelected}
-                  disabled={selectedShapes.size === 0 || batchCreating}
-                >
-                  {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Wire Drop${selectedShapes.size !== 1 ? 's' : ''}`}
-                </Button>
-              </div>
-
-              {/* Shape List */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-800">
-                    <tr>
-                      <th className="px-4 py-2 text-left">
-                        <input
-                          type="checkbox"
-                          onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
-                          checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
-                          className="rounded"
-                        />
-                      </th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Shape Name</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Wire Type</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Lucid ID</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Page</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {droppableShapes.map((shape) => {
-                      const linked = isShapeLinked(shape.id);
-                      const wireDrop = getLinkedWireDrop(shape.id);
-                      const shapeName =
-                        shape.text ||
-                        getShapeCustomValue(shape, 'Drop Name') ||
-                        `Drop ${shape.id.substring(0, 8)}`;
-                      const roomName = extractShapeRoomName(shape);
-                      const resolvedRoom = resolveRoomForName(roomName);
-                      const canonicalRoomName = resolvedRoom?.room?.name || roomName || '—';
-                      const wireType = extractShapeWireType(shape) || 'CAT6';
-                      const dbRoomName = wireDrop?.room_name || wireDrop?.location || null;
-                      const dbWireType = wireDrop?.type || null;
-
-                      return (
-                        <tr
-                          key={shape.id}
-                          className={`hover:bg-gray-50 dark:hover:bg-gray-800 ${linked ? 'opacity-60' : ''}`}
-                        >
-                          <td className="px-4 py-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedShapes.has(shape.id)}
-                              onChange={() => handleShapeSelection(shape.id)}
-                              disabled={linked}
-                              className="rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                            {shapeName}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-sm text-gray-900 dark:text-white">{canonicalRoomName}</div>
-                            {dbRoomName && dbRoomName !== canonicalRoomName && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400">
-                                DB: {dbRoomName}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-900 dark:text-white">
-                            {wireType}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-xs font-mono text-green-600 dark:text-green-400">{shape.id}</div>
-                            {wireDrop?.id && (
-                              <div className="text-[11px] font-mono text-purple-500 dark:text-purple-300 mt-1">
-                                Drop ID: {wireDrop.id}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-mono">
-                            {shape.pageTitle || `Page ${shape.pageId?.substring(0, 8) || '?'}`}
-                          </td>
-                          <td className="px-4 py-3">
-                            {linked ? (
-                              <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Linked
-                                </span>
-                                <div className="text-xs text-purple-500 dark:text-purple-300">
-                                  {wireDrop?.drop_name || wireDrop?.name || 'Existing wire drop'}
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 text-xs">
-                                Available
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {showLucidSection && droppableShapes.length === 0 && !lucidError && (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <p>No shapes found with "IS Drop = true" in the custom data.</p>
-              <p className="text-sm mt-2">Make sure your Lucid shapes have the custom data field "IS Drop" set to "true".</p>
-            </div>
-          )}
-        </div>
-      )}
-
-
-      {/* Portal Equipment & Labor Section */}
-      <div style={sectionStyles.card} className="p-6">
-        <button
-          type="button"
-          onClick={() => setEquipmentCollapsed((prev) => !prev)}
-          className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
-        >
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-white">Portal Equipment &amp; Labor</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Import proposal CSVs to populate room equipment and technician labor budgets.
-            </p>
-          </div>
-          <ChevronDown
-            className={`w-5 h-5 text-gray-500 transition-transform ${equipmentCollapsed ? '' : 'rotate-180'}`}
-          />
-        </button>
-
-        {!equipmentCollapsed && (
-          <div className="mt-4">
-            <ProjectEquipmentManager
-              projectId={projectId}
-              embedded
-              onEquipmentChange={handleEquipmentChange}
-            />
-          </div>
-        )}
       </div>
 
       {/* Action Buttons */}
-      <div className="flex gap-4">
+      <div className="flex flex-wrap gap-4">
         <Button
           variant="primary"
           onClick={() => navigate(`/project/${projectId}/pm-issues`)}
@@ -3257,6 +3440,13 @@ const PMProjectViewEnhanced = () => {
           onClick={() => navigate('/wire-drops')}
         >
           View Wire Drops
+        </Button>
+        <Button
+          variant="secondary"
+          icon={Package}
+          onClick={() => navigate(`/projects/${projectId}/inventory`)}
+        >
+          Manage Inventory
         </Button>
       </div>
       
