@@ -59,6 +59,7 @@ const PartDetailPage = () => {
         quantity_reserved: Number(part.quantity_reserved ?? 0),
         is_wire_drop_visible: part.is_wire_drop_visible !== false,
         is_inventory_item: part.is_inventory_item !== false,
+        required_for_prewire: part.required_for_prewire === true,
         attributes: part.attributes || {},
         resource_links: Array.isArray(part.resource_links) ? part.resource_links : [],
       });
@@ -83,6 +84,7 @@ const PartDetailPage = () => {
         quantity_reserved: Number(updated.quantity_reserved ?? 0),
         is_wire_drop_visible: updated.is_wire_drop_visible !== false,
         is_inventory_item: updated.is_inventory_item !== false,
+        required_for_prewire: updated.required_for_prewire === true,
         attributes: updated.attributes || {},
         resource_links: Array.isArray(updated.resource_links) ? updated.resource_links : [],
       });
@@ -325,7 +327,7 @@ const PartDetailPage = () => {
             />
           </label>
 
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="space-y-3">
             <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
               <input
                 type="checkbox"
@@ -343,6 +345,15 @@ const PartDetailPage = () => {
                 className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
               />
               <span>Track inventory for this part</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm font-medium text-orange-700 dark:text-orange-400">
+              <input
+                type="checkbox"
+                checked={Boolean(formState.required_for_prewire)}
+                onChange={(event) => handleFieldChange('required_for_prewire', event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+              />
+              <span>⚡ Required for prewire phase</span>
             </label>
           </div>
         </div>
