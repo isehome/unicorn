@@ -262,65 +262,58 @@ export const secureDataService = {
     }
   },
 
-  async createSecureData(secureData) {
+  async create(secureData) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
-      // Map the data to match database schema
-      const dbData = {
-        project_id: secureData.project_id,
-        name: secureData.name,
-        data_type: secureData.type || 'credentials',
-        username: secureData.username,
-        password: secureData.password,
-        url: secureData.url,
-        notes: secureData.notes
-      };
-      
       const { data, error } = await supabase
         .from('project_secure_data')
-        .insert([dbData])
-        .select()
+        .insert([secureData])
+        .select(`
+          *,
+          equipment:equipment_id(
+            id,
+            uid,
+            name,
+            model
+          )
+        `)
         .single();
         
       if (error) throw error;
-      
       return data;
     } catch (error) {
       handleError(error, 'Failed to create secure data');
     }
   },
 
-  async updateSecureData(id, updates) {
+  async update(id, updates) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
-      // Map the updates to match database schema
-      const dbUpdates = {
-        name: updates.name,
-        data_type: updates.type || 'credentials',
-        username: updates.username,
-        password: updates.password,
-        url: updates.url,
-        notes: updates.notes
-      };
-      
       const { data, error } = await supabase
         .from('project_secure_data')
-        .update(dbUpdates)
+        .update(updates)
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          equipment:equipment_id(
+            id,
+            uid,
+            name,
+            model
+          )
+        `)
         .single();
         
       if (error) throw error;
-      
       return data;
     } catch (error) {
       handleError(error, 'Failed to update secure data');
     }
   },
 
-  async deleteSecureData(id) {
+  async delete(id) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
@@ -333,6 +326,19 @@ export const secureDataService = {
     } catch (error) {
       handleError(error, 'Failed to delete secure data');
     }
+  },
+
+  // Legacy method names for backward compatibility
+  async createSecureData(secureData) {
+    return this.create(secureData);
+  },
+
+  async updateSecureData(id, updates) {
+    return this.update(id, updates);
+  },
+
+  async deleteSecureData(id) {
+    return this.delete(id);
   },
 
   async linkToEquipment(secureDataId, equipmentIds) {
