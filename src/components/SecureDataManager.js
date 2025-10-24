@@ -178,7 +178,7 @@ const SecureDataManager = ({ projectId, onClose }) => {
     }
   };
 
-  const SecureDataFormModal = ({ data: editItem, onClose, onSave }) => {
+  const SecureDataFormModal = ({ data: editItem, equipment, onClose, onSave }) => {
     const [formData, setFormData] = useState({
       name: editItem?.name || '',
       data_type: editItem?.data_type || 'credentials',
@@ -192,6 +192,25 @@ const SecureDataManager = ({ projectId, onClose }) => {
     });
     const [saving, setSaving] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
+    const [equipmentSearch, setEquipmentSearch] = useState('');
+    const [showEquipmentDropdown, setShowEquipmentDropdown] = useState(false);
+    
+    // Filter equipment based on search
+    const filteredEquipment = useMemo(() => {
+      if (!equipmentSearch) return equipment;
+      const query = equipmentSearch.toLowerCase();
+      return equipment.filter(eq =>
+        eq.uid.toLowerCase().includes(query) ||
+        eq.name.toLowerCase().includes(query) ||
+        (eq.model && eq.model.toLowerCase().includes(query))
+      );
+    }, [equipmentSearch]);
+    
+    // Get selected equipment display text
+    const selectedEquipment = useMemo(() => {
+      if (!formData.equipment_id) return null;
+      return equipment.find(eq => eq.id === formData.equipment_id);
+    }, [formData.equipment_id]);
 
     const handleSubmit = async (e) => {
       e.preventDefault();
@@ -284,19 +303,73 @@ const SecureDataManager = ({ projectId, onClose }) => {
 
               <div>
                 <label className="block text-sm font-medium mb-2" style={styles.textPrimary}>Link to Equipment</label>
-                <select
-                  value={formData.equipment_id}
-                  onChange={(e) => setFormData(prev => ({ ...prev, equipment_id: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                  style={styles.input}
-                >
-                  <option value="">Not linked</option>
-                  {equipment.map(eq => (
-                    <option key={eq.id} value={eq.id}>
-                      {eq.uid} - {eq.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <div
+                    className="w-full px-3 py-2 rounded-xl border focus-within:ring-2 focus-within:ring-violet-400 cursor-pointer flex items-center justify-between"
+                    style={styles.input}
+                    onClick={() => setShowEquipmentDropdown(!showEquipmentDropdown)}
+                  >
+                    <span>
+                      {selectedEquipment ? `${selectedEquipment.uid} - ${selectedEquipment.name}` : 'Not linked'}
+                    </span>
+                    <Search size={16} style={styles.textSecondary} />
+                  </div>
+                  
+                  {showEquipmentDropdown && (
+                    <div 
+                      className="absolute top-full left-0 right-0 mt-1 rounded-xl border shadow-lg z-10 max-h-64 overflow-hidden"
+                      style={styles.card}
+                    >
+                      <div className="p-2 border-b" style={{ borderColor: styles.card.borderColor }}>
+                        <input
+                          type="text"
+                          value={equipmentSearch}
+                          onChange={(e) => setEquipmentSearch(e.target.value)}
+                          placeholder="Search equipment..."
+                          className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          style={styles.input}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        <div
+                          className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                          onClick={() => {
+                            setFormData(prev => ({ ...prev, equipment_id: '' }));
+                            setShowEquipmentDropdown(false);
+                            setEquipmentSearch('');
+                          }}
+                        >
+                          <span style={styles.textSecondary}>Not linked</span>
+                        </div>
+                        {filteredEquipment.length === 0 ? (
+                          <div className="px-3 py-2" style={styles.textSecondary}>
+                            No equipment found
+                          </div>
+                        ) : (
+                          filteredEquipment.map(eq => (
+                            <div
+                              key={eq.id}
+                              className="px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                              onClick={() => {
+                                setFormData(prev => ({ ...prev, equipment_id: eq.id }));
+                                setShowEquipmentDropdown(false);
+                                setEquipmentSearch('');
+                              }}
+                            >
+                              <div style={styles.textPrimary}>{eq.uid} - {eq.name}</div>
+                              {eq.model && (
+                                <div className="text-xs" style={styles.textSecondary}>
+                                  {eq.model}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -597,6 +670,7 @@ const SecureDataManager = ({ projectId, onClose }) => {
       {showAddModal && (
         <SecureDataFormModal
           data={editingData}
+          equipment={equipment}
           onClose={() => {
             setShowAddModal(false);
             setEditingData(null);
