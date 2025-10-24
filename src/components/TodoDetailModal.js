@@ -172,7 +172,7 @@ const TodoDetailModal = ({
                 type="date"
                 value={dueBy}
                 onChange={(e) => setDueBy(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
                 style={{
                   ...styles.input,
                   opacity: dueBy ? 1 : 0.4,
@@ -191,7 +191,7 @@ const TodoDetailModal = ({
                 type="date"
                 value={doBy}
                 onChange={(e) => setDoBy(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
                 style={{
                   ...styles.input,
                   opacity: doBy ? 1 : 0.4,

@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, contactsService, projectProgressService } from '../services/supabaseService';
+import { milestoneService } from '../services/milestoneService';
 import Button from './ui/Button';
+import UnifiedProgressGauge from './UnifiedProgressGauge';
 import { 
   Plus, 
   FileText, 
@@ -50,6 +52,7 @@ const PMDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [contacts, setContacts] = useState([]);
   const [projectProgress, setProjectProgress] = useState({});
+  const [milestonePercentages, setMilestonePercentages] = useState({});
   const [newProject, setNewProject] = useState({
     name: '',
     client: '',
@@ -77,16 +80,32 @@ const PMDashboard = () => {
       if (projects.length === 0) return;
       
       const progressData = {};
+      const milestoneData = {};
+      
       for (const project of projects) {
         try {
           const progress = await projectProgressService.getProjectProgress(project.id);
           progressData[project.id] = progress;
+          
+          // Calculate milestone percentages
+          const percentages = await milestoneService.calculateAllPercentages(project.id);
+          milestoneData[project.id] = percentages;
         } catch (error) {
           console.error(`Failed to load progress for project ${project.id}:`, error);
           progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
+          milestoneData[project.id] = {
+            planning_design: 0,
+            prewire_prep: 0,
+            prewire: 0,
+            trim_prep: 0,
+            trim: 0,
+            commissioning: 0
+          };
         }
       }
+      
       setProjectProgress(progressData);
+      setMilestonePercentages(milestoneData);
     };
 
     loadProgress();
@@ -492,13 +511,45 @@ const PMDashboard = () => {
                         </div>
                       </div>
                       
-                      {/* Progress Bars */}
+                      {/* Progress Gauges - Compact View */}
                       <div className="flex flex-col justify-center space-y-1.5 w-56 flex-shrink-0">
-                        <ProgressBar label="Prewire" percentage={progress.prewire || 0} />
-                        <ProgressBar label="Trim" percentage={progress.trim || 0} />
-                        <ProgressBar label="Commission" percentage={progress.commission || 0} />
-                        <ProgressBar label="Ordered" percentage={progress.ordered || 0} />
-                        <ProgressBar label="Onsite" percentage={progress.onsite || 0} />
+                        {milestonePercentages[project.id] ? (
+                          <>
+                            <UnifiedProgressGauge 
+                              label="Prewire Prep" 
+                              percentage={milestonePercentages[project.id].prewire_prep || 0} 
+                              compact={true}
+                            />
+                            <UnifiedProgressGauge 
+                              label="Prewire" 
+                              percentage={milestonePercentages[project.id].prewire || 0} 
+                              compact={true}
+                            />
+                            <UnifiedProgressGauge 
+                              label="Trim Prep" 
+                              percentage={milestonePercentages[project.id].trim_prep || 0} 
+                              compact={true}
+                            />
+                            <UnifiedProgressGauge 
+                              label="Trim" 
+                              percentage={milestonePercentages[project.id].trim || 0} 
+                              compact={true}
+                            />
+                            <UnifiedProgressGauge 
+                              label="Commissioning" 
+                              percentage={milestonePercentages[project.id].commissioning || 0} 
+                              compact={true}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <ProgressBar label="Prewire" percentage={progress.prewire || 0} />
+                            <ProgressBar label="Trim" percentage={progress.trim || 0} />
+                            <ProgressBar label="Commission" percentage={progress.commission || 0} />
+                            <ProgressBar label="Ordered" percentage={progress.ordered || 0} />
+                            <ProgressBar label="Onsite" percentage={progress.onsite || 0} />
+                          </>
+                        )}
                       </div>
                       
                       <div className="flex items-center flex-shrink-0">

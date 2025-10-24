@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, X } from 'lucide-react';
+import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save } from 'lucide-react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -66,13 +66,12 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', part.id)
-        .select()
-        .single();
+        .select();
 
       if (updateError) throw updateError;
 
-      if (onSave) {
-        onSave(data);
+      if (onSave && data && data.length > 0) {
+        onSave(data[0]);
       }
     } catch (err) {
       console.error('Failed to save documentation:', err);

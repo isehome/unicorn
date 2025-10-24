@@ -1825,7 +1825,7 @@ const ProjectDetailView = () => {
                               value={todo.dueBy ? String(todo.dueBy).substring(0,10) : ''}
                               onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'due_by', e.target.value); }}
                               onClick={(e) => e.stopPropagation()}
-                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
                               style={{
                                 ...styles.input,
                                 minWidth: '100px',
@@ -1841,7 +1841,7 @@ const ProjectDetailView = () => {
                               value={todo.doBy ? String(todo.doBy).substring(0,10) : ''}
                               onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'do_by', e.target.value); }}
                               onClick={(e) => e.stopPropagation()}
-                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
+                              className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
                               style={{
                                 ...styles.input,
                                 minWidth: '100px',

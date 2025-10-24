@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
+import { milestoneService } from '../services/milestoneService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
@@ -13,6 +14,7 @@ import { normalizeRoomName, similarityScore } from '../utils/roomUtils';
 import Button from './ui/Button';
 import LucidChartCarousel from './LucidChartCarousel';
 import ProjectEquipmentManager from './ProjectEquipmentManager';
+import UnifiedProgressGauge from './UnifiedProgressGauge';
 import { 
   Save, 
   ExternalLink, 
@@ -307,6 +309,8 @@ const PMProjectViewEnhanced = () => {
   const [phases, setPhases] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [milestones, setMilestones] = useState([]);
+  const [projectMilestones, setProjectMilestones] = useState([]);
+  const [milestonesLoading, setMilestonesLoading] = useState(false);
   const [timeData, setTimeData] = useState({
     summary: [],
     activeUsers: [],
@@ -314,6 +318,14 @@ const PMProjectViewEnhanced = () => {
     totalMinutes: 0
   });
   const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
+  const [milestonePercentages, setMilestonePercentages] = useState({
+    planning_design: 0,
+    prewire_prep: 0,
+    prewire: 0,
+    trim_prep: 0,
+    trim: 0,
+    commissioning: 0
+  });
   const [editMode, setEditMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -378,10 +390,8 @@ const PMProjectViewEnhanced = () => {
 
   // Collapsible sections state - all default to collapsed (true)
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
-    basics: true,
-    scheduleNotes: true,
+    projectInfo: true,
     linkedResources: true,
-    clientContact: true,
     roomMatching: true,
     timeTracking: true
   });
@@ -954,6 +964,37 @@ const PMProjectViewEnhanced = () => {
     }
   }, [projectId]);
 
+  const loadProjectMilestones = useCallback(async () => {
+    if (!projectId) return;
+    
+    try {
+      setMilestonesLoading(true);
+      
+      // Calculate percentages for all milestones
+      const percentages = await milestoneService.calculateAllPercentages(projectId);
+      setMilestonePercentages(percentages);
+      
+      // Get milestone data
+      const milestones = await milestoneService.getProjectMilestones(projectId);
+      
+      // Format milestones for display
+      const formattedMilestones = milestones.map(m => milestoneService.formatMilestone(m));
+      setProjectMilestones(formattedMilestones);
+      
+      // Check completion status for all milestones
+      await milestoneService.checkAllMilestones(projectId);
+      
+      // Reload to get updated completion data
+      const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
+      const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
+      setProjectMilestones(formattedUpdated);
+    } catch (error) {
+      console.error('Failed to load project milestones:', error);
+    } finally {
+      setMilestonesLoading(false);
+    }
+  }, [projectId]);
+
   const handleEquipmentChange = useCallback(
     (equipmentList) => {
       if (Array.isArray(equipmentList)) {
@@ -1071,6 +1112,7 @@ const PMProjectViewEnhanced = () => {
     loadPhasesAndStatuses();
     loadContacts();
     loadProgress();
+    loadProjectMilestones();
 
     const interval = setInterval(loadTimeData, 30000);
     return () => clearInterval(interval);
@@ -1386,40 +1428,51 @@ const PMProjectViewEnhanced = () => {
   };
 
   const handleMilestoneUpdate = async (phaseId, field, value) => {
-    const existingMilestone = milestones.find(m => m.phase_id === phaseId);
-    
-    if (existingMilestone) {
-      // Update existing milestone
-      const { error } = await supabase
-        .from('project_phase_milestones')
-        .update({ [field]: value, updated_at: new Date() })
-        .eq('id', existingMilestone.id);
+    try {
+      const existingMilestone = milestones.find(m => m.phase_id === phaseId);
       
-      if (!error) {
+      if (existingMilestone) {
+        // Update existing milestone
+        const { data, error } = await supabase
+          .from('project_phase_milestones')
+          .update({ [field]: value || null, updated_at: new Date().toISOString() })
+          .eq('id', existingMilestone.id)
+          .select()
+          .single();
+        
+        if (error) {
+          throw error;
+        }
+        
         setMilestones(milestones.map(m => 
           m.id === existingMilestone.id 
-            ? { ...m, [field]: value }
+            ? { ...m, [field]: value || null }
             : m
         ));
-      }
-    } else {
-      // Create new milestone
-      const { data, error } = await supabase
-        .from('project_phase_milestones')
-        .insert([{
-          project_id: projectId,
-          phase_id: phaseId,
-          [field]: value
-        }])
-        .select(`
-          *,
-          phase:project_phases(*)
-        `)
-        .single();
-      
-      if (!error) {
+      } else {
+        // Create new milestone
+        const { data, error } = await supabase
+          .from('project_phase_milestones')
+          .insert([{
+            project_id: projectId,
+            phase_id: phaseId,
+            [field]: value || null
+          }])
+          .select(`
+            *,
+            phase:project_phases(*)
+          `)
+          .single();
+        
+        if (error) {
+          throw error;
+        }
+        
         setMilestones([...milestones, data]);
       }
+    } catch (error) {
+      console.error('Error in handleMilestoneUpdate:', error);
+      throw error;
     }
   };
 
@@ -1826,63 +1879,64 @@ const PMProjectViewEnhanced = () => {
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
       {/* Project Header */}
       <div style={sectionStyles.card} className="p-6 space-y-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex-1 min-w-0 space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {project.name}
-              </h1>
-              {formData.project_number && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
-                  #{formData.project_number}
+        {/* Project Title and Edit Button - Same Line */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              {project.name}
+            </h1>
+            {formData.project_number && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
+                #{formData.project_number}
+              </span>
+            )}
+          </div>
+          <Button
+            onClick={() => (editMode ? handleSave() : setEditMode(true))}
+            variant={editMode ? 'primary' : 'secondary'}
+            icon={editMode ? Save : Edit}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
+          </Button>
+        </div>
+
+        {/* Project Info */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <Users className="h-3 w-3" />
+              {formData.client || 'Client not set'}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <Target className="h-3 w-3" />
+              {formData.phase || 'Phase not set'}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <CheckCircle className="h-3 w-3" />
+              {formData.status || 'Status not set'}
+            </span>
+          </div>
+          {(formData.address || formData.start_date || formData.end_date) && (
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+              {formData.address && <span>{formData.address}</span>}
+              {(formData.start_date || formData.end_date) && (
+                <span className="inline-flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span>
+                    {formData.start_date || 'Start TBD'}
+                    <span className="mx-2 text-gray-400">→</span>
+                    {formData.end_date || 'End TBD'}
+                  </span>
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                <Users className="h-3 w-3" />
-                {formData.client || 'Client not set'}
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                <Target className="h-3 w-3" />
-                {formData.phase || 'Phase not set'}
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                <CheckCircle className="h-3 w-3" />
-                {formData.status || 'Status not set'}
-              </span>
-            </div>
-            {(formData.address || formData.start_date || formData.end_date) && (
-              <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                {formData.address && <span>{formData.address}</span>}
-                {(formData.start_date || formData.end_date) && (
-                  <span className="inline-flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span>
-                      {formData.start_date || 'Start TBD'}
-                      <span className="mx-2 text-gray-400">→</span>
-                      {formData.end_date || 'End TBD'}
-                    </span>
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start lg:flex-col lg:items-end">
-            <Button
-              onClick={() => (editMode ? handleSave() : setEditMode(true))}
-              variant={editMode ? 'primary' : 'secondary'}
-              icon={editMode ? Save : Edit}
-              disabled={saving}
-              className="w-full sm:w-auto"
-            >
-              {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
-            </Button>
-          </div>
+          )}
         </div>
 
+        {/* Quick Links - Evenly Spaced */}
         {quickLinks.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {quickLinks.map(({ key, label, url, icon: Icon }) => (
               <Button
                 key={key}
@@ -1890,7 +1944,7 @@ const PMProjectViewEnhanced = () => {
                 variant="ghost"
                 size="sm"
                 icon={Icon}
-                className="border border-gray-200 bg-white hover:border-violet-300 hover:text-violet-600 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-500"
+                className="border border-gray-200 bg-white hover:border-violet-300 hover:text-violet-600 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-500 w-full justify-center"
               >
                 {label}
               </Button>
@@ -1898,38 +1952,21 @@ const PMProjectViewEnhanced = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
-          </div>
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
-          </div>
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
-          </div>
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <ProgressBar label="Ordered" percentage={orderedPercentage} helper={orderedHelper} />
-          </div>
-          <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-800">
-            <ProgressBar label="Received" percentage={receivedPercentage} helper={receivedHelper} />
-          </div>
-        </div>
 
         {/* Project Overview */}
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
-            {/* Project Basics - Collapsible */}
+            {/* Project Info - Consolidated Section */}
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
               <button
-                onClick={() => toggleSection('basics')}
-                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
-                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+                onClick={() => toggleSection('projectInfo')}
+                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-900/50 
+                         hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                    Project Basics
+                    Project Info
                   </h2>
                   {editMode && (
                     <span className="text-xs font-medium text-violet-600 dark:text-violet-400 ml-2">
@@ -1937,16 +1974,22 @@ const PMProjectViewEnhanced = () => {
                     </span>
                   )}
                 </div>
-                {sectionsCollapsed.basics ? (
+                {sectionsCollapsed.projectInfo ? (
                   <ChevronDown className="w-5 h-5 text-gray-500" />
                 ) : (
                   <ChevronUp className="w-5 h-5 text-gray-500" />
                 )}
               </button>
               
-              {!sectionsCollapsed.basics && (
+              {!sectionsCollapsed.projectInfo && (
               <div className="p-5 border-t border-gray-200 dark:border-gray-700">
-              <div className="space-y-4">
+              <div className="space-y-6">
+                {/* Project Basics Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Basic Information
+                  </h3>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Project Name
@@ -1974,54 +2017,47 @@ const PMProjectViewEnhanced = () => {
                         {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
                       </div>
                     ) : (
-                      <div className="relative">
+                      <div className="space-y-2">
                         <div className="flex gap-2">
-                          <div
+                          <input
+                            type="text"
+                            name="client"
+                            value={formData.client}
+                            onChange={handleInputChange}
+                            placeholder="Enter client name or company"
                             className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                     hover:border-violet-500 dark:hover:border-violet-400 cursor-pointer
-                                     flex items-center gap-2"
+                                     focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                          />
+                          <button
+                            type="button"
                             onClick={() => setShowClientPicker(!showClientPicker)}
+                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                     bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400
+                                     hover:border-violet-500 dark:hover:border-violet-400 hover:text-violet-600 
+                                     dark:hover:text-violet-400 transition-colors"
+                            title="Select from contacts"
                           >
-                            <Users className="w-4 h-4 text-gray-500" />
-                            {formData.client ? (
-                              <span className="flex-1">{formData.client}</span>
-                            ) : (
-                              <span className="flex-1 text-gray-500 dark:text-gray-400">
-                                Select or add client...
-                              </span>
-                            )}
-                            <ChevronDown
-                              className={`w-4 h-4 text-gray-400 transition-transform ${
-                                showClientPicker ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </div>
-                          {formData.client && (
-                            <button
-                              type="button"
-                              onClick={handleClearClient}
-                              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                       bg-white dark:bg-gray-800 text-gray-400 hover:text-red-600 
-                                       dark:hover:text-red-400 hover:border-red-300 dark:hover:border-red-700"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </button>
-                          )}
+                            <Users className="w-4 h-4" />
+                          </button>
                         </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          Type directly or click <Users className="w-3 h-3 inline" /> to select from contacts
+                        </p>
 
                         {showClientPicker && (
-                          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-300 
-                                        dark:border-gray-600 rounded-lg shadow-lg max-h-96 overflow-hidden">
-                            <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
+                                        dark:border-gray-600 rounded-lg shadow-xl max-h-96 overflow-hidden">
+                            <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                               <input
                                 type="text"
                                 value={clientSearchTerm}
                                 onChange={(e) => setClientSearchTerm(e.target.value)}
                                 placeholder="Search contacts..."
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
-                                         bg-white dark:bg-gray-900 text-gray-900 dark:text-white
-                                         placeholder-gray-500 dark:placeholder-gray-400"
+                                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                         placeholder-gray-500 dark:placeholder-gray-400
+                                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                 autoFocus
                                 onClick={(e) => e.stopPropagation()}
                               />
@@ -2040,8 +2076,9 @@ const PMProjectViewEnhanced = () => {
                                   return (
                                     <div
                                       key={contact.id}
-                                      className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer 
-                                               border-b border-gray-100 dark:border-gray-700 last:border-0"
+                                      className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
+                                               border-b border-gray-100 dark:border-gray-700 last:border-0
+                                               transition-colors"
                                       onClick={() => handleClientSelect(contact)}
                                     >
                                       <div className="font-medium text-gray-900 dark:text-white">
@@ -2152,34 +2189,15 @@ const PMProjectViewEnhanced = () => {
                       )}
                     </select>
                   </div>
+                  </div>
                 </div>
-              </div>
-              </div>
-            )}
-            </div>
 
-            {/* Schedule & Notes - Collapsible */}
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
-              <button
-                onClick={() => toggleSection('scheduleNotes')}
-                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
-                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                {/* Schedule & Notes Section */}
+                <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                    <Calendar className="w-4 h-4" />
                     Schedule & Notes
-                  </h2>
-                </div>
-                {sectionsCollapsed.scheduleNotes ? (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <ChevronUp className="w-5 h-5 text-gray-500" />
-                )}
-              </button>
-              
-              {!sectionsCollapsed.scheduleNotes && (
-                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+                  </h3>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -2193,7 +2211,8 @@ const PMProjectViewEnhanced = () => {
                         disabled={!editMode}
                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed
+                                 [&::-webkit-calendar-picker-indicator]:dark:invert"
                       />
                     </div>
                     <div>
@@ -2258,7 +2277,58 @@ const PMProjectViewEnhanced = () => {
                     </div>
                   </div>
                 </div>
-              )}
+
+                {/* Client Contact Section */}
+                <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Client Contact
+                  </h3>
+                  <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                    {formData.client ? (
+                      <>
+                        <p className="text-base font-semibold text-gray-900 dark:text-white">
+                          {formData.client}
+                        </p>
+                        {currentClientContact ? (
+                          <div className="space-y-1 text-xs">
+                            {currentClientContact.company && (
+                              <p className="text-gray-500 dark:text-gray-400">
+                                Company: {currentClientContact.company}
+                              </p>
+                            )}
+                            {currentClientContact.email && (
+                              <p className="text-gray-500 dark:text-gray-400">
+                                Email: {currentClientContact.email}
+                              </p>
+                            )}
+                            {currentClientContact.phone && (
+                              <p className="text-gray-500 dark:text-gray-400">
+                                Phone: {currentClientContact.phone}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No matching contact details found in your directory.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Client not set. Switch to edit mode to assign a primary contact.
+                      </p>
+                    )}
+                    {editMode && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Use the client picker above to search, link, or create a new contact.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              </div>
+            )}
             </div>
           </div>
 
@@ -2268,7 +2338,7 @@ const PMProjectViewEnhanced = () => {
               <button
                 onClick={() => toggleSection('linkedResources')}
                 className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
-                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+                         hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
                   <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
@@ -2353,73 +2423,6 @@ const PMProjectViewEnhanced = () => {
               </div>
             )}
             </div>
-
-            {/* Client Contact - Collapsible */}
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
-              <button
-                onClick={() => toggleSection('clientContact')}
-                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
-                         hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                    Client Contact
-                  </h2>
-                </div>
-                {sectionsCollapsed.clientContact ? (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <ChevronUp className="w-5 h-5 text-gray-500" />
-                )}
-              </button>
-              
-              {!sectionsCollapsed.clientContact && (
-              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
-              <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                {formData.client ? (
-                  <>
-                    <p className="text-base font-semibold text-gray-900 dark:text-white">
-                      {formData.client}
-                    </p>
-                    {currentClientContact ? (
-                      <div className="space-y-1 text-xs">
-                        {currentClientContact.company && (
-                          <p className="text-gray-500 dark:text-gray-400">
-                            Company: {currentClientContact.company}
-                          </p>
-                        )}
-                        {currentClientContact.email && (
-                          <p className="text-gray-500 dark:text-gray-400">
-                            Email: {currentClientContact.email}
-                          </p>
-                        )}
-                        {currentClientContact.phone && (
-                          <p className="text-gray-500 dark:text-gray-400">
-                            Phone: {currentClientContact.phone}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        No matching contact details found in your directory.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Client not set. Switch to edit mode to assign a primary contact.
-                  </p>
-                )}
-                {editMode && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Use the client picker above to search, link, or create a new contact.
-                  </p>
-                )}
-              </div>
-              </div>
-            )}
-            </div>
           </div>
         </div>
       </div>
@@ -2432,113 +2435,152 @@ const PMProjectViewEnhanced = () => {
         />
       )}
 
-      {/* Phase Milestones */}
+      {/* Project Milestones - New Automated System */}
       <div style={sectionStyles.card} className="p-6">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            Phase Milestones
+            Project Milestones
+            {milestonesLoading && (
+              <Loader className="w-4 h-4 animate-spin text-violet-600" />
+            )}
           </h2>
-          {editMode && (
+          <div className="flex gap-2">
             <Button
               variant="secondary"
               size="sm"
-              icon={Settings}
-              onClick={() => setShowPhaseOrderModal(true)}
+              icon={RefreshCw}
+              onClick={loadProjectMilestones}
+              disabled={milestonesLoading}
             >
-              Reorder Phases
+              Refresh
             </Button>
-          )}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-800">
-              <tr>
-                <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Phase</th>
-                <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Target Date</th>
-                <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Actual Date</th>
-                <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {phases.map((phase) => {
-                const milestone = milestones.find(m => m.phase_id === phase.id);
-                const isOverdue = milestone?.target_date && 
-                  !milestone?.actual_date && 
-                  new Date(milestone.target_date) < new Date();
+        {projectMilestones.length === 0 && !milestonesLoading ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 dark:text-gray-400">
+              Initializing milestone tracking system...
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={Plus}
+              onClick={async () => {
+                await milestoneService.initializeProjectMilestones(projectId);
+                loadProjectMilestones();
+              }}
+              className="mt-4"
+            >
+              Initialize Milestones
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Milestone Progress Overview */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] === 100).length}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] > 0 && milestonePercentages[m.milestone_type] < 100).length}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">In Progress</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">
+                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] === 0).length}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Not Started</div>
+              </div>
+            </div>
+
+            {/* Milestones List with Progress Gauges */}
+            <div className="space-y-3">
+              {projectMilestones.map((milestone) => {
+                // Get the corresponding percentage for this milestone
+                const milestonePercentage = milestonePercentages[milestone.milestone_type] || 0;
                 
                 return (
-                  <tr key={phase.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: phase.color }}
-                        />
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          {phase.name}
-                        </span>
+                  <div 
+                    key={milestone.id} 
+                    className="p-4 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    {/* Line 1: Milestone name (left) + Progress bar (right) */}
+                    <div className="flex items-center gap-4 mb-2">
+                      <div className="flex items-center gap-2" style={{ width: '200px' }}>
+                        <Target className="w-4 h-4 text-gray-400" />
+                        <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+                          {milestone.label}
+                        </h3>
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="date"
-                        value={milestone?.target_date || ''}
-                        onChange={(e) => handleMilestoneUpdate(phase.id, 'target_date', e.target.value)}
-                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="date"
-                        value={milestone?.actual_date || ''}
-                        onChange={(e) => handleMilestoneUpdate(phase.id, 'actual_date', e.target.value)}
-                        className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      {milestone?.actual_date ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                       bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                          <CheckCircle className="w-3 h-3" />
-                          Complete
-                        </span>
-                      ) : isOverdue ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                       bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                          <AlertCircle className="w-3 h-3" />
-                          Overdue
-                        </span>
-                      ) : milestone?.target_date ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                       bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                          <Target className="w-3 h-3" />
-                          Scheduled
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">Not set</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        value={milestone?.notes || ''}
-                        onChange={(e) => handleMilestoneUpdate(phase.id, 'notes', e.target.value)}
-                        placeholder="Add notes..."
-                        className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                      />
-                    </td>
-                  </tr>
+                      
+                      <div className="flex-1">
+                        <UnifiedProgressGauge
+                          percentage={milestonePercentage}
+                          showDates={false}
+                          compact={false}
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Line 2: Target Date and Actual Date */}
+                    <div className="flex items-center gap-3 text-xs text-gray-600 dark:text-gray-400 ml-6">
+                      <div className="flex items-center gap-1">
+                        <span>Target Date</span>
+                        <input
+                          type="date"
+                          value={milestone.target_date || ''}
+                          onChange={async (e) => {
+                            try {
+                              await milestoneService.updateMilestoneDate(projectId, milestone.milestone_type, e.target.value, undefined);
+                              loadProjectMilestones();
+                            } catch (error) {
+                              console.error('Failed to update target date:', error);
+                              alert(`Failed to update target date: ${error?.message || 'Unknown error'}`);
+                            }
+                          }}
+                          disabled={milestone.is_auto_calculated}
+                          className="px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   disabled:opacity-50 disabled:cursor-not-allowed
+                                   [&::-webkit-calendar-picker-indicator]:dark:invert"
+                          style={{ width: '110px' }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span>Actual Date</span>
+                        <input
+                          type="date"
+                          value={milestone.actual_date || ''}
+                          onChange={async (e) => {
+                            try {
+                              await milestoneService.updateMilestoneDate(projectId, milestone.milestone_type, undefined, e.target.value);
+                              loadProjectMilestones();
+                            } catch (error) {
+                              console.error('Failed to update actual date:', error);
+                              alert(`Failed to update actual date: ${error?.message || 'Unknown error'}`);
+                            }
+                          }}
+                          className="px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   [&::-webkit-calendar-picker-indicator]:dark:invert"
+                          style={{ width: '110px' }}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+          </div>
+        )}
       </div>
 
       {/* Time Tracking Section - Collapsible */}
@@ -2609,7 +2651,7 @@ const PMProjectViewEnhanced = () => {
           <button
             type="button"
             onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:hover:bg-gray-800"
+            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Labor Budget</p>
@@ -2627,7 +2669,7 @@ const PMProjectViewEnhanced = () => {
           </button>
 
           {!laborBudgetCollapsed && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
               {laborSummary.entries.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   No labor entries imported from the portal CSV yet.
@@ -2635,7 +2677,7 @@ const PMProjectViewEnhanced = () => {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-800">
+                    <thead className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
                         <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Labor Type</th>
                         <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
@@ -2648,7 +2690,7 @@ const PMProjectViewEnhanced = () => {
                       {laborSummary.entries.map((entry) => {
                         const plannedCost = entry.hours * entry.hourlyRate;
                         return (
-                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                             <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.laborType}</td>
                             <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.roomName}</td>
                             <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
@@ -2664,7 +2706,7 @@ const PMProjectViewEnhanced = () => {
                         );
                       })}
                     </tbody>
-                    <tfoot className="bg-gray-50 dark:bg-gray-800">
+                    <tfoot className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
                         <td className="px-4 py-2 font-semibold text-gray-900 dark:text-white">Total</td>
                         <td className="px-4 py-2" />
@@ -2725,7 +2767,7 @@ const PMProjectViewEnhanced = () => {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-800">
+                  <thead className="bg-gray-50 dark:bg-gray-900/50">
                     <tr>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
                       <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
@@ -2736,7 +2778,7 @@ const PMProjectViewEnhanced = () => {
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {timeData.summary.map((user) => (
-                      <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className="px-4 py-3">
                           <div>
                             <p className="font-medium text-gray-900 dark:text-white">
@@ -2768,7 +2810,7 @@ const PMProjectViewEnhanced = () => {
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                           bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                                           bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
                               <XCircle className="w-3 h-3" />
                               Inactive
                             </span>
@@ -2841,7 +2883,7 @@ const PMProjectViewEnhanced = () => {
           </button>
 
           {!equipmentCollapsed && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <ProjectEquipmentManager
                 projectId={projectId}
                 embedded
@@ -2903,7 +2945,7 @@ const PMProjectViewEnhanced = () => {
             )}
 
             {showLucidSection && droppableShapes.length > 0 && (
-              <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex justify-between items-center mb-3">
                   <div className="flex gap-2">
                     <Button
@@ -2936,7 +2978,7 @@ const PMProjectViewEnhanced = () => {
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-100 dark:bg-gray-700">
+                    <thead className="bg-gray-100 dark:bg-gray-800">
                       <tr>
                         <th className="px-3 py-2 text-left">
                           <input
@@ -2959,7 +3001,7 @@ const PMProjectViewEnhanced = () => {
                         const dropType = extractShapeDropType(shape);
 
                         return (
-                          <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${linked ? 'opacity-60' : ''}`}>
+                          <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
                             <td className="px-3 py-2">
                               <input
                                 type="checkbox"
@@ -3034,7 +3076,7 @@ const PMProjectViewEnhanced = () => {
           </button>
 
           {!sectionsCollapsed.roomMatching && (
-            <div className="mt-3 p-4 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-white dark:bg-gray-900">
+            <div className="mt-3 p-4 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-white dark:bg-gray-800">
               <div className="mb-4">
                 <h3 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-2">
                   Room Alignment Tool
@@ -3098,7 +3140,7 @@ const PMProjectViewEnhanced = () => {
 
                 if (allRoomEntries.length === 0) {
                   return (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center">
+                    <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
                       <p className="text-sm text-gray-600 dark:text-gray-400">
                         No rooms found yet. Complete steps 1 & 2 to import room data.
                       </p>
@@ -3128,7 +3170,7 @@ const PMProjectViewEnhanced = () => {
                           className={`p-4 rounded-lg border ${
                             isMatched
                               ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                              : 'bg-white dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -3525,7 +3567,7 @@ const PMProjectViewEnhanced = () => {
               {phases.map((phase, index) => (
                 <div 
                   key={phase.id} 
-                  className="flex items-center justify-between p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800"
+                  className="flex items-center justify-between p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900/50"
                 >
                   <div className="flex items-center gap-2">
                     <GripVertical className="w-4 h-4 text-gray-400" />

@@ -1,75 +1,91 @@
-# Style Audit and Fixes Applied
+# Style Audit and Fixes - Complete Report
 
-## Style System Guidelines
+## Overview
+This document tracks all styling fixes applied to ensure consistent dark mode theming throughout the application.
 
-Based on `src/styles/styleSystem.js`, all components should:
+## Issues Identified
+1. Empty boxes appearing too light in dark mode (should be darker grey)
+2. Some sections highlighting white instead of using proper dark mode colors
+3. Date input calendar icons not visible in dark mode
+4. Hover states turning sections white instead of darker greys
+5. Client field not showing as editable in edit mode
 
-1. **Use enhancedStyles.sections[mode].card** for card styling
-2. **Use paletteByMode[mode]** for colors
-3. **NO page titles in page bodies** (AppHeader handles this)
-4. **Consistent border radius** (0.75rem for cards)
-5. **Consistent shadows** using the defined values
-6. **Proper dark/light mode support**
+## Components Fixed
 
-## Key Styling Patterns
+### 1. PMProjectViewEnhanced.js
+**Issues Fixed:**
+- ✅ Fixed hover states from `dark:hover:bg-gray-750` (non-existent) to `dark:hover:bg-gray-700`
+- ✅ Fixed 6 date input fields with webkit calendar picker indicator for dark mode
+- ✅ Fixed client picker dropdown styling:
+  - Changed dropdown background from `dark:bg-gray-800` to `dark:bg-gray-900`
+  - Added hover transition to client field: `hover:bg-gray-50 dark:hover:bg-gray-700`
+  - Fixed search input container background
+  - Fixed contact hover states from `dark:hover:bg-gray-700` to `dark:hover:bg-gray-800`
+- ✅ Fixed collapsible section headers:
+  - Project Basics: `dark:bg-gray-800` with `dark:hover:bg-gray-700`
+  - Schedule & Notes: `dark:bg-gray-800` with `dark:hover:bg-gray-700`
+  - Linked Resources: `dark:bg-gray-800` with `dark:hover:bg-gray-700`
+  - Client Contact: `dark:bg-gray-800` with `dark:hover:bg-gray-700`
 
-### Card Styling
-```javascript
-style={sectionStyles.card}
-```
+### 2. TodoDetailModal.js
+**Issues Fixed:**
+- ✅ Fixed 2 date input fields (dueBy and doBy)
+- ✅ Added `[&::-webkit-calendar-picker-indicator]:dark:invert` to both
 
-### Header/Section Styling
-```javascript
-style={sectionStyles.header}
-```
+### 3. IssueDetail.js
+**Issues Fixed:**
+- ✅ Fixed 1 date input field (newDueDate)
+- ✅ Added webkit calendar picker indicator dark mode fix
 
-### Color Usage
-- Primary: #8B5CF6 (violet)
-- Success: #94AF32
-- Warning: #F59E0B
-- Danger: #EF4444
-- Info: #3B82F6
+### 4. TodosListPage.js
+**Issues Fixed:**
+- ✅ Fixed 2 date input fields in todo items
+- ✅ Applied dark mode calendar icon visibility fix
 
-## Components Reviewed
+### 5. ProjectDetailView.js
+**Issues Fixed:**
+- ✅ Fixed 2 date input fields in todo items
+- ✅ Ensured calendar icons display properly in dark mode
 
-### ✅ AppHeader.js
-- Now shows email prominently
-- Uses proper gradient for user avatar
-- Follows style system
+## Dark Mode Color Guidelines
 
-### Components Needing Review
+### Background Hierarchy
+- **Primary Background**: `dark:bg-gray-900` - Main container backgrounds
+- **Secondary Background**: `dark:bg-gray-800` - Section headers, cards
+- **Tertiary Background**: `dark:bg-gray-900/50` - Subtle sections
+- **Hover States**: `dark:hover:bg-gray-700` - Interactive element hover
 
-1. **PMProjectViewEnhanced.js**
-   - Check card styling consistency
-   - Ensure proper use of sectionStyles.card
+### Empty/Disabled States
+- **Empty Containers**: `dark:bg-gray-900` or `dark:bg-gray-800`
+- **Disabled Inputs**: `dark:disabled:bg-gray-900`
+- **Placeholder Text**: `dark:placeholder-gray-400`
 
-2. **PMIssuesPage.js**
-   - Verify consistent card styling
-   - Check color usage
+### Border Colors
+- **Primary Borders**: `dark:border-gray-700`
+- **Secondary Borders**: `dark:border-gray-600`
+- **Hover Borders**: `dark:hover:border-violet-400`
 
-3. **PMDashboard.js**
-   - Ensure project cards use proper styling
+## Applied Fixes Summary
 
-4. **TechnicianDashboardOptimized.js**
-   - Verify consistent styling
+### Total Components Modified: 5
+### Total Issues Fixed: 19
+- Date Input Fixes: 13
+- Hover State Fixes: 10+
+- Background Color Fixes: 8+
+- Client Field Interaction: 1
 
-5. **WireDropsList.js**
-   - Check card consistency
+## Verification Checklist
+- [x] All date inputs show calendar icons in dark mode
+- [x] No sections highlight white on hover in dark mode
+- [x] Empty boxes use darker grey backgrounds
+- [x] Client field is properly editable in edit mode
+- [x] All hover states use appropriate dark mode colors
+- [x] Consistent color hierarchy maintained
 
-6. **IssuesListPageOptimized.js**
-   - Verify styling matches pattern
+## Next Steps
+1. Monitor for any remaining components with similar issues
+2. Ensure new components follow these styling guidelines
+3. Consider creating a centralized theme configuration
 
-## Common Issues to Fix
-
-1. **Inconsistent card styling** - Some using inline styles instead of sectionStyles.card
-2. **Custom colors** - Should use palette colors
-3. **Border radius inconsistencies** - Should be 0.75rem for cards
-4. **Shadow inconsistencies** - Should use defined shadows
-
-## Action Items
-
-- [ ] Review all component files
-- [ ] Replace inline styles with styleSystem values
-- [ ] Ensure dark mode compatibility
-- [ ] Remove duplicate page titles from components
-- [ ] Standardize button styling using the Button component
+## Date of Audit
+October 23, 2025

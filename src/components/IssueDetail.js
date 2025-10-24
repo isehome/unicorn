@@ -357,7 +357,7 @@ const IssueDetail = () => {
                   type="date"
                   value={newDueDate}
                   onChange={(e) => setNewDueDate(e.target.value)}
-                  className={ui.input}
+                  className={`${ui.input} [&::-webkit-calendar-picker-indicator]:dark:invert`}
                 />
               </div>
             </div>

@@ -5,7 +5,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
 import { timeLogsService, projectProgressService, issuesService } from '../services/supabaseService';
+import { milestoneService } from '../services/milestoneService';
 import Button from './ui/Button';
+import UnifiedProgressGauge from './UnifiedProgressGauge';
 import { ListTodo, AlertTriangle, Loader, Calendar, LogIn, LogOut, FileWarning } from 'lucide-react';
 
 // Memoized Calendar Event Component
@@ -53,6 +55,7 @@ const ProjectCard = memo(({
   onLogIssue, 
   isCheckedIn, 
   progress,
+  milestonePercentages,
   userId 
 }) => {
   const handleCardClick = (e) => {
@@ -115,13 +118,45 @@ const ProjectCard = memo(({
           </div>
         </div>
 
-        {/* Right side - Progress Bars */}
+        {/* Right side - Progress Gauges */}
         <div className="flex flex-col justify-center space-y-1.5 w-52">
-          <ProgressBar label="Prewire" percentage={progress?.prewire || 0} />
-          <ProgressBar label="Trim" percentage={progress?.trim || 0} />
-          <ProgressBar label="Commission" percentage={progress?.commission || 0} />
-          <ProgressBar label="Ordered" percentage={progress?.ordered || 0} />
-          <ProgressBar label="Onsite" percentage={progress?.onsite || 0} />
+          {milestonePercentages ? (
+            <>
+              <UnifiedProgressGauge 
+                label="Prewire Prep" 
+                percentage={milestonePercentages.prewire_prep || 0} 
+                compact={true}
+              />
+              <UnifiedProgressGauge 
+                label="Prewire" 
+                percentage={milestonePercentages.prewire || 0} 
+                compact={true}
+              />
+              <UnifiedProgressGauge 
+                label="Trim Prep" 
+                percentage={milestonePercentages.trim_prep || 0} 
+                compact={true}
+              />
+              <UnifiedProgressGauge 
+                label="Trim" 
+                percentage={milestonePercentages.trim || 0} 
+                compact={true}
+              />
+              <UnifiedProgressGauge 
+                label="Commissioning" 
+                percentage={milestonePercentages.commissioning || 0} 
+                compact={true}
+              />
+            </>
+          ) : (
+            <>
+              <ProgressBar label="Prewire" percentage={progress?.prewire || 0} />
+              <ProgressBar label="Trim" percentage={progress?.trim || 0} />
+              <ProgressBar label="Commission" percentage={progress?.commission || 0} />
+              <ProgressBar label="Ordered" percentage={progress?.ordered || 0} />
+              <ProgressBar label="Onsite" percentage={progress?.onsite || 0} />
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -145,6 +180,7 @@ const TechnicianDashboardOptimized = () => {
 
   const [checkedInProjects, setCheckedInProjects] = useState(new Set());
   const [projectProgress, setProjectProgress] = useState({});
+  const [milestonePercentages, setMilestonePercentages] = useState({});
   const [loadingActions, setLoadingActions] = useState(new Set());
 
   // Get user ID for time logs (using email as fallback)
@@ -156,16 +192,32 @@ const TechnicianDashboardOptimized = () => {
       if (!projects.data) return;
       
       const progressData = {};
+      const milestoneData = {};
+      
       for (const project of projects.data) {
         try {
           const progress = await projectProgressService.getProjectProgress(project.id);
           progressData[project.id] = progress;
+          
+          // Calculate milestone percentages
+          const percentages = await milestoneService.calculateAllPercentages(project.id);
+          milestoneData[project.id] = percentages;
         } catch (error) {
           console.error(`Failed to load progress for project ${project.id}:`, error);
           progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
+          milestoneData[project.id] = {
+            planning_design: 0,
+            prewire_prep: 0,
+            prewire: 0,
+            trim_prep: 0,
+            trim: 0,
+            commissioning: 0
+          };
         }
       }
+      
       setProjectProgress(progressData);
+      setMilestonePercentages(milestoneData);
     };
 
     loadProgress();
@@ -578,6 +630,7 @@ const TechnicianDashboardOptimized = () => {
                 onLogIssue={(e) => handleLogIssue(e, project.id)}
                 isCheckedIn={checkedInProjects.has(project.id)}
                 progress={projectProgress[project.id]}
+                milestonePercentages={milestonePercentages[project.id]}
                 userId={userId}
               />
             ))}
