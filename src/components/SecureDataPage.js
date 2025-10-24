@@ -51,7 +51,7 @@ const SecureDataPage = () => {
   const [copiedItem, setCopiedItem] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
-    type: 'credentials',
+    data_type: 'credentials',
     username: '',
     password: '',
     url: '',
@@ -264,7 +264,7 @@ const SecureDataPage = () => {
     
     setFormData({
       name: item.name || '',
-      type: item.data_type || 'credentials',
+      data_type: item.data_type || 'credentials',
       username: item.username || '',
       password: item.password || '',
       url: item.url || '',
@@ -316,7 +316,7 @@ const SecureDataPage = () => {
       const payload = {
         project_id: projectId,
         name: formData.name,
-        type: formData.type,
+        data_type: formData.data_type,
         username: formData.username,
         password: formData.password,
         url: formData.url,
@@ -710,8 +710,8 @@ const SecureDataPage = () => {
                     Type
                   </label>
                   <select
-                    value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    value={formData.data_type}
+                    onChange={(e) => setFormData({ ...formData, data_type: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
                     style={styles.input}
                   >
