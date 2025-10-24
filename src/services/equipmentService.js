@@ -266,9 +266,28 @@ export const secureDataService = {
     try {
       if (!supabase) throw new Error('Supabase not configured');
       
+      // Ensure data_type is ALWAYS present
+      const dataToInsert = {
+        ...secureData,
+        data_type: secureData.data_type || 'credentials'
+      };
+      
+      console.log('secureDataService.create - data to insert:', dataToInsert);
+      
+      // Validate required fields
+      if (!dataToInsert.project_id) {
+        throw new Error('project_id is required');
+      }
+      if (!dataToInsert.name) {
+        throw new Error('name is required');
+      }
+      if (!dataToInsert.data_type) {
+        throw new Error('data_type is required');
+      }
+      
       const { data, error } = await supabase
         .from('project_secure_data')
-        .insert([secureData])
+        .insert([dataToInsert])
         .select(`
           *,
           equipment:equipment_id(
@@ -280,7 +299,10 @@ export const secureDataService = {
         `)
         .single();
         
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase insert error:', error);
+        throw error;
+      }
       return data;
     } catch (error) {
       handleError(error, 'Failed to create secure data');
