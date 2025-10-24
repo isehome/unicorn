@@ -223,12 +223,21 @@ const SecureDataManager = ({ projectId, onClose }) => {
       setSaving(true);
       try {
         let result;
+        // Ensure data_type is always present
         const dataToSave = {
-          ...formData,
           project_id: projectId,
+          data_type: formData.data_type || 'credentials', // Explicitly ensure data_type
+          name: formData.name,
+          username: formData.username || null,
+          password: formData.password || null,
+          url: formData.url || null,
+          ip_address: formData.ip_address || null,
           equipment_id: formData.equipment_id || null,
-          port: formData.port ? parseInt(formData.port) : null
+          port: formData.port ? parseInt(formData.port) : null,
+          notes: formData.notes || null
         };
+        
+        console.log('Saving secure data:', dataToSave); // Debug log
         
         if (editItem) {
           result = await secureDataService.update(editItem.id, dataToSave);
