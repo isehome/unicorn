@@ -29,7 +29,24 @@ export const partsService = {
 
     let query = supabase
       .from('global_parts')
-      .select('*')
+      .select(`
+        id,
+        part_number,
+        name,
+        description,
+        manufacturer,
+        model,
+        category,
+        unit_of_measure,
+        quantity_on_hand,
+        quantity_reserved,
+        is_wire_drop_visible,
+        is_inventory_item,
+        required_for_prewire,
+        schematic_url,
+        install_manual_urls,
+        technical_manual_urls
+      `)
       .order('part_number', { ascending: true });
 
     if (search) {
@@ -60,7 +77,24 @@ export const partsService = {
 
     const { data, error } = await supabase
       .from('global_parts')
-      .select('*')
+      .select(`
+        id,
+        part_number,
+        name,
+        description,
+        manufacturer,
+        model,
+        category,
+        unit_of_measure,
+        quantity_on_hand,
+        quantity_reserved,
+        is_wire_drop_visible,
+        is_inventory_item,
+        required_for_prewire,
+        schematic_url,
+        install_manual_urls,
+        technical_manual_urls
+      `)
       .eq('id', id)
       .single();
 

@@ -55,7 +55,21 @@ const GlobalPartsManager = () => {
     try {
       const { data, error: fetchError } = await supabase
         .from('global_parts')
-        .select('*')
+        .select(`
+          id,
+          part_number,
+          name,
+          manufacturer,
+          model,
+          category,
+          unit_of_measure,
+          is_wire_drop_visible,
+          is_inventory_item,
+          required_for_prewire,
+          schematic_url,
+          install_manual_urls,
+          technical_manual_urls
+        `)
         .order('part_number', { ascending: true });
 
       if (fetchError) throw fetchError;
