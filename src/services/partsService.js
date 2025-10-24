@@ -109,6 +109,7 @@ export const partsService = {
   async create(payload) {
     if (!supabase) throw new Error('Supabase not configured');
 
+    // Exclude JSON fields (resource_links and attributes) entirely
     const dataToInsert = {
       part_number: payload.part_number?.trim(),
       name: payload.name?.trim() || null,
@@ -123,14 +124,32 @@ export const partsService = {
         payload.is_wire_drop_visible === false ? false : true,
       is_inventory_item:
         payload.is_inventory_item === false ? false : true,
-      resource_links: normalizeResourceLinks(payload.resource_links),
-      attributes: payload.attributes || {},
+      required_for_prewire:
+        payload.required_for_prewire === true ? true : false,
+      // Removed: resource_links and attributes - these JSON fields cause serialization issues
     };
 
     const { data, error } = await supabase
       .from('global_parts')
       .insert([dataToInsert])
-      .select()
+      .select(`
+        id,
+        part_number,
+        name,
+        description,
+        manufacturer,
+        model,
+        category,
+        unit_of_measure,
+        quantity_on_hand,
+        quantity_reserved,
+        is_wire_drop_visible,
+        is_inventory_item,
+        required_for_prewire,
+        schematic_url,
+        install_manual_urls,
+        technical_manual_urls
+      `)
       .single();
 
     if (error) {
@@ -158,16 +177,34 @@ export const partsService = {
     if (payload.quantity_reserved !== undefined) payload.quantity_reserved = Number(payload.quantity_reserved) || 0;
     if (payload.is_wire_drop_visible !== undefined) payload.is_wire_drop_visible = Boolean(payload.is_wire_drop_visible);
     if (payload.is_inventory_item !== undefined) payload.is_inventory_item = Boolean(payload.is_inventory_item);
+    if (payload.required_for_prewire !== undefined) payload.required_for_prewire = Boolean(payload.required_for_prewire);
 
-    if (payload.resource_links !== undefined) {
-      payload.resource_links = normalizeResourceLinks(payload.resource_links);
-    }
+    // Remove JSON fields entirely - they cause serialization issues
+    delete payload.resource_links;
+    delete payload.attributes;
 
     const { data, error } = await supabase
       .from('global_parts')
       .update(payload)
       .eq('id', id)
-      .select()
+      .select(`
+        id,
+        part_number,
+        name,
+        description,
+        manufacturer,
+        model,
+        category,
+        unit_of_measure,
+        quantity_on_hand,
+        quantity_reserved,
+        is_wire_drop_visible,
+        is_inventory_item,
+        required_for_prewire,
+        schematic_url,
+        install_manual_urls,
+        technical_manual_urls
+      `)
       .single();
 
     if (error) {

@@ -66,7 +66,24 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
           updated_at: new Date().toISOString()
         })
         .eq('id', part.id)
-        .select();
+        .select(`
+          id,
+          part_number,
+          name,
+          description,
+          manufacturer,
+          model,
+          category,
+          unit_of_measure,
+          quantity_on_hand,
+          quantity_reserved,
+          is_wire_drop_visible,
+          is_inventory_item,
+          required_for_prewire,
+          schematic_url,
+          install_manual_urls,
+          technical_manual_urls
+        `);
 
       if (updateError) throw updateError;
 
