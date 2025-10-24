@@ -236,7 +236,7 @@ const PMDashboard = () => {
             </h2>
             
             <div className="grid gap-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                     Project Name *
@@ -392,32 +392,33 @@ const PMDashboard = () => {
 
         {/* Existing Projects List */}
         <div style={sectionStyles.card}>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
               All Projects ({filteredProjects.length})
             </h2>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Search Bar */}
-              <div className="relative">
+              <div className="relative flex-1 sm:flex-initial">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search projects..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
+                  className="w-full sm:w-60 pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white 
                            focus:ring-2 focus:ring-violet-500 focus:border-transparent
-                           placeholder-gray-500 dark:placeholder-gray-400"
-                  style={{ width: '250px' }}
+                           placeholder-gray-500 dark:placeholder-gray-400 text-sm sm:text-base"
                 />
               </div>
               <Button 
                 variant="primary" 
                 icon={Plus}
                 onClick={() => setShowNewProjectForm(!showNewProjectForm)}
+                className="flex-shrink-0 text-sm sm:text-base"
               >
-                {showNewProjectForm ? 'Cancel' : 'New Project'}
+                <span className="hidden sm:inline">{showNewProjectForm ? 'Cancel' : 'New Project'}</span>
+                <span className="sm:hidden">{showNewProjectForm ? 'Cancel' : 'New'}</span>
               </Button>
             </div>
           </div>
@@ -455,64 +456,15 @@ const PMDashboard = () => {
                     className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md 
                              transition-all cursor-pointer group bg-white dark:bg-gray-800"
                   >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white">
-                            {project.name}
-                          </h3>
-                          <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(project.status)}`}>
-                            {project.status || 'active'}
-                          </span>
-                          {project.phase && (
-                            <span className={`text-xs font-medium ${getPhaseColor(project.phase)}`}>
-                              {project.phase}
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
-                          {project.project_number && (
-                            <span>#{project.project_number}</span>
-                          )}
-                          {project.client && (
-                            <span>Client: {project.client}</span>
-                          )}
-                          {project.address && (
-                            <span>{project.address}</span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-4 mt-2">
-                          {project.wiring_diagram_url && (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <FileText className="w-3 h-3" />
-                              Wiring Diagram
-                            </span>
-                          )}
-                          {project.one_drive_photos && (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <Image className="w-3 h-3" />
-                              Photos
-                            </span>
-                          )}
-                          {project.one_drive_files && (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <Folder className="w-3 h-3" />
-                              Files
-                            </span>
-                          )}
-                          {project.one_drive_procurement && (
-                            <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                              <Package className="w-3 h-3" />
-                              Procurement
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                    {/* Simplified Layout - Project Name + Progress Only */}
+                    <div className="space-y-3">
+                      {/* Project Name */}
+                      <h3 className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">
+                        {project.name}
+                      </h3>
                       
-                      {/* Progress Gauges - Compact View */}
-                      <div className="flex flex-col justify-center space-y-1.5 w-56 flex-shrink-0">
+                      {/* Progress Gauges */}
+                      <div className="space-y-2">
                         {milestonePercentages[project.id] ? (
                           <>
                             <UnifiedProgressGauge 
@@ -550,10 +502,6 @@ const PMDashboard = () => {
                             <ProgressBar label="Onsite" percentage={progress.onsite || 0} />
                           </>
                         )}
-                      </div>
-                      
-                      <div className="flex items-center flex-shrink-0">
-                        <ChevronRight className="w-5 h-5 text-gray-400 dark:text-gray-600 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors" />
                       </div>
                     </div>
                   </div>

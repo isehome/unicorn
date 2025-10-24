@@ -970,8 +970,23 @@ const PMProjectViewEnhanced = () => {
     try {
       setMilestonesLoading(true);
       
-      // Calculate percentages for all milestones
-      const percentages = await milestoneService.calculateAllPercentages(projectId);
+      // Calculate percentages for all milestones - handle errors gracefully
+      let percentages = {
+        planning_design: 0,
+        prewire_prep: 0,
+        prewire: 0,
+        trim_prep: 0,
+        trim: 0,
+        commissioning: 0
+      };
+      
+      try {
+        percentages = await milestoneService.calculateAllPercentages(projectId);
+      } catch (calcError) {
+        console.warn('Failed to calculate milestone percentages (may be due to missing data):', calcError);
+        // Continue with zero percentages - don't fail the whole load
+      }
+      
       setMilestonePercentages(percentages);
       
       // Get milestone data
@@ -981,15 +996,30 @@ const PMProjectViewEnhanced = () => {
       const formattedMilestones = milestones.map(m => milestoneService.formatMilestone(m));
       setProjectMilestones(formattedMilestones);
       
-      // Check completion status for all milestones
-      await milestoneService.checkAllMilestones(projectId);
-      
-      // Reload to get updated completion data
-      const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
-      const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
-      setProjectMilestones(formattedUpdated);
+      // Check completion status for all milestones - handle errors gracefully
+      try {
+        await milestoneService.checkAllMilestones(projectId);
+        
+        // Reload to get updated completion data
+        const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
+        const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
+        setProjectMilestones(formattedUpdated);
+      } catch (checkError) {
+        console.warn('Failed to check milestone completion status:', checkError);
+        // Continue with the milestones we have
+      }
     } catch (error) {
       console.error('Failed to load project milestones:', error);
+      // Ensure we have clean state even on error
+      setProjectMilestones([]);
+      setMilestonePercentages({
+        planning_design: 0,
+        prewire_prep: 0,
+        prewire: 0,
+        trim_prep: 0,
+        trim: 0,
+        commissioning: 0
+      });
     } finally {
       setMilestonesLoading(false);
     }
@@ -1107,12 +1137,30 @@ const PMProjectViewEnhanced = () => {
   };
 
   useEffect(() => {
+    if (!projectId) return;
+    
+    // Always load these core functions when projectId changes
     loadProjectData();
     loadTimeData();
     loadPhasesAndStatuses();
     loadContacts();
     loadProgress();
-    loadProjectMilestones();
+    
+    // Always attempt to load milestones - ensure section stays visible even on errors
+    loadProjectMilestones().catch(error => {
+      console.error('Failed to load milestones on mount:', error);
+      // Ensure clean state so the UI shows empty state instead of disappearing
+      setMilestonesLoading(false);
+      setProjectMilestones([]);
+      setMilestonePercentages({
+        planning_design: 0,
+        prewire_prep: 0,
+        prewire: 0,
+        trim_prep: 0,
+        trim: 0,
+        commissioning: 0
+      });
+    });
 
     const interval = setInterval(loadTimeData, 30000);
     return () => clearInterval(interval);
@@ -2458,57 +2506,82 @@ const PMProjectViewEnhanced = () => {
           </div>
         </div>
 
-        {projectMilestones.length === 0 && !milestonesLoading ? (
+        {milestonesLoading ? (
           <div className="text-center py-8">
-            <p className="text-gray-500 dark:text-gray-400">
-              Initializing milestone tracking system...
+            <Loader className="w-8 h-8 animate-spin text-violet-600 mx-auto mb-2" />
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Loading milestones...
+            </p>
+          </div>
+        ) : projectMilestones.length === 0 ? (
+          <div className="text-center py-8">
+            <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+            <p className="text-gray-500 dark:text-gray-400 mb-4">
+              No milestones configured yet
             </p>
             <Button
               variant="primary"
               size="sm"
               icon={Plus}
               onClick={async () => {
-                await milestoneService.initializeProjectMilestones(projectId);
-                loadProjectMilestones();
+                setMilestonesLoading(true);
+                try {
+                  await milestoneService.initializeProjectMilestones(projectId);
+                  await loadProjectMilestones();
+                } catch (error) {
+                  console.error('Failed to initialize milestones:', error);
+                  alert('Failed to initialize milestones. Please try again.');
+                } finally {
+                  setMilestonesLoading(false);
+                }
               }}
-              className="mt-4"
             >
               Initialize Milestones
             </Button>
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Milestone Progress Overview */}
+            {/* Milestone Progress Overview - Count all 6 milestone types */}
             <div className="grid grid-cols-3 gap-4 mb-6">
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] === 100).length}
+                  {Object.values(milestonePercentages).filter(percentage => percentage === 100).length}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] > 0 && milestonePercentages[m.milestone_type] < 100).length}
+                  {Object.values(milestonePercentages).filter(percentage => percentage > 0 && percentage < 100).length}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">In Progress</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">
-                  {projectMilestones.filter(m => milestonePercentages[m.milestone_type] === 0).length}
+                  {Object.values(milestonePercentages).filter(percentage => percentage === 0).length}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">Not Started</div>
               </div>
             </div>
 
-            {/* Milestones List with Progress Gauges */}
+            {/* Milestones List with Progress Gauges - Always show all 6 types */}
             <div className="space-y-3">
-              {projectMilestones.map((milestone) => {
+              {/* Define all milestone types with their display labels */}
+              {[
+                { type: 'planning_design', label: 'Planning & Design' },
+                { type: 'prewire_prep', label: 'Prewire Prep' },
+                { type: 'prewire', label: 'Prewire' },
+                { type: 'trim_prep', label: 'Trim Prep' },
+                { type: 'trim', label: 'Trim' },
+                { type: 'commissioning', label: 'Commissioning' }
+              ].map((milestoneType) => {
+                // Find the actual milestone data if it exists
+                const milestone = projectMilestones.find(m => m.milestone_type === milestoneType.type);
                 // Get the corresponding percentage for this milestone
-                const milestonePercentage = milestonePercentages[milestone.milestone_type] || 0;
+                const milestonePercentage = milestonePercentages[milestoneType.type] || 0;
                 
                 return (
                   <div 
-                    key={milestone.id} 
+                    key={milestoneType.type} 
                     className="p-4 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
                   >
                     {/* Line 1: Milestone name (left) + Progress bar (right) */}
@@ -2516,7 +2589,7 @@ const PMProjectViewEnhanced = () => {
                       <div className="flex items-center gap-2" style={{ width: '200px' }}>
                         <Target className="w-4 h-4 text-gray-400" />
                         <h3 className="text-sm font-medium text-gray-900 dark:text-white">
-                          {milestone.label}
+                          {milestoneType.label}
                         </h3>
                       </div>
                       
@@ -2535,17 +2608,17 @@ const PMProjectViewEnhanced = () => {
                         <span>Target Date</span>
                         <input
                           type="date"
-                          value={milestone.target_date || ''}
+                          value={milestone?.target_date || ''}
                           onChange={async (e) => {
                             try {
-                              await milestoneService.updateMilestoneDate(projectId, milestone.milestone_type, e.target.value, undefined);
+                              await milestoneService.updateMilestoneDate(projectId, milestoneType.type, e.target.value, undefined);
                               loadProjectMilestones();
                             } catch (error) {
                               console.error('Failed to update target date:', error);
                               alert(`Failed to update target date: ${error?.message || 'Unknown error'}`);
                             }
                           }}
-                          disabled={milestone.is_auto_calculated}
+                          disabled={milestone?.is_auto_calculated}
                           className="px-2 py-0.5 text-xs border border-gray-300 dark:border-gray-600 rounded 
                                    bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                    disabled:opacity-50 disabled:cursor-not-allowed
@@ -2557,10 +2630,10 @@ const PMProjectViewEnhanced = () => {
                         <span>Actual Date</span>
                         <input
                           type="date"
-                          value={milestone.actual_date || ''}
+                          value={milestone?.actual_date || ''}
                           onChange={async (e) => {
                             try {
-                              await milestoneService.updateMilestoneDate(projectId, milestone.milestone_type, undefined, e.target.value);
+                              await milestoneService.updateMilestoneDate(projectId, milestoneType.type, undefined, e.target.value);
                               loadProjectMilestones();
                             } catch (error) {
                               console.error('Failed to update actual date:', error);

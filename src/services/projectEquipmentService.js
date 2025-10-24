@@ -606,9 +606,7 @@ export const projectEquipmentService = {
           model,
           is_wire_drop_visible,
           is_inventory_item,
-          required_for_prewire,
-          resource_links,
-          attributes
+          required_for_prewire
         )
       `)
       .eq('project_id', projectId)
@@ -632,9 +630,7 @@ export const projectEquipmentService = {
           model,
           is_wire_drop_visible,
           is_inventory_item,
-          required_for_prewire,
-          resource_links,
-          attributes
+          required_for_prewire
         )
       `)
       .eq('project_id', projectId)
