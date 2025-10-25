@@ -4,6 +4,7 @@ import Button from './ui/Button';
 import Modal from './ui/Modal';
 import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
 import { supabase } from '../lib/supabase';
+import { partsService } from '../services/partsService';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 
@@ -91,7 +92,11 @@ const GlobalPartsManager = () => {
 
   const handleSaveDocumentation = (updatedPart) => {
     setParts((prev) =>
-      prev.map((p) => (p.id === updatedPart.id ? updatedPart : p))
+      prev.map((p) => 
+        p.id === updatedPart.id 
+          ? { ...p, ...updatedPart } // Merge instead of replace to preserve any recent changes
+          : p
+      )
     );
     setShowEditor(false);
     setSelectedPart(null);
@@ -104,19 +109,30 @@ const GlobalPartsManager = () => {
 
   const handleTogglePrewire = async (part, newValue) => {
     try {
-      const { error } = await supabase
-        .from('global_parts')
-        .update({ required_for_prewire: newValue })
-        .eq('id', part.id);
+      // Use RPC function to bypass RLS issues
+      const { data, error } = await supabase.rpc('update_part_prewire_status', {
+        p_part_id: part.id,
+        p_required_for_prewire: newValue
+      });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Failed to update prewire status:', error);
+        throw error;
+      }
 
-      // Update local state
+      // Update local state with the value from RPC
+      const updatedValue = data?.required_for_prewire ?? newValue;
+
       setParts(prev =>
         prev.map(p =>
-          p.id === part.id ? { ...p, required_for_prewire: newValue } : p
+          p.id === part.id ? { ...p, required_for_prewire: updatedValue } : p
         )
       );
+
+      // Update selected part if it's currently open in editor
+      if (selectedPart && selectedPart.id === part.id) {
+        setSelectedPart(prev => ({ ...prev, required_for_prewire: updatedValue }));
+      }
     } catch (err) {
       console.error('Failed to update prewire status:', err);
       alert('Failed to update prewire status: ' + err.message);

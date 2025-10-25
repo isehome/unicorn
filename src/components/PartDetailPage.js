@@ -60,8 +60,9 @@ const PartDetailPage = () => {
         is_wire_drop_visible: part.is_wire_drop_visible !== false,
         is_inventory_item: part.is_inventory_item !== false,
         required_for_prewire: part.required_for_prewire === true,
-        attributes: part.attributes || {},
-        resource_links: Array.isArray(part.resource_links) ? part.resource_links : [],
+        schematic_url: part.schematic_url || '',
+        install_manual_urls: Array.isArray(part.install_manual_urls) ? part.install_manual_urls : [],
+        technical_manual_urls: Array.isArray(part.technical_manual_urls) ? part.technical_manual_urls : [],
       });
     }
   }, [part]);
@@ -85,8 +86,9 @@ const PartDetailPage = () => {
         is_wire_drop_visible: updated.is_wire_drop_visible !== false,
         is_inventory_item: updated.is_inventory_item !== false,
         required_for_prewire: updated.required_for_prewire === true,
-        attributes: updated.attributes || {},
-        resource_links: Array.isArray(updated.resource_links) ? updated.resource_links : [],
+        schematic_url: updated.schematic_url || '',
+        install_manual_urls: Array.isArray(updated.install_manual_urls) ? updated.install_manual_urls : [],
+        technical_manual_urls: Array.isArray(updated.technical_manual_urls) ? updated.technical_manual_urls : [],
       });
     },
     onError: (mutationError) => {
@@ -158,6 +160,29 @@ const PartDetailPage = () => {
     });
   };
 
+  const handleUrlArrayChange = (field, index, value) => {
+    setFormState((prev) => {
+      const urls = [...(prev[field] || [])];
+      urls[index] = value;
+      return { ...prev, [field]: urls };
+    });
+  };
+
+  const handleAddUrl = (field) => {
+    setFormState((prev) => ({
+      ...prev,
+      [field]: [...(prev[field] || []), ''],
+    }));
+  };
+
+  const handleRemoveUrl = (field, index) => {
+    setFormState((prev) => {
+      const urls = [...(prev[field] || [])];
+      urls.splice(index, 1);
+      return { ...prev, [field]: urls };
+    });
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!formState.part_number.trim()) {
@@ -166,7 +191,11 @@ const PartDetailPage = () => {
     }
 
     setFormError('');
-    updateMutation.mutate(formState);
+    
+    // Create a copy of the form state and remove the obsolete JSON fields
+    const { attributes, resource_links, ...updates } = formState;
+    
+    updateMutation.mutate(updates);
   };
 
   if (isLoading || !formState) {
@@ -359,102 +388,87 @@ const PartDetailPage = () => {
         </div>
 
         <div className={styles.card + ' p-6 space-y-4'}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className={styles.sectionTitle}>Resource Links</p>
-              <p className={styles.textSecondary}>
-                Manuals, wiring diagrams, videos, or other technician references.
-              </p>
+          <p className={styles.sectionTitle}>Documentation</p>
+          <p className={styles.textSecondary}>
+            Links to schematic, installation, and technical manuals.
+          </p>
+
+          <label className={styles.label}>
+            Schematic URL
+            <input
+              type="url"
+              value={formState.schematic_url || ''}
+              onChange={(event) => handleFieldChange('schematic_url', event.target.value)}
+              className={styles.input}
+              placeholder="https://"
+            />
+          </label>
+
+          <div>
+            <label className={styles.label}>Installation Manual URLs</label>
+            <div className="space-y-2 mt-1">
+              {(formState.install_manual_urls || []).map((url, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(event) => handleUrlArrayChange('install_manual_urls', index, event.target.value)}
+                    className={styles.input}
+                    placeholder="https://"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => handleRemoveUrl('install_manual_urls', index)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
             </div>
             <Button
               type="button"
               variant="secondary"
               icon={Plus}
-              onClick={handleAddResource}
+              onClick={() => handleAddUrl('install_manual_urls')}
+              className="mt-2"
             >
-              Add Link
+              Add Install Manual
             </Button>
           </div>
 
-          {(formState.resource_links || []).length === 0 ? (
-            <div className="px-4 py-6 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg text-center text-sm text-gray-500 dark:text-gray-400">
-              No resource links added yet.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {(formState.resource_links || []).map((link, index) => (
-                <div
-                  key={link.id || index}
-                  className="grid md:grid-cols-[1fr_1fr_auto] gap-3 items-start p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/60"
-                >
-                  <label className={styles.label}>
-                    Label
-                    <input
-                      type="text"
-                      value={link.label || ''}
-                      onChange={(event) => handleResourceChange(index, 'label', event.target.value)}
-                      className={styles.input}
-                      placeholder="e.g., Install schematic"
-                    />
-                  </label>
-                  <label className={styles.label}>
-                    URL
-                    <input
-                      type="url"
-                      value={link.url || ''}
-                      onChange={(event) => handleResourceChange(index, 'url', event.target.value)}
-                      className={styles.input}
-                      placeholder="https://"
-                    />
-                  </label>
-                  <div className="flex items-end gap-2">
-                    <label className={styles.label + ' flex-1'}>
-                      Type
-                      <select
-                        value={link.type || 'link'}
-                        onChange={(event) => handleResourceChange(index, 'type', event.target.value)}
-                        className={styles.input}
-                      >
-                        {RESOURCE_TYPES.map((type) => (
-                          <option key={type.value} value={type.value}>
-                            {type.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => handleRemoveResource(index)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
+          <div>
+            <label className={styles.label}>Technical Manual URLs</label>
+            <div className="space-y-2 mt-1">
+              {(formState.technical_manual_urls || []).map((url, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(event) => handleUrlArrayChange('technical_manual_urls', index, event.target.value)}
+                    className={styles.input}
+                    placeholder="https://"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => handleRemoveUrl('technical_manual_urls', index)}
+                  >
+                    Remove
+                  </Button>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-
-        <div className={styles.card + ' p-6 space-y-3'}>
-          <p className={styles.sectionTitle}>Custom Attributes</p>
-          <p className={styles.textSecondary}>
-            Store arbitrary JSON metadata to enrich this part (specifications, ordering codes, etc.).
-          </p>
-          <textarea
-            rows={6}
-            value={JSON.stringify(formState.attributes || {}, null, 2)}
-            onChange={(event) => {
-              try {
-                const parsed = JSON.parse(event.target.value || '{}');
-                setFormState((prev) => ({ ...prev, attributes: parsed }));
-                setFormError('');
-              } catch (jsonError) {
-                setFormError('Attributes must be valid JSON.');
-              }
-            }}
-            className={styles.textArea + ' font-mono text-xs'}
-          />
+            <Button
+              type="button"
+              variant="secondary"
+              icon={Plus}
+              onClick={() => handleAddUrl('technical_manual_urls')}
+              className="mt-2"
+            >
+              Add Technical Manual
+            </Button>
+          </div>
         </div>
 
         {formError && (
@@ -497,28 +511,6 @@ const PartDetailPage = () => {
           </div>
         </div>
       </form>
-
-      {part?.resource_links?.length > 0 && (
-        <div className="mt-8 space-y-3">
-          <p className={styles.sectionTitle}>Quick Links</p>
-          <div className="flex flex-wrap gap-3">
-            {part.resource_links
-              .filter((link) => link?.url)
-              .map((link) => (
-                <a
-                  key={link.id || link.url}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-violet-500 text-violet-500 hover:bg-violet-500/10 transition"
-                >
-                  {link.type === 'manual' ? <FileText className="w-4 h-4" /> : <LinkIcon className="w-4 h-4" />}
-                  {link.label || 'Resource'}
-                </a>
-              ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

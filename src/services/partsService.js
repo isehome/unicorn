@@ -29,24 +29,7 @@ export const partsService = {
 
     let query = supabase
       .from('global_parts')
-      .select(`
-        id,
-        part_number,
-        name,
-        description,
-        manufacturer,
-        model,
-        category,
-        unit_of_measure,
-        quantity_on_hand,
-        quantity_reserved,
-        is_wire_drop_visible,
-        is_inventory_item,
-        required_for_prewire,
-        schematic_url,
-        install_manual_urls,
-        technical_manual_urls
-      `)
+      .select('*')
       .order('part_number', { ascending: true });
 
     if (search) {
@@ -77,24 +60,7 @@ export const partsService = {
 
     const { data, error } = await supabase
       .from('global_parts')
-      .select(`
-        id,
-        part_number,
-        name,
-        description,
-        manufacturer,
-        model,
-        category,
-        unit_of_measure,
-        quantity_on_hand,
-        quantity_reserved,
-        is_wire_drop_visible,
-        is_inventory_item,
-        required_for_prewire,
-        schematic_url,
-        install_manual_urls,
-        technical_manual_urls
-      `)
+      .select('*')
       .eq('id', id)
       .single();
 
@@ -132,24 +98,7 @@ export const partsService = {
     const { data, error } = await supabase
       .from('global_parts')
       .insert([dataToInsert])
-      .select(`
-        id,
-        part_number,
-        name,
-        description,
-        manufacturer,
-        model,
-        category,
-        unit_of_measure,
-        quantity_on_hand,
-        quantity_reserved,
-        is_wire_drop_visible,
-        is_inventory_item,
-        required_for_prewire,
-        schematic_url,
-        install_manual_urls,
-        technical_manual_urls
-      `)
+      .select('*')
       .single();
 
     if (error) {
@@ -164,55 +113,54 @@ export const partsService = {
     if (!supabase) throw new Error('Supabase not configured');
     if (!id) throw new Error('Part ID is required');
 
+    // Create a clean payload, ensuring no obsolete or generated fields are sent.
     const payload = { ...updates };
-
-    if (payload.part_number) payload.part_number = payload.part_number.trim();
-    if (payload.name !== undefined) payload.name = payload.name?.trim() || null;
-    if (payload.description !== undefined) payload.description = payload.description?.trim() || null;
-    if (payload.manufacturer !== undefined) payload.manufacturer = payload.manufacturer?.trim() || null;
-    if (payload.model !== undefined) payload.model = payload.model?.trim() || null;
-    if (payload.category !== undefined) payload.category = payload.category?.trim() || null;
-    if (payload.unit_of_measure !== undefined) payload.unit_of_measure = payload.unit_of_measure?.trim() || 'ea';
-    if (payload.quantity_on_hand !== undefined) payload.quantity_on_hand = Number(payload.quantity_on_hand) || 0;
-    if (payload.quantity_reserved !== undefined) payload.quantity_reserved = Number(payload.quantity_reserved) || 0;
-    if (payload.is_wire_drop_visible !== undefined) payload.is_wire_drop_visible = Boolean(payload.is_wire_drop_visible);
-    if (payload.is_inventory_item !== undefined) payload.is_inventory_item = Boolean(payload.is_inventory_item);
-    if (payload.required_for_prewire !== undefined) payload.required_for_prewire = Boolean(payload.required_for_prewire);
-
-    // Remove JSON fields entirely - they cause serialization issues
+    delete payload.id;
+    delete payload.created_at;
+    delete payload.updated_at;
+    delete payload.quantity_available;
     delete payload.resource_links;
     delete payload.attributes;
 
-    const { data, error } = await supabase
-      .from('global_parts')
-      .update(payload)
-      .eq('id', id)
-      .select(`
-        id,
-        part_number,
-        name,
-        description,
-        manufacturer,
-        model,
-        category,
-        unit_of_measure,
-        quantity_on_hand,
-        quantity_reserved,
-        is_wire_drop_visible,
-        is_inventory_item,
-        required_for_prewire,
-        schematic_url,
-        install_manual_urls,
-        technical_manual_urls
-      `)
-      .single();
-
-    if (error) {
-      console.error('Failed to update part:', error);
-      throw new Error(error.message || 'Failed to update part');
+    // Explicitly handle boolean fields to ensure `false` is saved correctly.
+    if (payload.is_wire_drop_visible !== undefined) {
+      payload.is_wire_drop_visible = Boolean(payload.is_wire_drop_visible);
+    }
+    if (payload.is_inventory_item !== undefined) {
+      payload.is_inventory_item = Boolean(payload.is_inventory_item);
+    }
+    if (payload.required_for_prewire !== undefined) {
+      payload.required_for_prewire = Boolean(payload.required_for_prewire);
     }
 
-    return data;
+    // Use comprehensive RPC function to bypass RLS for all updates
+    const rpcParams = {
+      p_part_id: id,
+      p_part_number: payload.part_number,
+      p_name: payload.name,
+      p_description: payload.description,
+      p_manufacturer: payload.manufacturer,
+      p_model: payload.model,
+      p_category: payload.category,
+      p_unit_of_measure: payload.unit_of_measure,
+      p_quantity_on_hand: payload.quantity_on_hand,
+      p_quantity_reserved: payload.quantity_reserved,
+      p_is_wire_drop_visible: payload.is_wire_drop_visible,
+      p_is_inventory_item: payload.is_inventory_item,
+      p_required_for_prewire: payload.required_for_prewire,
+      p_schematic_url: payload.schematic_url,
+      p_install_manual_urls: payload.install_manual_urls,
+      p_technical_manual_urls: payload.technical_manual_urls,
+    };
+
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('update_global_part', rpcParams);
+
+    if (rpcError) {
+      console.error('Failed to update part:', rpcError);
+      throw new Error(rpcError.message || 'Failed to update part');
+    }
+
+    return rpcResult;
   },
 
   async remove(id) {
