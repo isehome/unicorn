@@ -739,9 +739,18 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                                <button
+                                  onClick={() => {
+                                    // Copy to clipboard
+                                    navigator.clipboard.writeText(t.tracking_number);
+                                    // Open Google search in new tab
+                                    window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
+                                  }}
+                                  className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                  title="Click to copy and search tracking number"
+                                >
                                   {t.tracking_number}
-                                </span>
+                                </button>
                                 <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
                                   {t.carrier}
                                 </span>
