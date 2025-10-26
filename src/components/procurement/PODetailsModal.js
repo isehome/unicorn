@@ -33,6 +33,7 @@ import {
  * - Delete draft POs only
  * - Download PDF/CSV
  * - Auto-upload to SharePoint under Procurement/{Vendor}/
+ * - Add tracking numbers manually
  */
 const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const { mode } = useTheme();
