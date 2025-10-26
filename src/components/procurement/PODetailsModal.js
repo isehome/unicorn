@@ -507,83 +507,88 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         )}
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
-          <div className="flex gap-2">
-            {po && po.status === 'draft' && (
-              <>
-                {!isEditing ? (
-                  <Button
-                    variant="secondary"
-                    icon={Edit3}
-                    onClick={() => setIsEditing(true)}
-                  >
-                    Edit
-                  </Button>
-                ) : (
-                  <>
-                    <Button
-                      variant="primary"
-                      icon={Save}
-                      onClick={handleSave}
-                      disabled={saving}
-                    >
-                      {saving ? 'Saving...' : 'Save Changes'}
-                    </Button>
+        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
+          {/* Mobile: Stack vertically, Desktop: Two columns */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            {/* Left side: Edit/Delete buttons */}
+            <div className="flex flex-wrap gap-2">
+              {po && po.status === 'draft' && (
+                <>
+                  {!isEditing ? (
                     <Button
                       variant="secondary"
-                      onClick={() => {
-                        setIsEditing(false);
-                        setEditData({
-                          order_date: po.order_date,
-                          requested_delivery_date: po.requested_delivery_date,
-                          tax_amount: po.tax_amount || 0,
-                          shipping_cost: po.shipping_cost || 0,
-                          internal_notes: po.internal_notes || '',
-                          supplier_notes: po.supplier_notes || ''
-                        });
-                      }}
+                      icon={Edit3}
+                      onClick={() => setIsEditing(true)}
                     >
-                      Cancel
+                      Edit
                     </Button>
-                  </>
-                )}
-                <Button
-                  variant="danger"
-                  icon={Trash2}
-                  onClick={handleDelete}
-                  disabled={loading}
-                >
-                  Delete
-                </Button>
-              </>
-            )}
-          </div>
+                  ) : (
+                    <>
+                      <Button
+                        variant="primary"
+                        icon={Save}
+                        onClick={handleSave}
+                        disabled={saving}
+                      >
+                        {saving ? 'Saving...' : 'Save Changes'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setIsEditing(false);
+                          setEditData({
+                            order_date: po.order_date,
+                            requested_delivery_date: po.requested_delivery_date,
+                            tax_amount: po.tax_amount || 0,
+                            shipping_cost: po.shipping_cost || 0,
+                            internal_notes: po.internal_notes || '',
+                            supplier_notes: po.supplier_notes || ''
+                          });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    variant="danger"
+                    icon={Trash2}
+                    onClick={handleDelete}
+                    disabled={loading}
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
 
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              icon={Download}
-              onClick={handleDownloadPDF}
-              disabled={exporting}
-            >
-              {exporting ? 'Generating...' : 'Download PDF'}
-            </Button>
-            <Button
-              variant="secondary"
-              icon={FileText}
-              onClick={handleDownloadCSV}
-              disabled={exporting}
-            >
-              Download CSV
-            </Button>
-            <Button
-              variant="primary"
-              icon={Upload}
-              onClick={handleUploadToSharePoint}
-              disabled={uploading}
-            >
-              {uploading ? 'Uploading...' : 'Upload to SharePoint'}
-            </Button>
+            {/* Right side: Download/Upload buttons */}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                icon={Download}
+                onClick={handleDownloadPDF}
+                disabled={exporting}
+              >
+                {exporting ? 'Generating...' : 'PDF'}
+              </Button>
+              <Button
+                variant="secondary"
+                icon={FileText}
+                onClick={handleDownloadCSV}
+                disabled={exporting}
+              >
+                CSV
+              </Button>
+              <Button
+                variant="primary"
+                icon={Upload}
+                onClick={handleUploadToSharePoint}
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading...' : 'SharePoint'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
