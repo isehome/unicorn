@@ -196,8 +196,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
       const exportData = await purchaseOrderService.exportPOData(poId);
 
-      // Get project SharePoint URL
-      const projectUrl = await sharePointStorageService.getProjectSharePointUrl(po.project_id);
+      // Get project procurement SharePoint URL
+      const projectUrl = await sharePointStorageService.getProjectProcurementUrl(po.project_id);
 
       if (!projectUrl) {
         throw new Error('No SharePoint URL configured for this project');

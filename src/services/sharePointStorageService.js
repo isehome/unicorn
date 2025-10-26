@@ -171,19 +171,49 @@ class SharePointStorageService {
         .select('one_drive_photos')
         .eq('id', projectId)
         .single();
-      
+
       if (error) throw error;
       if (!project) throw new Error('Project not found');
-      
+
       const sharePointUrl = project.one_drive_photos;
-      
+
       if (!sharePointUrl || sharePointUrl.trim() === '') {
         throw new Error('SharePoint folder not configured for this project. Please contact your administrator.');
       }
-      
+
       return sharePointUrl;
     } catch (error) {
       console.error('Failed to get project SharePoint URL:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get project's Procurement SharePoint URL
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<string>} SharePoint URL for procurement documents
+   */
+  async getProjectProcurementUrl(projectId) {
+    try {
+      const { data: project, error } = await supabase
+        .from('projects')
+        .select('one_drive_procurement, one_drive_photos')
+        .eq('id', projectId)
+        .single();
+
+      if (error) throw error;
+      if (!project) throw new Error('Project not found');
+
+      // Use procurement-specific URL if available, fallback to photos URL
+      const sharePointUrl = project.one_drive_procurement || project.one_drive_photos;
+
+      if (!sharePointUrl || sharePointUrl.trim() === '') {
+        throw new Error('SharePoint folder not configured for this project. Please contact your administrator.');
+      }
+
+      return sharePointUrl;
+    } catch (error) {
+      console.error('Failed to get project procurement SharePoint URL:', error);
       throw error;
     }
   }

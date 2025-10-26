@@ -179,8 +179,8 @@ const POGenerationModal = ({
       try {
         const exportData = await purchaseOrderService.exportPOData(result.po.id);
 
-        // Get project SharePoint URL
-        const projectUrl = await sharePointStorageService.getProjectSharePointUrl(projectId);
+        // Get project procurement SharePoint URL
+        const projectUrl = await sharePointStorageService.getProjectProcurementUrl(projectId);
 
         if (projectUrl) {
           // Generate PDF and CSV
