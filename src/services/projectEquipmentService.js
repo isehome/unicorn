@@ -144,6 +144,9 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
   const equipmentRecords = [];
   const laborMap = new Map();
 
+  // Track instance numbers per room/part combination
+  const instanceCounters = new Map();
+
   rows.forEach((row) => {
     const itemTypeRaw = normalizeString(row.ItemType);
     if (!itemTypeRaw) return;
@@ -207,27 +210,52 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
             ? 'labor'
             : 'part';
 
-    equipmentRecords.push({
-      project_id: projectId,
-      catalog_id: null,
-      name: finalName,
-      description: description || null,
-      manufacturer: manufacturer || null,
-      model: model || null,
-      part_number: partNumber || null,
-      room_id: room?.id || null,
-      install_side: installSide,
-      equipment_type: equipmentType,
-      planned_quantity: areaQty,
-      unit_of_measure: 'ea',
-      unit_cost: toNumber(row.Cost),
-      unit_price: toNumber(row.SellPrice),
-      supplier: supplier || null,
-      csv_batch_id: batchId,
-      notes: null,
-      is_active: true,
-      created_by: null
-    });
+    // Generate parent group ID for all instances from this CSV line
+    const parentGroupId = crypto.randomUUID();
+
+    // Log instance creation for quantities > 1
+    if (areaQty > 1) {
+      console.log(`[Instance Splitting] Creating ${areaQty} instances for: ${finalName} in ${roomName}`);
+    }
+
+    // Create individual instances based on quantity
+    // Each instance is a separate trackable piece of equipment
+    for (let i = 1; i <= areaQty; i++) {
+      // Track instance number per room/part combination
+      const instanceKey = `${normalizeRoomKey(roomName)}|${partNumber || finalName}`;
+      const currentCount = instanceCounters.get(instanceKey) || 0;
+      const instanceNumber = currentCount + 1;
+      instanceCounters.set(instanceKey, instanceNumber);
+
+      // Generate instance name: "Room Name - Part Name N"
+      const instanceName = `${roomName} - ${finalName} ${instanceNumber}`;
+
+      equipmentRecords.push({
+        project_id: projectId,
+        catalog_id: null,
+        name: instanceName,  // Use instance name as display name
+        instance_number: instanceNumber,
+        instance_name: instanceName,
+        parent_import_group: parentGroupId,
+        description: description || null,
+        manufacturer: manufacturer || null,
+        model: model || null,
+        part_number: partNumber || null,
+        room_id: room?.id || null,
+        install_side: installSide,
+        equipment_type: equipmentType,
+        planned_quantity: 1,  // Always 1 per instance
+        unit_of_measure: 'ea',
+        unit_cost: toNumber(row.Cost),
+        unit_price: toNumber(row.SellPrice),
+        supplier: supplier || null,
+        csv_batch_id: batchId,
+        metadata: {},  // Empty JSONB for flexible data
+        notes: null,
+        is_active: true,
+        created_by: null
+      });
+    }
   });
 
   return {
@@ -423,7 +451,13 @@ const restoreWireDropLinks = async (preservedLinks, newEquipment) => {
       (item.name || '').toLowerCase().trim()
     ].join('|');
 
-    equipmentMap.set(key, item);
+    // Only store instance #1 for each unique part (for wire drop linking)
+    // If no instance_number (old data), treat as instance 1
+    const instanceNum = item.instance_number || 1;
+
+    if (!equipmentMap.has(key) || instanceNum === 1) {
+      equipmentMap.set(key, item);
+    }
   });
 
   console.log(`[Wire Drop Restoration] Created lookup map with ${equipmentMap.size} equipment items`);
