@@ -79,15 +79,19 @@ const ScanTagPage = () => {
   }, [navigate]);
 
   const startFallbackScanner = useCallback(async () => {
-    if (!scannerContainerRef.current) {
-      throw new Error('Scanner container not available');
-    }
+    // Wait a bit for DOM to be ready
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    const html5QrCode = new Html5Qrcode("qr-reader");
-    html5QrCodeRef.current = html5QrCode;
+    const element = document.getElementById("qr-reader");
+    if (!element) {
+      throw new Error('Scanner container element not found in DOM');
+    }
 
     setStatusMessage('Initializing camera…');
     setScanning(false);
+
+    const html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCodeRef.current = html5QrCode;
 
     const onScanSuccess = async (decodedText) => {
       console.log('QR code scanned:', decodedText);
@@ -150,13 +154,18 @@ const ScanTagPage = () => {
       // Use html5-qrcode as fallback for browsers without BarcodeDetector (like iOS Safari)
       console.log('BarcodeDetector not available, using html5-qrcode fallback');
       setUseFallbackScanner(true);
+      setStatusMessage('Initializing fallback scanner…');
+
       try {
         await startFallbackScanner();
+        return;
       } catch (err) {
-        setScannerError('QR scanning could not be initialized.');
+        console.error('html5-qrcode failed:', err);
+        setScannerError(`Scanner initialization failed: ${err.message || 'Unknown error'}`);
         setStatusMessage('Enter the tag UID manually to open a wire drop.');
+        setUseFallbackScanner(false); // Reset state so user can try native video if needed
+        return;
       }
-      return;
     }
 
     try {
