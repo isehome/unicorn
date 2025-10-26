@@ -141,11 +141,24 @@ const PMOrderEquipmentPageEnhanced = () => {
   };
 
   const handleOpenPOModal = (csvName, groupData) => {
+    // Filter out equipment that's already fully ordered
+    const unorderedEquipment = groupData.equipment.filter(item => {
+      const planned = item.planned_quantity || item.quantity || 0;
+      const ordered = item.ordered_quantity || 0;
+      return ordered < planned; // Only include if there's still quantity to order
+    });
+
+    if (unorderedEquipment.length === 0) {
+      setError('All items from this vendor have already been ordered');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
     setSelectedVendorForPO({
       csvName,
       supplierId: groupData.supplier?.id,
       supplierName: groupData.supplier?.name || csvName,
-      equipment: groupData.equipment,
+      equipment: unorderedEquipment,
       milestoneStage: getMilestoneStage(tab)
     });
     setPoModalOpen(true);
@@ -443,11 +456,19 @@ const PMOrderEquipmentPageEnhanced = () => {
           const isExpanded = expandedVendors[csvName];
           const supplierName = groupData.supplier?.name || csvName;
 
+          // Check if all items from this vendor are already fully ordered
+          const unorderedItems = groupData.equipment.filter(item => {
+            const planned = item.planned_quantity || item.quantity || 0;
+            const ordered = item.ordered_quantity || 0;
+            return ordered < planned;
+          });
+          const allOrdered = unorderedItems.length === 0;
+
           return (
             <div
               key={csvName}
               style={sectionStyles.card}
-              className="border-l-4 border-violet-500"
+              className={`border-l-4 ${allOrdered ? 'border-green-500 opacity-60' : 'border-violet-500'}`}
             >
               {/* Vendor Header */}
               <div
@@ -455,18 +476,32 @@ const PMOrderEquipmentPageEnhanced = () => {
                 onClick={() => toggleVendorExpansion(csvName)}
               >
                 <div className="flex items-center gap-3 flex-1">
-                  <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
-                    <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                  <div className={`p-2 rounded-lg ${allOrdered ? 'bg-green-100 dark:bg-green-900/30' : 'bg-violet-100 dark:bg-violet-900/30'}`}>
+                    {allOrdered ? (
+                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-gray-900 dark:text-white">
                         {supplierName}
                       </h3>
+                      {allOrdered && (
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                          All Ordered
+                        </span>
+                      )}
                       {getMatchBadge(groupData)}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mt-1">
                       <span>{groupData.equipment.length} items</span>
+                      {!allOrdered && unorderedItems.length < groupData.equipment.length && (
+                        <span className="text-yellow-600 dark:text-yellow-400">
+                          ({unorderedItems.length} remaining)
+                        </span>
+                      )}
                       <span className="font-medium text-gray-900 dark:text-white">
                         ${groupData.totalCost.toFixed(2)}
                       </span>
@@ -477,6 +512,10 @@ const PMOrderEquipmentPageEnhanced = () => {
                   {!groupData.supplier?.id ? (
                     <div className="text-xs text-yellow-600 dark:text-yellow-400">
                       Supplier must be created first
+                    </div>
+                  ) : allOrdered ? (
+                    <div className="text-xs text-green-600 dark:text-green-400 font-medium">
+                      All items ordered
                     </div>
                   ) : (
                     <Button
