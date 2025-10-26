@@ -212,11 +212,8 @@ class POGeneratorService {
         po_id: newPO.id,
         project_equipment_id: item.id,
         line_number: index + 1,
-        part_number: item.part_number || '',
-        description: item.description || '',
         quantity_ordered: item.quantity || 0,
         unit_cost: item.unit_cost || 0,
-        line_total: (item.unit_cost || 0) * (item.quantity || 0),
         notes: item.notes || null
       }));
 
