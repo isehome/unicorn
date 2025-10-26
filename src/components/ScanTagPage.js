@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, AlertCircle, RefreshCw, QrCode, Keyboard } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
@@ -15,15 +16,18 @@ const ScanTagPage = () => {
   const streamRef = useRef(null);
   const detectorRef = useRef(null);
   const rafRef = useRef(null);
+  const html5QrCodeRef = useRef(null);
   const isMountedRef = useRef(true);
+  const scannerContainerRef = useRef(null);
 
   const [statusMessage, setStatusMessage] = useState('Initializing scanner…');
   const [scannerError, setScannerError] = useState(null);
   const [lookupMessage, setLookupMessage] = useState(null);
   const [manualUid, setManualUid] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [useFallbackScanner, setUseFallbackScanner] = useState(false);
 
-  const cleanupScanner = useCallback(() => {
+  const cleanupScanner = useCallback(async () => {
     detectorRef.current = null;
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -32,6 +36,17 @@ const ScanTagPage = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+    }
+    if (html5QrCodeRef.current) {
+      try {
+        const isScanning = html5QrCodeRef.current.getState() === 2; // 2 = SCANNING
+        if (isScanning) {
+          await html5QrCodeRef.current.stop();
+        }
+      } catch (err) {
+        console.warn('Error stopping html5-qrcode:', err);
+      }
+      html5QrCodeRef.current = null;
     }
   }, []);
 
@@ -63,6 +78,60 @@ const ScanTagPage = () => {
     });
   }, [navigate]);
 
+  const startFallbackScanner = useCallback(async () => {
+    if (!scannerContainerRef.current) {
+      throw new Error('Scanner container not available');
+    }
+
+    const html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCodeRef.current = html5QrCode;
+
+    setStatusMessage('Initializing camera…');
+    setScanning(false);
+
+    const onScanSuccess = async (decodedText) => {
+      console.log('QR code scanned:', decodedText);
+      await cleanupScanner();
+      setScanning(false);
+      setStatusMessage('Tag detected. Looking up wire drop…');
+
+      try {
+        const result = await lookupWireDrop(decodedText);
+        if (isMountedRef.current) {
+          handleLookupSuccess(result);
+        }
+      } catch (lookupErr) {
+        console.error('Wire drop lookup failed:', lookupErr);
+        if (isMountedRef.current) {
+          setLookupMessage(lookupErr.message || 'Could not open that wire drop.');
+          setStatusMessage('No match found. Try scanning again.');
+        }
+      }
+    };
+
+    const onScanFailure = (error) => {
+      // Ignore continuous scanning errors - they're expected when no QR code is visible
+    };
+
+    try {
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 }
+        },
+        onScanSuccess,
+        onScanFailure
+      );
+
+      setStatusMessage('Point the camera at the wire drop tag.');
+      setScanning(true);
+    } catch (err) {
+      console.error('html5-qrcode start failed:', err);
+      throw err;
+    }
+  }, [cleanupScanner, handleLookupSuccess, lookupWireDrop]);
+
   const startScanner = useCallback(async () => {
     setScannerError(null);
     setLookupMessage(null);
@@ -78,8 +147,15 @@ const ScanTagPage = () => {
     }
 
     if (!('BarcodeDetector' in window)) {
-      setScannerError('QR scanning is not supported in this browser.');
-      setStatusMessage('Enter the tag UID manually to open a wire drop.');
+      // Use html5-qrcode as fallback for browsers without BarcodeDetector (like iOS Safari)
+      console.log('BarcodeDetector not available, using html5-qrcode fallback');
+      setUseFallbackScanner(true);
+      try {
+        await startFallbackScanner();
+      } catch (err) {
+        setScannerError('QR scanning could not be initialized.');
+        setStatusMessage('Enter the tag UID manually to open a wire drop.');
+      }
       return;
     }
 
@@ -204,6 +280,8 @@ const ScanTagPage = () => {
                     <AlertCircle className="w-10 h-10 text-amber-500 mb-2" />
                     <p className="text-sm text-gray-100 dark:text-gray-200">{scannerError}</p>
                   </div>
+                ) : useFallbackScanner ? (
+                  <div ref={scannerContainerRef} id="qr-reader" className="w-full h-full"></div>
                 ) : (
                   <>
                     <video

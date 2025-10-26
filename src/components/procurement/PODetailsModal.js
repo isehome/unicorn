@@ -506,8 +506,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                 <Package className="w-5 h-5" />
                 Line Items ({po.items?.length || 0})
               </h3>
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
                   <thead className="bg-gray-50 dark:bg-gray-800/50">
                     <tr>
                       <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">#</th>
@@ -736,9 +736,9 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                       ) : (
                         /* View Mode */
                         <>
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex flex-wrap items-center gap-3 mb-2">
                                 <button
                                   onClick={() => {
                                     // Copy to clipboard
@@ -746,40 +746,40 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                                     // Open Google search in new tab
                                     window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
                                   }}
-                                  className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                  className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer min-h-[44px] flex items-center"
                                   title="Click to copy and search tracking number"
                                 >
                                   {t.tracking_number}
                                 </button>
-                                <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                                <span className="px-3 py-1.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md">
                                   {t.carrier}
                                 </span>
                                 {t.carrier_service && (
-                                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                                  <span className="text-xs text-gray-600 dark:text-gray-400 px-2 py-1">
                                     {t.carrier_service}
                                   </span>
                                 )}
                               </div>
                               {t.notes && (
-                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
                                   {t.notes}
                                 </p>
                               )}
                             </div>
-                            <div className="flex gap-1 ml-2">
+                            <div className="flex gap-2 sm:ml-3 flex-shrink-0">
                               <button
                                 onClick={() => handleEditTracking(t)}
-                                className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                className="p-2.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                                 title="Edit tracking"
                               >
-                                <Edit3 className="w-4 h-4" />
+                                <Edit3 className="w-5 h-5" />
                               </button>
                               <button
                                 onClick={() => handleDeleteTracking(t.id)}
-                                className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                className="p-2.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                                 title="Delete tracking"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-5 h-5" />
                               </button>
                             </div>
                           </div>

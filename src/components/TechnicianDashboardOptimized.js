@@ -70,7 +70,7 @@ const ProjectCard = memo(({
       onClick={handleCardClick}
       className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
     >
-      <div className="card-content flex gap-4">
+      <div className="card-content flex flex-col lg:flex-row gap-4">
         {/* Left side - Project info and buttons */}
         <div className="flex-1 min-w-0">
           <div className="mb-3">
@@ -89,29 +89,29 @@ const ProjectCard = memo(({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap gap-2 sm:gap-3" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={onLogIssue}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors"
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors min-h-[44px] min-w-[44px]"
             >
-              <FileWarning className="w-3 h-3 inline mr-1" />
+              <FileWarning className="w-4 h-4 inline mr-1.5" />
               Log Issue
             </button>
-            
+
             {isCheckedIn ? (
               <button
                 onClick={onCheckOut}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/30 transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/30 transition-colors min-h-[44px] min-w-[44px]"
               >
-                <LogOut className="w-3 h-3 inline mr-1" />
+                <LogOut className="w-4 h-4 inline mr-1.5" />
                 Check Out
               </button>
             ) : (
               <button
                 onClick={onCheckIn}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors"
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors min-h-[44px] min-w-[44px]"
               >
-                <LogIn className="w-3 h-3 inline mr-1" />
+                <LogIn className="w-4 h-4 inline mr-1.5" />
                 Check In
               </button>
             )}
@@ -119,7 +119,7 @@ const ProjectCard = memo(({
         </div>
 
         {/* Right side - Progress Gauges */}
-        <div className="flex flex-col justify-center space-y-1.5 w-52">
+        <div className="flex flex-col justify-center space-y-1.5 w-full lg:w-52">
           {milestonePercentages ? (
             <>
               <UnifiedProgressGauge 

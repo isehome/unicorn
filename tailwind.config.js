@@ -27,7 +27,11 @@ module.exports = {
     'text-emerald-400','text-purple-400','text-purple-600',
   ],
   theme: {
-    extend: {},
+    extend: {
+      screens: {
+        'xs': '375px',  // iPhone SE and small phones
+      },
+    },
   },
   plugins: [],
 }
