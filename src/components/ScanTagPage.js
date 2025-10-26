@@ -138,7 +138,7 @@ const ScanTagPage = () => {
     setStatusMessage('Initializing scanner…');
     setScanning(false);
 
-    cleanupScanner();
+    await cleanupScanner();
 
     if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
       setScannerError('Camera access is not supported in this browser.');
@@ -198,7 +198,7 @@ const ScanTagPage = () => {
         try {
           const codes = await detectorRef.current.detect(videoRef.current);
           if (codes && codes.length > 0) {
-            cleanupScanner();
+            await cleanupScanner();
             setScanning(false);
             setStatusMessage('Tag detected. Looking up wire drop…');
 
@@ -234,13 +234,14 @@ const ScanTagPage = () => {
           : 'Unable to access the camera.'
       );
       setStatusMessage('Enter the tag UID manually to open a wire drop.');
-      cleanupScanner();
+      await cleanupScanner();
     }
-  }, [cleanupScanner, handleLookupSuccess, lookupWireDrop]);
+  }, [cleanupScanner, handleLookupSuccess, lookupWireDrop, startFallbackScanner]);
 
   useEffect(() => {
     startScanner();
-  }, [startScanner]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
 
   const handleManualSubmit = useCallback(async (event) => {
     event.preventDefault();
@@ -248,7 +249,7 @@ const ScanTagPage = () => {
 
     try {
       const result = await lookupWireDrop(manualUid);
-      cleanupScanner();
+      await cleanupScanner();
       handleLookupSuccess(result);
     } catch (error) {
       setLookupMessage(error.message || 'Could not open that wire drop.');
