@@ -62,8 +62,8 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Prep percentage
-   * Based on equipment with required_for_prewire = true
-   * Formula: (ordered_quantity × 50% + received_quantity × 50%) / planned_quantity
+   * Binary threshold: 50% when ALL prewire items ordered, 50% when ALL received
+   * 0% = Not all items ordered | 50% = All ordered | 100% = All ordered AND received
    */
   async calculatePrewirePrepPercentage(projectId) {
     try {
@@ -89,18 +89,21 @@ class MilestoneService {
 
       if (prewireItems.length === 0) return 0;
 
-      // Calculate quantity-based percentages
+      // Calculate total quantities
       const totalPlanned = prewireItems.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
       const totalOrdered = prewireItems.reduce((sum, item) => sum + (item.ordered_quantity || 0), 0);
       const totalReceived = prewireItems.reduce((sum, item) => sum + (item.received_quantity || 0), 0);
 
       if (totalPlanned === 0) return 0;
 
-      // Ordered contributes 50%, Received contributes 50%
-      const orderedPercent = (totalOrdered / totalPlanned) * 50;
-      const receivedPercent = (totalReceived / totalPlanned) * 50;
+      // Binary threshold logic: ALL items must be ordered/received
+      // 50% when all items ordered, 50% when all items received
+      const allOrdered = totalOrdered >= totalPlanned;
+      const allReceived = totalReceived >= totalPlanned;
 
-      return Math.round(orderedPercent + receivedPercent);
+      if (allOrdered && allReceived) return 100;
+      if (allOrdered) return 50;
+      return 0;
     } catch (error) {
       console.error('Error calculating prewire prep percentage:', error);
       return 0;
@@ -148,8 +151,8 @@ class MilestoneService {
 
   /**
    * Calculate Trim Prep percentage
-   * Based on equipment with required_for_prewire = false/null
-   * Formula: (ordered_quantity × 50% + received_quantity × 50%) / planned_quantity
+   * Binary threshold: 50% when ALL trim items ordered, 50% when ALL received
+   * 0% = Not all items ordered | 50% = All ordered | 100% = All ordered AND received
    */
   async calculateTrimPrepPercentage(projectId) {
     try {
@@ -175,18 +178,21 @@ class MilestoneService {
 
       if (trimItems.length === 0) return 0;
 
-      // Calculate quantity-based percentages
+      // Calculate total quantities
       const totalPlanned = trimItems.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
       const totalOrdered = trimItems.reduce((sum, item) => sum + (item.ordered_quantity || 0), 0);
       const totalReceived = trimItems.reduce((sum, item) => sum + (item.received_quantity || 0), 0);
 
       if (totalPlanned === 0) return 0;
 
-      // Ordered contributes 50%, Received contributes 50%
-      const orderedPercent = (totalOrdered / totalPlanned) * 50;
-      const receivedPercent = (totalReceived / totalPlanned) * 50;
+      // Binary threshold logic: ALL items must be ordered/received
+      // 50% when all items ordered, 50% when all items received
+      const allOrdered = totalOrdered >= totalPlanned;
+      const allReceived = totalReceived >= totalPlanned;
 
-      return Math.round(orderedPercent + receivedPercent);
+      if (allOrdered && allReceived) return 100;
+      if (allOrdered) return 50;
+      return 0;
     } catch (error) {
       console.error('Error calculating trim prep percentage:', error);
       return 0;
