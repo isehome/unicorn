@@ -219,6 +219,23 @@ class SharePointStorageService {
   }
 
   /**
+   * Clean SharePoint URL by removing query parameters
+   * @param {string} url - SharePoint URL
+   * @returns {string} Cleaned URL
+   */
+  cleanSharePointUrl(url) {
+    try {
+      // Remove query parameters (everything after ?)
+      const cleanUrl = url.split('?')[0];
+      console.log('Cleaned SharePoint URL:', { original: url, cleaned: cleanUrl });
+      return cleanUrl;
+    } catch (error) {
+      console.warn('Failed to clean SharePoint URL:', error);
+      return url;
+    }
+  }
+
+  /**
    * Upload file to SharePoint with retry logic
    * @param {string} rootUrl - SharePoint root URL
    * @param {string} subPath - Subfolder path
@@ -228,6 +245,9 @@ class SharePointStorageService {
    */
   async uploadToSharePoint(rootUrl, subPath, filename, file) {
     let lastError;
+
+    // Clean the root URL to remove query parameters
+    const cleanedRootUrl = this.cleanSharePointUrl(rootUrl);
     
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -236,21 +256,22 @@ class SharePointStorageService {
 
         // Debug logging
         console.log('SharePoint upload attempt', attempt, {
-          rootUrl,
+          originalRootUrl: rootUrl,
+          cleanedRootUrl,
           subPath,
           filename,
           fileSize: file.size,
           contentType: file.type || 'application/octet-stream'
         });
 
-        // Call the graph-upload API
+        // Call the graph-upload API with cleaned URL
         const response = await fetch('/api/graph-upload', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            rootUrl,
+            rootUrl: cleanedRootUrl,
             subPath,
             filename,
             fileBase64,
