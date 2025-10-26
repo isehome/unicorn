@@ -562,10 +562,10 @@ const PMOrderEquipmentPageEnhanced = () => {
                       </div>
                       <div className="flex items-center gap-4 text-sm">
                         <span className="text-gray-600 dark:text-gray-400">
-                          Qty: {item.quantity || 0}
+                          Qty: {item.planned_quantity || item.quantity || 0}
                         </span>
                         <span className="font-medium text-gray-900 dark:text-white">
-                          ${((item.quantity || 0) * (item.unit_cost || 0)).toFixed(2)}
+                          ${((item.planned_quantity || item.quantity || 0) * (item.unit_cost || 0)).toFixed(2)}
                         </span>
                       </div>
                     </div>
