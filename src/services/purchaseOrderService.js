@@ -398,7 +398,7 @@ class PurchaseOrderService {
       // Check if PO is draft
       const { data: po, error: checkError } = await supabase
         .from('purchase_orders')
-        .select('status')
+        .select('status, items:purchase_order_items(project_equipment_id, quantity_ordered)')
         .eq('id', poId)
         .single();
 
@@ -406,6 +406,40 @@ class PurchaseOrderService {
 
       if (po.status !== 'draft') {
         throw new Error('Only draft POs can be deleted');
+      }
+
+      // Reset ordered_quantity on all equipment items
+      if (po.items && po.items.length > 0) {
+        const equipmentIds = po.items.map(item => item.project_equipment_id);
+
+        // Get current ordered quantities for each equipment item
+        const { data: equipment, error: equipError } = await supabase
+          .from('project_equipment')
+          .select('id, ordered_quantity')
+          .in('id', equipmentIds);
+
+        if (equipError) throw equipError;
+
+        // Reduce ordered_quantity by the amount in this PO
+        const updates = equipment.map(eq => {
+          const poItem = po.items.find(item => item.project_equipment_id === eq.id);
+          const newOrderedQty = Math.max(0, (eq.ordered_quantity || 0) - (poItem?.quantity_ordered || 0));
+
+          return {
+            id: eq.id,
+            ordered_quantity: newOrderedQty
+          };
+        });
+
+        // Update all equipment items
+        for (const update of updates) {
+          const { error: updateError } = await supabase
+            .from('project_equipment')
+            .update({ ordered_quantity: update.ordered_quantity })
+            .eq('id', update.id);
+
+          if (updateError) throw updateError;
+        }
       }
 
       // Delete PO (items will cascade delete)
