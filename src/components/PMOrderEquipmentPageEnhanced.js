@@ -135,10 +135,12 @@ const PMOrderEquipmentPageEnhanced = () => {
       const posWithTracking = await Promise.all(
         (pos || []).map(async (po) => {
           const tracking = await trackingService.getPOTracking(po.id);
+          console.log(`PO ${po.po_number} has ${tracking.length} tracking numbers:`, tracking);
           return { ...po, tracking };
         })
       );
 
+      console.log('Purchase orders with tracking:', posWithTracking);
       setPurchaseOrders(posWithTracking);
     } catch (err) {
       console.error('Failed to load purchase orders:', err);
@@ -985,9 +987,16 @@ const PMOrderEquipmentPageEnhanced = () => {
                           {po.tracking && po.tracking.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {po.tracking.map((t) => (
-                                <div
+                                <button
                                   key={t.id}
-                                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg"
+                                  onClick={() => {
+                                    // Copy to clipboard
+                                    navigator.clipboard.writeText(t.tracking_number);
+                                    // Open Google search in new tab
+                                    window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
+                                  }}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
+                                  title="Click to copy and search tracking number"
                                 >
                                   <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                   <span className="font-mono text-xs font-semibold text-blue-900 dark:text-blue-100">
@@ -996,7 +1005,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <span className="text-xs text-blue-700 dark:text-blue-300">
                                     ({t.carrier})
                                   </span>
-                                </div>
+                                </button>
                               ))}
                             </div>
                           )}
