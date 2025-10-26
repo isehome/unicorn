@@ -37,7 +37,7 @@ const PartsListPage = lazy(() => import('./components/PartsListPage'));
 const PartDetailPage = lazy(() => import('./components/PartDetailPage'));
 const GlobalPartsManager = lazy(() => import('./components/GlobalPartsManager'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
-const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPage'));
+const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPageNew'));
 const PMOrderEquipmentPage = lazy(() => import('./components/PMOrderEquipmentPageEnhanced'));
 const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 
