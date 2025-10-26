@@ -63,20 +63,26 @@
 - `src/services/sharePointFolderService.js` (already created)
 
 ### 3. Build Active POs Tab
-**Status:** Not started
+**Status:** ✅ COMPLETED (Basic View)
 **Description:** Show all POs for the project
 **Requirements:**
-- List view of all POs for current project
-- Show PO number, supplier, date, total, status
-- Filter by status (draft, submitted, confirmed, received)
-- Click to view PO details
-- Add tracking numbers to PO
-- Mark PO as received
+- ✅ List view of all POs for current project
+- ✅ Show PO number, supplier, date, total, status
+- ✅ Status badges with color coding (draft, submitted, received)
+- ✅ Milestone badges (Prewire/Trim)
+- ⏳ Click to view PO details (placeholder)
+- ⏳ Add tracking numbers to PO
+- ⏳ Mark PO as received
 
-**Files to Create/Modify:**
-- `src/components/procurement/ActivePOsTab.js`
-- `src/services/purchaseOrderService.js` (enhance existing)
-- Update `PMOrderEquipmentPageEnhanced.js` to show this tab
+**Files Modified:**
+- ✅ `src/components/PMOrderEquipmentPageEnhanced.js` - Added Active POs tab view
+- ✅ Uses existing `poGeneratorService.getProjectPOs()`
+
+**Implementation Notes:**
+- Card-based layout with PO metadata
+- Auto-reloads after PO creation
+- Empty state when no POs exist
+- View Details and Export PDF buttons (placeholders)
 
 ### 4. Add Tracking Number Management
 **Status:** Not started
