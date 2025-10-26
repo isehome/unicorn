@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { purchaseOrderService } from '../services/purchaseOrderService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
-import supabase from '../lib/supabaseClient';
+import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import {
   Package,
