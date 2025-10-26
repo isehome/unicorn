@@ -63,8 +63,9 @@ class POGeneratorService {
         }
 
         grouped[supplierName].equipment.push(item);
-        grouped[supplierName].totalCost += (item.unit_cost || 0) * (item.quantity || 0);
-        grouped[supplierName].totalItems += item.quantity || 0;
+        const qty = item.planned_quantity || item.quantity || 0;
+        grouped[supplierName].totalCost += (item.unit_cost || 0) * qty;
+        grouped[supplierName].totalItems += qty;
       }
 
       // Perform fuzzy matching for each supplier
@@ -152,7 +153,8 @@ class POGeneratorService {
 
       // Step 3: Calculate totals
       const subtotal = equipment.reduce((sum, item) => {
-        return sum + ((item.unit_cost || 0) * (item.quantity || 0));
+        const qty = item.planned_quantity || item.quantity || 0;
+        return sum + ((item.unit_cost || 0) * qty);
       }, 0);
 
       // Extract shipping cost from equipment if there's a shipping line item
@@ -160,7 +162,8 @@ class POGeneratorService {
         item.description?.toLowerCase().includes('shipping') ||
         item.part_number?.toLowerCase().includes('ship')
       );
-      const shippingCost = shippingItem ? (shippingItem.unit_cost || 0) * (shippingItem.quantity || 0) : 0;
+      const shippingQty = shippingItem ? (shippingItem.planned_quantity || shippingItem.quantity || 0) : 0;
+      const shippingCost = shippingItem ? (shippingItem.unit_cost || 0) * shippingQty : 0;
 
       const subtotalBeforeShipping = subtotal - shippingCost;
 
@@ -212,7 +215,7 @@ class POGeneratorService {
         po_id: newPO.id,
         project_equipment_id: item.id,
         line_number: index + 1,
-        quantity_ordered: item.quantity || 0,
+        quantity_ordered: item.planned_quantity || item.quantity || 1, // Use planned_quantity, fallback to quantity or 1
         unit_cost: item.unit_cost || 0,
         notes: item.notes || null
       }));
@@ -231,7 +234,10 @@ class POGeneratorService {
         equipment: equipment,
         stats: {
           totalItems: equipment.length,
-          totalQuantity: equipment.reduce((sum, item) => sum + (item.quantity || 0), 0),
+          totalQuantity: equipment.reduce((sum, item) => {
+            const qty = item.planned_quantity || item.quantity || 0;
+            return sum + qty;
+          }, 0),
           subtotal: subtotalBeforeShipping,
           shipping: shippingCost,
           total: subtotal

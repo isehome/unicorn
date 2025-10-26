@@ -72,7 +72,8 @@ const POGenerationModal = ({
         };
       }
 
-      grouped[key].quantity += (item.quantity || 0);
+      const qty = item.planned_quantity || item.quantity || 0;
+      grouped[key].quantity += qty;
       grouped[key].equipment_ids.push(item.id);
     });
 
@@ -166,7 +167,7 @@ const POGenerationModal = ({
         equipmentItems.map(item =>
           // Update ordered_quantity to match quantity in the PO
           projectEquipmentService.updateProcurementQuantities(item.id, {
-            orderedQty: item.quantity
+            orderedQty: item.planned_quantity || item.quantity || 0
           })
         )
       );
