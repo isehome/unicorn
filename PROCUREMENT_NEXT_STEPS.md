@@ -129,6 +129,7 @@
 **Manual apply needed in Supabase:**
 - ✅ `supabase/TEMP_ALLOW_ANON_PROJECT_EQUIPMENT.sql` - Applied
 - ✅ `supabase/FIX_SUPPLIERS_RLS_FOR_ANON.sql` - Applied
+- ❗ `supabase/FIX_PROCUREMENT_RLS_FOR_ANON.sql` - **APPLY THIS NOW** (fixes PO creation error)
 - ⏳ `supabase/APPLY_THIS_FIRST_procurement_complete.sql` - Optional (tables may already exist)
 - ⏳ `supabase/CREATE_EQUIPMENT_IMPORT_BATCHES.sql` - May be needed
 
