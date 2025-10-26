@@ -7,8 +7,8 @@
  * Format: Logo (top-left) + Company info (right) → PO details → Line items table
  */
 
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { saveAs } from 'file-saver';
 
 class PDFExportService {
@@ -245,7 +245,7 @@ class PDFExportService {
       this.formatCurrency(item.line_total || 0)
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['Line', 'Part Number', 'Description', 'Qty', 'Unit Cost', 'Total']],
       body: tableData,
