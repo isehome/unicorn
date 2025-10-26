@@ -16,26 +16,36 @@
 ## Feature Roadmap (In Priority Order)
 
 ### 1. Create PO Generation Modal
-**Status:** Not started
+**Status:** ✅ COMPLETED
 **Description:** Let PM review and edit PO before creating
 **Requirements:**
-- Modal opens when clicking "Generate PO" button
-- Shows PO preview with editable fields:
+- ✅ Modal opens when clicking "Generate PO" button
+- ✅ Shows PO preview with editable fields:
   - Order date
   - Requested delivery date
   - Tax amount
   - Shipping cost
   - Internal notes
   - Supplier notes
-- Auto-generate PO number (PO-YYYY-NNN-SUP-NNN)
-- Calculate totals (subtotal + tax + shipping)
-- Mark equipment as "ordered" when submitted
-- Create purchase_order and purchase_order_items records
+- ✅ Auto-generate PO number (PO-YYYY-NNN-SUP-NNN)
+- ✅ Calculate totals (subtotal + tax + shipping)
+- ✅ Mark equipment as "ordered" when submitted
+- ✅ Create purchase_order and purchase_order_items records
 
-**Files to Create/Modify:**
-- `src/components/procurement/POGenerationModal.js`
-- `src/services/poGeneratorService.js` (enhance existing)
-- Update `PMOrderEquipmentPageEnhanced.js` to open modal
+**Files Created/Modified:**
+- ✅ `src/components/procurement/POGenerationModal.js` - Created
+- ✅ `src/services/poGeneratorService.js` - Already existed with full functionality
+- ✅ `src/components/PMOrderEquipmentPageEnhanced.js` - Updated to integrate modal
+
+**Implementation Notes:**
+- Modal shows PO number preview before creation
+- Equipment list preview with quantities and costs
+- Real-time total calculation (subtotal + tax + shipping)
+- Validation for required fields
+- Success callback reloads equipment list
+- Disabled state when supplier not yet created
+- Uses existing `poGeneratorService.generatePO()` method
+- Updates equipment ordered quantities via `projectEquipmentService.updateProcurementQuantities()`
 
 ### 2. Export Options
 **Status:** Not started

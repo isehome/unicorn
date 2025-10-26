@@ -6,6 +6,7 @@ import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
 import Button from './ui/Button';
+import POGenerationModal from './procurement/POGenerationModal';
 import {
   Package,
   CheckCircle,
@@ -50,6 +51,10 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   // Vendor expansion state
   const [expandedVendors, setExpandedVendors] = useState({});
+
+  // PO Generation Modal state
+  const [poModalOpen, setPoModalOpen] = useState(false);
+  const [selectedVendorForPO, setSelectedVendorForPO] = useState(null);
 
   // Map phase to milestone_stage
   const getMilestoneStage = (phase) => {
@@ -112,6 +117,35 @@ const PMOrderEquipmentPageEnhanced = () => {
       ...prev,
       [vendorName]: !prev[vendorName]
     }));
+  };
+
+  const handleOpenPOModal = (csvName, groupData) => {
+    setSelectedVendorForPO({
+      csvName,
+      supplierId: groupData.supplier?.id,
+      supplierName: groupData.supplier?.name || csvName,
+      equipment: groupData.equipment,
+      milestoneStage: getMilestoneStage(tab)
+    });
+    setPoModalOpen(true);
+  };
+
+  const handleClosePOModal = () => {
+    setPoModalOpen(false);
+    setSelectedVendorForPO(null);
+  };
+
+  const handlePOSuccess = async (result) => {
+    setSuccessMessage(`Purchase Order ${result.po.po_number} created successfully!`);
+    setTimeout(() => setSuccessMessage(null), 5000);
+
+    // Reload equipment to reflect ordered quantities
+    await loadEquipment();
+
+    // Reload vendor grouping to update totals
+    if (viewMode === 'vendor') {
+      await loadVendorGrouping();
+    }
   };
 
   const handleOrderAll = async () => {
@@ -416,16 +450,22 @@ const PMOrderEquipmentPageEnhanced = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      alert('Generate PO coming soon!');
-                    }}
-                  >
-                    Generate PO
-                  </Button>
+                  {!groupData.supplier?.id ? (
+                    <div className="text-xs text-yellow-600 dark:text-yellow-400">
+                      Supplier must be created first
+                    </div>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenPOModal(csvName, groupData);
+                      }}
+                    >
+                      Generate PO
+                    </Button>
+                  )}
                   {isExpanded ? (
                     <ChevronDown className="w-5 h-5 text-gray-400" />
                   ) : (
@@ -797,6 +837,20 @@ const PMOrderEquipmentPageEnhanced = () => {
           </div>
         )}
       </div>
+
+      {/* PO Generation Modal */}
+      {selectedVendorForPO && (
+        <POGenerationModal
+          isOpen={poModalOpen}
+          onClose={handleClosePOModal}
+          projectId={projectId}
+          supplierId={selectedVendorForPO.supplierId}
+          supplierName={selectedVendorForPO.supplierName}
+          milestoneStage={selectedVendorForPO.milestoneStage}
+          equipmentItems={selectedVendorForPO.equipment}
+          onSuccess={handlePOSuccess}
+        />
+      )}
     </div>
   );
 };
