@@ -55,9 +55,35 @@ const POGenerationModal = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Calculate subtotal from equipment items
+  // Group equipment items by part number
+  const groupEquipmentByPartNumber = () => {
+    const grouped = {};
+
+    equipmentItems.forEach(item => {
+      const key = `${item.part_number || 'NO-PART'}|${item.description || ''}|${item.unit_cost || 0}`;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          part_number: item.part_number,
+          description: item.description || item.name,
+          unit_cost: item.unit_cost || 0,
+          quantity: 0,
+          equipment_ids: []
+        };
+      }
+
+      grouped[key].quantity += (item.quantity || 0);
+      grouped[key].equipment_ids.push(item.id);
+    });
+
+    return Object.values(grouped);
+  };
+
+  const groupedItems = groupEquipmentByPartNumber();
+
+  // Calculate subtotal from grouped items
   const calculateSubtotal = () => {
-    return equipmentItems.reduce((sum, item) => {
+    return groupedItems.reduce((sum, item) => {
       const qty = item.quantity || 0;
       const cost = item.unit_cost || 0;
       return sum + (qty * cost);
@@ -266,31 +292,35 @@ const POGenerationModal = ({
               <div className="flex items-center gap-2 mb-3">
                 <Package className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                 <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Equipment Items ({equipmentItems.length})
+                  Line Items ({groupedItems.length})
                 </h3>
+                {equipmentItems.length !== groupedItems.length && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    ({equipmentItems.length} individual items grouped)
+                  </span>
+                )}
               </div>
               <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0">
                     <tr>
-                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Item</th>
+                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Part Number</th>
+                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Description</th>
                       <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Qty</th>
                       <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Unit Cost</th>
                       <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {equipmentItems.map((item, index) => {
+                    {groupedItems.map((item, index) => {
                       const itemTotal = (item.quantity || 0) * (item.unit_cost || 0);
                       return (
-                        <tr key={item.id || index}>
+                        <tr key={index}>
                           <td className="px-3 py-2 text-gray-900 dark:text-white">
-                            {item.name || item.description}
-                            {item.part_number && (
-                              <span className="text-xs text-gray-500 dark:text-gray-400 block">
-                                {item.part_number}
-                              </span>
-                            )}
+                            {item.part_number || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white">
+                            {item.description}
                           </td>
                           <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
                             {item.quantity || 0}
