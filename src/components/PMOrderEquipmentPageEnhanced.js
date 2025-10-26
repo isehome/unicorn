@@ -7,6 +7,7 @@ import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
+import PODetailsModal from './procurement/PODetailsModal';
 import {
   Package,
   CheckCircle,
@@ -60,6 +61,10 @@ const PMOrderEquipmentPageEnhanced = () => {
   // PO Generation Modal state
   const [poModalOpen, setPoModalOpen] = useState(false);
   const [selectedVendorForPO, setSelectedVendorForPO] = useState(null);
+
+  // PO Details Modal state
+  const [poDetailsModalOpen, setPoDetailsModalOpen] = useState(false);
+  const [selectedPOId, setSelectedPOId] = useState(null);
 
   // Map phase to milestone_stage
   const getMilestoneStage = (phase) => {
@@ -971,16 +976,12 @@ const PMOrderEquipmentPageEnhanced = () => {
                           <Button
                             variant="secondary"
                             size="sm"
-                            onClick={() => alert('View PO details coming soon!')}
+                            onClick={() => {
+                              setSelectedPOId(po.id);
+                              setPoDetailsModalOpen(true);
+                            }}
                           >
                             View Details
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => alert('Export PDF coming soon!')}
-                          >
-                            Export PDF
                           </Button>
                         </div>
                       </div>
@@ -1006,6 +1007,33 @@ const PMOrderEquipmentPageEnhanced = () => {
           onSuccess={handlePOSuccess}
         />
       )}
+
+      {/* PO Details Modal */}
+      <PODetailsModal
+        isOpen={poDetailsModalOpen}
+        onClose={() => {
+          setPoDetailsModalOpen(false);
+          setSelectedPOId(null);
+        }}
+        poId={selectedPOId}
+        onUpdate={() => {
+          loadPurchaseOrders();
+          if (tab !== 'pos') {
+            loadEquipment();
+          }
+        }}
+        onDelete={(deletedPOId) => {
+          setPurchaseOrders(prev => prev.filter(p => p.id !== deletedPOId));
+          setPoDetailsModalOpen(false);
+          setSelectedPOId(null);
+          setSuccessMessage('Purchase order deleted successfully');
+          setTimeout(() => setSuccessMessage(null), 3000);
+          // Reload equipment to update ordered quantities
+          if (tab !== 'pos') {
+            loadEquipment();
+          }
+        }}
+      />
     </div>
   );
 };

@@ -1,0 +1,587 @@
+import React, { useState, useEffect } from 'react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { enhancedStyles } from '../../styles/styleSystem';
+import { purchaseOrderService } from '../../services/purchaseOrderService';
+import { pdfExportService } from '../../services/pdfExportService';
+import { csvExportService } from '../../services/csvExportService';
+import { sharePointFolderService } from '../../services/sharePointFolderService';
+import Button from '../ui/Button';
+import {
+  X,
+  Trash2,
+  Download,
+  FileText,
+  Edit3,
+  Save,
+  Package,
+  Calendar,
+  DollarSign,
+  Loader,
+  AlertCircle,
+  CheckCircle,
+  Upload
+} from 'lucide-react';
+
+/**
+ * PO Details Modal
+ *
+ * View, edit, delete, and export purchase orders
+ * - View PO with full line item breakdown
+ * - Edit draft POs (dates, amounts, notes)
+ * - Delete draft POs only
+ * - Download PDF/CSV
+ * - Auto-upload to SharePoint under Procurement/{Vendor}/
+ */
+const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
+  const { mode } = useTheme();
+  const sectionStyles = enhancedStyles.sections[mode];
+
+  // State
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [po, setPO] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Edit state
+  const [editData, setEditData] = useState({});
+
+  useEffect(() => {
+    if (isOpen && poId) {
+      loadPODetails();
+    }
+  }, [isOpen, poId]);
+
+  const loadPODetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await purchaseOrderService.getPurchaseOrder(poId);
+      setPO(data);
+      setEditData({
+        order_date: data.order_date,
+        requested_delivery_date: data.requested_delivery_date,
+        tax_amount: data.tax_amount || 0,
+        shipping_cost: data.shipping_cost || 0,
+        internal_notes: data.internal_notes || '',
+        supplier_notes: data.supplier_notes || ''
+      });
+    } catch (err) {
+      console.error('Failed to load PO:', err);
+      setError('Failed to load purchase order details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (po.status !== 'draft') {
+      setError('Only draft POs can be edited');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      const total =
+        (po.subtotal || 0) +
+        parseFloat(editData.tax_amount || 0) +
+        parseFloat(editData.shipping_cost || 0);
+
+      await purchaseOrderService.updatePurchaseOrder(poId, {
+        ...editData,
+        tax_amount: parseFloat(editData.tax_amount || 0),
+        shipping_cost: parseFloat(editData.shipping_cost || 0),
+        total_amount: total
+      });
+
+      setSuccess('Purchase order updated successfully');
+      setTimeout(() => setSuccess(null), 3000);
+      setIsEditing(false);
+      await loadPODetails();
+
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Failed to update PO:', err);
+      setError('Failed to update purchase order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (po.status !== 'draft') {
+      setError('Only draft POs can be deleted');
+      return;
+    }
+
+    if (!window.confirm(`Delete PO ${po.po_number}? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await purchaseOrderService.deletePurchaseOrder(poId);
+
+      if (onDelete) {
+        onDelete(poId);
+      }
+
+      handleClose();
+    } catch (err) {
+      console.error('Failed to delete PO:', err);
+      setError('Failed to delete purchase order');
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const exportData = await purchaseOrderService.exportPOData(poId);
+      const pdfDoc = pdfExportService.generatePOPDF(exportData);
+
+      // Download locally
+      pdfDoc.save(`${po.po_number}.pdf`);
+
+      setSuccess('PDF downloaded successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to generate PDF:', err);
+      setError('Failed to generate PDF');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDownloadCSV = async () => {
+    try {
+      setExporting(true);
+      setError(null);
+
+      const exportData = await purchaseOrderService.exportPOData(poId);
+      const csv = csvExportService.generatePOCSV(exportData);
+
+      // Download locally
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${po.po_number}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      setSuccess('CSV downloaded successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to generate CSV:', err);
+      setError('Failed to generate CSV');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleUploadToSharePoint = async () => {
+    try {
+      setUploading(true);
+      setError(null);
+
+      const exportData = await purchaseOrderService.exportPOData(poId);
+
+      // Generate PDF and CSV
+      const pdfDoc = pdfExportService.generatePOPDF(exportData);
+      const pdfBlob = pdfDoc.output('blob');
+      const csv = csvExportService.generatePOCSV(exportData);
+      const csvBlob = new Blob([csv], { type: 'text/csv' });
+
+      // Create folder structure: Procurement/{Vendor Name}/
+      const vendorName = po.supplier?.name || 'Unknown Vendor';
+      const folderPath = `Procurement/${vendorName}`;
+
+      // Upload both files to SharePoint
+      await sharePointFolderService.uploadFileToFolder(
+        po.project.sharepoint_drive_id,
+        folderPath,
+        `${po.po_number}.pdf`,
+        pdfBlob
+      );
+
+      await sharePointFolderService.uploadFileToFolder(
+        po.project.sharepoint_drive_id,
+        folderPath,
+        `${po.po_number}.csv`,
+        csvBlob
+      );
+
+      setSuccess('Files uploaded to SharePoint successfully');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to upload to SharePoint:', err);
+      setError('Failed to upload to SharePoint: ' + err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setPO(null);
+    setEditData({});
+    setIsEditing(false);
+    setError(null);
+    setSuccess(null);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  const calculateTotal = () => {
+    return (
+      (po?.subtotal || 0) +
+      parseFloat(editData.tax_amount || 0) +
+      parseFloat(editData.shipping_cost || 0)
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div
+        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+          <div className="flex-1">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+              {po ? po.po_number : 'Loading...'}
+            </h2>
+            {po && (
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`px-2 py-1 text-xs font-medium rounded ${
+                  po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
+                  po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                  po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                  'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                }`}>
+                  {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                </span>
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {po.supplier?.name}
+                </span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="mx-6 mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {success && (
+          <div className="mx-6 mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+              <p className="text-sm text-green-800 dark:text-green-200">{success}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Body */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader className="w-8 h-8 animate-spin text-violet-600" />
+          </div>
+        ) : po ? (
+          <div className="px-6 py-4 space-y-6">
+            {/* PO Details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Order Date
+                </label>
+                {isEditing ? (
+                  <input
+                    type="date"
+                    value={editData.order_date || ''}
+                    onChange={(e) => setEditData({ ...editData, order_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                ) : (
+                  <p className="text-gray-900 dark:text-white">
+                    {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Requested Delivery Date
+                </label>
+                {isEditing ? (
+                  <input
+                    type="date"
+                    value={editData.requested_delivery_date || ''}
+                    onChange={(e) => setEditData({ ...editData, requested_delivery_date: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                ) : (
+                  <p className="text-gray-900 dark:text-white">
+                    {po.requested_delivery_date ? new Date(po.requested_delivery_date).toLocaleDateString() : 'N/A'}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Line Items */}
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <Package className="w-5 h-5" />
+                Line Items ({po.items?.length || 0})
+              </h3>
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 dark:bg-gray-800/50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">#</th>
+                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Part Number</th>
+                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Description</th>
+                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Qty</th>
+                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Unit Cost</th>
+                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {po.items?.map((item) => (
+                      <tr key={item.id}>
+                        <td className="px-3 py-2 text-gray-900 dark:text-white">{item.line_number}</td>
+                        <td className="px-3 py-2 text-gray-900 dark:text-white">
+                          {item.equipment?.part_number || 'N/A'}
+                        </td>
+                        <td className="px-3 py-2 text-gray-900 dark:text-white">
+                          {item.equipment?.name || item.equipment?.description || 'N/A'}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                          {item.quantity_ordered}
+                        </td>
+                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                          ${(item.unit_cost || 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">
+                          ${(item.line_total || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Costs */}
+            <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Subtotal
+                </label>
+                <span className="text-gray-900 dark:text-white font-semibold">
+                  ${(po.subtotal || 0).toFixed(2)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Tax Amount
+                </label>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editData.tax_amount || 0}
+                    onChange={(e) => setEditData({ ...editData, tax_amount: e.target.value })}
+                    className="w-32 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-right"
+                  />
+                ) : (
+                  <span className="text-gray-900 dark:text-white font-semibold">
+                    ${(po.tax_amount || 0).toFixed(2)}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Shipping Cost
+                </label>
+                {isEditing ? (
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editData.shipping_cost || 0}
+                    onChange={(e) => setEditData({ ...editData, shipping_cost: e.target.value })}
+                    className="w-32 px-3 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-right"
+                  />
+                ) : (
+                  <span className="text-gray-900 dark:text-white font-semibold">
+                    ${(po.shipping_cost || 0).toFixed(2)}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-gray-300 dark:border-gray-600">
+                <label className="text-base font-bold text-gray-900 dark:text-white">
+                  Total Amount
+                </label>
+                <span className="text-xl font-bold text-violet-600 dark:text-violet-400">
+                  ${isEditing ? calculateTotal().toFixed(2) : (po.total_amount || 0).toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Internal Notes
+                </label>
+                {isEditing ? (
+                  <textarea
+                    value={editData.internal_notes || ''}
+                    onChange={(e) => setEditData({ ...editData, internal_notes: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                  />
+                ) : (
+                  <p className="text-gray-900 dark:text-white">
+                    {po.internal_notes || 'None'}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Supplier Notes
+                </label>
+                {isEditing ? (
+                  <textarea
+                    value={editData.supplier_notes || ''}
+                    onChange={(e) => setEditData({ ...editData, supplier_notes: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                  />
+                ) : (
+                  <p className="text-gray-900 dark:text-white">
+                    {po.supplier_notes || 'None'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-gray-500 dark:text-gray-400">Failed to load PO details</p>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+          <div className="flex gap-2">
+            {po && po.status === 'draft' && (
+              <>
+                {!isEditing ? (
+                  <Button
+                    variant="secondary"
+                    icon={Edit3}
+                    onClick={() => setIsEditing(true)}
+                  >
+                    Edit
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      variant="primary"
+                      icon={Save}
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
+                      {saving ? 'Saving...' : 'Save Changes'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setEditData({
+                          order_date: po.order_date,
+                          requested_delivery_date: po.requested_delivery_date,
+                          tax_amount: po.tax_amount || 0,
+                          shipping_cost: po.shipping_cost || 0,
+                          internal_notes: po.internal_notes || '',
+                          supplier_notes: po.supplier_notes || ''
+                        });
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="danger"
+                  icon={Trash2}
+                  onClick={handleDelete}
+                  disabled={loading}
+                >
+                  Delete
+                </Button>
+              </>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              icon={Download}
+              onClick={handleDownloadPDF}
+              disabled={exporting}
+            >
+              {exporting ? 'Generating...' : 'Download PDF'}
+            </Button>
+            <Button
+              variant="secondary"
+              icon={FileText}
+              onClick={handleDownloadCSV}
+              disabled={exporting}
+            >
+              Download CSV
+            </Button>
+            <Button
+              variant="primary"
+              icon={Upload}
+              onClick={handleUploadToSharePoint}
+              disabled={uploading}
+            >
+              {uploading ? 'Uploading...' : 'Upload to SharePoint'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default PODetailsModal;

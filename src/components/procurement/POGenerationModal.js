@@ -4,6 +4,9 @@ import { enhancedStyles } from '../../styles/styleSystem';
 import { poGeneratorService } from '../../services/poGeneratorService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { projectEquipmentService } from '../../services/projectEquipmentService';
+import { pdfExportService } from '../../services/pdfExportService';
+import { csvExportService } from '../../services/csvExportService';
+import { sharePointFolderService } from '../../services/sharePointFolderService';
 import Button from '../ui/Button';
 import {
   X,
@@ -171,6 +174,38 @@ const POGenerationModal = ({
           })
         )
       );
+
+      // Auto-upload PDF and CSV to SharePoint
+      try {
+        const exportData = await purchaseOrderService.exportPOData(result.po.id);
+
+        // Generate PDF and CSV
+        const pdfDoc = pdfExportService.generatePOPDF(exportData);
+        const pdfBlob = pdfDoc.output('blob');
+        const csv = csvExportService.generatePOCSV(exportData);
+        const csvBlob = new Blob([csv], { type: 'text/csv' });
+
+        // Create folder structure: Procurement/{Vendor Name}/
+        const folderPath = `Procurement/${supplierName}`;
+
+        // Upload both files to SharePoint (don't block on this)
+        sharePointFolderService.uploadFileToFolder(
+          projectId, // Assuming project has sharepoint_drive_id
+          folderPath,
+          `${result.po.po_number}.pdf`,
+          pdfBlob
+        ).catch(err => console.warn('SharePoint PDF upload failed:', err));
+
+        sharePointFolderService.uploadFileToFolder(
+          projectId,
+          folderPath,
+          `${result.po.po_number}.csv`,
+          csvBlob
+        ).catch(err => console.warn('SharePoint CSV upload failed:', err));
+      } catch (uploadErr) {
+        console.warn('Failed to auto-upload to SharePoint:', uploadErr);
+        // Don't fail the PO creation if SharePoint upload fails
+      }
 
       // Success callback
       if (onSuccess) {

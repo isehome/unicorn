@@ -391,6 +391,39 @@ class PurchaseOrderService {
   }
 
   /**
+   * Delete purchase order (draft only)
+   */
+  async deletePurchaseOrder(poId) {
+    try {
+      // Check if PO is draft
+      const { data: po, error: checkError } = await supabase
+        .from('purchase_orders')
+        .select('status')
+        .eq('id', poId)
+        .single();
+
+      if (checkError) throw checkError;
+
+      if (po.status !== 'draft') {
+        throw new Error('Only draft POs can be deleted');
+      }
+
+      // Delete PO (items will cascade delete)
+      const { error: deleteError } = await supabase
+        .from('purchase_orders')
+        .delete()
+        .eq('id', poId);
+
+      if (deleteError) throw deleteError;
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting purchase order:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Export PO to printable format
    */
   async exportPOData(poId) {
