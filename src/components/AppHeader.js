@@ -42,6 +42,7 @@ const AppHeader = () => {
     if (p.startsWith('/parts/')) return 'Part Details';
     if (p === '/parts') return 'Parts Catalog';
     if (p === '/lucid-test') return 'Lucid API Diagnostic';
+    if (p === '/scan-tag') return 'Scan Wire Drop';
     if (p === '/wire-drops-list') return 'Wire Drops List';
     if (p.startsWith('/wire-drops')) return 'Wire Drops';
     if (p.startsWith('/settings')) return 'Settings';
@@ -93,9 +94,14 @@ const AppHeader = () => {
               </span>
             )}
           </div>
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center text-sm font-bold shadow-lg">
+          <button
+            type="button"
+            onClick={() => navigate('/settings')}
+            className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center text-sm font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
+            title="Open Settings"
+          >
             {initials}
-          </div>
+          </button>
         </div>
       </div>
     </header>

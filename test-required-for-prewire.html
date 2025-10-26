@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Required For Prewire</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Test Required For Prewire Field</h1>
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = prompt('Enter your Supabase URL:');
+        const SUPABASE_ANON_KEY = prompt('Enter your Supabase Anon Key:');
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const resultsDiv = document.getElementById('results');
+
+        async function test() {
+            resultsDiv.innerHTML = '<p>Testing...</p>';
+            
+            try {
+                // Test 1: Select all columns
+                resultsDiv.innerHTML += '<h2>Test 1: Select all with *</h2>';
+                const { data: data1, error: error1 } = await supabase
+                    .from('global_parts')
+                    .select('*')
+                    .eq('part_number', '16/2OFC-BK')
+                    .single();
+                
+                resultsDiv.innerHTML += `<pre>${JSON.stringify({ data: data1, error: error1 }, null, 2)}</pre>`;
+                resultsDiv.innerHTML += `<p>required_for_prewire value: ${data1?.required_for_prewire}</p>`;
+                
+                // Test 2: Update to true
+                resultsDiv.innerHTML += '<h2>Test 2: Update to true</h2>';
+                const { error: error2 } = await supabase
+                    .from('global_parts')
+                    .update({ required_for_prewire: true })
+                    .eq('part_number', '16/2OFC-BK');
+                
+                resultsDiv.innerHTML += `<pre>${JSON.stringify({ error: error2 }, null, 2)}</pre>`;
+                
+                // Test 3: Select again
+                resultsDiv.innerHTML += '<h2>Test 3: Select after update</h2>';
+                const { data: data3, error: error3 } = await supabase
+                    .from('global_parts')
+                    .select('*')
+                    .eq('part_number', '16/2OFC-BK')
+                    .single();
+                
+                resultsDiv.innerHTML += `<pre>${JSON.stringify({ data: data3, error: error3 }, null, 2)}</pre>`;
+                resultsDiv.innerHTML += `<p>required_for_prewire value after update: ${data3?.required_for_prewire}</p>`;
+                
+            } catch (err) {
+                resultsDiv.innerHTML += `<p style="color: red;">Error: ${err.message}</p>`;
+            }
+        }
+        
+        test();
+    </script>
+</body>
+</html>

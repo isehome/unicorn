@@ -38,7 +38,8 @@ import {
   RefreshCw,
   Link,
   Upload,
-  Package
+  Package,
+  ShoppingCart
 } from 'lucide-react';
 
 // Progress Bar Component
@@ -1980,6 +1981,18 @@ const PMProjectViewEnhanced = () => {
               )}
             </div>
           )}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={() => navigate(`/projects/${projectId}/order-equipment`)}
+            variant="primary"
+            icon={ShoppingCart}
+            size="md"
+          >
+            Order Equipment
+          </Button>
         </div>
 
         {/* Quick Links - Evenly Spaced */}

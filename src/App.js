@@ -37,6 +37,9 @@ const PartsListPage = lazy(() => import('./components/PartsListPage'));
 const PartDetailPage = lazy(() => import('./components/PartDetailPage'));
 const GlobalPartsManager = lazy(() => import('./components/GlobalPartsManager'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
+const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPage'));
+const PMOrderEquipmentPage = lazy(() => import('./components/PMOrderEquipmentPageEnhanced'));
+const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -199,6 +202,22 @@ const AppRoutes = () => {
             }
           />
           <Route
+            path="/projects/:projectId/receiving"
+            element={
+              <ProtectedRoute>
+                <PartsReceivingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/projects/:projectId/order-equipment"
+            element={
+              <ProtectedRoute>
+                <PMOrderEquipmentPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/projects/:projectId/secure-data"
             element={
               <ProtectedRoute>
@@ -235,6 +254,14 @@ const AppRoutes = () => {
             element={
               <ProtectedRoute>
                 <LucidDiagnostic />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scan-tag"
+            element={
+              <ProtectedRoute>
+                <ScanTagPage />
               </ProtectedRoute>
             }
           />

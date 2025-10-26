@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Prewire Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Direct Database Test for required_for_prewire</h1>
+    <button onclick="runTest()">Run Test</button>
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = prompt('Enter your Supabase URL:');
+        const SUPABASE_ANON_KEY = prompt('Enter your Supabase Anon Key:');
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const resultsDiv = document.getElementById('results');
+
+        async function runTest() {
+            resultsDiv.innerHTML = '<p>Testing...</p>';
+
+            try {
+                // Step 1: Get first part
+                resultsDiv.innerHTML += '<h2>Step 1: Get first part</h2>';
+                const { data: parts, error: listError } = await supabase
+                    .from('global_parts')
+                    .select('id, part_number, name, required_for_prewire')
+                    .limit(1);
+
+                if (listError) throw listError;
+                if (!parts || parts.length === 0) throw new Error('No parts found');
+
+                const testPart = parts[0];
+                resultsDiv.innerHTML += `<pre>Part: ${JSON.stringify(testPart, null, 2)}</pre>`;
+
+                // Step 2: Update to TRUE using just boolean
+                resultsDiv.innerHTML += '<h2>Step 2: Update to TRUE</h2>';
+                const { error: updateError1 } = await supabase
+                    .from('global_parts')
+                    .update({ required_for_prewire: true })
+                    .eq('id', testPart.id);
+
+                if (updateError1) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Update error: ${JSON.stringify(updateError1)}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Update successful</p>`;
+                }
+
+                // Step 3: Wait and fetch
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                resultsDiv.innerHTML += '<h2>Step 3: Fetch after 1 second</h2>';
+                const { data: afterUpdate, error: fetchError } = await supabase
+                    .from('global_parts')
+                    .select('id, part_number, name, required_for_prewire')
+                    .eq('id', testPart.id)
+                    .single();
+
+                if (fetchError) throw fetchError;
+
+                resultsDiv.innerHTML += `<pre>After update: ${JSON.stringify(afterUpdate, null, 2)}</pre>`;
+                resultsDiv.innerHTML += `<p style="font-weight: bold; color: ${afterUpdate.required_for_prewire ? 'green' : 'red'};">
+                    required_for_prewire = ${afterUpdate.required_for_prewire}
+                </p>`;
+
+                // Step 4: Update to FALSE
+                resultsDiv.innerHTML += '<h2>Step 4: Update to FALSE</h2>';
+                const { error: updateError2 } = await supabase
+                    .from('global_parts')
+                    .update({ required_for_prewire: false })
+                    .eq('id', testPart.id);
+
+                if (updateError2) {
+                    resultsDiv.innerHTML += `<p style="color: red;">Update error: ${JSON.stringify(updateError2)}</p>`;
+                } else {
+                    resultsDiv.innerHTML += `<p style="color: green;">Update successful</p>`;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                resultsDiv.innerHTML += '<h2>Step 5: Fetch after reset</h2>';
+                const { data: afterReset, error: fetchError2 } = await supabase
+                    .from('global_parts')
+                    .select('id, part_number, name, required_for_prewire')
+                    .eq('id', testPart.id)
+                    .single();
+
+                if (fetchError2) throw fetchError2;
+
+                resultsDiv.innerHTML += `<pre>After reset: ${JSON.stringify(afterReset, null, 2)}</pre>`;
+                resultsDiv.innerHTML += `<p style="font-weight: bold;">
+                    required_for_prewire = ${afterReset.required_for_prewire}
+                </p>`;
+
+            } catch (err) {
+                resultsDiv.innerHTML += `<p style="color: red;">Error: ${err.message}</p>`;
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+</html>

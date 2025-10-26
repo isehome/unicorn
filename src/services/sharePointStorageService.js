@@ -398,23 +398,38 @@ class SharePointStorageService {
    */
   sanitizeForFileName(text) {
     if (!text) return 'Unknown';
-    
-    return text
+
+    let sanitized = text
       .trim()
-      // Replace special characters with underscores
-      .replace(/[<>:"/\\|?*]/g, '_')
+      // Replace SharePoint forbidden characters with underscores
+      // SharePoint forbids: ~ " # % & * : < > ? / \ { | }
+      .replace(/[~"#%&*:<>?/\\{|}]/g, '_')
       // Replace multiple spaces with single space
       .replace(/\s+/g, ' ')
       // Replace spaces with underscores for filenames
       .replace(/ /g, '_')
-      // Remove any other problematic characters - keep only alphanumeric and underscores
-      .replace(/[^\w]/g, '')
+      // Keep alphanumeric, underscores, hyphens, and periods
+      .replace(/[^\w.-]/g, '')
       // Replace multiple consecutive underscores with single underscore
       .replace(/_{2,}/g, '_')
+      // Remove leading/trailing underscores, periods, or hyphens
+      .replace(/^[._-]+|[._-]+$/g, '')
       // Limit length to 50 characters
       .substring(0, 50)
-      // Remove trailing/leading underscores
-      .replace(/^_+|_+$/g, '');
+      // Final cleanup of trailing special chars after substring
+      .replace(/[._-]+$/g, '');
+
+    // If sanitization resulted in empty string, return default
+    if (!sanitized || sanitized.length === 0) {
+      return 'Unknown';
+    }
+
+    // Ensure doesn't start with period (hidden file in SharePoint)
+    if (sanitized.startsWith('.')) {
+      sanitized = 'File' + sanitized;
+    }
+
+    return sanitized;
   }
 
   /**

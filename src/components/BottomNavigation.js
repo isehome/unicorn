@@ -1,6 +1,5 @@
-import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Activity, QrCode, Home, Settings, Boxes } from 'lucide-react';
+import { Users, Activity, QrCode, Home, Boxes } from 'lucide-react';
 
 const BottomNavigation = () => {
   const navigate = useNavigate();
@@ -11,8 +10,7 @@ const BottomNavigation = () => {
     { icon: Boxes, label: 'Parts', path: '/parts' },
     { icon: Users, label: 'People', path: '/people' },
     { icon: Activity, label: 'UniFi Test', path: '/unifi-test' },
-    { icon: QrCode, label: 'Lucid Test', path: '/lucid-test' },
-    { icon: Settings, label: 'Settings', path: '/settings' },
+    { icon: QrCode, label: 'Scan Tag', path: '/scan-tag' },
   ];
 
   return (

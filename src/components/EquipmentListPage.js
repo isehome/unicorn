@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, PackageCheck } from 'lucide-react';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 
@@ -318,14 +318,24 @@ const EquipmentListPage = () => {
               </p>
             </div>
           </div>
-          <Button
-            variant="secondary"
-            icon={RefreshCw}
-            onClick={loadEquipment}
-            disabled={loading}
-          >
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              icon={PackageCheck}
+              onClick={() => navigate(`/projects/${projectId}/receiving`)}
+            >
+              <span className="hidden sm:inline">Receive Items</span>
+              <span className="sm:hidden">Receive</span>
+            </Button>
+            <Button
+              variant="secondary"
+              icon={RefreshCw}
+              onClick={loadEquipment}
+              disabled={loading}
+            >
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
         </div>
       </header>
 

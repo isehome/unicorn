@@ -1,58 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService, contactsService, projectProgressService } from '../services/supabaseService';
+import { projectsService, contactsService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
+import { milestoneCacheService } from '../services/milestoneCacheService';
 import Button from './ui/Button';
 import UnifiedProgressGauge from './UnifiedProgressGauge';
-import { 
-  Plus, 
-  FileText, 
-  Image, 
-  Package, 
-  ExternalLink, 
-  Edit, 
-  Clock,
-  Folder,
-  ChevronRight,
+import ProcurementDashboard from './procurement/ProcurementDashboard';
+import {
+  Plus,
   Loader,
   Search
 } from 'lucide-react';
 
-// Progress Bar Component
-const ProgressBar = ({ label, percentage }) => {
-  const getBarColor = (percent) => {
-    if (percent < 33) return 'bg-red-500';
-    if (percent < 67) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-16">{label}</span>
-      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div 
-          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
-    </div>
-  );
-};
-
 const PMDashboard = () => {
   const { mode } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const sectionStyles = enhancedStyles.sections[mode];
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewProjectForm, setShowNewProjectForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [contacts, setContacts] = useState([]);
-  const [projectProgress, setProjectProgress] = useState({});
   const [milestonePercentages, setMilestonePercentages] = useState({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [newProject, setNewProject] = useState({
     name: '',
     client: '',
@@ -74,41 +47,91 @@ const PMDashboard = () => {
     loadContacts();
   }, []);
 
-  // Load progress for all projects
+  // Invalidate cache if coming back from a project detail page
   useEffect(() => {
-    const loadProgress = async () => {
-      if (projects.length === 0) return;
-      
-      const progressData = {};
-      const milestoneData = {};
-      
-      for (const project of projects) {
-        try {
-          const progress = await projectProgressService.getProjectProgress(project.id);
-          progressData[project.id] = progress;
-          
-          // Calculate milestone percentages
-          const percentages = await milestoneService.calculateAllPercentages(project.id);
-          milestoneData[project.id] = percentages;
-        } catch (error) {
-          console.error(`Failed to load progress for project ${project.id}:`, error);
-          progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
-          milestoneData[project.id] = {
-            planning_design: 0,
-            prewire_prep: 0,
-            prewire: 0,
-            trim_prep: 0,
-            trim: 0,
-            commissioning: 0
-          };
-        }
+    if (location.state?.refreshCache) {
+      const projectId = location.state.projectId;
+      if (projectId) {
+        milestoneCacheService.invalidate(projectId);
       }
-      
-      setProjectProgress(progressData);
+      // Clear the state so it doesn't trigger again
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
+
+  // STEP 1: Load cached milestone data immediately (instant display)
+  useEffect(() => {
+    if (projects.length === 0) return;
+
+    const projectIds = projects.map(p => p.id);
+    const cachedData = milestoneCacheService.getCachedBatch(projectIds);
+
+    // Immediately populate state with cached data
+    const milestoneData = {};
+    Object.entries(cachedData).forEach(([projectId, cached]) => {
+      milestoneData[projectId] = cached.data;
+    });
+
+    if (Object.keys(milestoneData).length > 0) {
       setMilestonePercentages(milestoneData);
+    }
+  }, [projects]);
+
+  // STEP 2: Fetch fresh data in background (parallel for all projects)
+  useEffect(() => {
+    const loadProgressInBackground = async () => {
+      if (projects.length === 0) return;
+
+      setIsRefreshing(true);
+
+      try {
+        // Fetch all projects in parallel using Promise.all
+        const results = await Promise.all(
+          projects.map(async (project) => {
+            try {
+              const percentages = await milestoneService.calculateAllPercentages(project.id);
+
+              // Cache the fresh data
+              milestoneCacheService.setCached(project.id, percentages);
+
+              return {
+                id: project.id,
+                percentages,
+                success: true
+              };
+            } catch (error) {
+              console.error(`Failed to load progress for project ${project.id}:`, error);
+              return {
+                id: project.id,
+                percentages: {
+                  planning_design: 0,
+                  prewire_prep: 0,
+                  prewire: 0,
+                  trim_prep: 0,
+                  trim: 0,
+                  commissioning: 0
+                },
+                success: false
+              };
+            }
+          })
+        );
+
+        // Update state with fresh data
+        const milestoneData = {};
+        results.forEach(result => {
+          milestoneData[result.id] = result.percentages;
+        });
+
+        setMilestonePercentages(milestoneData);
+      } catch (error) {
+        console.error('Error loading milestone data in background:', error);
+      } finally {
+        setIsRefreshing(false);
+      }
     };
 
-    loadProgress();
+    loadProgressInBackground();
   }, [projects]);
 
   const loadContacts = async () => {
@@ -171,38 +194,6 @@ const PMDashboard = () => {
     navigate(`/pm/project/${projectId}`);
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400';
-      case 'on_hold':
-        return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400';
-      case 'completed':
-        return 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400';
-      case 'cancelled':
-        return 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400';
-      default:
-        return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
-    }
-  };
-
-  const getPhaseColor = (phase) => {
-    switch (phase?.toLowerCase()) {
-      case 'planning':
-        return 'text-violet-600 dark:text-violet-400';
-      case 'pre-wire':
-      case 'prewire':
-        return 'text-orange-600 dark:text-orange-400';
-      case 'trim':
-        return 'text-blue-600 dark:text-blue-400';
-      case 'final':
-      case 'complete':
-        return 'text-green-600 dark:text-green-400';
-      default:
-        return 'text-gray-600 dark:text-gray-400';
-    }
-  };
-
   // Filter projects based on search term - must be before any conditional returns
   const filteredProjects = useMemo(() => {
     if (!searchTerm.trim()) return projects;
@@ -228,6 +219,9 @@ const PMDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Procurement Dashboard - Shows before projects */}
+        <ProcurementDashboard />
+
         {/* Create New Project Form (Collapsible) */}
         {showNewProjectForm && (
           <div style={sectionStyles.card} className="mb-6 animate-in fade-in duration-200">
@@ -393,9 +387,17 @@ const PMDashboard = () => {
         {/* Existing Projects List */}
         <div style={sectionStyles.card}>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
-              All Projects ({filteredProjects.length})
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">
+                All Projects ({filteredProjects.length})
+              </h2>
+              {isRefreshing && (
+                <div className="flex items-center gap-1 text-xs text-violet-600 dark:text-violet-400">
+                  <Loader className="w-3 h-3 animate-spin" />
+                  <span className="hidden sm:inline">Updating...</span>
+                </div>
+              )}
+            </div>
             <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
               {/* Search Bar */}
               <div className="relative flex-1 sm:flex-initial">
@@ -447,8 +449,6 @@ const PMDashboard = () => {
           ) : (
             <div className="space-y-3">
               {filteredProjects.map((project) => {
-                const progress = projectProgress[project.id] || { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
-                
                 return (
                   <div
                     key={project.id}
@@ -465,43 +465,31 @@ const PMDashboard = () => {
                       
                       {/* Progress Gauges */}
                       <div className="space-y-2">
-                        {milestonePercentages[project.id] ? (
-                          <>
-                            <UnifiedProgressGauge 
-                              label="Prewire Prep" 
-                              percentage={milestonePercentages[project.id].prewire_prep || 0} 
-                              compact={true}
-                            />
-                            <UnifiedProgressGauge 
-                              label="Prewire" 
-                              percentage={milestonePercentages[project.id].prewire || 0} 
-                              compact={true}
-                            />
-                            <UnifiedProgressGauge 
-                              label="Trim Prep" 
-                              percentage={milestonePercentages[project.id].trim_prep || 0} 
-                              compact={true}
-                            />
-                            <UnifiedProgressGauge 
-                              label="Trim" 
-                              percentage={milestonePercentages[project.id].trim || 0} 
-                              compact={true}
-                            />
-                            <UnifiedProgressGauge 
-                              label="Commissioning" 
-                              percentage={milestonePercentages[project.id].commissioning || 0} 
-                              compact={true}
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <ProgressBar label="Prewire" percentage={progress.prewire || 0} />
-                            <ProgressBar label="Trim" percentage={progress.trim || 0} />
-                            <ProgressBar label="Commission" percentage={progress.commission || 0} />
-                            <ProgressBar label="Ordered" percentage={progress.ordered || 0} />
-                            <ProgressBar label="Onsite" percentage={progress.onsite || 0} />
-                          </>
-                        )}
+                        <UnifiedProgressGauge
+                          label="Prewire Prep"
+                          percentage={milestonePercentages[project.id]?.prewire_prep || 0}
+                          compact={true}
+                        />
+                        <UnifiedProgressGauge
+                          label="Prewire"
+                          percentage={milestonePercentages[project.id]?.prewire || 0}
+                          compact={true}
+                        />
+                        <UnifiedProgressGauge
+                          label="Trim Prep"
+                          percentage={milestonePercentages[project.id]?.trim_prep || 0}
+                          compact={true}
+                        />
+                        <UnifiedProgressGauge
+                          label="Trim"
+                          percentage={milestonePercentages[project.id]?.trim || 0}
+                          compact={true}
+                        />
+                        <UnifiedProgressGauge
+                          label="Commissioning"
+                          percentage={milestonePercentages[project.id]?.commissioning || 0}
+                          compact={true}
+                        />
                       </div>
                     </div>
                   </div>

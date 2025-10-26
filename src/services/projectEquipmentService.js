@@ -1,6 +1,7 @@
 import Papa from 'papaparse';
 import { supabase } from '../lib/supabase';
 import { normalizeRoomName } from '../utils/roomUtils';
+import { fuzzyMatchService } from '../utils/fuzzyMatchService';
 
 const HEADEND_KEYWORDS = ['network', 'head', 'equipment', 'rack', 'structured', 'mda', 'server'];
 
@@ -236,17 +237,57 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
 };
 
 const resetPreviousImports = async (projectId) => {
+  console.log('[REPLACE MODE] ========================================');
+  console.log('[REPLACE MODE] Starting resetPreviousImports for project:', projectId);
+  console.log('[REPLACE MODE] ========================================');
+
+  // Step 1: Get ALL existing equipment that will be deleted in REPLACE mode
   const { data: existing, error } = await supabase
     .from('project_equipment')
-    .select('id')
-    .eq('project_id', projectId)
-    .not('csv_batch_id', 'is', null);
+    .select(`
+      id,
+      part_number,
+      name,
+      room_id,
+      install_side,
+      manufacturer,
+      model
+    `)
+    .eq('project_id', projectId);
 
   if (error) throw error;
 
   const equipmentIds = (existing || []).map((row) => row.id);
 
+  // Step 2: PRESERVE wire drop links before deletion
+  let wireDropLinks = [];
   if (equipmentIds.length > 0) {
+    console.log(`[Wire Drop Preservation] Found ${equipmentIds.length} equipment items to replace`);
+
+    // Get all wire drop links for equipment being deleted
+    const { data: links, error: linksError } = await supabase
+      .from('wire_drop_equipment_links')
+      .select(`
+        *,
+        equipment:project_equipment!inner(
+          part_number,
+          name,
+          room_id,
+          install_side,
+          manufacturer,
+          model
+        )
+      `)
+      .in('project_equipment_id', equipmentIds);
+
+    if (linksError) {
+      console.error('[Wire Drop Preservation] Error fetching wire drop links:', linksError);
+    } else {
+      wireDropLinks = links || [];
+      console.log(`[Wire Drop Preservation] Found ${wireDropLinks.length} wire drop links to preserve`);
+    }
+
+    // Delete child records (will cascade, but we're being explicit)
     await supabase
       .from('project_equipment_instances')
       .delete()
@@ -263,17 +304,23 @@ const resetPreviousImports = async (projectId) => {
       .in('project_equipment_id', equipmentIds);
   }
 
-  await supabase
+  // Step 3: Delete ALL equipment in REPLACE mode (not just CSV imports)
+  console.log('[Equipment Delete] Deleting ALL equipment for project:', projectId);
+  const { data: deletedEquipment, error: equipmentDeleteError } = await supabase
     .from('project_equipment')
     .delete()
     .eq('project_id', projectId)
-    .not('csv_batch_id', 'is', null);
+    .select();
 
-  await supabase
-    .from('project_labor_budget')
-    .delete()
-    .eq('project_id', projectId)
-    .not('csv_batch_id', 'is', null);
+  if (equipmentDeleteError) {
+    console.error('[Equipment Delete] Error deleting equipment:', equipmentDeleteError);
+    throw equipmentDeleteError;
+  } else {
+    console.log(`[Equipment Delete] Successfully deleted ${(deletedEquipment || []).length} equipment items`);
+  }
+
+  // Step 4: Return preserved wire drop links for re-linking
+  return wireDropLinks;
 };
 
 const syncGlobalParts = async (equipmentItems = [], projectId = null, batchId = null) => {
@@ -357,6 +404,191 @@ const syncGlobalParts = async (equipmentItems = [], projectId = null, batchId = 
   return partIdMap;
 };
 
+const restoreWireDropLinks = async (preservedLinks, newEquipment) => {
+  if (!preservedLinks || preservedLinks.length === 0) {
+    console.log('[Wire Drop Restoration] No wire drop links to restore');
+    return { restored: 0, failed: 0, failures: [] };
+  }
+
+  console.log(`[Wire Drop Restoration] Attempting to restore ${preservedLinks.length} wire drop links...`);
+
+  // Create a lookup map of new equipment by matching key
+  const equipmentMap = new Map();
+  newEquipment.forEach((item) => {
+    // Create matching key: part_number|room_id|install_side|name
+    const key = [
+      (item.part_number || '').toLowerCase().trim(),
+      item.room_id || 'null',
+      item.install_side || 'room_end',
+      (item.name || '').toLowerCase().trim()
+    ].join('|');
+
+    equipmentMap.set(key, item);
+  });
+
+  console.log(`[Wire Drop Restoration] Created lookup map with ${equipmentMap.size} equipment items`);
+
+  const linkInserts = [];
+  const failures = [];
+  let restored = 0;
+  let failed = 0;
+
+  // Try to match each preserved link to new equipment
+  preservedLinks.forEach((oldLink) => {
+    const oldEquipment = oldLink.equipment;
+
+    // Create matching key from old equipment
+    const matchKey = [
+      (oldEquipment.part_number || '').toLowerCase().trim(),
+      oldEquipment.room_id || 'null',
+      oldEquipment.install_side || 'room_end',
+      (oldEquipment.name || '').toLowerCase().trim()
+    ].join('|');
+
+    const newMatch = equipmentMap.get(matchKey);
+
+    if (newMatch) {
+      // Found a match! Recreate the link with new equipment ID
+      linkInserts.push({
+        wire_drop_id: oldLink.wire_drop_id,
+        project_equipment_id: newMatch.id,
+        quantity: oldLink.quantity,
+        notes: oldLink.notes,
+        created_by: oldLink.created_by
+      });
+      restored++;
+    } else {
+      // No match found - equipment was removed from proposal
+      failed++;
+      failures.push({
+        wire_drop_id: oldLink.wire_drop_id,
+        old_equipment: {
+          part_number: oldEquipment.part_number,
+          name: oldEquipment.name,
+          manufacturer: oldEquipment.manufacturer,
+          model: oldEquipment.model
+        },
+        reason: 'Equipment no longer in proposal'
+      });
+      console.warn(
+        `[Wire Drop Restoration] ⚠️ Could not restore link for wire drop ${oldLink.wire_drop_id}:`,
+        `Equipment "${oldEquipment.name}" (${oldEquipment.part_number}) not found in new import`
+      );
+    }
+  });
+
+  // Insert restored links in batch
+  if (linkInserts.length > 0) {
+    try {
+      const { error } = await supabase
+        .from('wire_drop_equipment_links')
+        .insert(linkInserts);
+
+      if (error) {
+        console.error('[Wire Drop Restoration] Error inserting wire drop links:', error);
+        throw error;
+      }
+
+      console.log(`[Wire Drop Restoration] ✓ Successfully restored ${restored} wire drop links`);
+    } catch (error) {
+      console.error('[Wire Drop Restoration] Failed to restore wire drop links:', error);
+      return { restored: 0, failed: preservedLinks.length, failures: [], error: error.message };
+    }
+  }
+
+  if (failed > 0) {
+    console.warn(`[Wire Drop Restoration] ⚠️ Failed to restore ${failed} links (equipment removed from proposal)`);
+  }
+
+  return { restored, failed, failures };
+};
+
+const matchAndCreateSuppliers = async (equipmentRecords) => {
+  if (!equipmentRecords || equipmentRecords.length === 0) return new Map();
+
+  // Extract unique supplier names from equipment
+  const uniqueSuppliers = new Set();
+  equipmentRecords.forEach((item) => {
+    const supplier = item.supplier?.trim();
+    if (supplier) {
+      uniqueSuppliers.add(supplier);
+    }
+  });
+
+  if (uniqueSuppliers.size === 0) return new Map();
+
+  const supplierMap = new Map(); // Maps CSV supplier name → supplier_id
+
+  console.log(`[Vendor Matching] Processing ${uniqueSuppliers.size} unique vendors from CSV...`);
+
+  for (const csvSupplierName of uniqueSuppliers) {
+    try {
+      // Use fuzzy matching to find or create supplier
+      const matchResult = await fuzzyMatchService.matchSupplier(csvSupplierName, 0.7);
+
+      if (matchResult.matched && matchResult.supplier) {
+        // Found a match! Link this CSV name to the existing supplier
+        console.log(`[Vendor Matching] ✓ Matched "${csvSupplierName}" to "${matchResult.supplier.name}" (${(matchResult.confidence * 100).toFixed(0)}% confidence)`);
+        supplierMap.set(csvSupplierName, matchResult.supplier.id);
+      } else {
+        // No match found - auto-create new supplier
+        console.log(`[Vendor Matching] ➕ Creating new vendor: "${csvSupplierName}"`);
+        const newSupplier = await fuzzyMatchService.createSupplierFromCSV(csvSupplierName);
+
+        if (newSupplier && newSupplier.id) {
+          console.log(`[Vendor Matching] ✓ Created vendor "${newSupplier.name}" with short code: ${newSupplier.short_code}`);
+          supplierMap.set(csvSupplierName, newSupplier.id);
+        } else {
+          console.warn(`[Vendor Matching] ⚠️ Failed to create vendor for "${csvSupplierName}"`);
+        }
+      }
+    } catch (error) {
+      console.error(`[Vendor Matching] ❌ Error processing vendor "${csvSupplierName}":`, error);
+      // Continue processing other suppliers even if one fails
+    }
+  }
+
+  console.log(`[Vendor Matching] Complete: Processed ${supplierMap.size}/${uniqueSuppliers.size} vendors`);
+  return supplierMap;
+};
+
+const linkEquipmentToSuppliers = async (equipmentRecords, supplierMap, projectId) => {
+  if (!supplierMap || supplierMap.size === 0) {
+    console.log('[Vendor Linking] No vendor mappings to apply');
+    return 0;
+  }
+
+  const updates = [];
+  let linkedCount = 0;
+
+  equipmentRecords.forEach((item) => {
+    const csvSupplierName = item.supplier?.trim();
+    if (!csvSupplierName) return;
+
+    const supplierId = supplierMap.get(csvSupplierName);
+    if (!supplierId) return;
+
+    if (item.id) {
+      // Item already exists - add to update queue
+      updates.push(
+        supabase
+          .from('project_equipment')
+          .update({ supplier_id: supplierId })
+          .eq('id', item.id)
+      );
+      linkedCount++;
+    }
+  });
+
+  if (updates.length > 0) {
+    console.log(`[Vendor Linking] Linking ${updates.length} equipment items to vendors...`);
+    await Promise.all(updates);
+    console.log(`[Vendor Linking] ✓ Linked ${linkedCount} items to vendors`);
+  }
+
+  return linkedCount;
+};
+
 export const projectEquipmentService = {
   async importCsv(projectId, file, options = {}) {
     if (!projectId || !file) throw new Error('Project and file are required');
@@ -389,8 +621,10 @@ export const projectEquipmentService = {
 
     const mode = options.mode === 'merge' || options.replaceExisting === false ? 'merge' : 'replace';
 
+    // Preserve wire drop links before deletion (REPLACE mode only)
+    let preservedWireDropLinks = [];
     if (mode === 'replace') {
-      await resetPreviousImports(projectId);
+      preservedWireDropLinks = await resetPreviousImports(projectId);
     }
 
     const { roomMap, insertedCount } = await ensureRooms(projectId, parsedRows);
@@ -406,12 +640,21 @@ export const projectEquipmentService = {
 
     if (equipmentRecords.length > 0) {
       if (mode === 'replace') {
+        // Check authentication status
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[Auth Check] Session exists:', !!session);
+        console.log('[Auth Check] User role:', session?.user?.role || 'anon');
+        console.log('[Auth Check] User ID:', session?.user?.id || 'none');
+
         const { data: inserted, error: equipmentError } = await supabase
           .from('project_equipment')
           .insert(equipmentRecords)
           .select();
 
-        if (equipmentError) throw equipmentError;
+        if (equipmentError) {
+          console.error('[Equipment Insert] Error:', equipmentError);
+          throw equipmentError;
+        }
 
         insertedEquipment = inserted || [];
 
@@ -431,6 +674,16 @@ export const projectEquipmentService = {
           }
 
           await syncGlobalParts(insertedEquipment, projectId, batchId);
+
+          // NEW: Match and link suppliers
+          const supplierMap = await matchAndCreateSuppliers(insertedEquipment);
+          await linkEquipmentToSuppliers(insertedEquipment, supplierMap, projectId);
+
+          // NEW: Restore wire drop links after equipment insertion (REPLACE mode only)
+          if (preservedWireDropLinks.length > 0) {
+            const restorationResult = await restoreWireDropLinks(preservedWireDropLinks, insertedEquipment);
+            console.log('[Wire Drop Restoration] Summary:', restorationResult);
+          }
         }
       } else {
         const { data: existingEquipment, error: existingError } = await supabase
@@ -506,6 +759,10 @@ export const projectEquipmentService = {
         const recordsForSync = [...insertedEquipment, ...(updatedRecords || [])];
         if (recordsForSync.length > 0) {
           await syncGlobalParts(recordsForSync, projectId);
+
+          // NEW: Match and link suppliers for both inserted and updated items
+          const supplierMap = await matchAndCreateSuppliers(recordsForSync);
+          await linkEquipmentToSuppliers(recordsForSync, supplierMap, projectId);
         }
       }
     }
@@ -515,12 +772,75 @@ export const projectEquipmentService = {
 
     if (laborRecords.length > 0) {
       if (mode === 'replace') {
-        const { error: laborError } = await supabase
-          .from('project_labor_budget')
-          .insert(laborRecords);
+        console.log(`[Labor Budget] Processing ${laborRecords.length} labor records in REPLACE mode`);
 
-        if (laborError) throw laborError;
-        laborInserted = laborRecords.length;
+        // Fetch existing labor records to check for conflicts
+        const { data: existingLabor, error: fetchError } = await supabase
+          .from('project_labor_budget')
+          .select('id, labor_type, room_id')
+          .eq('project_id', projectId);
+
+        if (fetchError) {
+          console.error('[Labor Budget] Error fetching existing records:', fetchError);
+          throw fetchError;
+        }
+
+        console.log(`[Labor Budget] Found ${(existingLabor || []).length} existing labor records`);
+
+        // Create a map of existing labor records
+        const existingMap = new Map();
+        (existingLabor || []).forEach((labor) => {
+          const key = `${labor.labor_type || ''}|${labor.room_id || 'null'}`;
+          existingMap.set(key, labor);
+        });
+
+        // Separate into updates vs inserts
+        const toInsert = [];
+        const toUpdate = [];
+
+        laborRecords.forEach((record) => {
+          const key = `${record.labor_type || ''}|${record.room_id || 'null'}`;
+          const existing = existingMap.get(key);
+
+          if (existing) {
+            // Update existing record
+            toUpdate.push({
+              ...record,
+              id: existing.id
+            });
+          } else {
+            // Insert new record
+            toInsert.push(record);
+          }
+        });
+
+        console.log(`[Labor Budget] Inserting ${toInsert.length} new, updating ${toUpdate.length} existing`);
+
+        // Insert new records
+        if (toInsert.length > 0) {
+          const { error: insertError } = await supabase
+            .from('project_labor_budget')
+            .insert(toInsert);
+
+          if (insertError) {
+            console.error('[Labor Budget] Insert error:', insertError);
+            throw insertError;
+          }
+          laborInserted = toInsert.length;
+        }
+
+        // Update existing records
+        if (toUpdate.length > 0) {
+          const { error: updateError } = await supabase
+            .from('project_labor_budget')
+            .upsert(toUpdate, { onConflict: 'id' });
+
+          if (updateError) {
+            console.error('[Labor Budget] Update error:', updateError);
+            throw updateError;
+          }
+          laborUpdated = toUpdate.length;
+        }
       } else {
         const { data: existingLabor, error: existingLaborError } = await supabase
           .from('project_labor_budget')
@@ -808,5 +1128,131 @@ export const projectEquipmentService = {
     }
 
     return data;
+  },
+
+  /**
+   * Update ordered or received quantities for equipment
+   * @param {string} equipmentId - The equipment item ID
+   * @param {object} options - { orderedQty, receivedQty, userId }
+   */
+  async updateProcurementQuantities(equipmentId, { orderedQty, receivedQty, userId } = {}) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!equipmentId) throw new Error('Equipment ID is required');
+
+    // First, get current equipment to validate
+    const { data: current, error: fetchError } = await supabase
+      .from('project_equipment')
+      .select('id, planned_quantity, ordered_quantity, received_quantity')
+      .eq('id', equipmentId)
+      .single();
+
+    if (fetchError) throw new Error('Failed to fetch equipment: ' + fetchError.message);
+    if (!current) throw new Error('Equipment not found');
+
+    const updates = {};
+
+    // Update ordered quantity
+    if (typeof orderedQty === 'number' && orderedQty >= 0) {
+      updates.ordered_quantity = orderedQty;
+      updates.ordered_confirmed_by = userId || null;
+      updates.ordered_confirmed_at = orderedQty > 0 ? new Date().toISOString() : null;
+    }
+
+    // Update received quantity (with validation)
+    if (typeof receivedQty === 'number' && receivedQty >= 0) {
+      const maxAllowed = Math.max(
+        current.ordered_quantity || 0,
+        current.planned_quantity || 0
+      );
+
+      if (receivedQty > maxAllowed) {
+        throw new Error(
+          `Cannot receive ${receivedQty} units. Maximum allowed is ${maxAllowed} ` +
+          `(ordered: ${current.ordered_quantity || 0}, planned: ${current.planned_quantity || 0})`
+        );
+      }
+
+      updates.received_quantity = receivedQty;
+      updates.onsite_confirmed_by = userId || null;
+      updates.onsite_confirmed_at = receivedQty > 0 ? new Date().toISOString() : null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return current;
+    }
+
+    const { data, error } = await supabase
+      .from('project_equipment')
+      .update(updates)
+      .eq('id', equipmentId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Failed to update procurement quantities:', error);
+      throw new Error(error.message || 'Failed to update procurement quantities');
+    }
+
+    return data;
+  },
+
+  /**
+   * Bulk receive all ordered items for a project phase
+   * @param {string} projectId - The project ID
+   * @param {string} phase - 'prewire' or 'trim'
+   */
+  async receiveAllForPhase(projectId, phase = 'prewire') {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!projectId) throw new Error('Project ID is required');
+
+    // Get all equipment for this phase that has been ordered but not fully received
+    const { data: equipment, error: fetchError } = await supabase
+      .from('project_equipment')
+      .select(`
+        id,
+        planned_quantity,
+        ordered_quantity,
+        received_quantity,
+        global_part:global_part_id (required_for_prewire)
+      `)
+      .eq('project_id', projectId)
+      .neq('equipment_type', 'Labor')
+      .gt('ordered_quantity', 0);
+
+    if (fetchError) throw new Error('Failed to fetch equipment: ' + fetchError.message);
+
+    // Filter to correct phase
+    const itemsToReceive = (equipment || []).filter(item => {
+      const isPrewire = item.global_part?.required_for_prewire === true;
+      const phaseMatches = phase === 'prewire' ? isPrewire : !isPrewire;
+      const notFullyReceived = (item.received_quantity || 0) < (item.ordered_quantity || 0);
+      return phaseMatches && notFullyReceived;
+    });
+
+    if (itemsToReceive.length === 0) {
+      return { updated: 0, message: 'No items to receive' };
+    }
+
+    // Update all items to received_quantity = ordered_quantity
+    const updates = itemsToReceive.map(item => ({
+      id: item.id,
+      received_quantity: item.ordered_quantity,
+      onsite_confirmed_at: new Date().toISOString()
+    }));
+
+    const { data, error } = await supabase
+      .from('project_equipment')
+      .upsert(updates, { onConflict: 'id' })
+      .select();
+
+    if (error) {
+      console.error('Failed to bulk receive items:', error);
+      throw new Error(error.message || 'Failed to bulk receive items');
+    }
+
+    return {
+      updated: data?.length || 0,
+      message: `Successfully received ${data?.length || 0} items for ${phase} phase`
+    };
   }
 };

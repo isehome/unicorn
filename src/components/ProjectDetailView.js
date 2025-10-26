@@ -37,7 +37,8 @@ import {
   Shield,
   Key,
   AlertCircle,
-  ChevronDown
+  ChevronDown,
+  PackageCheck
 } from 'lucide-react';
 import {
   projectsService,
@@ -2107,12 +2108,32 @@ const ProjectDetailView = () => {
           </button>
 
           <button
+            onClick={() => navigate(`/projects/${id}/receiving`)}
+            className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+            style={styles.card}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: withAlpha(palette.success, 0.1) }}
+              >
+                <PackageCheck size={20} style={{ color: palette.success }} />
+              </div>
+              <div className="text-left">
+                <p className="font-medium" style={styles.textPrimary}>Receive Items</p>
+                <p className="text-xs" style={styles.textSecondary}>Log incoming shipments</p>
+              </div>
+            </div>
+            <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
+          </button>
+
+          <button
             onClick={() => navigate(`/projects/${id}/secure-data`)}
             className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
             style={styles.card}
           >
             <div className="flex items-center gap-3">
-              <div 
+              <div
                 className="p-2 rounded-lg transition-colors"
                 style={{ backgroundColor: withAlpha(palette.danger, 0.1) }}
               >

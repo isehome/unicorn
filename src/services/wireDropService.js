@@ -93,6 +93,49 @@ class WireDropService {
   }
 
   /**
+   * Get a single wire drop by UID
+   */
+  async getWireDropByUid(uid) {
+    if (!uid) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('wire_drops')
+        .select(`
+          *,
+          project_room:project_room_id (*),
+          projects(name, id),
+          wire_drop_stages(*),
+          wire_drop_room_end(*),
+          wire_drop_head_end(*),
+          wire_drop_equipment_links (
+            id,
+            link_side,
+            sort_order,
+            project_equipment (
+              *,
+              project_rooms(name, is_headend)
+            )
+          )
+        `)
+        .order('sort_order', { ascending: true, foreignTable: 'wire_drop_equipment_links' })
+        .eq('uid', uid)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return null;
+
+      return {
+        ...data,
+        completion: this.calculateWireDropCompletion(data.wire_drop_stages || [])
+      };
+    } catch (error) {
+      console.error('Failed to fetch wire drop by UID:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Generate automatic drop name based on room and drop type
    * Format: "Room Name Drop Type #" (e.g., "Living Room Speaker 1")
    */
