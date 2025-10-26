@@ -203,7 +203,16 @@ class SharePointStorageService {
       try {
         // Convert file to base64
         const fileBase64 = await this.fileToBase64(file);
-        
+
+        // Debug logging
+        console.log('SharePoint upload attempt', attempt, {
+          rootUrl,
+          subPath,
+          filename,
+          fileSize: file.size,
+          contentType: file.type || 'application/octet-stream'
+        });
+
         // Call the graph-upload API
         const response = await fetch('/api/graph-upload', {
           method: 'POST',
