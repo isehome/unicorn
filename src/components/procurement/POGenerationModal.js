@@ -6,7 +6,7 @@ import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { projectEquipmentService } from '../../services/projectEquipmentService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
-import { sharePointFolderService } from '../../services/sharePointFolderService';
+import { sharePointStorageService } from '../../services/sharePointStorageService';
 import Button from '../ui/Button';
 import {
   X,
@@ -179,29 +179,40 @@ const POGenerationModal = ({
       try {
         const exportData = await purchaseOrderService.exportPOData(result.po.id);
 
-        // Generate PDF and CSV
-        const pdfDoc = pdfExportService.generatePOPDF(exportData);
-        const pdfBlob = pdfDoc.output('blob');
-        const csv = csvExportService.generatePOCSV(exportData);
-        const csvBlob = new Blob([csv], { type: 'text/csv' });
+        // Get project SharePoint URL
+        const projectUrl = await sharePointStorageService.getProjectSharePointUrl(projectId);
 
-        // Create folder structure: Procurement/{Vendor Name}/
-        const folderPath = `Procurement/${supplierName}`;
+        if (projectUrl) {
+          // Generate PDF and CSV
+          const pdfDoc = pdfExportService.generatePOPDF(exportData);
+          const pdfBlob = pdfDoc.output('blob');
+          const csv = csvExportService.generatePOCSV(exportData);
+          const csvBlob = new Blob([csv], { type: 'text/csv' });
 
-        // Upload both files to SharePoint (don't block on this)
-        sharePointFolderService.uploadFileToFolder(
-          projectId, // Assuming project has sharepoint_drive_id
-          folderPath,
-          `${result.po.po_number}.pdf`,
-          pdfBlob
-        ).catch(err => console.warn('SharePoint PDF upload failed:', err));
+          // Create folder path: Procurement/{Vendor Name}/
+          const folderPath = `Procurement/${supplierName}`;
 
-        sharePointFolderService.uploadFileToFolder(
-          projectId,
-          folderPath,
-          `${result.po.po_number}.csv`,
-          csvBlob
-        ).catch(err => console.warn('SharePoint CSV upload failed:', err));
+          // Upload both files to SharePoint (don't block on this)
+          sharePointStorageService.uploadToSharePoint(
+            projectUrl,
+            folderPath,
+            `${result.po.po_number}.pdf`,
+            pdfBlob
+          ).then(() => {
+            console.log('PDF uploaded to SharePoint successfully');
+          }).catch(err => console.warn('SharePoint PDF upload failed:', err));
+
+          sharePointStorageService.uploadToSharePoint(
+            projectUrl,
+            folderPath,
+            `${result.po.po_number}.csv`,
+            csvBlob
+          ).then(() => {
+            console.log('CSV uploaded to SharePoint successfully');
+          }).catch(err => console.warn('SharePoint CSV upload failed:', err));
+        } else {
+          console.warn('No SharePoint URL configured for this project');
+        }
       } catch (uploadErr) {
         console.warn('Failed to auto-upload to SharePoint:', uploadErr);
         // Don't fail the PO creation if SharePoint upload fails

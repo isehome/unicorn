@@ -4,7 +4,7 @@ import { enhancedStyles } from '../../styles/styleSystem';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
-import { sharePointFolderService } from '../../services/sharePointFolderService';
+import { sharePointStorageService } from '../../services/sharePointStorageService';
 import Button from '../ui/Button';
 import {
   X,
@@ -196,26 +196,33 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
       const exportData = await purchaseOrderService.exportPOData(poId);
 
+      // Get project SharePoint URL
+      const projectUrl = await sharePointStorageService.getProjectSharePointUrl(po.project_id);
+
+      if (!projectUrl) {
+        throw new Error('No SharePoint URL configured for this project');
+      }
+
       // Generate PDF and CSV
       const pdfDoc = pdfExportService.generatePOPDF(exportData);
       const pdfBlob = pdfDoc.output('blob');
       const csv = csvExportService.generatePOCSV(exportData);
       const csvBlob = new Blob([csv], { type: 'text/csv' });
 
-      // Create folder structure: Procurement/{Vendor Name}/
+      // Create folder path: Procurement/{Vendor Name}/
       const vendorName = po.supplier?.name || 'Unknown Vendor';
       const folderPath = `Procurement/${vendorName}`;
 
       // Upload both files to SharePoint
-      await sharePointFolderService.uploadFileToFolder(
-        po.project.sharepoint_drive_id,
+      await sharePointStorageService.uploadToSharePoint(
+        projectUrl,
         folderPath,
         `${po.po_number}.pdf`,
         pdfBlob
       );
 
-      await sharePointFolderService.uploadFileToFolder(
-        po.project.sharepoint_drive_id,
+      await sharePointStorageService.uploadToSharePoint(
+        projectUrl,
         folderPath,
         `${po.po_number}.csv`,
         csvBlob
