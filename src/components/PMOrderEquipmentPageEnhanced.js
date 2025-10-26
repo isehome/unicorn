@@ -21,7 +21,9 @@ import {
   ChevronDown,
   ChevronRight,
   Truck,
-  Building2
+  Building2,
+  Calendar,
+  DollarSign as DollarSignIcon
 } from 'lucide-react';
 
 const PMOrderEquipmentPageEnhanced = () => {
@@ -40,6 +42,9 @@ const PMOrderEquipmentPageEnhanced = () => {
   // Tab and view state
   const [tab, setTab] = useState('prewire'); // 'prewire', 'trim', 'pos'
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'vendor'
+
+  // Active POs state
+  const [purchaseOrders, setPurchaseOrders] = useState([]);
 
   // Edit state
   const [editingId, setEditingId] = useState(null);
@@ -64,6 +69,8 @@ const PMOrderEquipmentPageEnhanced = () => {
   useEffect(() => {
     if (tab === 'prewire' || tab === 'trim') {
       loadEquipment();
+    } else if (tab === 'pos') {
+      loadPurchaseOrders();
     }
   }, [projectId, tab]);
 
@@ -112,6 +119,20 @@ const PMOrderEquipmentPageEnhanced = () => {
     }
   };
 
+  const loadPurchaseOrders = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const pos = await poGeneratorService.getProjectPOs(projectId);
+      setPurchaseOrders(pos || []);
+    } catch (err) {
+      console.error('Failed to load purchase orders:', err);
+      setError('Failed to load purchase orders');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleVendorExpansion = (vendorName) => {
     setExpandedVendors(prev => ({
       ...prev,
@@ -146,6 +167,9 @@ const PMOrderEquipmentPageEnhanced = () => {
     if (viewMode === 'vendor') {
       await loadVendorGrouping();
     }
+
+    // Reload purchase orders list
+    await loadPurchaseOrders();
   };
 
   const handleOrderAll = async () => {
@@ -826,14 +850,106 @@ const PMOrderEquipmentPageEnhanced = () => {
 
         {/* Active POs Tab Content */}
         {tab === 'pos' && (
-          <div style={sectionStyles.card} className="text-center py-12">
-            <Truck className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              Active POs Coming Soon
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400">
-              Track all purchase orders and shipments here
-            </p>
+          <div>
+            <div style={sectionStyles.card} className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Purchase Orders ({purchaseOrders.length})
+                </h2>
+              </div>
+
+              {purchaseOrders.length === 0 ? (
+                <div className="text-center py-12">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p className="text-gray-500 dark:text-gray-400">
+                    No purchase orders yet. Create one from the Prewire or Trim tabs.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {purchaseOrders.map((po) => (
+                    <div
+                      key={po.id}
+                      style={sectionStyles.card}
+                      className="border-l-4 border-violet-500"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                              {po.po_number}
+                            </h3>
+                            <span className={`px-2 py-1 text-xs font-medium rounded ${
+                              po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
+                              po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                              po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                              'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                            }`}>
+                              {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                            </span>
+                            <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
+                              {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-600 dark:text-gray-400 text-xs">Supplier</p>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {po.supplier?.name || 'Unknown'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 dark:text-gray-400 text-xs">Items</p>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {po.itemCount || 0}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600 dark:text-gray-400 text-xs">Total</p>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                ${(po.total_amount || 0).toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {po.internal_notes && (
+                            <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
+                              <p className="text-gray-600 dark:text-gray-400">
+                                <strong>Notes:</strong> {po.internal_notes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-2 ml-4">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => alert('View PO details coming soon!')}
+                          >
+                            View Details
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => alert('Export PDF coming soon!')}
+                          >
+                            Export PDF
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
