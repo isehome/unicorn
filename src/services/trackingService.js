@@ -16,7 +16,7 @@ class TrackingService {
           status: trackingData.status || 'pending',
           shipped_date: trackingData.shipped_date,
           estimated_delivery_date: trackingData.estimated_delivery_date,
-          auto_tracking_enabled: trackingData.auto_tracking_enabled !== false,
+          auto_tracking_enabled: trackingData.auto_tracking_enabled === true, // Default to false
           notes: trackingData.notes
         }])
         .select()
@@ -25,7 +25,7 @@ class TrackingService {
       if (error) throw error;
 
       // If auto-tracking is enabled, fetch initial status
-      if (trackingData.auto_tracking_enabled !== false) {
+      if (trackingData.auto_tracking_enabled === true) {
         await this.refreshTracking(data.id);
       }
 
