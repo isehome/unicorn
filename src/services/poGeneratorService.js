@@ -196,7 +196,7 @@ class POGeneratorService {
         shipping_cost: shippingCost,
         total_amount: subtotal,
         created_by: createdBy,
-        notes: `Auto-generated PO for ${milestoneStage.replace('_', ' ')}`
+        internal_notes: `Auto-generated PO for ${milestoneStage.replace('_', ' ')}`
       };
 
       const { data: newPO, error: createError } = await supabase
