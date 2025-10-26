@@ -464,10 +464,14 @@ class PurchaseOrderService {
     try {
       const po = await this.getPurchaseOrder(poId);
 
-      // Format for printing/PDF
+      // Format for printing/PDF - structure expected by pdfExportService
       return {
-        po_number: po.po_number,
-        date: po.order_date,
+        po: {
+          po_number: po.po_number,
+          order_date: po.order_date,
+          requested_delivery_date: po.requested_delivery_date,
+          status: po.status
+        },
         supplier: {
           name: po.supplier.name,
           contact: po.supplier.contact_name,
@@ -485,14 +489,14 @@ class PurchaseOrderService {
           phone: po.ship_to_phone
         },
         items: po.items.map(item => ({
-          line: item.line_number,
+          line_number: item.line_number,
           part_number: item.equipment?.part_number,
-          description: item.equipment?.name,
+          description: item.equipment?.name || item.equipment?.description,
           manufacturer: item.equipment?.manufacturer,
           model: item.equipment?.model,
-          quantity: item.quantity_ordered,
+          quantity_ordered: item.quantity_ordered,
           unit_cost: item.unit_cost,
-          total: item.line_total
+          line_total: item.line_total
         })),
         totals: {
           subtotal: po.subtotal,
