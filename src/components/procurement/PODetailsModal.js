@@ -5,6 +5,7 @@ import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
+import { trackingService } from '../../services/trackingService';
 import Button from '../ui/Button';
 import {
   X,
@@ -19,7 +20,8 @@ import {
   Loader,
   AlertCircle,
   CheckCircle,
-  Upload
+  Upload,
+  Truck
 } from 'lucide-react';
 
 /**
@@ -45,6 +47,13 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const [success, setSuccess] = useState(null);
   const [po, setPO] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [tracking, setTracking] = useState([]);
+  const [trackingData, setTrackingData] = useState({
+    tracking_number: '',
+    carrier: 'UPS',
+    carrier_service: '',
+    notes: ''
+  });
 
   // Edit state
   const [editData, setEditData] = useState({});
@@ -69,6 +78,10 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         internal_notes: data.internal_notes || '',
         supplier_notes: data.supplier_notes || ''
       });
+
+      // Load tracking data
+      const trackingData = await trackingService.getPOTracking(poId);
+      setTracking(trackingData);
     } catch (err) {
       console.error('Failed to load PO:', err);
       setError('Failed to load purchase order details');
@@ -238,12 +251,53 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     }
   };
 
+  const handleAddTracking = async () => {
+    if (!trackingData.tracking_number.trim()) {
+      setError('Please enter a tracking number');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await trackingService.addTracking(poId, trackingData);
+
+      setSuccess('Tracking number added successfully');
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Reload tracking data
+      const updatedTracking = await trackingService.getPOTracking(poId);
+      setTracking(updatedTracking);
+
+      // Reset form
+      setTrackingData({
+        tracking_number: '',
+        carrier: 'UPS',
+        carrier_service: '',
+        notes: ''
+      });
+    } catch (err) {
+      console.error('Failed to add tracking:', err);
+      setError('Failed to add tracking number');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleClose = () => {
     setPO(null);
     setEditData({});
     setIsEditing(false);
     setError(null);
     setSuccess(null);
+    setTracking([]);
+    setTrackingData({
+      tracking_number: '',
+      carrier: 'UPS',
+      carrier_service: '',
+      notes: ''
+    });
     onClose();
   };
 
@@ -497,6 +551,115 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                     {po.supplier_notes || 'None'}
                   </p>
                 )}
+              </div>
+            </div>
+
+            {/* Tracking Information */}
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                <Truck className="w-5 h-5" />
+                Tracking Information
+              </h3>
+
+              {/* Existing Tracking */}
+              {tracking.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  {tracking.map((t) => (
+                    <div
+                      key={t.id}
+                      className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                          {t.tracking_number}
+                        </span>
+                        <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                          {t.carrier}
+                        </span>
+                        {t.carrier_service && (
+                          <span className="text-xs text-gray-600 dark:text-gray-400">
+                            {t.carrier_service}
+                          </span>
+                        )}
+                      </div>
+                      {t.notes && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                          {t.notes}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add Tracking Form */}
+              <div className="space-y-3 p-4 bg-gray-50 dark:bg-gray-700/30 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Tracking Number *
+                    </label>
+                    <input
+                      type="text"
+                      value={trackingData.tracking_number}
+                      onChange={(e) => setTrackingData({ ...trackingData, tracking_number: e.target.value })}
+                      placeholder="Enter tracking number"
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Carrier *
+                    </label>
+                    <select
+                      value={trackingData.carrier}
+                      onChange={(e) => setTrackingData({ ...trackingData, carrier: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    >
+                      <option value="UPS">UPS</option>
+                      <option value="FedEx">FedEx</option>
+                      <option value="USPS">USPS</option>
+                      <option value="DHL">DHL</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Service Type (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={trackingData.carrier_service}
+                    onChange={(e) => setTrackingData({ ...trackingData, carrier_service: e.target.value })}
+                    placeholder="e.g., Ground, Express, 2-Day"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Notes (Optional)
+                  </label>
+                  <textarea
+                    value={trackingData.notes}
+                    onChange={(e) => setTrackingData({ ...trackingData, notes: e.target.value })}
+                    rows={2}
+                    placeholder="Additional notes about this shipment"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                  />
+                </div>
+
+                <Button
+                  variant="primary"
+                  icon={Truck}
+                  onClick={handleAddTracking}
+                  disabled={saving || !trackingData.tracking_number.trim()}
+                >
+                  {saving ? 'Adding...' : 'Add Tracking'}
+                </Button>
               </div>
             </div>
           </div>

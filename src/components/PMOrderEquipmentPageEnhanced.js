@@ -5,6 +5,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
+import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
@@ -129,7 +130,16 @@ const PMOrderEquipmentPageEnhanced = () => {
       setLoading(true);
       setError(null);
       const pos = await poGeneratorService.getProjectPOs(projectId);
-      setPurchaseOrders(pos || []);
+
+      // Load tracking info for each PO
+      const posWithTracking = await Promise.all(
+        (pos || []).map(async (po) => {
+          const tracking = await trackingService.getPOTracking(po.id);
+          return { ...po, tracking };
+        })
+      );
+
+      setPurchaseOrders(posWithTracking);
     } catch (err) {
       console.error('Failed to load purchase orders:', err);
       setError('Failed to load purchase orders');
@@ -968,6 +978,26 @@ const PMOrderEquipmentPageEnhanced = () => {
                               <p className="text-gray-600 dark:text-gray-400">
                                 <strong>Notes:</strong> {po.internal_notes}
                               </p>
+                            </div>
+                          )}
+
+                          {/* Tracking Info */}
+                          {po.tracking && po.tracking.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {po.tracking.map((t) => (
+                                <div
+                                  key={t.id}
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg"
+                                >
+                                  <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                  <span className="font-mono text-xs font-semibold text-blue-900 dark:text-blue-100">
+                                    {t.tracking_number}
+                                  </span>
+                                  <span className="text-xs text-blue-700 dark:text-blue-300">
+                                    ({t.carrier})
+                                  </span>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
