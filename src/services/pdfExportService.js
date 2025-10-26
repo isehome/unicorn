@@ -7,7 +7,7 @@
  * Format: Logo (top-left) + Company info (right) → PO details → Line items table
  */
 
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import { saveAs } from 'file-saver';
 

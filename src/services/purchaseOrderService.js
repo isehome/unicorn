@@ -470,7 +470,11 @@ class PurchaseOrderService {
           po_number: po.po_number,
           order_date: po.order_date,
           requested_delivery_date: po.requested_delivery_date,
-          status: po.status
+          status: po.status,
+          subtotal: po.subtotal,
+          tax_amount: po.tax_amount,
+          shipping_cost: po.shipping_cost,
+          total_amount: po.total_amount
         },
         supplier: {
           name: po.supplier.name,
