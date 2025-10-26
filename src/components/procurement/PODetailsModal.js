@@ -55,6 +55,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     carrier_service: '',
     notes: ''
   });
+  const [editingTrackingId, setEditingTrackingId] = useState(null);
+  const [editingTrackingData, setEditingTrackingData] = useState(null);
 
   // Edit state
   const [editData, setEditData] = useState({});
@@ -286,6 +288,71 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     }
   };
 
+  const handleEditTracking = (trackingItem) => {
+    setEditingTrackingId(trackingItem.id);
+    setEditingTrackingData({
+      tracking_number: trackingItem.tracking_number,
+      carrier: trackingItem.carrier,
+      carrier_service: trackingItem.carrier_service || '',
+      notes: trackingItem.notes || ''
+    });
+  };
+
+  const handleSaveTracking = async () => {
+    if (!editingTrackingData.tracking_number.trim()) {
+      setError('Please enter a tracking number');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await trackingService.updateTracking(editingTrackingId, editingTrackingData);
+
+      setSuccess('Tracking updated successfully');
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Reload tracking data
+      const updatedTracking = await trackingService.getPOTracking(poId);
+      setTracking(updatedTracking);
+
+      // Exit edit mode
+      setEditingTrackingId(null);
+      setEditingTrackingData(null);
+    } catch (err) {
+      console.error('Failed to update tracking:', err);
+      setError('Failed to update tracking');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteTracking = async (trackingId) => {
+    if (!window.confirm('Delete this tracking number?')) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await trackingService.deleteTracking(trackingId);
+
+      setSuccess('Tracking deleted successfully');
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Reload tracking data
+      const updatedTracking = await trackingService.getPOTracking(poId);
+      setTracking(updatedTracking);
+    } catch (err) {
+      console.error('Failed to delete tracking:', err);
+      setError('Failed to delete tracking');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleClose = () => {
     setPO(null);
     setEditData({});
@@ -299,6 +366,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       carrier_service: '',
       notes: ''
     });
+    setEditingTrackingId(null);
+    setEditingTrackingData(null);
     onClose();
   };
 
@@ -564,29 +633,130 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
               {/* Existing Tracking */}
               {tracking.length > 0 && (
-                <div className="mb-4 space-y-2">
+                <div className="mb-4 space-y-3">
                   {tracking.map((t) => (
                     <div
                       key={t.id}
                       className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600"
                     >
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
-                          {t.tracking_number}
-                        </span>
-                        <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                          {t.carrier}
-                        </span>
-                        {t.carrier_service && (
-                          <span className="text-xs text-gray-600 dark:text-gray-400">
-                            {t.carrier_service}
-                          </span>
-                        )}
-                      </div>
-                      {t.notes && (
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                          {t.notes}
-                        </p>
+                      {editingTrackingId === t.id ? (
+                        /* Edit Mode */
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Tracking Number *
+                              </label>
+                              <input
+                                type="text"
+                                value={editingTrackingData.tracking_number}
+                                onChange={(e) => setEditingTrackingData({ ...editingTrackingData, tracking_number: e.target.value })}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Carrier *
+                              </label>
+                              <select
+                                value={editingTrackingData.carrier}
+                                onChange={(e) => setEditingTrackingData({ ...editingTrackingData, carrier: e.target.value })}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                              >
+                                <option value="UPS">UPS</option>
+                                <option value="FedEx">FedEx</option>
+                                <option value="USPS">USPS</option>
+                                <option value="DHL">DHL</option>
+                                <option value="Other">Other</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Service Type
+                            </label>
+                            <input
+                              type="text"
+                              value={editingTrackingData.carrier_service}
+                              onChange={(e) => setEditingTrackingData({ ...editingTrackingData, carrier_service: e.target.value })}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Notes
+                            </label>
+                            <textarea
+                              value={editingTrackingData.notes}
+                              onChange={(e) => setEditingTrackingData({ ...editingTrackingData, notes: e.target.value })}
+                              rows={2}
+                              className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={Save}
+                              onClick={handleSaveTracking}
+                              disabled={saving}
+                            >
+                              {saving ? 'Saving...' : 'Save'}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                setEditingTrackingId(null);
+                                setEditingTrackingData(null);
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* View Mode */
+                        <>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">
+                                  {t.tracking_number}
+                                </span>
+                                <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                                  {t.carrier}
+                                </span>
+                                {t.carrier_service && (
+                                  <span className="text-xs text-gray-600 dark:text-gray-400">
+                                    {t.carrier_service}
+                                  </span>
+                                )}
+                              </div>
+                              {t.notes && (
+                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                  {t.notes}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex gap-1 ml-2">
+                              <button
+                                onClick={() => handleEditTracking(t)}
+                                className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                title="Edit tracking"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTracking(t.id)}
+                                className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+                                title="Delete tracking"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </>
                       )}
                     </div>
                   ))}
