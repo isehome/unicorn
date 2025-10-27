@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable } from 'lucide-react';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
+import { supabase } from '../lib/supabase';
 
 const mapEquipmentRecord = (item) => {
   const name = item.name || item.global_part?.name || 'Unnamed Equipment';
@@ -108,7 +109,47 @@ const EquipmentListPage = () => {
       setLoading(true);
       setError('');
       const data = await projectEquipmentService.fetchProjectEquipment(projectId);
-      const mapped = (data || []).map(mapEquipmentRecord);
+
+      // Fetch wire drop links for all equipment
+      const equipmentIds = data.map(eq => eq.id);
+      const { data: wireDropLinks, error: linksError } = await supabase
+        .from('wire_drop_equipment_links')
+        .select(`
+          equipment_id,
+          link_side,
+          wire_drops (
+            id,
+            name,
+            drop_name,
+            type
+          )
+        `)
+        .in('equipment_id', equipmentIds);
+
+      if (linksError) {
+        console.warn('Failed to load wire drop links:', linksError);
+      }
+
+      // Map wire drop links to equipment
+      const wireDropsByEquipment = {};
+      wireDropLinks?.forEach(link => {
+        if (!wireDropsByEquipment[link.equipment_id]) {
+          wireDropsByEquipment[link.equipment_id] = [];
+        }
+        wireDropsByEquipment[link.equipment_id].push({
+          wireDropId: link.wire_drops.id,
+          wireDropName: link.wire_drops.drop_name || link.wire_drops.name,
+          wireDropType: link.wire_drops.type,
+          linkSide: link.link_side
+        });
+      });
+
+      // Add wire drops to mapped equipment
+      const mapped = (data || []).map(item => ({
+        ...mapEquipmentRecord(item),
+        wireDrops: wireDropsByEquipment[item.id] || []
+      }));
+
       setEquipment(mapped);
     } catch (err) {
       console.error('Failed to load project equipment:', err);
@@ -280,6 +321,32 @@ const EquipmentListPage = () => {
 
         {item.notes && (
           <p className="text-xs italic text-gray-500 dark:text-gray-400">Notes: {item.notes}</p>
+        )}
+
+        {/* Wire Drop Links */}
+        {item.wireDrops && item.wireDrops.length > 0 && (
+          <div className="pt-3 mt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Cable size={14} className="text-violet-500" />
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                Connected Wire Drops
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {item.wireDrops.map(wd => (
+                <button
+                  key={wd.wireDropId}
+                  onClick={() => navigate(`/wire-drops/${wd.wireDropId}`)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                >
+                  <span>{wd.wireDropName}</span>
+                  {wd.wireDropType && (
+                    <span className="text-[10px] opacity-75">({wd.wireDropType})</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>

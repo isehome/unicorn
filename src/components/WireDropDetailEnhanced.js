@@ -11,6 +11,7 @@ import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import CachedSharePointImage from './CachedSharePointImage';
 import QRCode from 'qrcode';
+import UniFiClientSelector from './UniFiClientSelector';
 import { 
   Camera, 
   Upload, 
@@ -63,6 +64,7 @@ const WireDropDetailEnhanced = () => {
   const [showFullRecord, setShowFullRecord] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [qrCodeSrc, setQrCodeSrc] = useState(null);
+  const [showAllRooms, setShowAllRooms] = useState(false);
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
@@ -443,6 +445,17 @@ const WireDropDetailEnhanced = () => {
     }
   };
 
+  // Single-select behavior for room equipment (1 wire drop = 1 equipment)
+  const handleSelectRoomEquipment = (equipmentId) => {
+    if (!equipmentId) return;
+    setRoomEquipmentSelection([equipmentId]); // Single selection only
+  };
+
+  const handleDeselectRoomEquipment = (equipmentId) => {
+    setRoomEquipmentSelection(prev => prev.filter(id => id !== equipmentId));
+  };
+
+  // Legacy toggle function (kept for backward compatibility with existing UI)
   const toggleRoomEquipment = (equipmentId) => {
     setRoomEquipmentSelection((prev) => {
       if (!equipmentId) return prev;
@@ -635,6 +648,54 @@ const WireDropDetailEnhanced = () => {
   const matchingRoomEquipment = roomEquipmentBuckets.matches;
   const usedRoomEquipment = roomEquipmentBuckets.matchesSelected;
   const otherRoomEquipment = roomEquipmentBuckets.others;
+
+  // Smart sorted equipment for room end selector with single-select behavior
+  const sortedRoomEquipment = useMemo(() => {
+    const wireDropRoom = wireDrop?.room_name?.toLowerCase().trim();
+    const alreadyAssignedIds = new Set(roomEquipmentSelection);
+
+    // Categorize equipment
+    const sameRoomUnassigned = [];
+    const sameRoomAssigned = [];
+    const otherRoomsData = {};
+
+    nonHeadEquipment.forEach(item => {
+      const itemRoom = item.project_rooms?.name?.toLowerCase().trim();
+      const isSameRoom = itemRoom === wireDropRoom;
+      const isAssigned = alreadyAssignedIds.has(item.id);
+
+      if (isSameRoom && !isAssigned) {
+        sameRoomUnassigned.push(item);
+      } else if (isSameRoom && isAssigned) {
+        sameRoomAssigned.push(item);
+      } else {
+        // Group by room for "other rooms" section
+        const roomName = item.project_rooms?.name || 'Unassigned';
+        if (!otherRoomsData[roomName]) {
+          otherRoomsData[roomName] = [];
+        }
+        otherRoomsData[roomName].push({ item, isAssigned });
+      }
+    });
+
+    // Sort each category alphabetically
+    const sortAlpha = (a, b) => (a.name || '').localeCompare(b.name || '');
+    sameRoomUnassigned.sort(sortAlpha);
+    sameRoomAssigned.sort(sortAlpha);
+
+    // Sort other rooms by room name
+    const otherRooms = Object.entries(otherRoomsData).map(([roomName, items]) => ({
+      roomName,
+      items: items.sort((a, b) => sortAlpha(a.item, b.item))
+    })).sort((a, b) => a.roomName.localeCompare(b.roomName));
+
+    return {
+      sameRoomUnassigned,
+      sameRoomAssigned,
+      otherRooms,
+      hasOtherRooms: otherRooms.length > 0
+    };
+  }, [nonHeadEquipment, wireDrop, roomEquipmentSelection]);
 
   const headEndEquipmentOptions = useMemo(
     () => selectableEquipment.filter((item) => item.project_rooms?.is_headend),
@@ -998,6 +1059,60 @@ const WireDropDetailEnhanced = () => {
                           </div>
                         )}
 
+                        {/* Connected Equipment Display */}
+                        {selectedRoomEquipmentDetails.length > 0 && (
+                          <div className="mt-3">
+                            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2"
+                              style={{
+                                backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(187, 247, 208, 0.5)',
+                                borderColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.6)'
+                              }}
+                            >
+                              <Monitor size={20} className="text-green-600 dark:text-green-400 flex-shrink-0" />
+                              <div className="flex-1">
+                                <div className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wide">
+                                  Room Equipment
+                                </div>
+                                <div className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-0.5">
+                                  {selectedRoomEquipmentDetails[0].name}
+                                </div>
+                                {(selectedRoomEquipmentDetails[0].manufacturer || selectedRoomEquipmentDetails[0].model) && (
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                    {selectedRoomEquipmentDetails[0].manufacturer} {selectedRoomEquipmentDetails[0].model}
+                                  </div>
+                                )}
+                              </div>
+                              {selectedRoomEquipmentDetails.length > 1 && (
+                                <span className="ml-2 px-2 py-0.5 rounded-full bg-green-600 text-white text-xs font-bold">
+                                  +{selectedRoomEquipmentDetails.length - 1}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Not Connected State */}
+                        {selectedRoomEquipmentDetails.length === 0 && (
+                          <div className="mt-3">
+                            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed"
+                              style={{
+                                backgroundColor: mode === 'dark' ? 'rgba(156, 163, 175, 0.1)' : 'rgba(243, 244, 246, 0.8)',
+                                borderColor: mode === 'dark' ? 'rgba(156, 163, 175, 0.3)' : 'rgba(156, 163, 175, 0.5)'
+                              }}
+                            >
+                              <AlertCircle size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
+                              <div>
+                                <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+                                  Room Equipment
+                                </div>
+                                <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-0.5">
+                                  Not Connected
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {wireDrop.location && (
                           <p className="mt-2 text-sm" style={styles.textSecondary}>
                             {wireDrop.location}
@@ -1263,16 +1378,18 @@ const WireDropDetailEnhanced = () => {
 
         {/* Tabs */}
         <div className="flex gap-2 border-b" style={{ borderColor: styles.card.borderColor }}>
-          {['prewire', 'room', 'head-end'].map((tab) => (
+          {['prewire', 'room', 'head-end', 'commission'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className="px-4 py-2 rounded-t-lg transition-colors"
+              className="px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2"
               style={activeTab === tab ? styles.tabActive : styles.tabInactive}
             >
+              {tab === 'commission' && <Network size={16} />}
               {tab === 'prewire' && 'Prewire'}
               {tab === 'room' && 'Room'}
               {tab === 'head-end' && 'Head End'}
+              {tab === 'commission' && 'Commission'}
             </button>
           ))}
         </div>
@@ -1545,60 +1662,144 @@ const WireDropDetailEnhanced = () => {
                     <div className="space-y-3">
                       <div>
                         <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                          Choose equipment to link
+                          Equipment in {wireDrop.room_name || 'this room'}
                         </label>
-                        <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-3 space-y-4">
-                          {roomGroupsForDisplay.length === 0 ? (
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              No additional equipment available.
+
+                        {/* Same Room - Unassigned (Primary List) */}
+                        {sortedRoomEquipment.sameRoomUnassigned.length > 0 ? (
+                          <div className="space-y-2 mb-3">
+                            {sortedRoomEquipment.sameRoomUnassigned.map(item => (
+                              <button
+                                key={item.id}
+                                onClick={() => handleSelectRoomEquipment(item.id)}
+                                className={`w-full text-left p-3 rounded-lg transition-all border-2 ${
+                                  roomEquipmentSelection.includes(item.id)
+                                    ? 'bg-violet-50 border-violet-400 dark:bg-violet-900/20 dark:border-violet-500'
+                                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                                      {item.name}
+                                    </div>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                                      {item.manufacturer && `${item.manufacturer} `}
+                                      {item.model}
+                                    </div>
+                                    {item.part_number && (
+                                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
+                                        P/N: {item.part_number}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {roomEquipmentSelection.includes(item.id) && (
+                                    <CheckCircle size={20} className="text-violet-600 dark:text-violet-400 ml-3 flex-shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                            No available equipment in this room
+                          </p>
+                        )}
+
+                        {/* Same Room - Assigned (Greyed Out, Bottom of Room List) */}
+                        {sortedRoomEquipment.sameRoomAssigned.length > 0 && (
+                          <div className="space-y-2 mb-3 pb-3 border-b border-dashed" style={{ borderColor: styles.card.borderColor }}>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">
+                              Already Assigned
                             </p>
-                          ) : (
-                            roomGroupsForDisplay.map(([groupLabel, options]) => (
-                              <div key={groupLabel} className="space-y-2">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                  {groupLabel}
-                                </p>
-                                <div className="space-y-1">
-                                  {options.map((option) => {
-                                    const isSelected = roomEquipmentSelection.includes(option.id);
-                                    return (
-                                      <label
-                                        key={option.id}
-                                        className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                                          isSelected
-                                            ? 'bg-green-50 border border-green-400 dark:bg-green-900/20 dark:border-green-500/40'
-                                            : 'border border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-400 dark:border-gray-600"
-                                          checked={isSelected}
-                                          onChange={() => toggleRoomEquipment(option.id)}
-                                        />
-                                        <span className="flex-1">
-                                          <span className="font-medium text-gray-900 dark:text-gray-100 block">
-                                            {option.name}
-                                          </span>
-                                          {option.location && (
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 block">
-                                              {option.location}
-                                            </span>
-                                          )}
-                                          {option.sku && (
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 block">
-                                              SKU: {option.sku}
-                                            </span>
-                                          )}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
+                            {sortedRoomEquipment.sameRoomAssigned.map(item => (
+                              <button
+                                key={item.id}
+                                onClick={() => handleDeselectRoomEquipment(item.id)}
+                                className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
+                                style={{ opacity: 0.75 }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                                      {item.name}
+                                    </div>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                                      {item.manufacturer && `${item.manufacturer} `}
+                                      {item.model}
+                                    </div>
+                                  </div>
+                                  <div className="ml-3 flex-shrink-0">
+                                    <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
+                                      Assigned
+                                    </div>
+                                  </div>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Show More Button */}
+                        {sortedRoomEquipment.hasOtherRooms && (
+                          <div className="mt-3">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowAllRooms(!showAllRooms)}
+                              className="w-full"
+                            >
+                              {showAllRooms ? 'Hide Other Rooms' : 'Show Equipment from All Rooms'}
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Other Rooms (Expanded) */}
+                        {showAllRooms && sortedRoomEquipment.hasOtherRooms && (
+                          <div className="mt-3 pt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
+                              Other Rooms
+                            </p>
+
+                            {sortedRoomEquipment.otherRooms.map(({ roomName, items }) => (
+                              <div key={roomName} className="mb-3">
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{roomName}</p>
+                                <div className="space-y-2">
+                                  {items.map(({ item, isAssigned }) => (
+                                    <button
+                                      key={item.id}
+                                      onClick={() => isAssigned
+                                        ? handleDeselectRoomEquipment(item.id)
+                                        : handleSelectRoomEquipment(item.id)
+                                      }
+                                      className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
+                                      style={{ opacity: isAssigned ? 0.75 : 1 }}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                                            {item.name}
+                                          </div>
+                                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                                            {item.manufacturer && `${item.manufacturer} `}
+                                            {item.model}
+                                          </div>
+                                        </div>
+                                        {isAssigned && (
+                                          <div className="ml-3 flex-shrink-0">
+                                            <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
+                                              Assigned
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </button>
+                                  ))}
                                 </div>
                               </div>
-                            ))
-                          )}
-                        </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>
@@ -1931,6 +2132,125 @@ const WireDropDetailEnhanced = () => {
             )}
           </div>
         )}
+
+        {/* Commission Tab */}
+        {activeTab === 'commission' && (
+          <div className="space-y-6">
+            <div className="rounded-2xl overflow-hidden" style={styles.card}>
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center gap-2" style={styles.textPrimary}>
+                    <Network size={20} />
+                    Network Commissioning
+                  </h3>
+                  {commissionStage?.completed ? (
+                    <CheckCircle size={24} className="text-green-500" />
+                  ) : (
+                    <Circle size={24} className="text-gray-400" />
+                  )}
+                </div>
+
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Verify network connectivity by assigning UniFi clients to equipment endpoints.
+                </p>
+
+                {/* Room End Equipment + UniFi Client */}
+                <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={styles.textPrimary}>
+                    <Monitor size={16} />
+                    Room End Device
+                  </h4>
+
+                  {selectedRoomEquipmentDetails.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 p-3 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                            {selectedRoomEquipmentDetails[0].name}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {selectedRoomEquipmentDetails[0].manufacturer} {selectedRoomEquipmentDetails[0].model}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* UniFi Client Dropdown */}
+                      <UniFiClientSelector
+                        projectId={wireDrop.project_id}
+                        equipmentId={selectedRoomEquipmentDetails[0].id}
+                        wireDropId={wireDrop.id}
+                        onAssign={async () => {
+                          // Reload wire drop to show updated commission status
+                          await loadWireDrop();
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700">
+                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                        No room equipment assigned. Go to the Room tab to select equipment first.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Head End Equipment + UniFi Port (Future) */}
+                <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800">
+                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={styles.textPrimary}>
+                    <Server size={16} />
+                    Head End Connection
+                  </h4>
+
+                  {selectedHeadEquipmentDetails.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3 p-3 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900 dark:text-gray-100">
+                            {selectedHeadEquipmentDetails[0].name}
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {selectedHeadEquipmentDetails[0].manufacturer} {selectedHeadEquipmentDetails[0].model}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Placeholder for UniFi Port Selector */}
+                      <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700">
+                        <p className="text-sm text-blue-800 dark:text-blue-200">
+                          UniFi switch port selector coming in next phase
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700">
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        No head-end equipment assigned yet.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Auto-Complete Notice */}
+                {!commissionStage?.completed && (
+                  <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">
+                          Auto-Complete Enabled
+                        </p>
+                        <p className="text-xs text-green-700 dark:text-green-300">
+                          This stage will be automatically marked complete when you assign a UniFi client to the room equipment.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Complete Wire Drop Record */}
         <div className="rounded-2xl overflow-hidden mt-6" style={styles.card}>
           <div
