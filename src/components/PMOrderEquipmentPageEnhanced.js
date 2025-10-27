@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
+import { supabase } from '../lib/supabase';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
@@ -41,16 +42,11 @@ const PMOrderEquipmentPageEnhanced = () => {
   const [vendorGroups, setVendorGroups] = useState({});
   const [vendorStats, setVendorStats] = useState({});
 
-  // Tab and view state
+  // Tab state (removed viewMode - only Create POs view now)
   const [tab, setTab] = useState('prewire'); // 'prewire', 'trim', 'pos'
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'vendor'
 
   // Active POs state
   const [purchaseOrders, setPurchaseOrders] = useState([]);
-
-  // Edit state
-  const [editingId, setEditingId] = useState(null);
-  const [tempValue, setTempValue] = useState('');
 
   // Messages
   const [error, setError] = useState(null);
@@ -67,6 +63,10 @@ const PMOrderEquipmentPageEnhanced = () => {
   const [poDetailsModalOpen, setPoDetailsModalOpen] = useState(false);
   const [selectedPOId, setSelectedPOId] = useState(null);
 
+  // Selected items for PO generation (checkbox-based selection)
+  // Format: { itemId: { selected: boolean, quantity: number } }
+  const [selectedItems, setSelectedItems] = useState({});
+
   // Map phase to milestone_stage
   const getMilestoneStage = (phase) => {
     return phase === 'prewire' ? 'prewire_prep' : 'trim_prep';
@@ -80,11 +80,7 @@ const PMOrderEquipmentPageEnhanced = () => {
     }
   }, [projectId, tab]);
 
-  useEffect(() => {
-    if (viewMode === 'vendor' && equipment.length > 0) {
-      loadVendorGrouping();
-    }
-  }, [viewMode, equipment]);
+  // No longer need to load vendor grouping - checkbox view uses equipment directly
 
   const loadEquipment = async () => {
     try {
@@ -92,11 +88,75 @@ const PMOrderEquipmentPageEnhanced = () => {
       setError(null);
       const data = await projectEquipmentService.fetchProjectEquipmentByPhase(projectId, tab);
 
-      // Sort: items without orders first, then by name
-      const sorted = (data || []).sort((a, b) => {
-        const aOrdered = (a.ordered_quantity || 0) > 0;
-        const bOrdered = (b.ordered_quantity || 0) > 0;
-        if (aOrdered !== bOrdered) return aOrdered ? 1 : -1;
+      // Also load ALL purchase orders to check for items already in POs
+      const { data: pos } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          status,
+          items:purchase_order_items(
+            project_equipment_id,
+            quantity_ordered
+          )
+        `)
+        .eq('project_id', projectId);
+
+      // Create maps for draft and submitted PO quantities
+      const draftPOMap = new Map();
+      const submittedPOMap = new Map();
+
+      (pos || []).forEach(po => {
+        (po.items || []).forEach(item => {
+          if (po.status === 'draft') {
+            const existing = draftPOMap.get(item.project_equipment_id) || 0;
+            draftPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          } else if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
+            // All non-draft statuses count as "actually ordered"
+            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
+            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          }
+        });
+      });
+
+      // Enrich equipment data with PO info and calculate remaining quantity
+      const enriched = (data || []).map(item => {
+        // Use quantity_required (NEW) or fallback to planned_quantity (OLD) for backward compatibility
+        const required = item.quantity_required || item.planned_quantity || 0;
+        const inDraft = draftPOMap.get(item.id) || 0;
+        const inSubmitted = submittedPOMap.get(item.id) || 0;
+        const totalInPOs = inDraft + inSubmitted;
+        const remaining = Math.max(0, required - totalInPOs);
+
+        return {
+          ...item,
+          quantity_required: required, // Normalize field name
+          quantity_in_draft_pos: inDraft,
+          quantity_ordered: inSubmitted, // This is the "actually ordered" amount
+          in_any_po: totalInPOs > 0,
+          quantity_needed: remaining,
+          has_draft_po_only: inDraft > 0 && inSubmitted === 0 // Orange warning flag
+        };
+      });
+
+      // Debug logging
+      console.log('Loaded equipment data with PO status:', enriched);
+
+      // Sort: prioritize items needing attention
+      // 1. Items with draft POs only (orange - need submission)
+      // 2. Items with no orders (need ordering)
+      // 3. Items fully ordered (grey out)
+      const sorted = enriched.sort((a, b) => {
+        // Priority 1: Draft PO only (orange) - these need attention first!
+        if (a.has_draft_po_only !== b.has_draft_po_only) {
+          return a.has_draft_po_only ? -1 : 1;
+        }
+        // Priority 2: Has any orders
+        const aHasOrders = (a.quantity_ordered || 0) > 0;
+        const bHasOrders = (b.quantity_ordered || 0) > 0;
+        if (aHasOrders !== bHasOrders) {
+          return aHasOrders ? 1 : -1; // Items without orders first
+        }
+        // Otherwise sort by name
         return (a.name || '').localeCompare(b.name || '');
       });
 
@@ -117,7 +177,29 @@ const PMOrderEquipmentPageEnhanced = () => {
         milestoneStage
       );
 
-      setVendorGroups(grouped);
+      // Check for existing POs for this milestone stage and supplier
+      const { data: existingPOs } = await supabase
+        .from('purchase_orders')
+        .select('supplier_id, status')
+        .eq('project_id', projectId)
+        .eq('milestone_stage', milestoneStage);
+
+      // Add PO status to each vendor group
+      const enrichedGroups = Object.entries(grouped).reduce((acc, [key, group]) => {
+        const vendorPOs = (existingPOs || []).filter(po => po.supplier_id === group.supplier?.id);
+        const hasDraftPO = vendorPOs.some(po => po.status === 'draft');
+        const hasSubmittedPO = vendorPOs.some(po => po.status === 'submitted');
+
+        acc[key] = {
+          ...group,
+          hasDraftPO,
+          hasSubmittedPO,
+          poCount: vendorPOs.length
+        };
+        return acc;
+      }, {});
+
+      setVendorGroups(enrichedGroups);
       setVendorStats(stats);
     } catch (err) {
       console.error('Failed to load vendor grouping:', err);
@@ -157,6 +239,293 @@ const PMOrderEquipmentPageEnhanced = () => {
     }));
   };
 
+  // Handle checkbox selection by part number
+  const handleItemSelectionByPartNumber = (partNumber, isChecked, defaultQuantity, group) => {
+    setSelectedItems(prev => {
+      if (isChecked) {
+        return {
+          ...prev,
+          [partNumber]: {
+            selected: true,
+            quantity: defaultQuantity,
+            group: group // Store the group for later PO generation
+          }
+        };
+      } else {
+        const { [partNumber]: removed, ...rest } = prev;
+        return rest;
+      }
+    });
+  };
+
+  // Handle quantity change by part number
+  const handleSelectedQuantityChangeByPartNumber = (partNumber, newQuantity) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [partNumber]: {
+        ...prev[partNumber],
+        quantity: newQuantity
+      }
+    }));
+  };
+
+  // Select all available part numbers
+  const handleSelectAllByPartNumber = (groupedEquipment) => {
+    const availableGroups = groupedEquipment.filter(group => group.quantity_remaining > 0);
+    const newSelection = {};
+    availableGroups.forEach(group => {
+      const partNumber = group.part_number || 'NO_PART_NUMBER';
+      newSelection[partNumber] = {
+        selected: true,
+        quantity: group.quantity_remaining,
+        group: group
+      };
+    });
+    setSelectedItems(newSelection);
+  };
+
+  // Clear all selections
+  const handleClearSelection = () => {
+    setSelectedItems({});
+  };
+
+  // Legacy handlers (kept for backward compatibility)
+  const handleItemSelection = (itemId, isChecked, defaultQuantity) => {
+    setSelectedItems(prev => {
+      if (isChecked) {
+        return {
+          ...prev,
+          [itemId]: {
+            selected: true,
+            quantity: defaultQuantity
+          }
+        };
+      } else {
+        const { [itemId]: removed, ...rest } = prev;
+        return rest;
+      }
+    });
+  };
+
+  const handleSelectedQuantityChange = (itemId, newQuantity) => {
+    setSelectedItems(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        quantity: newQuantity
+      }
+    }));
+  };
+
+  // Generate POs from selected items (now works with part number groups)
+  const handleGeneratePOsFromSelection = async (groupedEquipment) => {
+    const selectedCount = Object.keys(selectedItems).length;
+    if (selectedCount === 0) {
+      setError('Please select at least one item to generate POs');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      // Expand part number selections back to individual equipment items
+      const expandedEquipment = [];
+      Object.entries(selectedItems).forEach(([partNumber, selection]) => {
+        const group = selection.group;
+        const quantityToOrder = selection.quantity;
+
+        // Distribute quantity across individual items in the group
+        // For simplicity, we'll order from items proportionally based on their remaining quantity
+        let remainingToOrder = quantityToOrder;
+
+        group.items.forEach((item, index) => {
+          const itemNeeded = item.quantity_needed || 0; // FIXED: Use new field name
+          if (itemNeeded > 0 && remainingToOrder > 0) {
+            const quantityForThisItem = Math.min(itemNeeded, remainingToOrder);
+            expandedEquipment.push({
+              ...item,
+              quantity_to_order: quantityForThisItem
+            });
+            remainingToOrder -= quantityForThisItem;
+          }
+        });
+      });
+
+      // Debug: Log expanded equipment
+      console.log('🔍 Expanded equipment for PO generation:', expandedEquipment);
+
+      if (expandedEquipment.length === 0) {
+        setError('No items available to order. Please check that items have quantity needed.');
+        setSaving(false);
+        return;
+      }
+
+      // Group by supplier
+      const groupedBySupplier = {};
+      expandedEquipment.forEach(item => {
+        const supplierName = item.supplier || 'Unassigned';
+        if (!groupedBySupplier[supplierName]) {
+          groupedBySupplier[supplierName] = [];
+        }
+        groupedBySupplier[supplierName].push(item);
+      });
+
+      const supplierNames = Object.keys(groupedBySupplier);
+
+      // Debug: Log grouped suppliers
+      console.log('🔍 Grouped by supplier:', groupedBySupplier);
+
+      // Filter out suppliers without supplier_id
+      const validSuppliers = supplierNames.filter(name => {
+        const items = groupedBySupplier[name];
+        const hasValidSupplier = items[0].supplier_id != null;
+        if (!hasValidSupplier) {
+          console.warn(`⚠️ Supplier "${name}" has no supplier_id. Items:`, items);
+        }
+        return hasValidSupplier;
+      });
+
+      // Show preview confirmation
+      const confirmMessage = `This will create ${validSuppliers.length} PO(s):\n\n` +
+        validSuppliers.map(name => {
+          const items = groupedBySupplier[name];
+          const total = items.reduce((sum, item) => sum + (item.quantity_to_order * (item.unit_cost || 0)), 0);
+          return `• ${name}: ${items.length} line items ($${total.toFixed(2)})`;
+        }).join('\n') +
+        (validSuppliers.length === 0 ? '\n⚠️ WARNING: No valid suppliers found. Items may be missing supplier_id.' : '') +
+        `\n\nContinue?`;
+
+      if (!window.confirm(confirmMessage)) {
+        setSaving(false);
+        return;
+      }
+
+      if (validSuppliers.length === 0) {
+        setError('Cannot create POs: Selected items are missing supplier_id. Please ensure equipment is linked to suppliers in the database.');
+        setSaving(false);
+        return;
+      }
+
+      // Create POs for each supplier - CUSTOM IMPLEMENTATION for partial quantities
+      const createdPOs = [];
+      const failedSuppliers = [];
+
+      for (const supplierName of validSuppliers) {
+        const items = groupedBySupplier[supplierName];
+        const supplier = items[0].supplier_id; // Already validated above
+
+        try {
+          // Step 1: Generate PO number
+          const { data: poNumber, error: poNumberError } = await supabase
+            .rpc('generate_po_number', { p_supplier_id: supplier });
+
+          if (poNumberError) throw poNumberError;
+
+          // Step 2: Calculate totals using quantity_to_order
+          const subtotal = items.reduce((sum, item) => {
+            return sum + ((item.unit_cost || 0) * item.quantity_to_order);
+          }, 0);
+
+          // Step 3: Get milestone dates for delivery calculation
+          const { data: milestone } = await supabase
+            .from('project_milestones')
+            .select('target_date')
+            .eq('project_id', projectId)
+            .eq('milestone_type', getMilestoneStage(tab))
+            .single();
+
+          let requestedDeliveryDate = null;
+          if (milestone?.target_date) {
+            const targetDate = new Date(milestone.target_date);
+            targetDate.setDate(targetDate.getDate() - 14);
+            requestedDeliveryDate = targetDate.toISOString().split('T')[0];
+          }
+
+          // Step 4: Create PO record
+          const poRecord = {
+            project_id: projectId,
+            supplier_id: supplier,
+            po_number: poNumber,
+            milestone_stage: getMilestoneStage(tab),
+            status: 'draft',
+            order_date: new Date().toISOString().split('T')[0],
+            requested_delivery_date: requestedDeliveryDate,
+            subtotal: subtotal,
+            tax_amount: 0,
+            shipping_cost: 0,
+            total_amount: subtotal,
+            created_by: 'user',
+            internal_notes: `PO created from Create POs view`
+          };
+
+          const { data: newPO, error: createError } = await supabase
+            .from('purchase_orders')
+            .insert([poRecord])
+            .select()
+            .single();
+
+          if (createError) throw createError;
+
+          // Step 5: Create PO line items using quantity_to_order
+          const lineItems = items.map((item, index) => ({
+            po_id: newPO.id,
+            project_equipment_id: item.id,
+            line_number: index + 1,
+            quantity_ordered: item.quantity_to_order, // USE OUR CUSTOM QUANTITY
+            unit_cost: item.unit_cost || 0,
+            notes: item.notes || null
+          }));
+
+          const { data: createdItems, error: itemsError } = await supabase
+            .from('purchase_order_items')
+            .insert(lineItems)
+            .select();
+
+          if (itemsError) throw itemsError;
+
+          createdPOs.push({
+            po: newPO,
+            items: createdItems,
+            supplier: supplierName
+          });
+
+          console.log(`✅ Created PO ${poNumber} for ${supplierName} with ${items.length} items`);
+        } catch (err) {
+          console.error(`❌ Failed to create PO for ${supplierName}:`, err);
+          failedSuppliers.push(`${supplierName} (${err.message})`);
+        }
+      }
+
+      if (createdPOs.length > 0) {
+        setSuccessMessage(`Successfully created ${createdPOs.length} purchase order(s)!`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      }
+
+      if (failedSuppliers.length > 0) {
+        setError(`Failed to create POs for: ${failedSuppliers.join(', ')}`);
+        setTimeout(() => setError(null), 8000);
+      }
+
+      if (createdPOs.length === 0) {
+        setError('No POs were created. Check console for details.');
+        setTimeout(() => setError(null), 5000);
+      }
+
+      // Clear selections and reload
+      setSelectedItems({});
+      await loadEquipment();
+      await loadPurchaseOrders();
+    } catch (err) {
+      console.error('Failed to generate POs:', err);
+      setError(err.message || 'Failed to generate purchase orders');
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleOpenPOModal = (csvName, groupData) => {
     // Filter out equipment that's already fully ordered
     const unorderedEquipment = groupData.equipment.filter(item => {
@@ -169,6 +538,30 @@ const PMOrderEquipmentPageEnhanced = () => {
       setError('All items from this vendor have already been ordered');
       setTimeout(() => setError(null), 3000);
       return;
+    }
+
+    // Warn if a PO already exists for this vendor in this phase
+    if (groupData.hasDraftPO) {
+      const phaseName = tab === 'prewire' ? 'Prewire' : 'Trim';
+      if (!window.confirm(
+        `A draft PO already exists for ${groupData.supplier?.name || csvName} in ${phaseName} phase.\n\n` +
+        `Creating another PO will create a SECOND purchase order for this vendor in the same phase.\n\n` +
+        `Are you sure you want to continue?`
+      )) {
+        return;
+      }
+    }
+
+    if (groupData.hasSubmittedPO) {
+      const phaseName = tab === 'prewire' ? 'Prewire' : 'Trim';
+      if (!window.confirm(
+        `A submitted PO already exists for ${groupData.supplier?.name || csvName} in ${phaseName} phase.\n\n` +
+        `Creating another PO will create an ADDITIONAL purchase order for this vendor in the same phase.\n\n` +
+        `This is usually only needed for split deliveries or additional items.\n\n` +
+        `Are you sure you want to continue?`
+      )) {
+        return;
+      }
     }
 
     setSelectedVendorForPO({
@@ -190,125 +583,16 @@ const PMOrderEquipmentPageEnhanced = () => {
     setSuccessMessage(`Purchase Order ${result.po.po_number} created successfully!`);
     setTimeout(() => setSuccessMessage(null), 5000);
 
+    // Close the modal first
+    handleClosePOModal();
+
     // Reload equipment to reflect ordered quantities
     await loadEquipment();
-
-    // Reload vendor grouping to update totals
-    if (viewMode === 'vendor') {
-      await loadVendorGrouping();
-    }
 
     // Reload purchase orders list
     await loadPurchaseOrders();
   };
 
-  const handleOrderAll = async () => {
-    if (!window.confirm(`Mark all ${tab} items as ordered (ordered_quantity = planned_quantity)?`)) return;
-
-    try {
-      setSaving(true);
-      setError(null);
-
-      const itemsToOrder = equipment.filter(item =>
-        (item.ordered_quantity || 0) < (item.planned_quantity || 0)
-      );
-
-      if (itemsToOrder.length === 0) {
-        setSuccessMessage('All items already ordered!');
-        setTimeout(() => setSuccessMessage(null), 3000);
-        setSaving(false);
-        return;
-      }
-
-      await Promise.all(
-        itemsToOrder.map(item =>
-          projectEquipmentService.updateProcurementQuantities(item.id, {
-            orderedQty: item.planned_quantity
-          })
-        )
-      );
-
-      setSuccessMessage(`Successfully ordered ${itemsToOrder.length} items`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-
-      milestoneCacheService.invalidate(projectId);
-      await loadEquipment();
-    } catch (err) {
-      console.error('Failed to order all:', err);
-      setError(err.message || 'Failed to order all items');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleStartEdit = (item, field) => {
-    setEditingId(`${item.id}-${field}`);
-    setTempValue(String(item[field] || 0));
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-    setTempValue('');
-  };
-
-  const handleSaveQuantity = async (item, field) => {
-    const qty = parseInt(tempValue, 10);
-
-    if (isNaN(qty) || qty < 0) {
-      setError('Please enter a valid quantity (0 or greater)');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      setError(null);
-
-      const updates = {};
-      if (field === 'ordered_quantity') {
-        updates.orderedQty = qty;
-      }
-
-      await projectEquipmentService.updateProcurementQuantities(item.id, updates);
-
-      setEquipment(prev => prev.map(eq =>
-        eq.id === item.id ? { ...eq, [field]: qty } : eq
-      ));
-
-      setEditingId(null);
-      setTempValue('');
-
-      milestoneCacheService.invalidate(projectId);
-    } catch (err) {
-      console.error('Failed to update quantity:', err);
-      setError(err.message || 'Failed to update quantity');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleQuickOrder = async (item) => {
-    try {
-      setSaving(true);
-      setError(null);
-
-      await projectEquipmentService.updateProcurementQuantities(item.id, {
-        orderedQty: item.planned_quantity || 0
-      });
-
-      setEquipment(prev => prev.map(eq =>
-        eq.id === item.id
-          ? { ...eq, ordered_quantity: eq.planned_quantity || 0 }
-          : eq
-      ));
-
-      milestoneCacheService.invalidate(projectId);
-    } catch (err) {
-      console.error('Failed to order item:', err);
-      setError(err.message || 'Failed to order item');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const getItemStatus = (item) => {
     const planned = item.planned_quantity || 0;
@@ -329,15 +613,15 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   const calculateTotalCost = () => {
     return equipment.reduce((sum, item) => {
-      const plannedQty = item.planned_quantity || 0;
+      const requiredQty = item.quantity_required || 0;
       const unitCost = item.unit_cost || 0;
-      return sum + (plannedQty * unitCost);
+      return sum + (requiredQty * unitCost);
     }, 0);
   };
 
   const calculateOrderedCost = () => {
     return equipment.reduce((sum, item) => {
-      const orderedQty = item.ordered_quantity || 0;
+      const orderedQty = item.quantity_ordered || 0;
       const unitCost = item.unit_cost || 0;
       return sum + (orderedQty * unitCost);
     }, 0);
@@ -377,52 +661,276 @@ const PMOrderEquipmentPageEnhanced = () => {
   };
 
   // Render functions
-  const renderListView = () => {
-    const pendingItems = equipment.filter(eq =>
-      (eq.ordered_quantity || 0) < (eq.planned_quantity || 0)
-    );
+
+  const renderVendorView = () => {
+    // Group equipment by part_number
+    const groupedByPartNumber = equipment.reduce((acc, item) => {
+      const partNumber = item.part_number || 'NO_PART_NUMBER';
+      if (!acc[partNumber]) {
+        acc[partNumber] = {
+          part_number: item.part_number,
+          name: item.name,
+          supplier: item.supplier,
+          supplier_id: item.supplier_id,
+          unit_cost: item.unit_cost || 0,
+          items: [], // Store all individual equipment items
+          quantity_required: 0,
+          quantity_in_draft_pos: 0,
+          quantity_ordered: 0,
+          quantity_needed: 0,
+          has_draft_po_only: false
+        };
+      }
+
+      // Aggregate quantities
+      acc[partNumber].items.push(item);
+      acc[partNumber].quantity_required += (item.quantity_required || 0);
+      acc[partNumber].quantity_in_draft_pos += (item.quantity_in_draft_pos || 0);
+      acc[partNumber].quantity_ordered += (item.quantity_ordered || 0);
+      acc[partNumber].quantity_needed += (item.quantity_needed || 0);
+
+      // If ANY location has draft PO only, mark the group
+      if (item.has_draft_po_only) {
+        acc[partNumber].has_draft_po_only = true;
+      }
+
+      return acc;
+    }, {});
+
+    const groupedEquipment = Object.values(groupedByPartNumber);
+    const availableGroups = groupedEquipment.filter(group => group.quantity_needed > 0);
+
+    const selectedCount = Object.keys(selectedItems).length;
+    const selectedTotal = Object.keys(selectedItems).reduce((sum, partNumber) => {
+      const group = groupedEquipment.find(g => (g.part_number || 'NO_PART_NUMBER') === partNumber);
+      if (!group) return sum;
+      const qty = selectedItems[partNumber].quantity;
+      return sum + (qty * (group.unit_cost || 0));
+    }, 0);
+
+    if (equipment.length === 0) {
+      return (
+        <div style={sectionStyles.card} className="text-center py-8">
+          <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+          <p className="text-gray-500 dark:text-gray-400">
+            No equipment found for this phase
+          </p>
+        </div>
+      );
+    }
 
     return (
-      <>
-        {/* Order All Button */}
-        {pendingItems.length > 0 && (
-          <div className="mb-6">
-            <Button
-              variant="primary"
-              icon={ShoppingCart}
-              onClick={handleOrderAll}
-              disabled={saving}
-              className="w-full"
-            >
-              {saving ? 'Processing...' : `Order All ${pendingItems.length} Pending Items`}
-            </Button>
-          </div>
-        )}
-
-        {/* Equipment List */}
-        <div style={sectionStyles.card}>
-          <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-            {tab === 'prewire' ? 'Prewire' : 'Trim'} Equipment ({equipment.length})
-          </h2>
-
-          {equipment.length === 0 ? (
-            <div className="text-center py-8">
-              <Package className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-              <p className="text-gray-500 dark:text-gray-400">
-                No {tab} equipment found for this project
+      <div className="space-y-4">
+        {/* Selection Controls */}
+        <div style={sectionStyles.card} className="bg-violet-50 dark:bg-violet-900/10">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold text-gray-900 dark:text-white">
+                Select Items to Order
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Choose which items to include in purchase orders. System will automatically group by vendor.
               </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {equipment.map((item) => renderEquipmentItem(item))}
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleSelectAllByPartNumber(groupedEquipment)}
+                disabled={availableGroups.length === 0}
+              >
+                Select All ({availableGroups.length})
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleClearSelection}
+                disabled={selectedCount === 0}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+
+          {selectedCount > 0 && (
+            <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-violet-500">
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  {selectedCount} part number{selectedCount !== 1 ? 's' : ''} selected
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Total: ${selectedTotal.toFixed(2)}
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                icon={FileText}
+                onClick={() => handleGeneratePOsFromSelection(groupedEquipment)}
+                disabled={saving}
+              >
+                {saving ? 'Generating...' : 'Generate POs'}
+              </Button>
             </div>
           )}
         </div>
-      </>
+
+        {/* Equipment List with Checkboxes - Grouped by Part Number */}
+        <div style={sectionStyles.card}>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
+            Available Equipment ({groupedEquipment.length} part numbers, {equipment.length} total items)
+          </h3>
+          <div className="space-y-2">
+            {groupedEquipment.map((group) => renderCheckboxItem(group))}
+          </div>
+        </div>
+      </div>
     );
   };
 
-  const renderVendorView = () => {
+  // Render equipment item with checkbox for PO generation (now grouped by part number)
+  const renderCheckboxItem = (group) => {
+    const required = group.quantity_required || 0;
+    const needed = group.quantity_needed || 0;
+    const inDraft = group.quantity_in_draft_pos || 0;
+    const ordered = group.quantity_ordered || 0;
+    const hasDraftOnly = group.has_draft_po_only;
+    const partNumberKey = group.part_number || 'NO_PART_NUMBER';
+    const isSelected = selectedItems[partNumberKey]?.selected || false;
+    const selectedQty = selectedItems[partNumberKey]?.quantity || needed;
+    const isDisabled = needed === 0;
+    const locationCount = group.items?.length || 0;
+
+    return (
+      <div
+        key={partNumberKey}
+        className={`p-4 rounded-lg border transition-all ${
+          isDisabled
+            ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-700 opacity-50'
+            : hasDraftOnly
+            ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-600 border-2'
+            : isSelected
+            ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-500 border-2'
+            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
+        }`}
+      >
+        <div className="flex items-start gap-4">
+          {/* Checkbox */}
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(e) => handleItemSelectionByPartNumber(partNumberKey, e.target.checked, needed, group)}
+            disabled={isDisabled}
+            className="mt-1 w-5 h-5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 disabled:opacity-50"
+          />
+
+          {/* Item Details */}
+          <div className="flex-1">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-white">
+                  {group.name || 'Unnamed Item'}
+                </h4>
+                {group.part_number && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Part #: {group.part_number}
+                  </p>
+                )}
+                {group.supplier && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Supplier: {group.supplier}
+                  </p>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Used in {locationCount} location{locationCount !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  ${((group.unit_cost || 0) * needed).toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  ${(group.unit_cost || 0).toFixed(2)} each
+                </p>
+              </div>
+            </div>
+
+            {/* Quantity Info */}
+            <div className="grid grid-cols-4 gap-4 text-sm mb-2">
+              <div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Required</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{required}</p>
+              </div>
+              {inDraft > 0 && (
+                <div>
+                  <p className="text-xs text-orange-600 dark:text-orange-400">In Draft PO</p>
+                  <p className="font-semibold text-orange-700 dark:text-orange-300">{inDraft}</p>
+                </div>
+              )}
+              {ordered > 0 && (
+                <div>
+                  <p className="text-xs text-blue-600 dark:text-blue-400">Ordered</p>
+                  <p className="font-semibold text-blue-700 dark:text-blue-300">{ordered}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Needed</p>
+                <p className={`font-semibold ${needed > 0 ? 'text-violet-700 dark:text-violet-300' : 'text-gray-500'}`}>
+                  {needed}
+                </p>
+              </div>
+            </div>
+
+            {/* Warning Banner for Draft PO */}
+            {hasDraftOnly && (
+              <div className="mb-3 p-3 bg-orange-100 dark:bg-orange-900/30 border border-orange-400 dark:border-orange-600 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-orange-700 dark:text-orange-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">
+                      ⚠️ In Draft PO - Not Yet Submitted
+                    </p>
+                    <p className="text-xs text-orange-800 dark:text-orange-200 mt-1">
+                      {inDraft} units are in a draft PO. Go to <strong>Active POs</strong> tab to submit the PO, or this part will remain in "needs ordering" status.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Editable Quantity for Selected Items */}
+            {isSelected && (
+              <div className="mt-3 p-3 bg-white dark:bg-gray-900 rounded border border-violet-300">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Quantity to Order
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={needed}
+                  value={selectedQty}
+                  onChange={(e) => handleSelectedQuantityChangeByPartNumber(partNumberKey, parseInt(e.target.value, 10) || 0)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Max: {needed} (still needed across all locations)
+                </p>
+              </div>
+            )}
+
+            {/* Status Messages */}
+            {isDisabled && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                ✓ All quantities accounted for in POs
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Keep old vendor grouping view function stub for backwards compatibility
+  const renderOldVendorView = () => {
     if (Object.keys(vendorGroups).length === 0) {
       return (
         <div style={sectionStyles.card} className="text-center py-8">
@@ -501,10 +1009,20 @@ const PMOrderEquipmentPageEnhanced = () => {
                     )}
                   </div>
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-gray-900 dark:text-white">
                         {supplierName}
                       </h3>
+                      {groupData.hasDraftPO && (
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300">
+                          Draft PO Exists ({tab === 'prewire' ? 'Prewire' : 'Trim'})
+                        </span>
+                      )}
+                      {groupData.hasSubmittedPO && (
+                        <span className="px-2 py-1 text-xs font-medium rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                          PO Submitted ({tab === 'prewire' ? 'Prewire' : 'Trim'})
+                        </span>
+                      )}
                       {allOrdered && (
                         <span className="px-2 py-1 text-xs font-medium rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
                           All Ordered
@@ -614,150 +1132,6 @@ const PMOrderEquipmentPageEnhanced = () => {
     );
   };
 
-  const renderEquipmentItem = (item) => {
-    const status = getItemStatus(item);
-    const StatusIcon = status.icon;
-    const isEditingOrdered = editingId === `${item.id}-ordered_quantity`;
-    const planned = item.planned_quantity || 0;
-    const ordered = item.ordered_quantity || 0;
-    const received = item.received_quantity || 0;
-    const unitCost = item.unit_cost || 0;
-    const totalItemCost = planned * unitCost;
-    const orderedItemCost = ordered * unitCost;
-    const needsOrder = ordered < planned;
-    const fullyOrdered = ordered >= planned && ordered > 0;
-    const partialOrder = ordered > 0 && ordered < planned;
-
-    return (
-      <div
-        key={item.id}
-        className={`border rounded-lg p-4 transition-colors ${
-          fullyOrdered
-            ? 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/10'
-            : partialOrder
-            ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/10'
-            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
-        }`}
-      >
-        {/* Item Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              {item.name || 'Unnamed Item'}
-            </h3>
-            {item.part_number && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Part #: {item.part_number}
-              </p>
-            )}
-            {unitCost > 0 && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Unit Cost: ${unitCost.toFixed(2)} • Total: ${totalItemCost.toFixed(2)}
-              </p>
-            )}
-          </div>
-          <div className={`flex items-center gap-1 ${status.color}`}>
-            <StatusIcon className="w-4 h-4" />
-            <span className="text-sm font-medium">{status.label}</span>
-          </div>
-        </div>
-
-        {/* Quantities */}
-        <div className="grid grid-cols-3 gap-3 mb-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Planned
-            </label>
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {planned}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Ordered
-            </label>
-            {isEditingOrdered ? (
-              <div className="flex gap-1">
-                <input
-                  type="number"
-                  value={tempValue}
-                  onChange={(e) => setTempValue(e.target.value)}
-                  className="w-full px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveQuantity(item, 'ordered_quantity');
-                    if (e.key === 'Escape') handleCancelEdit();
-                  }}
-                />
-                <button
-                  onClick={() => handleSaveQuantity(item, 'ordered_quantity')}
-                  className="px-2 py-1 bg-green-600 text-white rounded text-xs"
-                  disabled={saving}
-                >
-                  ✓
-                </button>
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-2 py-1 bg-gray-400 text-white rounded text-xs"
-                >
-                  ✕
-                </button>
-              </div>
-            ) : (
-              <div
-                onClick={() => handleStartEdit(item, 'ordered_quantity')}
-                className={`text-lg font-semibold cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 rounded px-2 py-1 ${
-                  partialOrder ? 'text-yellow-700 dark:text-yellow-300' : 'text-gray-900 dark:text-white'
-                }`}
-              >
-                {ordered}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Received
-            </label>
-            <div className="text-lg font-semibold text-gray-900 dark:text-white">
-              {received}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        {needsOrder && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => handleQuickOrder(item)}
-              disabled={saving}
-              className="flex-1 py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-            >
-              Order Full Quantity ({planned})
-            </button>
-          </div>
-        )}
-
-        {/* Partial Order Warning */}
-        {partialOrder && (
-          <div className="mt-3 p-2 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded">
-            <p className="text-xs text-yellow-800 dark:text-yellow-200">
-              ⚠️ Partial order: {planned - ordered} units still needed
-            </p>
-          </div>
-        )}
-
-        {/* Ordered Cost Display */}
-        {ordered > 0 && orderedItemCost > 0 && (
-          <div className="mt-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-            <span>Ordered Cost:</span>
-            <span className="font-semibold">${orderedItemCost.toFixed(2)}</span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   if (loading) {
     return (
@@ -835,36 +1209,9 @@ const PMOrderEquipmentPageEnhanced = () => {
           </div>
         </div>
 
-        {/* View Mode Toggle (only for prewire/trim tabs) */}
+        {/* Create POs View (for prewire/trim tabs) */}
         {(tab === 'prewire' || tab === 'trim') && (
           <>
-            <div style={sectionStyles.card} className="mb-6">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                    viewMode === 'list'
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <List className="w-4 h-4" />
-                  List View
-                </button>
-                <button
-                  onClick={() => setViewMode('vendor')}
-                  className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                    viewMode === 'vendor'
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Grid className="w-4 h-4" />
-                  Vendor View
-                </button>
-              </div>
-            </div>
-
             {/* Cost Summary */}
             <div style={sectionStyles.card} className="mb-6">
               <div className="flex items-center justify-between">
@@ -899,8 +1246,8 @@ const PMOrderEquipmentPageEnhanced = () => {
               )}
             </div>
 
-            {/* Content based on view mode */}
-            {viewMode === 'list' ? renderListView() : renderVendorView()}
+            {/* Content - Create POs View */}
+            {renderVendorView()}
           </>
         )}
 
@@ -923,32 +1270,47 @@ const PMOrderEquipmentPageEnhanced = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {purchaseOrders.map((po) => (
-                    <div
-                      key={po.id}
-                      style={sectionStyles.card}
-                      className="border-l-4 border-violet-500"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-semibold text-gray-900 dark:text-white">
-                              {po.po_number}
-                            </h3>
-                            <span className={`px-2 py-1 text-xs font-medium rounded ${
-                              po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
-                              po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                              po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                              'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                            }`}>
-                              {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
-                            </span>
-                            <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
-                              {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
-                            </span>
-                          </div>
+                  {purchaseOrders.map((po) => {
+                    const isDraft = po.status === 'draft';
+                    return (
+                      <div
+                        key={po.id}
+                        style={sectionStyles.card}
+                        className={`border-l-4 ${
+                          isDraft
+                            ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                            : 'border-violet-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              {isDraft && (
+                                <span className="text-orange-600 dark:text-orange-400 text-base font-bold">⚠️</span>
+                              )}
+                              <h3 className="font-semibold text-gray-900 dark:text-white">
+                                {po.po_number}
+                              </h3>
+                              <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                po.status === 'draft' ? 'bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300' :
+                                po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                                po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                                'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                              }`}>
+                                {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                              </span>
+                              <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
+                                {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
+                              </span>
+                            </div>
 
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                            {isDraft && (
+                              <div className="mb-3 p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-xs text-orange-800 dark:text-orange-200 font-medium">
+                                ⚠️ Draft PO - Not yet submitted to supplier. Click to review and submit.
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div>
                               <p className="text-gray-600 dark:text-gray-400 text-xs">Supplier</p>
                               <p className="font-medium text-gray-900 dark:text-white">
@@ -1009,23 +1371,24 @@ const PMOrderEquipmentPageEnhanced = () => {
                               ))}
                             </div>
                           )}
-                        </div>
+                          </div>
 
-                        <div className="flex flex-col gap-2 ml-4">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedPOId(po.id);
-                              setPoDetailsModalOpen(true);
-                            }}
-                          >
-                            View Details
-                          </Button>
+                          <div className="flex flex-col gap-2 ml-4">
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedPOId(po.id);
+                                setPoDetailsModalOpen(true);
+                              }}
+                            >
+                              View Details
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

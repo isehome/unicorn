@@ -145,6 +145,37 @@ class PurchaseOrderService {
   }
 
   /**
+   * Get ALL purchase orders across all projects
+   */
+  async getAllPurchaseOrders(filters = {}) {
+    try {
+      let query = supabase
+        .from('purchase_orders_summary')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      if (filters.supplier_id) {
+        query = query.eq('supplier_id', filters.supplier_id);
+      }
+
+      if (filters.project_id) {
+        query = query.eq('project_id', filters.project_id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error fetching all purchase orders:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update purchase order
    */
   async updatePurchaseOrder(poId, updates) {

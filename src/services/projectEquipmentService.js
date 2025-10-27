@@ -147,6 +147,12 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
   // Track instance numbers per room/part combination
   const instanceCounters = new Map();
 
+  // Log first few rows for debugging
+  if (rows.length > 0) {
+    console.log('[CSV Import] First row sample:', rows[0]);
+    console.log('[CSV Import] CSV columns:', Object.keys(rows[0]));
+  }
+
   rows.forEach((row) => {
     const itemTypeRaw = normalizeString(row.ItemType);
     if (!itemTypeRaw) return;
@@ -191,10 +197,15 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
         planned_hours: 0,
         hourly_rate: toNumber(row.SellPrice),
         csv_batch_id: batchId,
-        created_by: null
+        created_by: null,
+        supplier: supplier || null  // STORE SUPPLIER for vendor matching
       };
 
       existing.planned_hours += areaQty;
+      // Update supplier if not already set
+      if (supplier && !existing.supplier) {
+        existing.supplier = supplier;
+      }
       laborMap.set(laborKey, existing);
       return;
     }
@@ -537,28 +548,61 @@ const restoreWireDropLinks = async (preservedLinks, newEquipment) => {
   return { restored, failed, failures };
 };
 
-const matchAndCreateSuppliers = async (equipmentRecords) => {
-  if (!equipmentRecords || equipmentRecords.length === 0) return new Map();
+const matchAndCreateSuppliers = async (equipmentRecords, laborRecords = []) => {
+  if ((!equipmentRecords || equipmentRecords.length === 0) && (!laborRecords || laborRecords.length === 0)) {
+    console.log('[Vendor Matching] No equipment or labor records provided');
+    return new Map();
+  }
 
-  // Extract unique supplier names from equipment
+  // Extract unique supplier names from equipment AND labor
   const uniqueSuppliers = new Set();
+
+  // Process equipment records
   equipmentRecords.forEach((item) => {
     const supplier = item.supplier?.trim();
     if (supplier) {
       uniqueSuppliers.add(supplier);
+    } else {
+      console.log('[Vendor Matching] ⚠️ Equipment item has no supplier:', {
+        id: item.id,
+        name: item.name,
+        part_number: item.part_number,
+        room: item.room_id
+      });
     }
   });
 
-  if (uniqueSuppliers.size === 0) return new Map();
+  // Process labor records (they might have suppliers too!)
+  laborRecords.forEach((item) => {
+    const supplier = item.supplier?.trim();
+    if (supplier) {
+      uniqueSuppliers.add(supplier);
+      console.log('[Vendor Matching] Found supplier in labor record:', supplier);
+    }
+  });
+
+  if (uniqueSuppliers.size === 0) {
+    console.warn('[Vendor Matching] No suppliers found in any equipment records!');
+    return new Map();
+  }
 
   const supplierMap = new Map(); // Maps CSV supplier name → supplier_id
 
-  console.log(`[Vendor Matching] Processing ${uniqueSuppliers.size} unique vendors from CSV...`);
+  console.log(`[Vendor Matching] Processing ${uniqueSuppliers.size} unique vendors from CSV:`, Array.from(uniqueSuppliers));
 
   for (const csvSupplierName of uniqueSuppliers) {
     try {
+      console.log(`[Vendor Matching] Processing: "${csvSupplierName}"`);
+
       // Use fuzzy matching to find or create supplier
       const matchResult = await fuzzyMatchService.matchSupplier(csvSupplierName, 0.7);
+      console.log(`[Vendor Matching] Match result for "${csvSupplierName}":`, {
+        matched: matchResult.matched,
+        action: matchResult.action,
+        confidence: matchResult.confidence,
+        supplierId: matchResult.supplier?.id,
+        supplierName: matchResult.supplier?.name
+      });
 
       if (matchResult.matched && matchResult.supplier) {
         // Found a match! Link this CSV name to the existing supplier
@@ -570,14 +614,14 @@ const matchAndCreateSuppliers = async (equipmentRecords) => {
         const newSupplier = await fuzzyMatchService.createSupplierFromCSV(csvSupplierName);
 
         if (newSupplier && newSupplier.id) {
-          console.log(`[Vendor Matching] ✓ Created vendor "${newSupplier.name}" with short code: ${newSupplier.short_code}`);
+          console.log(`[Vendor Matching] ✓ Created vendor "${newSupplier.name}" (ID: ${newSupplier.id}) with short code: ${newSupplier.short_code}`);
           supplierMap.set(csvSupplierName, newSupplier.id);
         } else {
-          console.warn(`[Vendor Matching] ⚠️ Failed to create vendor for "${csvSupplierName}"`);
+          console.warn(`[Vendor Matching] ⚠️ Failed to create vendor for "${csvSupplierName}"`, newSupplier);
         }
       }
     } catch (error) {
-      console.error(`[Vendor Matching] ❌ Error processing vendor "${csvSupplierName}":`, error);
+      console.error(`[Vendor Matching] ❌ Error processing vendor "${csvSupplierName}":`, error.message, error);
       // Continue processing other suppliers even if one fails
     }
   }
@@ -653,7 +697,8 @@ export const projectEquipmentService = {
 
     const batchId = batch.id;
 
-    const mode = options.mode === 'merge' || options.replaceExisting === false ? 'merge' : 'replace';
+    // Support 3 modes: replace, merge (update), append (add all as new)
+    const mode = options.mode || (options.replaceExisting === false ? 'merge' : 'replace');
 
     // Preserve wire drop links before deletion (REPLACE mode only)
     let preservedWireDropLinks = [];
@@ -673,7 +718,9 @@ export const projectEquipmentService = {
     let updatedEquipment = 0;
 
     if (equipmentRecords.length > 0) {
-      if (mode === 'replace') {
+      if (mode === 'replace' || mode === 'append') {
+        // REPLACE: Delete everything and insert fresh
+        // APPEND: Just insert everything as new (no deletion)
         // Check authentication status
         const { data: { session } } = await supabase.auth.getSession();
         console.log('[Auth Check] Session exists:', !!session);
@@ -709,12 +756,12 @@ export const projectEquipmentService = {
 
           await syncGlobalParts(insertedEquipment, projectId, batchId);
 
-          // NEW: Match and link suppliers
-          const supplierMap = await matchAndCreateSuppliers(insertedEquipment);
+          // NEW: Match and link suppliers (from both equipment AND labor records)
+          const supplierMap = await matchAndCreateSuppliers(insertedEquipment, laborRecords);
           await linkEquipmentToSuppliers(insertedEquipment, supplierMap, projectId);
 
           // NEW: Restore wire drop links after equipment insertion (REPLACE mode only)
-          if (preservedWireDropLinks.length > 0) {
+          if (mode === 'replace' && preservedWireDropLinks.length > 0) {
             const restorationResult = await restoreWireDropLinks(preservedWireDropLinks, insertedEquipment);
             console.log('[Wire Drop Restoration] Summary:', restorationResult);
           }
@@ -794,8 +841,8 @@ export const projectEquipmentService = {
         if (recordsForSync.length > 0) {
           await syncGlobalParts(recordsForSync, projectId);
 
-          // NEW: Match and link suppliers for both inserted and updated items
-          const supplierMap = await matchAndCreateSuppliers(recordsForSync);
+          // NEW: Match and link suppliers for both inserted and updated items (including labor records)
+          const supplierMap = await matchAndCreateSuppliers(recordsForSync, laborRecords);
           await linkEquipmentToSuppliers(recordsForSync, supplierMap, projectId);
         }
       }
@@ -805,8 +852,8 @@ export const projectEquipmentService = {
     let laborUpdated = 0;
 
     if (laborRecords.length > 0) {
-      if (mode === 'replace') {
-        console.log(`[Labor Budget] Processing ${laborRecords.length} labor records in REPLACE mode`);
+      if (mode === 'replace' || mode === 'append') {
+        console.log(`[Labor Budget] Processing ${laborRecords.length} labor records in ${mode.toUpperCase()} mode`);
 
         // Fetch existing labor records to check for conflicts
         const { data: existingLabor, error: fetchError } = await supabase
@@ -967,6 +1014,7 @@ export const projectEquipmentService = {
         unit_cost,
         unit_price,
         supplier,
+        supplier_id,
         csv_batch_id,
         notes,
         is_active,
@@ -1019,6 +1067,7 @@ export const projectEquipmentService = {
         unit_cost,
         unit_price,
         supplier,
+        supplier_id,
         csv_batch_id,
         notes,
         is_active,
