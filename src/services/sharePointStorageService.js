@@ -160,28 +160,27 @@ class SharePointStorageService {
   }
 
   /**
-   * Get project's SharePoint URL
+   * Get project's Photos folder URL using auto folder management
    * @param {string} projectId - Project UUID
-   * @returns {Promise<string>} SharePoint URL
+   * @returns {Promise<string>} Photos folder URL
    */
   async getProjectSharePointUrl(projectId) {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('one_drive_photos')
+        .select('client_folder_url')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      const sharePointUrl = project.one_drive_photos;
-
-      if (!sharePointUrl || sharePointUrl.trim() === '') {
-        throw new Error('SharePoint folder not configured for this project. Please contact your administrator.');
+      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
       }
 
-      return sharePointUrl;
+      // Return the Photos subfolder under client folder
+      return `${project.client_folder_url}/Photos`;
     } catch (error) {
       console.error('Failed to get project SharePoint URL:', error);
       throw error;
@@ -189,31 +188,55 @@ class SharePointStorageService {
   }
 
   /**
-   * Get project's Procurement SharePoint URL
+   * Get project's Procurement folder URL using auto folder management
    * @param {string} projectId - Project UUID
-   * @returns {Promise<string>} SharePoint URL for procurement documents
+   * @returns {Promise<string>} Procurement folder URL
    */
   async getProjectProcurementUrl(projectId) {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('one_drive_procurement, one_drive_photos')
+        .select('client_folder_url')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      // Use procurement-specific URL if available, fallback to photos URL
-      const sharePointUrl = project.one_drive_procurement || project.one_drive_photos;
-
-      if (!sharePointUrl || sharePointUrl.trim() === '') {
-        throw new Error('SharePoint folder not configured for this project. Please contact your administrator.');
+      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
       }
 
-      return sharePointUrl;
+      return `${project.client_folder_url}/Procurement`;
     } catch (error) {
       console.error('Failed to get project procurement SharePoint URL:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get project's Business folder URL using auto folder management
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<string>} Business folder URL
+   */
+  async getProjectBusinessUrl(projectId) {
+    try {
+      const { data: project, error } = await supabase
+        .from('projects')
+        .select('client_folder_url')
+        .eq('id', projectId)
+        .single();
+
+      if (error) throw error;
+      if (!project) throw new Error('Project not found');
+
+      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
+      }
+
+      return `${project.client_folder_url}/Business`;
+    } catch (error) {
+      console.error('Failed to get project business folder URL:', error);
       throw error;
     }
   }

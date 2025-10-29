@@ -345,10 +345,10 @@ class PermitService {
         throw new Error('Only PDF files are allowed for permit documents');
       }
 
-      // Get project SharePoint URL (same method wire drops use)
-      const sharePointUrl = await sharePointStorageService.getProjectSharePointUrl(projectId);
+      // Get Business folder URL using auto folder management
+      const sharePointUrl = await sharePointStorageService.getProjectBusinessUrl(projectId);
 
-      // Create subfolder for permits: permits/
+      // Create subfolder for permits under Business: Business/permits/
       const subPath = 'permits';
 
       // Create filename with permit number and timestamp
