@@ -1,9 +1,9 @@
 import { supabase } from '../lib/supabase';
-import { sharePointFolderService } from './sharePointFolderService';
+import { sharePointStorageService } from './sharePointStorageService';
 
 /**
  * Service for managing project permits, inspections, and permit documents
- * Documents are stored in SharePoint Business folder
+ * Documents are stored in SharePoint using the same pattern as wire drop photos
  */
 class PermitService {
   /**
@@ -99,10 +99,11 @@ class PermitService {
       if (documentFile) {
         const uploadResult = await this.uploadPermitDocument(
           permitData.project_id,
-          documentFile
+          documentFile,
+          permitData.permit_number // Pass permit number for filename
         );
-        documentUrl = uploadResult.url;
-        documentName = documentFile.name;
+        documentUrl = uploadResult.url || uploadResult.webUrl;
+        documentName = uploadResult.name || documentFile.name;
       }
 
       // Create permit record
@@ -153,10 +154,11 @@ class PermitService {
 
         const uploadResult = await this.uploadPermitDocument(
           existingPermit.project_id,
-          documentFile
+          documentFile,
+          updates.permit_number || existingPermit.permit_number // Pass permit number for filename
         );
-        documentUrl = uploadResult.url;
-        documentName = documentFile.name;
+        documentUrl = uploadResult.url || uploadResult.webUrl;
+        documentName = uploadResult.name || documentFile.name;
       }
 
       // Update permit record
@@ -329,79 +331,61 @@ class PermitService {
   }
 
   /**
-   * Upload a permit document to SharePoint Business folder
+   * Upload a permit document to SharePoint
+   * Uses the same pattern as wire drop photo uploads
    * @param {string} projectId - The project ID
    * @param {File} file - The PDF file to upload
-   * @returns {Promise<Object>} Object with url property
+   * @param {string} permitNumber - The permit number for naming
+   * @returns {Promise<Object>} Object with url and metadata
    */
-  async uploadPermitDocument(projectId, file) {
+  async uploadPermitDocument(projectId, file, permitNumber = '') {
     try {
       // Validate file type
       if (file.type !== 'application/pdf') {
         throw new Error('Only PDF files are allowed for permit documents');
       }
 
-      // Get folder structure from SharePoint
-      const folderStructure = await sharePointFolderService.getProjectFolderStructure(projectId);
+      // Get project SharePoint URL (same method wire drops use)
+      const sharePointUrl = await sharePointStorageService.getProjectSharePointUrl(projectId);
 
-      // Use root URL and Business as subPath
-      const rootUrl = folderStructure.rootUrl;
-      if (!rootUrl) {
-        throw new Error('No client folder URL configured. Please set the Client Folder URL in project settings.');
-      }
+      // Create subfolder for permits: permits/
+      const subPath = 'permits';
 
-      // Create unique filename with timestamp
-      const timestamp = Date.now();
-      const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-      const fileName = `permit_${timestamp}_${sanitizedName}`;
+      // Create filename with permit number and timestamp
+      const timestamp = sharePointStorageService.formatTimestamp(new Date());
+      const permitLabel = permitNumber ? sharePointStorageService.sanitizeForFileName(permitNumber) : 'PERMIT';
+      const extension = sharePointStorageService.getFileExtension(file.name);
+      const filename = `PERMIT_${permitLabel}_${timestamp}.${extension}`;
 
-      // Convert file to base64
-      const base64 = await this.fileToBase64(file);
-
-      // Upload to SharePoint via API - use rootUrl with Business subPath
-      const response = await fetch('/api/graph-upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          rootUrl: rootUrl,
-          subPath: 'Business', // Upload to Business subfolder
-          filename: fileName,
-          fileBase64: base64,
-          contentType: 'application/pdf'
-        })
+      console.log('Permit upload debug:', {
+        sharePointUrl,
+        subPath,
+        filename,
+        fileSize: file.size
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to upload permit document to SharePoint');
-      }
+      // Upload using the same service wire drops use
+      const uploadResult = await sharePointStorageService.uploadToSharePoint(
+        sharePointUrl,
+        subPath,
+        filename,
+        file
+      );
 
-      const result = await response.json();
-      return { url: result.webUrl, name: result.name };
+      console.log('Permit uploaded successfully:', uploadResult);
+
+      // Return metadata in the same format as wire drops
+      return {
+        url: uploadResult.url || uploadResult.webUrl,
+        driveId: uploadResult.driveId,
+        itemId: uploadResult.itemId,
+        name: uploadResult.name,
+        webUrl: uploadResult.webUrl
+      };
     } catch (error) {
       console.error('Error uploading permit document:', error);
       throw new Error(`Failed to upload permit document: ${error.message}`);
     }
-  }
-
-  /**
-   * Convert a File to base64 string
-   * @param {File} file - The file to convert
-   * @returns {Promise<string>} Base64 encoded string
-   */
-  async fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => {
-        // Remove the data:application/pdf;base64, prefix
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = error => reject(error);
-    });
   }
 
   /**
