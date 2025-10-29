@@ -34,6 +34,7 @@ const AppHeader = () => {
     const p = location.pathname;
     if (p === '/') return 'Technician Dashboard';
     if (p.startsWith('/pm-dashboard')) return 'Project Manager Dashboard';
+    if (p.startsWith('/pm-project/') && p.includes('/issues')) return 'Project Issues';
     if (p.startsWith('/pm/project/') || p.startsWith('/pm-project/')) return 'PM Project Detail';
     if (p.startsWith('/project/') && p.includes('/issues/')) return 'Issue Details';
     if (p.startsWith('/project/')) return 'Technician Project Detail';

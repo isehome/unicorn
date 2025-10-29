@@ -402,39 +402,6 @@ const SecureDataPage = () => {
 
   return (
     <div className={`min-h-screen ${mode === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} pb-20`}>
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b" style={{ ...styles.card, borderRadius: 0 }}>
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate(`/projects/${projectId}`)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h1 className="text-xl font-semibold flex items-center gap-2" style={styles.textPrimary}>
-                  <Shield size={20} style={{ color: palette.danger }} />
-                  Secure Data
-                </h1>
-                <p className="text-sm" style={styles.textSecondary}>
-                  {secureData.length} credentials stored securely
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={loadAuditLogs}>
-                View Audit Logs
-              </Button>
-              <Button variant="primary" icon={Plus} onClick={handleAddNew}>
-                Add Credentials
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Security Warning */}
       <div className="px-4 py-3 border-b" style={{ backgroundColor: withAlpha(palette.danger, 0.1) }}>
         <div className="flex items-start gap-2">

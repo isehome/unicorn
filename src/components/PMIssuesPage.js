@@ -304,28 +304,8 @@ const PMIssuesPage = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={ArrowLeft}
-            onClick={() => navigate(`/pm-project/${projectId}`)}
-          >
-            Back to Project
-          </Button>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Project Issues - {projectQuery.data?.name || 'Loading...'}
-            </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Manage and track project issues
-            </p>
-          </div>
-        </div>
-        
-        {/* Action buttons */}
+      {/* Action buttons */}
+      <div className="flex items-center justify-end gap-2">
         <div className="flex items-center gap-2">
           <Button
             variant="secondary"
