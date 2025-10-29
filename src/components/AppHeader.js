@@ -46,6 +46,8 @@ const AppHeader = () => {
     if (p === '/scan-tag') return 'Scan Wire Drop';
     if (p === '/wire-drops-list') return 'Wire Drops List';
     if (p.startsWith('/wire-drops')) return 'Wire Drops';
+    if (p.includes('/order-equipment')) return 'Order Equipment';
+    if (p.includes('/receiving')) return 'Parts Receiving';
     if (p.startsWith('/settings')) return 'Settings';
     if (p.startsWith('/login')) return 'Sign In';
     return 'Field Operations';

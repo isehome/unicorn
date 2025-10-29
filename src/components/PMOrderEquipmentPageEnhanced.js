@@ -10,7 +10,6 @@ import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
-import AppHeader from './AppHeader';
 import {
   Package,
   CheckCircle,
@@ -1147,8 +1146,6 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
-      <AppHeader title="Order Equipment" showBackButton={true} />
-
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
