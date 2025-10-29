@@ -364,40 +364,7 @@ const EquipmentListPage = () => {
   }
 
   return (
-    <div className={`min-h-screen ${mode === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <header
-        className="sticky top-0 z-10 border-b"
-        style={{ ...cardStyles.header, borderRadius: 0 }}
-      >
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate(`/projects/${projectId}`)}
-              className="rounded-full p-2 transition hover:bg-gray-100 dark:hover:bg-gray-800"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <div>
-              <h1 className="text-xl font-semibold">Equipment List</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {totalItems} items • {rooms.length} rooms • {headEndCount} head-end / {roomEndCount}{' '}
-                room-end
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              icon={RefreshCw}
-              onClick={loadEquipment}
-              disabled={loading}
-            >
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
-        </div>
-      </header>
-
+    <div className={`min-h-screen ${mode === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} pb-20`}>
       <section className="px-4 py-4 space-y-4">
         <div className="rounded-2xl border p-4 shadow-sm" style={cardStyles.mutedCard}>
           <div className="space-y-4">
