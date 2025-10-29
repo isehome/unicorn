@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase';
 // Standard subfolder structure for all projects
 const STANDARD_SUBFOLDERS = {
   photos: 'Photos',
-  files: 'File',
+  files: 'Files',
   procurement: 'Procurement',
   design: 'Design',
   data: 'Data',
@@ -74,7 +74,9 @@ class SharePointFolderService {
       console.log('SharePoint folders initialized successfully:', result);
 
       return {
+        success: true,
         rootUrl: rootFolderUrl,
+        foldersCreated: result.subfolders,
         photos: result.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl,
         files: result.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl,
         procurement: result.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl,
@@ -99,9 +101,8 @@ class SharePointFolderService {
       const { error } = await supabase
         .from('projects')
         .update({
-          sharepoint_root_url: rootUrl,
-          sharepoint_folder_structure: folderStructure,
-          // Keep old fields for backward compatibility (can be removed later)
+          client_folder_url: rootUrl,
+          // Keep old fields for backward compatibility (populated from subfolders)
           one_drive_photos: folderStructure.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl || rootUrl,
           one_drive_files: folderStructure.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl || rootUrl,
           one_drive_procurement: folderStructure.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl || rootUrl
@@ -126,21 +127,23 @@ class SharePointFolderService {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('sharepoint_root_url, sharepoint_folder_structure, one_drive_photos')
+        .select('client_folder_url, one_drive_photos, one_drive_files, one_drive_procurement')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      // If we have the new structure, use it
-      if (project.sharepoint_folder_structure) {
+      // If we have the new client_folder_url, use it
+      if (project.client_folder_url) {
         return {
-          rootUrl: project.sharepoint_root_url,
-          structure: project.sharepoint_folder_structure,
-          photos: project.sharepoint_folder_structure.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl,
-          files: project.sharepoint_folder_structure.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl,
-          procurement: project.sharepoint_folder_structure.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl
+          rootUrl: project.client_folder_url,
+          photos: project.one_drive_photos || `${project.client_folder_url}/Photos`,
+          files: project.one_drive_files || `${project.client_folder_url}/Files`,
+          procurement: project.one_drive_procurement || `${project.client_folder_url}/Procurement`,
+          business: `${project.client_folder_url}/Business`,
+          design: `${project.client_folder_url}/Design`,
+          data: `${project.client_folder_url}/Data`
         };
       }
 
@@ -148,7 +151,6 @@ class SharePointFolderService {
       if (project.one_drive_photos) {
         return {
           rootUrl: project.one_drive_photos,
-          structure: null,
           photos: project.one_drive_photos
         };
       }
@@ -176,6 +178,48 @@ class SharePointFolderService {
       return structure.photos;
     } catch (error) {
       console.error('Failed to get photos folder:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the Business subfolder URL for a project (for permits, contracts, etc.)
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<string>} Business folder URL
+   */
+  async getBusinessFolderUrl(projectId) {
+    try {
+      const structure = await this.getProjectFolderStructure(projectId);
+
+      if (!structure.business) {
+        throw new Error('Business folder not configured. Please initialize SharePoint folders for this project.');
+      }
+
+      return structure.business;
+    } catch (error) {
+      console.error('Failed to get business folder:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific subfolder URL by name
+   * @param {string} projectId - Project UUID
+   * @param {string} subfolderKey - Subfolder key (photos, files, procurement, business, design, data)
+   * @returns {Promise<string>} Subfolder URL
+   */
+  async getSubfolderUrl(projectId, subfolderKey) {
+    try {
+      const structure = await this.getProjectFolderStructure(projectId);
+      const url = structure[subfolderKey];
+
+      if (!url) {
+        throw new Error(`${subfolderKey} folder not configured. Please initialize SharePoint folders for this project.`);
+      }
+
+      return url;
+    } catch (error) {
+      console.error(`Failed to get ${subfolderKey} folder:`, error);
       throw error;
     }
   }

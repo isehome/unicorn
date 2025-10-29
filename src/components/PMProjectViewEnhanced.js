@@ -10,12 +10,14 @@ import { milestoneCacheService } from '../services/milestoneCacheService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
+import { sharePointFolderService } from '../services/sharePointFolderService';
 import { supabase } from '../lib/supabase';
 import { normalizeRoomName, similarityScore } from '../utils/roomUtils';
 import Button from './ui/Button';
 import LucidChartCarousel from './LucidChartCarousel';
 import ProjectEquipmentManager from './ProjectEquipmentManager';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
+import ProjectPermits from './ProjectPermits';
 import { 
   Save, 
   ExternalLink, 
@@ -319,6 +321,7 @@ const PMProjectViewEnhanced = () => {
     end_date: '',
     wiring_diagram_url: '',
     portal_proposal_url: '',
+    client_folder_url: '',
     one_drive_photos: '',
     one_drive_files: '',
     one_drive_procurement: '',
@@ -337,6 +340,9 @@ const PMProjectViewEnhanced = () => {
   const [equipmentCollapsed, setEquipmentCollapsed] = useState(true);
   const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
   const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
+  const [permitsCollapsed, setPermitsCollapsed] = useState(false);
+  const [folderInitializing, setFolderInitializing] = useState(false);
+  const [folderInitSuccess, setFolderInitSuccess] = useState(null);
   const [projectOwners, setProjectOwners] = useState({ pm: null, technician: null });
   const [laborSummary, setLaborSummary] = useState({
     totalHours: 0,
@@ -557,14 +563,17 @@ const PMProjectViewEnhanced = () => {
         { key: 'unifi', label: 'UniFi Site', url: formData.unifi_url, icon: ExternalLink },
         { key: 'lucid', label: 'Lucid Diagram', url: formData.wiring_diagram_url, icon: Link },
         { key: 'proposal', label: 'Proposal', url: formData.portal_proposal_url, icon: FileText },
-        { key: 'photos', label: 'Photos', url: formData.one_drive_photos, icon: Camera },
-        { key: 'files', label: 'Files', url: formData.one_drive_files, icon: FolderOpen },
-        { key: 'procurement', label: 'Procurement', url: formData.one_drive_procurement, icon: FolderOpen }
+        { key: 'client_folder', label: 'Client Folder', url: formData.client_folder_url, icon: FolderOpen },
+        // Backward compatibility: Show old folder URLs if they exist and client_folder_url doesn't
+        ...(formData.one_drive_photos && !formData.client_folder_url ? [{ key: 'photos', label: 'Photos', url: formData.one_drive_photos, icon: Camera }] : []),
+        ...(formData.one_drive_files && !formData.client_folder_url ? [{ key: 'files', label: 'Files', url: formData.one_drive_files, icon: FolderOpen }] : []),
+        ...(formData.one_drive_procurement && !formData.client_folder_url ? [{ key: 'procurement', label: 'Procurement', url: formData.one_drive_procurement, icon: FolderOpen }] : [])
       ].filter((item) => Boolean(item.url)),
     [
       formData.unifi_url,
       formData.wiring_diagram_url,
       formData.portal_proposal_url,
+      formData.client_folder_url,
       formData.one_drive_photos,
       formData.one_drive_files,
       formData.one_drive_procurement
@@ -573,6 +582,15 @@ const PMProjectViewEnhanced = () => {
 
   const resourceEntries = useMemo(
     () => [
+      {
+        key: 'client_folder_url',
+        label: 'Client Folder URL (SharePoint/OneDrive)',
+        icon: FolderOpen,
+        placeholder: 'https://tenant.sharepoint.com/sites/SiteName/Shared Documents/ClientName',
+        helper: 'Main client folder - subfolders (Photos, Files, Procurement, Business, Design, Data) will be auto-created',
+        value: formData.client_folder_url,
+        isSpecial: true // Will handle initialization on save
+      },
       {
         key: 'wiring_diagram_url',
         label: 'Wiring Diagram URL',
@@ -590,30 +608,6 @@ const PMProjectViewEnhanced = () => {
         value: formData.portal_proposal_url
       },
       {
-        key: 'one_drive_photos',
-        label: 'OneDrive Photos',
-        icon: Camera,
-        placeholder: 'https://...',
-        helper: null,
-        value: formData.one_drive_photos
-      },
-      {
-        key: 'one_drive_files',
-        label: 'OneDrive Files',
-        icon: FolderOpen,
-        placeholder: 'https://...',
-        helper: null,
-        value: formData.one_drive_files
-      },
-      {
-        key: 'one_drive_procurement',
-        label: 'OneDrive Procurement',
-        icon: FolderOpen,
-        placeholder: 'https://...',
-        helper: null,
-        value: formData.one_drive_procurement
-      },
-      {
         key: 'unifi_url',
         label: 'UniFi Network URL',
         icon: Users,
@@ -623,11 +617,9 @@ const PMProjectViewEnhanced = () => {
       }
     ],
     [
+      formData.client_folder_url,
       formData.wiring_diagram_url,
       formData.portal_proposal_url,
-      formData.one_drive_photos,
-      formData.one_drive_files,
-      formData.one_drive_procurement,
       formData.unifi_url
     ]
   );
@@ -1086,6 +1078,7 @@ const PMProjectViewEnhanced = () => {
         end_date: formData.end_date || null,
         wiring_diagram_url: formData.wiring_diagram_url || null,
         portal_proposal_url: formData.portal_proposal_url || null,
+        client_folder_url: formData.client_folder_url || null,
         one_drive_photos: formData.one_drive_photos || null,
         one_drive_files: formData.one_drive_files || null,
         one_drive_procurement: formData.one_drive_procurement || null,
@@ -1111,7 +1104,39 @@ const PMProjectViewEnhanced = () => {
       
       console.log('Update successful:', data);
       setProject({ ...project, ...data });
-      
+
+      // Initialize SharePoint folder structure if client_folder_url is provided
+      if (formData.client_folder_url && formData.client_folder_url.trim()) {
+        try {
+          setFolderInitializing(true);
+          console.log('Initializing SharePoint folders for:', formData.client_folder_url);
+
+          const folderResult = await sharePointFolderService.initializeProjectFolders(
+            projectId,
+            formData.client_folder_url.trim()
+          );
+
+          console.log('Folder initialization result:', folderResult);
+          setFolderInitSuccess(folderResult);
+
+          // Update formData with the populated subfolder URLs
+          setFormData(prev => ({
+            ...prev,
+            one_drive_photos: folderResult.photos || prev.one_drive_photos,
+            one_drive_files: folderResult.files || prev.one_drive_files,
+            one_drive_procurement: folderResult.procurement || prev.one_drive_procurement
+          }));
+
+        } catch (folderError) {
+          console.error('Failed to initialize folders:', folderError);
+          setFolderInitSuccess({ error: folderError.message });
+          // Don't fail the whole save - just warn the user
+          alert(`Project saved, but folder initialization had an issue: ${folderError.message}`);
+        } finally {
+          setFolderInitializing(false);
+        }
+      }
+
       // Handle client stakeholder assignment - ALWAYS try if there's a client
       let stakeholderResult = null;
       if (formData.client) {
@@ -1136,15 +1161,18 @@ const PMProjectViewEnhanced = () => {
       }
       
       setEditMode(false);
-      
+
       // Show success message
-      if (stakeholderResult === true) {
-        alert('Project saved successfully! Client stakeholder has been updated.');
-      } else if (stakeholderResult === false) {
-        alert('Project saved successfully, but there was an issue updating the client stakeholder. Please check the console for details.');
-      } else {
-        alert('Project saved successfully!');
+      let successMessage = 'Project saved successfully!';
+      if (folderInitSuccess && !folderInitSuccess.error) {
+        successMessage += '\n\nSharePoint folders created/verified:\n- Photos\n- Files\n- Procurement\n- Business\n- Design\n- Data';
       }
+      if (stakeholderResult === true) {
+        successMessage += '\n\nClient stakeholder has been updated.';
+      } else if (stakeholderResult === false) {
+        successMessage += '\n\nWarning: Issue updating client stakeholder.';
+      }
+      alert(successMessage);
       
     } catch (error) {
       console.error('Failed to save project:', error);
@@ -3409,6 +3437,37 @@ const PMProjectViewEnhanced = () => {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Step 4: Project Permits - ORANGE */}
+        <div className="mb-6">
+          <button
+            onClick={() => setPermitsCollapsed(!permitsCollapsed)}
+            className="flex w-full items-center justify-between rounded-lg border-2 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 px-4 py-3 shadow-sm transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/30"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 dark:bg-orange-600">
+                <span className="text-sm font-bold text-white">4</span>
+              </div>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">Project Permits</p>
+                <p className="text-xs text-orange-700 dark:text-orange-300">
+                  Manage building permits and inspections
+                </p>
+              </div>
+            </div>
+            <ChevronDown
+              className={`w-5 h-5 text-orange-600 dark:text-orange-400 transition-transform ${
+                permitsCollapsed ? '' : 'rotate-180'
+              }`}
+            />
+          </button>
+
+          {!permitsCollapsed && (
+            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <ProjectPermits projectId={projectId} />
             </div>
           )}
         </div>
