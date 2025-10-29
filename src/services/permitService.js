@@ -341,8 +341,14 @@ class PermitService {
         throw new Error('Only PDF files are allowed for permit documents');
       }
 
-      // Get Business folder URL from SharePoint folder structure
-      const businessFolderUrl = await sharePointFolderService.getBusinessFolderUrl(projectId);
+      // Get folder structure from SharePoint
+      const folderStructure = await sharePointFolderService.getProjectFolderStructure(projectId);
+
+      // Use root URL and Business as subPath
+      const rootUrl = folderStructure.rootUrl;
+      if (!rootUrl) {
+        throw new Error('No client folder URL configured. Please set the Client Folder URL in project settings.');
+      }
 
       // Create unique filename with timestamp
       const timestamp = Date.now();
@@ -352,15 +358,15 @@ class PermitService {
       // Convert file to base64
       const base64 = await this.fileToBase64(file);
 
-      // Upload to SharePoint via API
+      // Upload to SharePoint via API - use rootUrl with Business subPath
       const response = await fetch('/api/graph-upload', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rootUrl: businessFolderUrl,
-          subPath: '', // Upload directly to Business folder
+          rootUrl: rootUrl,
+          subPath: 'Business', // Upload to Business subfolder
           filename: fileName,
           fileBase64: base64,
           contentType: 'application/pdf'
