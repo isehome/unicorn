@@ -107,7 +107,8 @@ module.exports = async (req, res) => {
 
   try {
     const { rootUrl, subPath, filename, fileBase64, contentType } = req.body || {}
-    if (!rootUrl || !subPath || !filename || !fileBase64) {
+    // Note: subPath can be empty string (means upload to root folder)
+    if (!rootUrl || subPath === undefined || subPath === null || !filename || !fileBase64) {
       res.status(400).json({ error: 'Missing required fields' })
       return
     }
