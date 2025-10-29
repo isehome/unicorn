@@ -9,13 +9,13 @@ import React from 'react';
  * - Clean, modern design matching example image
  * - Displays percentage in center
  * - Optional label below the gauge
- * - Responsive sizing
+ * - Responsive sizing: 90px on mobile, 140px on desktop
  */
 const CircularProgressGauge = ({
   percentage = 0,
   label = '',
-  size = 140,
-  strokeWidth = 12,
+  size = 90, // Default to mobile size
+  strokeWidth = 10, // Slightly thinner for mobile
   showLabel = true
 }) => {
   // Ensure percentage is between 0 and 100

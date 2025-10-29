@@ -26,8 +26,9 @@ const MilestoneGaugesDisplay = ({
   // State to track if view is expanded
   const [isExpanded, setIsExpanded] = useState(!startCollapsed);
 
-  // Always use 140px gauges for consistent sizing
-  const circularSize = 140;
+  // Responsive sizing: 90px on mobile, 140px on desktop
+  const circularSizeMobile = 90;
+  const circularSizeDesktop = 140;
 
   // COLLAPSED VIEW: Horizontal layout with 3 gauges side-by-side
   if (!isExpanded) {
@@ -52,11 +53,21 @@ const MilestoneGaugesDisplay = ({
               </h3>
             </div>
             <div className="w-full flex justify-center">
-              <CircularProgressGauge
-                percentage={milestonePercentages.prewire_phase?.percentage || 0}
-                size={circularSize}
-                showLabel={false}
-              />
+              {/* Mobile: 90px, Desktop: 140px */}
+              <div className="block md:hidden">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.prewire_phase?.percentage || 0}
+                  size={circularSizeMobile}
+                  showLabel={false}
+                />
+              </div>
+              <div className="hidden md:block">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.prewire_phase?.percentage || 0}
+                  size={circularSizeDesktop}
+                  showLabel={false}
+                />
+              </div>
             </div>
           </div>
 
@@ -68,11 +79,21 @@ const MilestoneGaugesDisplay = ({
               </h3>
             </div>
             <div className="w-full flex justify-center">
-              <CircularProgressGauge
-                percentage={milestonePercentages.trim_phase?.percentage || 0}
-                size={circularSize}
-                showLabel={false}
-              />
+              {/* Mobile: 90px, Desktop: 140px */}
+              <div className="block md:hidden">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.trim_phase?.percentage || 0}
+                  size={circularSizeMobile}
+                  showLabel={false}
+                />
+              </div>
+              <div className="hidden md:block">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.trim_phase?.percentage || 0}
+                  size={circularSizeDesktop}
+                  showLabel={false}
+                />
+              </div>
             </div>
           </div>
 
@@ -84,11 +105,21 @@ const MilestoneGaugesDisplay = ({
               </h3>
             </div>
             <div className="w-full flex justify-center">
-              <CircularProgressGauge
-                percentage={milestonePercentages.commissioning || 0}
-                size={circularSize}
-                showLabel={false}
-              />
+              {/* Mobile: 90px, Desktop: 140px */}
+              <div className="block md:hidden">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.commissioning || 0}
+                  size={circularSizeMobile}
+                  showLabel={false}
+                />
+              </div>
+              <div className="hidden md:block">
+                <CircularProgressGauge
+                  percentage={milestonePercentages.commissioning || 0}
+                  size={circularSizeDesktop}
+                  showLabel={false}
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -15,33 +15,47 @@ const StandaloneMilestoneGauge = ({
 }) => {
   // Force percentage to be a valid number (0-100), never hide the gauge
   const safePercentage = Math.min(100, Math.max(0, Math.round(Number(percentage) || 0)));
-  // Always use 140px gauges for consistent sizing
-  const circularSize = 140;
+
+  // Responsive sizing: 90px on mobile, 140px on desktop
+  const circularSizeMobile = 90;
+  const circularSizeDesktop = 140;
 
   return (
-    <div className="flex items-start gap-4">
-      {/* LEFT SIDE: Circular Gauge with Title (matching CollapsibleGaugeGroup layout) */}
-      <div className="flex flex-col items-center" style={{ minWidth: circularSize, width: circularSize }}>
-        {/* Title - Fixed height container for perfect alignment */}
-        <div className="flex items-center justify-center mb-2" style={{ height: '20px' }}>
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-            {title}
-          </h3>
+    <>
+      {/* Mobile layout - 90px gauges */}
+      <div className="flex items-start gap-4 md:hidden">
+        <div className="flex flex-col items-center" style={{ minWidth: circularSizeMobile, width: circularSizeMobile }}>
+          <div className="flex items-center justify-center mb-2" style={{ height: '20px' }}>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+              {title}
+            </h3>
+          </div>
+          <CircularProgressGauge
+            percentage={safePercentage}
+            size={circularSizeMobile}
+            showLabel={false}
+          />
         </div>
-
-        {/* Circular Gauge - ALWAYS SHOWN */}
-        <CircularProgressGauge
-          percentage={safePercentage}
-          size={circularSize}
-          showLabel={false}
-        />
+        <div className="flex-1 pt-2"></div>
       </div>
 
-      {/* RIGHT SIDE: Empty space to match layout (no sub-gauges for Commissioning) */}
-      <div className="flex-1 pt-2">
-        {/* Intentionally empty - maintains consistent layout with other gauge groups */}
+      {/* Desktop layout - 140px gauges */}
+      <div className="hidden md:flex items-start gap-4">
+        <div className="flex flex-col items-center" style={{ minWidth: circularSizeDesktop, width: circularSizeDesktop }}>
+          <div className="flex items-center justify-center mb-2" style={{ height: '20px' }}>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+              {title}
+            </h3>
+          </div>
+          <CircularProgressGauge
+            percentage={safePercentage}
+            size={circularSizeDesktop}
+            showLabel={false}
+          />
+        </div>
+        <div className="flex-1 pt-2"></div>
       </div>
-    </div>
+    </>
   );
 };
 
