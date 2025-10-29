@@ -10,6 +10,7 @@ import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
+import AppHeader from './AppHeader';
 import {
   Package,
   CheckCircle,
@@ -1146,20 +1147,9 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5 text-gray-700 dark:text-gray-300" />
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Order Equipment
-          </h1>
-        </div>
+      <AppHeader title="Order Equipment" showBackButton={true} />
 
+      <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
