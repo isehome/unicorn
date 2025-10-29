@@ -1,9 +1,9 @@
--- TEST MIGRATION - Add client_folder_url field to projects table
+-- Add client_folder_url field to projects table
 -- This will be the single source of truth for client OneDrive folder
 -- Replaces multiple individual folder URL fields with one unified approach
 --
--- STATUS: Needs testing on Vercel before production use
--- TODO: Test SharePoint uploads work correctly in Vercel environment
+-- STATUS: ✅ TESTED AND WORKING on production
+-- Successfully creates 6 standard subfolders: Data, Design, Files, Photos, Business, Procurement
 
 ALTER TABLE public.projects
 ADD COLUMN IF NOT EXISTS client_folder_url TEXT;
