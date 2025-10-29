@@ -4,34 +4,55 @@ class MilestoneService {
   // Milestone type definitions
   MILESTONE_TYPES = {
     PLANNING_DESIGN: 'planning_design',
-    PREWIRE_PREP: 'prewire_prep',
+    PREWIRE_ORDERS: 'prewire_orders',
+    PREWIRE_RECEIVING: 'prewire_receiving',
     PREWIRE: 'prewire',
-    TRIM_PREP: 'trim_prep',
+    PREWIRE_PHASE: 'prewire_phase',
+    TRIM_ORDERS: 'trim_orders',
+    TRIM_RECEIVING: 'trim_receiving',
     TRIM: 'trim',
+    TRIM_PHASE: 'trim_phase',
     COMMISSIONING: 'commissioning',
-    HANDOFF_TRAINING: 'handoff_training'
+    HANDOFF_TRAINING: 'handoff_training',
+    // Legacy (deprecated)
+    PREWIRE_PREP: 'prewire_prep',
+    TRIM_PREP: 'trim_prep'
   };
 
   // Milestone labels for display
   MILESTONE_LABELS = {
-    planning_design: 'Planning and Design',
-    prewire_prep: 'Prewire Prep',
-    prewire: 'Prewire',
-    trim_prep: 'Trim Prep',
-    trim: 'Trim',
+    planning_design: 'Planning & Design',
+    prewire_orders: 'Prewire Orders',
+    prewire_receiving: 'Prewire Receiving',
+    prewire: 'Prewire Stages',
+    prewire_phase: 'Prewire Phase',
+    trim_orders: 'Trim Orders',
+    trim_receiving: 'Trim Receiving',
+    trim: 'Trim Stages',
+    trim_phase: 'Trim Phase',
     commissioning: 'Commissioning',
-    handoff_training: 'Handoff / Training'
+    handoff_training: 'Handoff / Training',
+    // Legacy
+    prewire_prep: 'Prewire Prep',
+    trim_prep: 'Trim Prep'
   };
 
   // Milestone requirements/helpers
   MILESTONE_HELPERS = {
     planning_design: 'Complete when Lucid diagram and Portal proposal URLs exist',
-    prewire_prep: 'Complete when all prewire items are ordered AND received. Target date = Prewire date - 2 weeks',
+    prewire_orders: 'Count of items with ordered_quantity > 0',
+    prewire_receiving: 'Count of items fully received (received >= ordered)',
     prewire: '% = (Wire drops with prewire photo) / (Total wire drops)',
-    trim_prep: 'Complete when all trim items are ordered AND received. Target date = Trim date - 2 weeks',
+    prewire_phase: 'Rollup: Orders 25% + Receiving 35% + Stages 40%',
+    trim_orders: 'Count of items with ordered_quantity > 0',
+    trim_receiving: 'Count of items fully received (received >= ordered)',
     trim: '% = (Wire drops with trim photo & equipment attached) / (Total wire drops)',
+    trim_phase: 'Rollup: Orders 25% + Receiving 35% + Stages 40%',
     commissioning: 'Complete when equipment is attached in head end field',
-    handoff_training: 'Manual completion checkbox'
+    handoff_training: 'Manual completion checkbox',
+    // Legacy
+    prewire_prep: 'DEPRECATED: Use prewire_orders and prewire_receiving',
+    trim_prep: 'DEPRECATED: Use trim_orders and trim_receiving'
   };
 
   /**
@@ -61,11 +82,52 @@ class MilestoneService {
   }
 
   /**
-   * Calculate Prewire Prep percentage
-   * Binary threshold: 50% when ALL prewire items ordered, 50% when ALL received
-   * 0% = Not all items ordered | 50% = All ordered | 100% = All ordered AND received
+   * Calculate Prewire Orders percentage
+   * 100% when ALL prewire items have been ordered (ordered_quantity > 0)
    */
-  async calculatePrewirePrepPercentage(projectId) {
+  async calculatePrewireOrdersPercentage(projectId) {
+    try {
+      const { data: equipment, error } = await supabase
+        .from('project_equipment')
+        .select(`
+          id,
+          planned_quantity,
+          ordered_quantity,
+          global_part:global_part_id (required_for_prewire)
+        `)
+        .eq('project_id', projectId)
+        .neq('equipment_type', 'Labor'); // Exclude labor items
+
+      if (error) throw error;
+
+      // Filter to prewire items (via global_parts.required_for_prewire)
+      const prewireItems = (equipment || []).filter(item =>
+        item.global_part?.required_for_prewire === true &&
+        (item.planned_quantity || 0) > 0
+      );
+
+      if (prewireItems.length === 0) {
+        // Return { percentage: 0, itemCount: 0, totalItems: 0, message: 'No prewire items in project' }
+        return { percentage: 0, itemCount: 0, totalItems: 0 };
+      }
+
+      // Count items with ordered_quantity > 0
+      const itemsOrdered = prewireItems.filter(item => (item.ordered_quantity || 0) > 0).length;
+      const totalItems = prewireItems.length;
+      const percentage = Math.round((itemsOrdered / totalItems) * 100);
+
+      return { percentage, itemCount: itemsOrdered, totalItems };
+    } catch (error) {
+      console.error('Error calculating prewire orders percentage:', error);
+      return { percentage: 0, itemCount: 0, totalItems: 0 };
+    }
+  }
+
+  /**
+   * Calculate Prewire Receiving percentage
+   * 100% when ALL prewire items are fully received (received_quantity >= ordered_quantity)
+   */
+  async calculatePrewireReceivingPercentage(projectId) {
     try {
       const { data: equipment, error } = await supabase
         .from('project_equipment')
@@ -81,29 +143,42 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Filter to prewire items (via global_parts.required_for_prewire)
+      // Filter to prewire items that have been ordered
       const prewireItems = (equipment || []).filter(item =>
         item.global_part?.required_for_prewire === true &&
-        (item.planned_quantity || 0) > 0
+        (item.ordered_quantity || 0) > 0
       );
 
-      if (prewireItems.length === 0) return 0;
+      if (prewireItems.length === 0) {
+        return { percentage: 0, itemCount: 0, totalItems: 0 };
+      }
 
-      // Calculate total quantities
-      const totalPlanned = prewireItems.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
-      const totalOrdered = prewireItems.reduce((sum, item) => sum + (item.ordered_quantity || 0), 0);
-      const totalReceived = prewireItems.reduce((sum, item) => sum + (item.received_quantity || 0), 0);
+      // Count items where received >= ordered (fully received)
+      const itemsReceived = prewireItems.filter(item =>
+        (item.received_quantity || 0) >= (item.ordered_quantity || 0)
+      ).length;
+      const totalItems = prewireItems.length;
+      const percentage = Math.round((itemsReceived / totalItems) * 100);
 
-      if (totalPlanned === 0) return 0;
+      return { percentage, itemCount: itemsReceived, totalItems };
+    } catch (error) {
+      console.error('Error calculating prewire receiving percentage:', error);
+      return { percentage: 0, itemCount: 0, totalItems: 0 };
+    }
+  }
 
-      // Binary threshold logic: ALL items must be ordered/received
-      // 50% when all items ordered, 50% when all items received
-      const allOrdered = totalOrdered >= totalPlanned;
-      const allReceived = totalReceived >= totalPlanned;
+  /**
+   * DEPRECATED: Calculate Prewire Prep percentage (combined orders + receiving)
+   * Use calculatePrewireOrdersPercentage and calculatePrewireReceivingPercentage instead
+   */
+  async calculatePrewirePrepPercentage(projectId) {
+    try {
+      const orders = await this.calculatePrewireOrdersPercentage(projectId);
+      const receiving = await this.calculatePrewireReceivingPercentage(projectId);
 
-      if (allOrdered && allReceived) return 100;
-      if (allOrdered) return 50;
-      return 0;
+      // Simple average for backwards compatibility
+      const percentage = Math.round((orders.percentage + receiving.percentage) / 2);
+      return percentage;
     } catch (error) {
       console.error('Error calculating prewire prep percentage:', error);
       return 0;
@@ -150,11 +225,51 @@ class MilestoneService {
   }
 
   /**
-   * Calculate Trim Prep percentage
-   * Binary threshold: 50% when ALL trim items ordered, 50% when ALL received
-   * 0% = Not all items ordered | 50% = All ordered | 100% = All ordered AND received
+   * Calculate Trim Orders percentage
+   * 100% when ALL trim items have been ordered (ordered_quantity > 0)
    */
-  async calculateTrimPrepPercentage(projectId) {
+  async calculateTrimOrdersPercentage(projectId) {
+    try {
+      const { data: equipment, error } = await supabase
+        .from('project_equipment')
+        .select(`
+          id,
+          planned_quantity,
+          ordered_quantity,
+          global_part:global_part_id (required_for_prewire)
+        `)
+        .eq('project_id', projectId)
+        .neq('equipment_type', 'Labor'); // Exclude labor items
+
+      if (error) throw error;
+
+      // Filter to trim items (NOT required for prewire via global_parts)
+      const trimItems = (equipment || []).filter(item =>
+        item.global_part?.required_for_prewire !== true &&
+        (item.planned_quantity || 0) > 0
+      );
+
+      if (trimItems.length === 0) {
+        return { percentage: 0, itemCount: 0, totalItems: 0 };
+      }
+
+      // Count items with ordered_quantity > 0
+      const itemsOrdered = trimItems.filter(item => (item.ordered_quantity || 0) > 0).length;
+      const totalItems = trimItems.length;
+      const percentage = Math.round((itemsOrdered / totalItems) * 100);
+
+      return { percentage, itemCount: itemsOrdered, totalItems };
+    } catch (error) {
+      console.error('Error calculating trim orders percentage:', error);
+      return { percentage: 0, itemCount: 0, totalItems: 0 };
+    }
+  }
+
+  /**
+   * Calculate Trim Receiving percentage
+   * 100% when ALL trim items are fully received (received_quantity >= ordered_quantity)
+   */
+  async calculateTrimReceivingPercentage(projectId) {
     try {
       const { data: equipment, error } = await supabase
         .from('project_equipment')
@@ -170,29 +285,42 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Filter to trim items (NOT required for prewire via global_parts)
+      // Filter to trim items that have been ordered
       const trimItems = (equipment || []).filter(item =>
         item.global_part?.required_for_prewire !== true &&
-        (item.planned_quantity || 0) > 0
+        (item.ordered_quantity || 0) > 0
       );
 
-      if (trimItems.length === 0) return 0;
+      if (trimItems.length === 0) {
+        return { percentage: 0, itemCount: 0, totalItems: 0 };
+      }
 
-      // Calculate total quantities
-      const totalPlanned = trimItems.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
-      const totalOrdered = trimItems.reduce((sum, item) => sum + (item.ordered_quantity || 0), 0);
-      const totalReceived = trimItems.reduce((sum, item) => sum + (item.received_quantity || 0), 0);
+      // Count items where received >= ordered (fully received)
+      const itemsReceived = trimItems.filter(item =>
+        (item.received_quantity || 0) >= (item.ordered_quantity || 0)
+      ).length;
+      const totalItems = trimItems.length;
+      const percentage = Math.round((itemsReceived / totalItems) * 100);
 
-      if (totalPlanned === 0) return 0;
+      return { percentage, itemCount: itemsReceived, totalItems };
+    } catch (error) {
+      console.error('Error calculating trim receiving percentage:', error);
+      return { percentage: 0, itemCount: 0, totalItems: 0 };
+    }
+  }
 
-      // Binary threshold logic: ALL items must be ordered/received
-      // 50% when all items ordered, 50% when all items received
-      const allOrdered = totalOrdered >= totalPlanned;
-      const allReceived = totalReceived >= totalPlanned;
+  /**
+   * DEPRECATED: Calculate Trim Prep percentage (combined orders + receiving)
+   * Use calculateTrimOrdersPercentage and calculateTrimReceivingPercentage instead
+   */
+  async calculateTrimPrepPercentage(projectId) {
+    try {
+      const orders = await this.calculateTrimOrdersPercentage(projectId);
+      const receiving = await this.calculateTrimReceivingPercentage(projectId);
 
-      if (allOrdered && allReceived) return 100;
-      if (allOrdered) return 50;
-      return 0;
+      // Simple average for backwards compatibility
+      const percentage = Math.round((orders.percentage + receiving.percentage) / 2);
+      return percentage;
     } catch (error) {
       console.error('Error calculating trim prep percentage:', error);
       return 0;
@@ -286,45 +414,139 @@ class MilestoneService {
   }
 
   /**
+   * Calculate Prewire Phase rollup percentage
+   * Weighted average: (Orders × 25%) + (Receiving × 35%) + (Stages × 40%)
+   */
+  async calculatePrewirePhasePercentage(projectId) {
+    try {
+      const [orders, receiving, stages] = await Promise.all([
+        this.calculatePrewireOrdersPercentage(projectId),
+        this.calculatePrewireReceivingPercentage(projectId),
+        this.calculatePrewirePercentage(projectId)
+      ]);
+
+      // Weighted average: Orders 25%, Receiving 35%, Stages 40%
+      const rollup = Math.round(
+        (orders.percentage * 0.25) +
+        (receiving.percentage * 0.35) +
+        (stages * 0.40)
+      );
+
+      return {
+        percentage: rollup,
+        orders,
+        receiving,
+        stages
+      };
+    } catch (error) {
+      console.error('Error calculating prewire phase percentage:', error);
+      return {
+        percentage: 0,
+        orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+        receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
+        stages: 0
+      };
+    }
+  }
+
+  /**
+   * Calculate Trim Phase rollup percentage
+   * Weighted average: (Orders × 25%) + (Receiving × 35%) + (Stages × 40%)
+   */
+  async calculateTrimPhasePercentage(projectId) {
+    try {
+      const [orders, receiving, stages] = await Promise.all([
+        this.calculateTrimOrdersPercentage(projectId),
+        this.calculateTrimReceivingPercentage(projectId),
+        this.calculateTrimPercentage(projectId)
+      ]);
+
+      // Weighted average: Orders 25%, Receiving 35%, Stages 40%
+      const rollup = Math.round(
+        (orders.percentage * 0.25) +
+        (receiving.percentage * 0.35) +
+        (stages * 0.40)
+      );
+
+      return {
+        percentage: rollup,
+        orders,
+        receiving,
+        stages
+      };
+    } catch (error) {
+      console.error('Error calculating trim phase percentage:', error);
+      return {
+        percentage: 0,
+        orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+        receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
+        stages: 0
+      };
+    }
+  }
+
+  /**
    * Calculate all milestone percentages for a project
-   * OPTIMIZED: All 6 calculations run in parallel for maximum performance
+   * OPTIMIZED: All 10 calculations run in parallel for maximum performance
+   * Returns 8 individual gauges + 2 rollup gauges
    */
   async calculateAllPercentages(projectId) {
     try {
       // Run all calculations in parallel using Promise.all
       const [
         planning_design,
-        prewire_prep,
+        prewire_orders,
+        prewire_receiving,
         prewire,
-        trim_prep,
+        trim_orders,
+        trim_receiving,
         trim,
-        commissioning
+        commissioning,
+        prewire_phase,
+        trim_phase
       ] = await Promise.all([
         this.calculatePlanningDesignPercentage(projectId),
-        this.calculatePrewirePrepPercentage(projectId),
+        this.calculatePrewireOrdersPercentage(projectId),
+        this.calculatePrewireReceivingPercentage(projectId),
         this.calculatePrewirePercentage(projectId),
-        this.calculateTrimPrepPercentage(projectId),
+        this.calculateTrimOrdersPercentage(projectId),
+        this.calculateTrimReceivingPercentage(projectId),
         this.calculateTrimPercentage(projectId),
-        this.calculateCommissioningPercentage(projectId)
+        this.calculateCommissioningPercentage(projectId),
+        this.calculatePrewirePhasePercentage(projectId),
+        this.calculateTrimPhasePercentage(projectId)
       ]);
 
       return {
         planning_design,
-        prewire_prep,
+        prewire_orders,
+        prewire_receiving,
         prewire,
-        trim_prep,
+        prewire_phase,
+        trim_orders,
+        trim_receiving,
         trim,
-        commissioning
+        trim_phase,
+        commissioning,
+        // Legacy compatibility
+        prewire_prep: Math.round((prewire_orders.percentage + prewire_receiving.percentage) / 2),
+        trim_prep: Math.round((trim_orders.percentage + trim_receiving.percentage) / 2)
       };
     } catch (error) {
       console.error('Error calculating all percentages:', error);
       return {
         planning_design: 0,
-        prewire_prep: 0,
+        prewire_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+        prewire_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
         prewire: 0,
-        trim_prep: 0,
+        prewire_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
+        trim_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+        trim_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
         trim: 0,
-        commissioning: 0
+        trim_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
+        commissioning: 0,
+        prewire_prep: 0,
+        trim_prep: 0
       };
     }
   }

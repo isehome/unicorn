@@ -6,8 +6,9 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
 import { timeLogsService, projectProgressService, issuesService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
+import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
-import UnifiedProgressGauge from './UnifiedProgressGauge';
+import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import { ListTodo, AlertTriangle, Loader, Calendar, LogIn, LogOut, FileWarning } from 'lucide-react';
 
 // Memoized Calendar Event Component
@@ -24,39 +25,20 @@ const CalendarEvent = memo(({ event, formatEventTime }) => (
   </div>
 ));
 
-// Progress Bar Component
-const ProgressBar = memo(({ label, percentage }) => {
-  const getBarColor = (percent) => {
-    if (percent < 33) return 'bg-red-500';
-    if (percent < 67) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-16">{label}</span>
-      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div 
-          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
-    </div>
-  );
-});
+// Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
 
 // Memoized Project Card Component
-const ProjectCard = memo(({ 
-  project, 
-  onClick, 
-  onCheckIn, 
-  onCheckOut, 
-  onLogIssue, 
-  isCheckedIn, 
+const ProjectCard = memo(({
+  project,
+  onClick,
+  onCheckIn,
+  onCheckOut,
+  onLogIssue,
+  isCheckedIn,
   progress,
   milestonePercentages,
-  userId 
+  projectOwners,
+  userId
 }) => {
   const handleCardClick = (e) => {
     // Only trigger onClick if clicking on the card itself, not buttons
@@ -70,93 +52,61 @@ const ProjectCard = memo(({
       onClick={handleCardClick}
       className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
     >
-      <div className="card-content flex flex-col lg:flex-row gap-4">
-        {/* Left side - Project info and buttons */}
-        <div className="flex-1 min-w-0">
-          <div className="mb-3">
-            <h3 className="font-semibold text-gray-900 dark:text-white">
+      <div className="card-content flex flex-col gap-4">
+        {/* Top section - Project info and buttons */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white leading-tight mb-1">
               {project.name}
             </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
               {project.project_number && `#${project.project_number} • `}
               {project.status}
             </p>
             {project.description && (
-              <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mt-1">
+              <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mt-2">
                 {project.description}
               </p>
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-wrap gap-2 sm:gap-3" onClick={(e) => e.stopPropagation()}>
+          {/* Action Buttons - Smaller, more compact */}
+          <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={onLogIssue}
-              className="px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/30 transition-colors min-h-[44px] min-w-[44px]"
+              className="w-[70px] h-[70px] flex flex-col items-center justify-center text-sm font-medium rounded-lg text-red-700 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-2 border-gray-200 dark:border-gray-600"
             >
-              <FileWarning className="w-4 h-4 inline mr-1.5" />
-              Log Issue
+              <FileWarning className="w-5 h-5 mb-1" />
+              <span className="text-[10px]">Log Issue</span>
             </button>
 
             {isCheckedIn ? (
               <button
                 onClick={onCheckOut}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/30 transition-colors min-h-[44px] min-w-[44px]"
+                className="w-[70px] h-[70px] flex flex-col items-center justify-center text-sm font-medium rounded-lg text-yellow-700 dark:text-yellow-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-2 border-gray-200 dark:border-gray-600"
               >
-                <LogOut className="w-4 h-4 inline mr-1.5" />
-                Check Out
+                <LogOut className="w-5 h-5 mb-1" />
+                <span className="text-[10px]">Check Out</span>
               </button>
             ) : (
               <button
                 onClick={onCheckIn}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/30 transition-colors min-h-[44px] min-w-[44px]"
+                className="w-[70px] h-[70px] flex flex-col items-center justify-center text-sm font-medium rounded-lg text-green-700 dark:text-green-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border-2 border-gray-200 dark:border-gray-600"
               >
-                <LogIn className="w-4 h-4 inline mr-1.5" />
-                Check In
+                <LogIn className="w-5 h-5 mb-1" />
+                <span className="text-[10px]">Check In</span>
               </button>
             )}
           </div>
         </div>
 
-        {/* Right side - Progress Gauges */}
-        <div className="flex flex-col justify-center space-y-1.5 w-full lg:w-52">
-          {milestonePercentages ? (
-            <>
-              <UnifiedProgressGauge 
-                label="Prewire Prep" 
-                percentage={milestonePercentages.prewire_prep || 0} 
-                compact={true}
-              />
-              <UnifiedProgressGauge 
-                label="Prewire" 
-                percentage={milestonePercentages.prewire || 0} 
-                compact={true}
-              />
-              <UnifiedProgressGauge 
-                label="Trim Prep" 
-                percentage={milestonePercentages.trim_prep || 0} 
-                compact={true}
-              />
-              <UnifiedProgressGauge 
-                label="Trim" 
-                percentage={milestonePercentages.trim || 0} 
-                compact={true}
-              />
-              <UnifiedProgressGauge 
-                label="Commissioning" 
-                percentage={milestonePercentages.commissioning || 0} 
-                compact={true}
-              />
-            </>
-          ) : (
-            <>
-              <ProgressBar label="Prewire" percentage={progress?.prewire || 0} />
-              <ProgressBar label="Trim" percentage={progress?.trim || 0} />
-              <ProgressBar label="Commission" percentage={progress?.commission || 0} />
-              <ProgressBar label="Ordered" percentage={progress?.ordered || 0} />
-              <ProgressBar label="Onsite" percentage={progress?.onsite || 0} />
-            </>
-          )}
+        {/* Bottom section - Progress Gauges (always below on all screen sizes) */}
+        <div className="w-full">
+          <MilestoneGaugesDisplay
+            milestonePercentages={milestonePercentages || {}}
+            projectOwners={projectOwners || { pm: null, technician: null }}
+            startCollapsed={true}
+          />
         </div>
       </div>
     </div>
@@ -181,46 +131,116 @@ const TechnicianDashboardOptimized = () => {
   const [checkedInProjects, setCheckedInProjects] = useState(new Set());
   const [projectProgress, setProjectProgress] = useState({});
   const [milestonePercentages, setMilestonePercentages] = useState({});
+  const [projectOwners, setProjectOwners] = useState({});
   const [loadingActions, setLoadingActions] = useState(new Set());
 
   // Get user ID for time logs (using email as fallback)
   const userId = user?.email || 'anonymous';
 
-  // Load progress for all projects
+  // Load progress for all projects - OPTIMIZED: Parallel loading using Promise.all
   useEffect(() => {
     const loadProgress = async () => {
       if (!projects.data) return;
-      
+
       const progressData = {};
       const milestoneData = {};
-      
-      for (const project of projects.data) {
+
+      // Run all project calculations in parallel
+      const progressPromises = projects.data.map(async (project) => {
         try {
-          const progress = await projectProgressService.getProjectProgress(project.id);
-          progressData[project.id] = progress;
-          
-          // Calculate milestone percentages
-          const percentages = await milestoneService.calculateAllPercentages(project.id);
-          milestoneData[project.id] = percentages;
+          const [progress, percentages] = await Promise.all([
+            projectProgressService.getProjectProgress(project.id),
+            milestoneService.calculateAllPercentages(project.id)
+          ]);
+
+          return {
+            projectId: project.id,
+            progress,
+            percentages
+          };
         } catch (error) {
           console.error(`Failed to load progress for project ${project.id}:`, error);
-          progressData[project.id] = { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 };
-          milestoneData[project.id] = {
-            planning_design: 0,
-            prewire_prep: 0,
-            prewire: 0,
-            trim_prep: 0,
-            trim: 0,
-            commissioning: 0
+          return {
+            projectId: project.id,
+            progress: { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 },
+            percentages: {
+              planning_design: 0,
+              prewire_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+              prewire_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
+              prewire: 0,
+              prewire_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
+              trim_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
+              trim_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
+              trim: 0,
+              trim_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
+              commissioning: 0,
+              prewire_prep: 0,
+              trim_prep: 0
+            }
           };
         }
-      }
-      
+      });
+
+      // Wait for all promises to resolve
+      const results = await Promise.all(progressPromises);
+
+      // Populate data objects
+      results.forEach(({ projectId, progress, percentages }) => {
+        progressData[projectId] = progress;
+        milestoneData[projectId] = percentages;
+      });
+
       setProjectProgress(progressData);
       setMilestonePercentages(milestoneData);
     };
 
     loadProgress();
+  }, [projects.data]);
+
+  // Load project owners (stakeholders) for all projects
+  useEffect(() => {
+    const loadAllProjectOwners = async () => {
+      if (!projects.data) return;
+
+      try {
+        const projectIds = projects.data.map(p => p.id);
+
+        // Load all stakeholders for all projects in one query
+        const { data: stakeholders, error } = await supabase
+          .from('project_stakeholders')
+          .select(`
+            project_id,
+            stakeholder_roles (name),
+            contacts (first_name, last_name)
+          `)
+          .in('project_id', projectIds);
+
+        if (error) throw error;
+
+        // Group stakeholders by project
+        const ownersByProject = {};
+        projectIds.forEach(projectId => {
+          const projectStakeholders = stakeholders?.filter(s => s.project_id === projectId) || [];
+          const pm = projectStakeholders.find(s => s.stakeholder_roles?.name === 'Project Manager');
+          // Check for both 'Lead Technician' and 'Technician' roles
+          const tech = projectStakeholders.find(s =>
+            s.stakeholder_roles?.name === 'Lead Technician' ||
+            s.stakeholder_roles?.name === 'Technician'
+          );
+
+          ownersByProject[projectId] = {
+            pm: pm?.contacts ? `${pm.contacts.first_name || ''} ${pm.contacts.last_name || ''}`.trim() : null,
+            technician: tech?.contacts ? `${tech.contacts.first_name || ''} ${tech.contacts.last_name || ''}`.trim() : null
+          };
+        });
+
+        setProjectOwners(ownersByProject);
+      } catch (error) {
+        console.error('Failed to load project owners:', error);
+      }
+    };
+
+    loadAllProjectOwners();
   }, [projects.data]);
 
   // Load checked-in status for all projects
@@ -631,6 +651,7 @@ const TechnicianDashboardOptimized = () => {
                 isCheckedIn={checkedInProjects.has(project.id)}
                 progress={projectProgress[project.id]}
                 milestonePercentages={milestonePercentages[project.id]}
+                projectOwners={projectOwners[project.id]}
                 userId={userId}
               />
             ))}

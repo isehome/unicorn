@@ -132,13 +132,69 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     }
   };
 
+  const handleSubmitPO = async () => {
+    if (po.status !== 'draft') {
+      setError('Only draft POs can be submitted');
+      return;
+    }
+
+    if (!window.confirm(`Submit PO ${po.po_number}? This will mark equipment as ordered and cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      // Update PO status to 'submitted'
+      await purchaseOrderService.updatePurchaseOrder(poId, {
+        status: 'submitted',
+        submitted_at: new Date().toISOString(),
+        submitted_by: 'user' // TODO: Get actual user from auth context
+      });
+
+      // Update ordered_quantity for all equipment in this PO
+      const { projectEquipmentService } = await import('../../services/projectEquipmentService');
+
+      await Promise.all(
+        (po.items || []).map(item =>
+          projectEquipmentService.updateProcurementQuantities(item.project_equipment_id, {
+            orderedQty: item.quantity_ordered
+          })
+        )
+      );
+
+      setSuccess('Purchase order submitted successfully');
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Reload PO details
+      await loadPODetails();
+
+      // Notify parent to refresh
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Failed to submit PO:', err);
+      setError('Failed to submit purchase order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (po.status !== 'draft') {
       setError('Only draft POs can be deleted');
       return;
     }
 
-    if (!window.confirm(`Delete PO ${po.po_number}? This cannot be undone.`)) {
+    // First warning
+    if (!window.confirm(`⚠️ WARNING: Delete PO ${po.po_number}?\n\nThis will:\n- Remove all ${po.items?.length || 0} line items\n- Clear quantity tracking\n\nThis action CANNOT be undone.`)) {
+      return;
+    }
+
+    // Second warning (double confirmation)
+    if (!window.confirm(`🛑 FINAL CONFIRMATION\n\nAre you absolutely sure you want to delete PO ${po.po_number}?\n\nType YES in your mind and click OK to proceed.`)) {
       return;
     }
 
@@ -950,8 +1006,20 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               )}
             </div>
 
-            {/* Right side: Download/Upload buttons */}
+            {/* Right side: Submit/Download/Upload buttons */}
             <div className="flex flex-wrap gap-2">
+              {/* Submit PO button - only show for draft POs */}
+              {po && po.status === 'draft' && !isEditing && (
+                <Button
+                  variant="primary"
+                  icon={CheckCircle}
+                  onClick={handleSubmitPO}
+                  disabled={saving}
+                  className="font-semibold"
+                >
+                  {saving ? 'Submitting...' : 'Submit PO'}
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 icon={Download}

@@ -42,7 +42,7 @@ const PartsReceivingPageNew = () => {
       setLoading(true);
       setError(null);
 
-      // Get all POs for this project
+      // Get all POs for this project with tracking info
       const { data: pos, error: poError } = await supabase
         .from('purchase_orders')
         .select(`
@@ -60,6 +60,13 @@ const PartsReceivingPageNew = () => {
               received_quantity,
               global_part:global_part_id(required_for_prewire)
             )
+          ),
+          tracking:shipment_tracking(
+            id,
+            tracking_number,
+            carrier,
+            carrier_service,
+            status
           )
         `)
         .eq('project_id', projectId)
@@ -328,9 +335,34 @@ const PartsReceivingPageNew = () => {
                             {status.label}
                           </span>
                         </div>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                           {po.supplier?.name} • Ordered: {new Date(po.order_date).toLocaleDateString()}
                         </p>
+                        {/* Tracking Info */}
+                        {po.tracking && po.tracking.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                            {po.tracking.map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(t.tracking_number);
+                                  window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
+                                }}
+                                className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                title="Click to copy and search tracking number"
+                              >
+                                <Truck className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                <span className="font-mono text-xs text-blue-900 dark:text-blue-100">
+                                  {t.tracking_number}
+                                </span>
+                                <span className="text-xs text-blue-700 dark:text-blue-300">
+                                  ({t.carrier})
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       {isExpanded ? (
                         <ChevronDown className="w-5 h-5 text-gray-400" />
@@ -342,7 +374,27 @@ const PartsReceivingPageNew = () => {
                     {/* PO Line Items (Expanded) */}
                     {isExpanded && (
                       <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                        <div className="space-y-3 mb-4">
+                        {/* Primary Action: Receive Full PO */}
+                        <div className="mb-4">
+                          <Button
+                            variant="primary"
+                            icon={PackageCheck}
+                            onClick={() => handleReceiveAllPO(po)}
+                            disabled={saving || status.percent === 100}
+                            className="w-full"
+                          >
+                            {status.percent === 100 ? 'Fully Received' : 'Receive Full PO'}
+                          </Button>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
+                            Click to receive all items at ordered quantities. Edit individual items below for partial receives.
+                          </p>
+                        </div>
+
+                        {/* Line Items for Exceptions */}
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Adjust Individual Items (Optional)
+                          </p>
                           {(po.items || []).map((item) => (
                             <LineItem
                               key={item.id}
@@ -352,17 +404,6 @@ const PartsReceivingPageNew = () => {
                             />
                           ))}
                         </div>
-
-                        {/* Receive All PO Button */}
-                        <Button
-                          variant="primary"
-                          icon={PackageCheck}
-                          onClick={() => handleReceiveAllPO(po)}
-                          disabled={saving || status.percent === 100}
-                          className="w-full"
-                        >
-                          Receive All Items in PO
-                        </Button>
                       </div>
                     )}
                   </div>
@@ -550,19 +591,6 @@ const LineItem = ({ item, onUpdate, saving }) => {
           )}
         </div>
       </div>
-
-      {received < ordered && (
-        <button
-          onClick={() => {
-            setQuantity(ordered);
-            onUpdate(item.id, item.project_equipment_id, ordered);
-          }}
-          disabled={saving}
-          className="mt-3 w-full py-2 px-3 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 min-h-[44px]"
-        >
-          Receive All ({ordered})
-        </button>
-      )}
     </div>
   );
 };

@@ -165,15 +165,9 @@ const POGenerationModal = ({
         total_amount: total
       });
 
-      // Mark equipment as ordered
-      await Promise.all(
-        equipmentItems.map(item =>
-          // Update ordered_quantity to match quantity in the PO
-          projectEquipmentService.updateProcurementQuantities(item.id, {
-            orderedQty: item.planned_quantity || item.quantity || 0
-          })
-        )
-      );
+      // DON'T update ordered_quantity here - only update when PO is submitted
+      // Equipment stays in "needs ordering" state until PO is actually submitted
+      // This allows users to see incomplete work (draft POs) highlighted
 
       // Auto-upload PDF and CSV to SharePoint
       try {

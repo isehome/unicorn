@@ -50,6 +50,8 @@ import {
   projectProgressService
 } from '../services/supabaseService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
+import { milestoneService } from '../services/milestoneService';
+import { milestoneCacheService } from '../services/milestoneCacheService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectRoomsService } from '../services/projectRoomsService';
 import { normalizeRoomName } from '../utils/roomUtils';
@@ -58,6 +60,7 @@ import TodoDetailModal from './TodoDetailModal';
 import EquipmentManager from './EquipmentManager';
 import SecureDataManager from './SecureDataManager';
 import LucidChartCarousel from './LucidChartCarousel';
+import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -68,27 +71,7 @@ const formatDate = (value) => {
   }
 };
 
-// Progress Bar Component
-const ProgressBar = ({ label, percentage }) => {
-  const getBarColor = (percent) => {
-    if (percent < 33) return 'bg-red-500';
-    if (percent < 67) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-20">{label}</span>
-      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-        <div 
-          className={`h-full transition-all duration-300 ${getBarColor(percentage)}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-gray-600 dark:text-gray-400 w-10 text-right">{percentage}%</span>
-    </div>
-  );
-};
+// Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
 
 const withAlpha = (hex, alpha) => {
   if (!hex || hex[0] !== '#' || (hex.length !== 7 && hex.length !== 4)) return hex;
@@ -220,6 +203,8 @@ const ProjectDetailView = () => {
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [showEquipmentManager, setShowEquipmentManager] = useState(false);
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
+  const [milestonePercentages, setMilestonePercentages] = useState({});
+  const [projectOwners, setProjectOwners] = useState({ pm: null, technician: null });
   const [projectProgress, setProjectProgress] = useState({
     prewire: 0,
     trim: 0,
@@ -349,6 +334,41 @@ const ProjectDetailView = () => {
       } catch (progressError) {
         console.error('Failed to load progress:', progressError);
         setProjectProgress({ prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 });
+      }
+
+      // Load milestone percentages with caching
+      try {
+        const cachedData = milestoneCacheService.getCached(id);
+        if (cachedData) {
+          setMilestonePercentages(cachedData.data);
+        }
+
+        const percentages = await milestoneService.calculateAllPercentages(id);
+        milestoneCacheService.setCached(id, percentages);
+        setMilestonePercentages(percentages);
+      } catch (milestoneError) {
+        console.error('Failed to load milestones:', milestoneError);
+      }
+
+      // Load project owners (PM and Lead Technician)
+      try {
+        const { data: stakeholdersData } = await supabase
+          .from('project_stakeholders')
+          .select(`
+            stakeholder_roles (name),
+            contacts (first_name, last_name)
+          `)
+          .eq('project_id', id);
+
+        const pm = stakeholdersData?.find(s => s.stakeholder_roles?.name === 'Project Manager');
+        const tech = stakeholdersData?.find(s => s.stakeholder_roles?.name === 'Lead Technician');
+
+        setProjectOwners({
+          pm: pm?.contacts ? `${pm.contacts.first_name || ''} ${pm.contacts.last_name || ''}`.trim() : null,
+          technician: tech?.contacts ? `${tech.contacts.first_name || ''} ${tech.contacts.last_name || ''}`.trim() : null
+        });
+      } catch (ownerError) {
+        console.error('Failed to load project owners:', ownerError);
       }
     } catch (err) {
       console.error('Failed to load project detail:', err);
@@ -1439,13 +1459,11 @@ const ProjectDetailView = () => {
           </div>
           
           {/* Project Progress Gauges */}
-          <div className="space-y-2">
-            <ProgressBar label="Prewire" percentage={projectProgress.prewire || 0} />
-            <ProgressBar label="Trim" percentage={projectProgress.trim || 0} />
-            <ProgressBar label="Commission" percentage={projectProgress.commission || 0} />
-            <ProgressBar label="Ordered" percentage={projectProgress.ordered || 0} />
-            <ProgressBar label="Onsite" percentage={projectProgress.onsite || 0} />
-          </div>
+          <MilestoneGaugesDisplay
+            milestonePercentages={milestonePercentages}
+            projectOwners={projectOwners}
+            
+          />
         </div>
 
         {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}

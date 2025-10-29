@@ -45,7 +45,7 @@ const ProjectEquipmentManager = ({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [uploadSummary, setUploadSummary] = useState(null);
-  const [importMode, setImportMode] = useState('replace');
+  const [importMode, setImportMode] = useState('append'); // Default to append for safety
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -164,7 +164,7 @@ const ProjectEquipmentManager = ({
             Import complete
           </div>
           <p className="mt-1 text-xs uppercase tracking-wide text-green-700">
-            Mode: {uploadSummary.mode === 'merge' ? 'Merge' : 'Replace'}
+            Mode: {uploadSummary.mode === 'merge' ? 'Update' : uploadSummary.mode === 'append' ? 'Append' : 'Replace'}
           </p>
           <ul className="mt-2 space-y-1 text-xs">
             <li>Equipment added: {uploadSummary.equipmentInserted}</li>
@@ -335,7 +335,17 @@ const ProjectEquipmentManager = ({
                 checked={importMode === 'replace'}
                 onChange={() => setImportMode('replace')}
               />
-              <span>Replace existing</span>
+              <span>Replace</span>
+            </label>
+            <label className="inline-flex items-center gap-1 cursor-pointer">
+              <input
+                type="radio"
+                name="import-mode"
+                value="append"
+                checked={importMode === 'append'}
+                onChange={() => setImportMode('append')}
+              />
+              <span>Append</span>
             </label>
             <label className="inline-flex items-center gap-1 cursor-pointer">
               <input
@@ -345,11 +355,11 @@ const ProjectEquipmentManager = ({
                 checked={importMode === 'merge'}
                 onChange={() => setImportMode('merge')}
               />
-              <span>Merge</span>
+              <span>Update</span>
             </label>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
-            Replace removes previously imported parts and labor. Merge updates existing rows and adds new ones.
+            <strong>Replace:</strong> Deletes all existing, imports fresh. <strong>Append:</strong> Adds all items as new. <strong>Update:</strong> Updates existing, adds new.
           </p>
           <label className="inline-flex items-center">
           <input

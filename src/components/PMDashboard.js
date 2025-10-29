@@ -5,8 +5,9 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, contactsService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
+import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
-import UnifiedProgressGauge from './UnifiedProgressGauge';
+import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProcurementDashboard from './procurement/ProcurementDashboard';
 import {
   Plus,
@@ -25,6 +26,7 @@ const PMDashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [contacts, setContacts] = useState([]);
   const [milestonePercentages, setMilestonePercentages] = useState({});
+  const [projectOwners, setProjectOwners] = useState({});
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [newProject, setNewProject] = useState({
     name: '',
@@ -46,6 +48,52 @@ const PMDashboard = () => {
     loadProjects();
     loadContacts();
   }, []);
+
+  // Load project owners (stakeholders) for all projects
+  useEffect(() => {
+    const loadAllProjectOwners = async () => {
+      if (projects.length === 0) return;
+
+      try {
+        const projectIds = projects.map(p => p.id);
+
+        // Load all stakeholders for all projects in one query
+        const { data: stakeholders, error } = await supabase
+          .from('project_stakeholders')
+          .select(`
+            project_id,
+            stakeholder_roles (name),
+            contacts (first_name, last_name)
+          `)
+          .in('project_id', projectIds);
+
+        if (error) throw error;
+
+        // Group stakeholders by project
+        const ownersByProject = {};
+        projectIds.forEach(projectId => {
+          const projectStakeholders = stakeholders?.filter(s => s.project_id === projectId) || [];
+          const pm = projectStakeholders.find(s => s.stakeholder_roles?.name === 'Project Manager');
+          // Check for both 'Lead Technician' and 'Technician' roles
+          const tech = projectStakeholders.find(s =>
+            s.stakeholder_roles?.name === 'Lead Technician' ||
+            s.stakeholder_roles?.name === 'Technician'
+          );
+
+          ownersByProject[projectId] = {
+            pm: pm?.contacts ? `${pm.contacts.first_name || ''} ${pm.contacts.last_name || ''}`.trim() : null,
+            technician: tech?.contacts ? `${tech.contacts.first_name || ''} ${tech.contacts.last_name || ''}`.trim() : null
+          };
+        });
+
+        setProjectOwners(ownersByProject);
+      } catch (error) {
+        console.error('Failed to load project owners:', error);
+      }
+    };
+
+    loadAllProjectOwners();
+  }, [projects]);
 
   // Invalidate cache if coming back from a project detail page
   useEffect(() => {
@@ -464,33 +512,11 @@ const PMDashboard = () => {
                       </h3>
                       
                       {/* Progress Gauges */}
-                      <div className="space-y-2">
-                        <UnifiedProgressGauge
-                          label="Prewire Prep"
-                          percentage={milestonePercentages[project.id]?.prewire_prep || 0}
-                          compact={true}
-                        />
-                        <UnifiedProgressGauge
-                          label="Prewire"
-                          percentage={milestonePercentages[project.id]?.prewire || 0}
-                          compact={true}
-                        />
-                        <UnifiedProgressGauge
-                          label="Trim Prep"
-                          percentage={milestonePercentages[project.id]?.trim_prep || 0}
-                          compact={true}
-                        />
-                        <UnifiedProgressGauge
-                          label="Trim"
-                          percentage={milestonePercentages[project.id]?.trim || 0}
-                          compact={true}
-                        />
-                        <UnifiedProgressGauge
-                          label="Commissioning"
-                          percentage={milestonePercentages[project.id]?.commissioning || 0}
-                          compact={true}
-                        />
-                      </div>
+                      <MilestoneGaugesDisplay
+                        milestonePercentages={milestonePercentages[project.id] || {}}
+                        projectOwners={projectOwners[project.id] || { pm: null, technician: null }}
+                        startCollapsed={true}
+                      />
                     </div>
                   </div>
                 );
