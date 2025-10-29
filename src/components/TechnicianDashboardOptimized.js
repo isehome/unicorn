@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
-import { timeLogsService, projectProgressService, issuesService } from '../services/supabaseService';
+import { timeLogsService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
@@ -35,10 +35,8 @@ const ProjectCard = memo(({
   onCheckOut,
   onLogIssue,
   isCheckedIn,
-  progress,
   milestonePercentages,
-  projectOwners,
-  userId
+  projectOwners
 }) => {
   const handleCardClick = (e) => {
     // Only trigger onClick if clicking on the card itself, not buttons
@@ -124,12 +122,11 @@ const TechnicianDashboardOptimized = () => {
   const { projects, userProjectIds, calendar, counts, isLoading, error } = useDashboardData(user?.email, authContext);
   
   const [showMyProjects, setShowMyProjects] = useState(() => {
-    const saved = localStorage.getItem('dashboard-show-my-projects');
+    const saved = localStorage.getItem('dashboard_show_my_projects');
     return saved === 'true' || saved === null;
   });
 
   const [checkedInProjects, setCheckedInProjects] = useState(new Set());
-  const [projectProgress, setProjectProgress] = useState({});
   const [milestonePercentages, setMilestonePercentages] = useState({});
   const [projectOwners, setProjectOwners] = useState({});
   const [loadingActions, setLoadingActions] = useState(new Set());
@@ -137,32 +134,25 @@ const TechnicianDashboardOptimized = () => {
   // Get user ID for time logs (using email as fallback)
   const userId = user?.email || 'anonymous';
 
-  // Load progress for all projects - OPTIMIZED: Parallel loading using Promise.all
+  // Load milestone percentages for all projects - OPTIMIZED: Parallel loading using Promise.all
   useEffect(() => {
-    const loadProgress = async () => {
+    const loadMilestonePercentages = async () => {
       if (!projects.data) return;
 
-      const progressData = {};
       const milestoneData = {};
 
       // Run all project calculations in parallel
-      const progressPromises = projects.data.map(async (project) => {
+      const milestonePromises = projects.data.map(async (project) => {
         try {
-          const [progress, percentages] = await Promise.all([
-            projectProgressService.getProjectProgress(project.id),
-            milestoneService.calculateAllPercentages(project.id)
-          ]);
-
+          const percentages = await milestoneService.calculateAllPercentages(project.id);
           return {
             projectId: project.id,
-            progress,
             percentages
           };
         } catch (error) {
-          console.error(`Failed to load progress for project ${project.id}:`, error);
+          console.error(`Failed to load milestone percentages for project ${project.id}:`, error);
           return {
             projectId: project.id,
-            progress: { prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 },
             percentages: {
               planning_design: 0,
               prewire_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
@@ -182,19 +172,17 @@ const TechnicianDashboardOptimized = () => {
       });
 
       // Wait for all promises to resolve
-      const results = await Promise.all(progressPromises);
+      const results = await Promise.all(milestonePromises);
 
-      // Populate data objects
-      results.forEach(({ projectId, progress, percentages }) => {
-        progressData[projectId] = progress;
+      // Populate milestone data
+      results.forEach(({ projectId, percentages }) => {
         milestoneData[projectId] = percentages;
       });
 
-      setProjectProgress(progressData);
       setMilestonePercentages(milestoneData);
     };
 
-    loadProgress();
+    loadMilestonePercentages();
   }, [projects.data]);
 
   // Load project owners (stakeholders) for all projects
@@ -338,7 +326,7 @@ const TechnicianDashboardOptimized = () => {
 
   const handleToggleProjectView = useCallback((showMy) => {
     setShowMyProjects(showMy);
-    localStorage.setItem('dashboard-show-my-projects', String(showMy));
+    localStorage.setItem('dashboard_show_my_projects', String(showMy));
   }, []);
 
   const handleCheckIn = useCallback(async (e, projectId) => {
@@ -395,12 +383,12 @@ const TechnicianDashboardOptimized = () => {
   const handleCheckOut = useCallback(async (e, projectId) => {
     e.stopPropagation();
     if (loadingActions.has(projectId)) return;
-    
+
     setLoadingActions(prev => new Set(prev).add(projectId));
     try {
       const checkIns = JSON.parse(localStorage.getItem('project_checkins') || '{}');
-      const checkInTime = checkIns[projectId]?.checkIn;
-      
+      // const checkInTime = checkIns[projectId]?.checkIn; // TODO: Use for time tracking display
+
       const result = await timeLogsService.checkOut(projectId, userId);
       if (result.success) {
         setCheckedInProjects(prev => {
@@ -411,14 +399,7 @@ const TechnicianDashboardOptimized = () => {
         // Remove from local storage
         delete checkIns[projectId];
         localStorage.setItem('project_checkins', JSON.stringify(checkIns));
-        
-        // Calculate and show time spent
-        if (checkInTime) {
-          const duration = new Date() - new Date(checkInTime);
-          const hours = Math.floor(duration / 3600000);
-          const minutes = Math.floor((duration % 3600000) / 60000);
-          console.log(`Checked out after ${hours}h ${minutes}m`);
-        }
+        // TODO: Calculate and show time spent to user (duration from checkInTime to now)
       } else if (result.message?.includes('metadata') || result.message?.includes('No active')) {
         // Fallback to local storage
         setCheckedInProjects(prev => {
@@ -428,13 +409,7 @@ const TechnicianDashboardOptimized = () => {
         });
         delete checkIns[projectId];
         localStorage.setItem('project_checkins', JSON.stringify(checkIns));
-        
-        if (checkInTime) {
-          const duration = new Date() - new Date(checkInTime);
-          const hours = Math.floor(duration / 3600000);
-          const minutes = Math.floor((duration % 3600000) / 60000);
-          console.log(`Checked out after ${hours}h ${minutes}m (local)`);
-        }
+        // TODO: Calculate and show time spent to user (duration from checkInTime to now)
       } else {
         alert(result.message || 'Failed to check out');
       }
@@ -649,10 +624,8 @@ const TechnicianDashboardOptimized = () => {
                 onCheckOut={(e) => handleCheckOut(e, project.id)}
                 onLogIssue={(e) => handleLogIssue(e, project.id)}
                 isCheckedIn={checkedInProjects.has(project.id)}
-                progress={projectProgress[project.id]}
                 milestonePercentages={milestonePercentages[project.id]}
                 projectOwners={projectOwners[project.id]}
-                userId={userId}
               />
             ))}
           </div>
