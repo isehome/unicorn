@@ -20,10 +20,17 @@ The ProjectDetailView.js file is being refactored from a massive 2,332-line mono
 - Extracted external link buttons: Photos, Files, Procurement, Portal Proposal
 - **Reduction**: 2,298 → 2,212 lines (86 lines removed)
 
+#### 3. IssuesSection Component Extraction (Commit: 02b92ac)
+- Created `src/components/project-detail/IssuesSection.jsx` (115 lines)
+- Extracted project issues list with resolved/unresolved filtering
+- Extracted issue status badges and navigation to issue details
+- Extracted "New Issue" button functionality
+- **Reduction**: 2,212 → 2,153 lines (59 lines removed)
+
 ### 📊 Current State
-- **ProjectDetailView.js**: 2,212 lines (from 2,332)
-- **Total reduction so far**: 120 lines (5%)
-- **New components created**: 1 (ProjectLinks.jsx)
+- **ProjectDetailView.js**: 2,153 lines (from 2,332)
+- **Total reduction so far**: 179 lines (8%)
+- **New components created**: 2 (ProjectLinks.jsx, IssuesSection.jsx)
 
 ## Remaining Work
 
@@ -154,7 +161,7 @@ export const useStakeholderManagement = (projectId, stakeholders, setStakeholder
 ### Recommended Order (Simplest to Most Complex)
 
 1. ✅ **ProjectLinks** - DONE (143 lines extracted)
-2. **IssuesSection** - Simple list display (~100-150 lines)
+2. ✅ **IssuesSection** - DONE (115 lines extracted)
 3. **ProjectDetailsSection** - Already isolated (~90 lines)
 4. **TodosSection** - Moderate complexity with drag-and-drop (~200-250 lines)
 5. **StakeholdersSection** - Complex with modals (~300-400 lines)
@@ -221,9 +228,9 @@ After completing all refactoring:
 ### Already Modified
 - ✅ `src/components/ProjectDetailView.js` - Main file being refactored
 - ✅ `src/components/project-detail/ProjectLinks.jsx` - Extracted component
+- ✅ `src/components/project-detail/IssuesSection.jsx` - Extracted component
 
 ### Files to Create
-- `src/components/project-detail/IssuesSection.jsx`
 - `src/components/project-detail/ProjectDetailsSection.jsx`
 - `src/components/project-detail/TodosSection.jsx`
 - `src/components/project-detail/StakeholdersSection.jsx`
@@ -239,6 +246,7 @@ After completing all refactoring:
 
 - **74aa951** - Clean up ProjectDetailView: remove unused code before refactoring
 - **e05066f** - Refactor ProjectDetailView: extract ProjectLinks component
+- **02b92ac** - Refactor ProjectDetailView: extract IssuesSection component
 
 ## Notes
 
@@ -255,7 +263,7 @@ After completing all refactoring:
 ### Current Progress
 - [x] Cleanup dead code
 - [x] Extract ProjectLinks
-- [ ] Extract IssuesSection
+- [x] Extract IssuesSection
 - [ ] Extract ProjectDetailsSection
 - [ ] Extract TodosSection
 - [ ] Extract StakeholdersSection
@@ -273,5 +281,5 @@ After completing all refactoring:
 ---
 
 **Last Updated**: Current session
-**Next Step**: Extract IssuesSection component
-**Current Line Count**: 2,212 lines in ProjectDetailView.js
+**Next Step**: Extract ProjectDetailsSection component
+**Current Line Count**: 2,153 lines in ProjectDetailView.js
