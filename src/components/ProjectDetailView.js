@@ -12,7 +12,6 @@ import Button from './ui/Button';
 import {
   ArrowLeft,
   FileText,
-  ExternalLink,
   Zap,
   ListTodo,
   AlertTriangle,
@@ -35,9 +34,6 @@ import {
   X,
   Pencil,
   Shield,
-  Key,
-  AlertCircle,
-  ChevronDown,
   PackageCheck
 } from 'lucide-react';
 import {
@@ -46,10 +42,8 @@ import {
   projectStakeholdersService,
   contactsService,
   stakeholderRolesService,
-  issuesService,
-  projectProgressService
+  issuesService
 } from '../services/supabaseService';
-import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -206,13 +200,6 @@ const ProjectDetailView = () => {
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
   const [milestonePercentages, setMilestonePercentages] = useState({});
   const [projectOwners, setProjectOwners] = useState({ pm: null, technician: null });
-  const [projectProgress, setProjectProgress] = useState({
-    prewire: 0,
-    trim: 0,
-    commission: 0,
-    ordered: 0,
-    onsite: 0
-  });
 
   const refreshStakeholders = useCallback(async () => {
     try {
@@ -328,15 +315,6 @@ const ProjectDetailView = () => {
       setTodos(todoResult || []);
       setIssues(Array.isArray(issuesResult) ? issuesResult : []);
       
-      // Load project progress
-      try {
-        const progress = await projectProgressService.getProjectProgress(id);
-        setProjectProgress(progress);
-      } catch (progressError) {
-        console.error('Failed to load progress:', progressError);
-        setProjectProgress({ prewire: 0, trim: 0, commission: 0, ordered: 0, onsite: 0 });
-      }
-
       // Load milestone percentages with caching
       try {
         const cachedData = milestoneCacheService.getCached(id);
@@ -427,18 +405,6 @@ const ProjectDetailView = () => {
       setEditingStakeholder(null);
     }
   }, [expandedSection]);
-
-  const progress = useMemo(() => {
-    if (!Array.isArray(wireDrops) || wireDrops.length === 0) return 0;
-    const totalCompletion = wireDrops.reduce((sum, drop) => {
-      const hasPrewire = Boolean(drop?.prewire_photo);
-      const hasInstall = Boolean(drop?.installed_photo);
-      if (hasPrewire && hasInstall) return sum + 1;
-      if (hasPrewire || hasInstall) return sum + 0.5;
-      return sum;
-    }, 0);
-    return Math.round((totalCompletion / wireDrops.length) * 100);
-  }, [wireDrops]);
 
   const toggleSection = (section) => {
     setExpandedSection((prev) => (prev === section ? null : section));
