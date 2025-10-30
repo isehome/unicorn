@@ -61,6 +61,7 @@ import EquipmentManager from './EquipmentManager';
 import SecureDataManager from './SecureDataManager';
 import LucidChartCarousel from './LucidChartCarousel';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
+import ProjectPermits from './ProjectPermits';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -1468,11 +1469,104 @@ const ProjectDetailView = () => {
 
         {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
         {project.wiring_diagram_url && (
-          <LucidChartCarousel 
+          <LucidChartCarousel
             documentUrl={project.wiring_diagram_url}
             projectName={project.name}
           />
         )}
+
+        {/* Project Details Section */}
+        <div>
+          <button
+            onClick={() => toggleSection('details')}
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+            style={styles.card}
+          >
+            <div className="flex items-center gap-3">
+              <FileText size={20} style={styles.textPrimary} />
+              <div className="text-left">
+                <h2 className="text-base font-semibold" style={styles.textPrimary}>
+                  Project Details
+                </h2>
+                <p className="text-xs" style={styles.textSecondary}>
+                  General information and permits
+                </p>
+              </div>
+            </div>
+            <ChevronRight
+              className={`transition-transform duration-200 ${expandedSection === 'details' ? 'rotate-90' : ''}`}
+              size={20}
+              style={styles.textSecondary}
+            />
+          </button>
+
+          {expandedSection === 'details' && (
+            <div className="mt-4 rounded-2xl border p-4 space-y-4" style={styles.card}>
+              {/* General Information */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold" style={styles.textPrimary}>General Information</h3>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Project Number</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.project_number || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Status</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.status || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Phase</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.phase || 'N/A'}</p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Client</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.client || 'N/A'}</p>
+                  </div>
+                </div>
+
+                {project.address && (
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Address</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.address}</p>
+                  </div>
+                )}
+
+                {project.description && (
+                  <div>
+                    <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Description</p>
+                    <p className="text-sm" style={styles.textPrimary}>{project.description}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {project.start_date && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={styles.textSecondary}>Start Date</p>
+                      <p className="text-sm" style={styles.textPrimary}>{formatDate(project.start_date)}</p>
+                    </div>
+                  )}
+
+                  {project.end_date && (
+                    <div>
+                      <p className="text-xs font-medium mb-1" style={styles.textSecondary}>End Date</p>
+                      <p className="text-sm" style={styles.textPrimary}>{formatDate(project.end_date)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Permits Section */}
+              <div className="border-t pt-4" style={{ borderColor: palette.border }}>
+                <h3 className="text-sm font-semibold mb-3" style={styles.textPrimary}>Building Permits</h3>
+                <ProjectPermits projectId={id} />
+              </div>
+            </div>
+          )}
+        </div>
 
         <div>
           <button
