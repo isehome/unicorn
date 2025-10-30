@@ -2166,7 +2166,7 @@ const ProjectDetailView = () => {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <button
             onClick={() => openLink(project.one_drive_photos)}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
@@ -2191,19 +2191,15 @@ const ProjectDetailView = () => {
             <Package size={18} style={styles.textSecondary} />
             <span className="text-sm" style={styles.textPrimary}>Procurement</span>
           </button>
+          <button
+            onClick={() => openLink(project.portal_proposal_url)}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+            style={styles.card}
+          >
+            <FileText size={18} style={styles.textSecondary} />
+            <span className="text-sm" style={styles.textPrimary}>Portal Proposal</span>
+          </button>
         </div>
-
-        <button
-          onClick={() => openLink(project.portal_proposal_url)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-          style={styles.card}
-        >
-          <div className="flex items-center gap-3" style={styles.textSecondary}>
-            <FileText size={20} />
-            <span className="font-medium" style={styles.textPrimary}>Portal Proposal</span>
-          </div>
-          <ExternalLink size={18} style={styles.textSecondary} />
-        </button>
       </div>
 
       {showTodoModal && selectedTodo && (
