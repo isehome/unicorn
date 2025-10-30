@@ -2166,18 +2166,6 @@ const ProjectDetailView = () => {
           </button>
         </div>
 
-        <button
-          onClick={() => openLink(project.wiring_diagram_url)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-          style={styles.card}
-        >
-          <div className="flex items-center gap-3" style={styles.textSecondary}>
-            <FileText size={20} />
-            <span className="font-medium" style={styles.textPrimary}>Wiring Diagram</span>
-          </div>
-          <ExternalLink size={18} style={styles.textSecondary} />
-        </button>
-
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             onClick={() => openLink(project.one_drive_photos)}
