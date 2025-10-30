@@ -57,6 +57,7 @@ import LucidChartCarousel from './LucidChartCarousel';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
 import ProjectLinks from './project-detail/ProjectLinks';
+import IssuesSection from './project-detail/IssuesSection';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -1957,81 +1958,21 @@ const ProjectDetailView = () => {
           )}
         </div>
 
-        <div>
-          <button
-            onClick={() => toggleSection('issues')}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5"
-            style={styles.card}
-          >
-            <div className="flex items-center gap-3">
-              <AlertTriangle size={20} style={styles.textSecondary} />
-              <span className="font-medium" style={styles.textPrimary}>Issues</span>
-              {openIssues.length > 0 && (
-                <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.danger, 0.18), color: palette.danger }}>
-                  {openIssues.length}
-                </span>
-              )}
-            </div>
-            <ChevronRight
-              size={20}
-              className="transition-transform"
-              style={{ ...styles.textSecondary, transform: expandedSection === 'issues' ? 'rotate(90deg)' : 'none' }}
-            />
-          </button>
-
-          {expandedSection === 'issues' && (
-            <div className="mt-3 p-4 rounded-2xl border space-y-4" style={{ ...styles.card, boxShadow: styles.innerShadow }}>
-              <div className="flex items-center justify-between text-xs">
-                <div style={styles.textSecondary}>
-                  {showResolvedIssues ? 'Showing resolved' : 'Hiding resolved'}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowResolvedIssues((prev) => !prev)}
-                    className="text-xs underline"
-                    style={styles.textSecondary}
-                  >
-                    {showResolvedIssues ? 'Hide resolved' : 'Show resolved'}
-                  </button>
-                  <Button size="sm" variant="ghost" icon={Plus} onClick={handleNewIssue}>
-                    New Issue
-                  </Button>
-                </div>
-              </div>
-              {issues.length === 0 ? (
-                <p className="text-sm" style={styles.textSecondary}>No issues logged for this project.</p>
-              ) : (
-                issues
-                  .filter((issue) => showResolvedIssues || (issue.status || '').toLowerCase() !== 'resolved')
-                  .map((issue) => (
-                    <button
-                      key={issue.id}
-                      onClick={() => navigate(`/project/${id}/issues/${issue.id}`)}
-                      className="w-full text-left px-3 py-3 rounded-xl border transition-transform duration-200 hover:-translate-y-0.5"
-                      style={styles.mutedCard}
-                    >
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium" style={styles.textPrimary}>{issue.title}</h4>
-                        <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={statusChipStyle(palette, issue.status)}
-                        >
-                          {(issue.status || 'open').replace(/\b\w/g, (c) => c.toUpperCase())}
-                        </span>
-                      </div>
-                      <p className="text-xs mt-1" style={styles.textSecondary}>
-                        {formatDate(issue.created_at)}
-                      </p>
-                      {issue.description && (
-                        <p className="text-sm mt-1 line-clamp-2" style={styles.textSecondary}>
-                          {issue.description}
-                        </p>
-                      )}
-                    </button>
-                  ))
-              )}
-            </div>
-          )}
-        </div>
+        <IssuesSection
+          projectId={id}
+          issues={issues}
+          openIssues={openIssues}
+          showResolvedIssues={showResolvedIssues}
+          setShowResolvedIssues={setShowResolvedIssues}
+          expandedSection={expandedSection}
+          toggleSection={toggleSection}
+          handleNewIssue={handleNewIssue}
+          styles={styles}
+          palette={palette}
+          withAlpha={withAlpha}
+          formatDate={formatDate}
+          statusChipStyle={statusChipStyle}
+        />
 
         <div>
           <button
