@@ -12,9 +12,11 @@ import Button from './ui/Button';
 import CachedSharePointImage from './CachedSharePointImage';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
-import { 
-  Camera, 
-  Upload, 
+import { enqueueUpload } from '../lib/offline';
+import { compressImage } from '../lib/images';
+import {
+  Camera,
+  Upload,
   CheckCircle,
   Circle,
   Edit,
@@ -31,7 +33,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Trash2,
-  Lock
+  Lock,
+  WifiOff
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 
@@ -345,18 +348,56 @@ const WireDropDetailEnhanced = () => {
     input.type = 'file';
     input.accept = 'image/*';
     input.capture = 'environment';
-    
+
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
       try {
         setUploadingStage(stageType);
-        
+
+        // Compress the image first
+        const compressedFile = await compressImage(file);
+
+        // Check if online
+        if (!navigator.onLine) {
+          console.log('[WireDropDetail] Offline - queueing photo upload');
+
+          // Queue for later upload
+          const queueId = await enqueueUpload({
+            type: 'wire_drop_photo',
+            projectId: wireDrop.project_id,
+            file: compressedFile,
+            metadata: {
+              wireDropId: id,
+              stage: stageType
+            }
+          });
+
+          // Update local state optimistically
+          setWireDrop(prev => ({
+            ...prev,
+            wire_drop_stages: prev.wire_drop_stages.map(stage =>
+              stage.stage_type === stageType
+                ? {
+                    ...stage,
+                    photo_url: URL.createObjectURL(compressedFile),
+                    isPending: true, // Flag for UI
+                    status: 'pending'
+                  }
+                : stage
+            )
+          }));
+
+          alert('Photo queued for upload when online');
+          return;
+        }
+
+        // Online: upload immediately
         // Get user display name from AuthContext
         const currentUserName = user?.displayName || user?.email || user?.account?.username || 'Unknown User';
-        
-        await wireDropService.uploadStagePhoto(id, stageType, file, currentUserName);
+
+        await wireDropService.uploadStagePhoto(id, stageType, compressedFile, currentUserName);
         await loadWireDrop(); // Reload to get updated stages
         if (isReUpload) {
           alert('Photo updated successfully!');
@@ -368,7 +409,7 @@ const WireDropDetailEnhanced = () => {
         setUploadingStage(null);
       }
     };
-    
+
     input.click();
   };
 
@@ -1435,19 +1476,34 @@ const WireDropDetailEnhanced = () => {
                     ) : (
                       <>
                         <div className="space-y-2">
-                          <CachedSharePointImage
-                            sharePointUrl={prewireStage.photo_url}
-                            sharePointDriveId={prewireStage.sharepoint_drive_id}
-                            sharePointItemId={prewireStage.sharepoint_item_id}
-                            displayType="thumbnail"
-                            size="medium"
-                            alt="Prewire"
-                            className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                            showFullOnClick={true}
-                          />
-                          <Button 
-                            variant="secondary" 
-                            icon={RefreshCw} 
+                          {prewireStage.isPending ? (
+                            <div className="relative">
+                              <img
+                                src={prewireStage.photo_url}
+                                alt="Prewire (pending)"
+                                className="w-full h-48 rounded-lg object-cover opacity-60"
+                              />
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white rounded-lg">
+                                <WifiOff size={32} className="mb-2" />
+                                <span className="text-sm font-medium">Queued for Upload</span>
+                                <span className="text-xs opacity-75">Will sync when online</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <CachedSharePointImage
+                              sharePointUrl={prewireStage.photo_url}
+                              sharePointDriveId={prewireStage.sharepoint_drive_id}
+                              sharePointItemId={prewireStage.sharepoint_item_id}
+                              displayType="thumbnail"
+                              size="medium"
+                              alt="Prewire"
+                              className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              showFullOnClick={true}
+                            />
+                          )}
+                          <Button
+                            variant="secondary"
+                            icon={RefreshCw}
                             size="sm"
                             onClick={() => handlePhotoUpload('prewire', true)}
                             loading={uploadingStage === 'prewire'}
@@ -1538,19 +1594,34 @@ const WireDropDetailEnhanced = () => {
                     ) : (
                       <>
                         <div className="space-y-2">
-                          <CachedSharePointImage
-                            sharePointUrl={trimOutStage.photo_url}
-                            sharePointDriveId={trimOutStage.sharepoint_drive_id}
-                            sharePointItemId={trimOutStage.sharepoint_item_id}
-                            displayType="thumbnail"
-                            size="medium"
-                            alt="Trim Out"
-                            className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                            showFullOnClick={true}
-                          />
-                          <Button 
-                            variant="secondary" 
-                            icon={RefreshCw} 
+                          {trimOutStage.isPending ? (
+                            <div className="relative">
+                              <img
+                                src={trimOutStage.photo_url}
+                                alt="Trim Out (pending)"
+                                className="w-full h-48 rounded-lg object-cover opacity-60"
+                              />
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white rounded-lg">
+                                <WifiOff size={32} className="mb-2" />
+                                <span className="text-sm font-medium">Queued for Upload</span>
+                                <span className="text-xs opacity-75">Will sync when online</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <CachedSharePointImage
+                              sharePointUrl={trimOutStage.photo_url}
+                              sharePointDriveId={trimOutStage.sharepoint_drive_id}
+                              sharePointItemId={trimOutStage.sharepoint_item_id}
+                              displayType="thumbnail"
+                              size="medium"
+                              alt="Trim Out"
+                              className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              showFullOnClick={true}
+                            />
+                          )}
+                          <Button
+                            variant="secondary"
+                            icon={RefreshCw}
                             size="sm"
                             onClick={() => handlePhotoUpload('trim_out', true)}
                             loading={uploadingStage === 'trim_out'}

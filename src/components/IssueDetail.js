@@ -13,7 +13,9 @@ import {
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
 import CachedSharePointImage from './CachedSharePointImage';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown } from 'lucide-react';
+import { enqueueUpload } from '../lib/offline';
+import { compressImage } from '../lib/images';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown, WifiOff } from 'lucide-react';
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -226,30 +228,66 @@ const IssueDetail = () => {
     try {
       setUploading(true);
       setError('');
-      
+
+      // Compress the image first
+      const compressedFile = await compressImage(file);
+
+      // Check if online
+      if (!navigator.onLine) {
+        console.log('[IssueDetail] Offline - queueing photo upload');
+
+        // Queue for later upload
+        const queueId = await enqueueUpload({
+          type: 'issue_photo',
+          projectId,
+          file: compressedFile,
+          metadata: {
+            issueId: issue.id,
+            description: ''
+          }
+        });
+
+        // Show optimistic UI with pending indicator
+        const optimisticPhoto = {
+          id: queueId,
+          issue_id: issue.id,
+          url: URL.createObjectURL(compressedFile),
+          file_name: file.name,
+          content_type: file.type,
+          size_bytes: compressedFile.size,
+          isPending: true // Flag for UI
+        };
+
+        setPhotos(prev => [...prev, optimisticPhoto]);
+        setError('Photo queued for upload when online');
+
+        return;
+      }
+
+      // Online: upload immediately
       // Upload to SharePoint - returns metadata object
       const metadata = await sharePointStorageService.uploadIssuePhoto(
         projectId,
         issue.id,
-        file,
+        compressedFile,
         '' // Optional photo description
       );
-      
+
       // Save to database with SharePoint metadata
       const { data, error } = await supabase
         .from('issue_photos')
-        .insert([{ 
-          issue_id: issue.id, 
+        .insert([{
+          issue_id: issue.id,
           url: metadata.url,
           sharepoint_drive_id: metadata.driveId,
           sharepoint_item_id: metadata.itemId,
-          file_name: metadata.name || file.name, 
-          content_type: file.type, 
-          size_bytes: metadata.size || file.size 
+          file_name: metadata.name || file.name,
+          content_type: file.type,
+          size_bytes: metadata.size || compressedFile.size
         }])
         .select()
         .single();
-      
+
       if (error) throw error;
       setPhotos(prev => [...prev, data]);
     } catch (e) {
@@ -561,18 +599,33 @@ const IssueDetail = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.map((p) => (
-              <div key={p.id} className="block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors">
-                <CachedSharePointImage
-                  sharePointUrl={p.url}
-                  sharePointDriveId={p.sharepoint_drive_id}
-                  sharePointItemId={p.sharepoint_item_id}
-                  displayType="thumbnail"
-                  size="medium"
-                  alt={p.file_name || 'Issue photo'}
-                  className="w-full h-28 cursor-pointer"
-                  style={{ minHeight: '7rem' }}
-                  showFullOnClick={true}
-                />
+              <div key={p.id} className="relative block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors">
+                {p.isPending ? (
+                  <>
+                    <img
+                      src={p.url}
+                      alt={p.file_name || 'Pending photo'}
+                      className="w-full h-28 object-cover opacity-60"
+                      style={{ minHeight: '7rem' }}
+                    />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white">
+                      <WifiOff size={20} className="mb-1" />
+                      <span className="text-xs font-medium">Queued</span>
+                    </div>
+                  </>
+                ) : (
+                  <CachedSharePointImage
+                    sharePointUrl={p.url}
+                    sharePointDriveId={p.sharepoint_drive_id}
+                    sharePointItemId={p.sharepoint_item_id}
+                    displayType="thumbnail"
+                    size="medium"
+                    alt={p.file_name || 'Issue photo'}
+                    className="w-full h-28 cursor-pointer"
+                    style={{ minHeight: '7rem' }}
+                    showFullOnClick={true}
+                  />
+                )}
               </div>
             ))}
           </div>

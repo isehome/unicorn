@@ -9,6 +9,9 @@ import AppHeader from './components/AppHeader';
 import BottomNavigation from './components/BottomNavigation';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import Login from './components/Login';
+import { OfflineBanner } from './components/OfflineBanner';
+import { useNetworkStatus } from './hooks/useNetworkStatus';
+import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import './index.css';
 
@@ -44,10 +47,20 @@ const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 const AppRoutes = () => {
   const location = useLocation();
   const hideChrome = ['/login', '/auth/callback'].includes(location.pathname);
+  const { isOnline } = useNetworkStatus();
+  const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300 flex flex-col">
       {!hideChrome && <AppHeader />}
+      {!hideChrome && (
+        <OfflineBanner
+          isOnline={isOnline}
+          pendingCount={pendingCount}
+          isSyncing={isSyncing}
+          onSyncNow={triggerSync}
+        />
+      )}
       <main className={`flex-1 ${hideChrome ? '' : 'pt-4 sm:pt-6'} ${hideChrome ? '' : 'pb-24'}`}>
         <Suspense fallback={
           <div className="flex items-center justify-center min-h-[50vh]">
