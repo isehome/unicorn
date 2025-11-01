@@ -10,6 +10,7 @@ import BottomNavigation from './components/BottomNavigation';
 import LoadingSpinner from './components/ui/LoadingSpinner';
 import Login from './components/Login';
 import { OfflineBanner } from './components/OfflineBanner';
+import { OfflineGuard } from './components/OfflineGuard';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
@@ -90,7 +91,9 @@ const AppRoutes = () => {
             path="/project/:id"
             element={
               <ProtectedRoute>
-                <ProjectDetailView />
+                <OfflineGuard pageName="Project details">
+                  <ProjectDetailView />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -98,7 +101,9 @@ const AppRoutes = () => {
             path="/pm/project/:projectId"
             element={
               <ProtectedRoute>
-                <PMProjectViewEnhanced />
+                <OfflineGuard pageName="PM Project View">
+                  <PMProjectViewEnhanced />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -106,7 +111,9 @@ const AppRoutes = () => {
             path="/pm-project/:projectId"
             element={
               <ProtectedRoute>
-                <PMProjectViewEnhanced />
+                <OfflineGuard pageName="PM Project View">
+                  <PMProjectViewEnhanced />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -114,7 +121,9 @@ const AppRoutes = () => {
             path="/project/:projectId/pm-issues"
             element={
               <ProtectedRoute>
-                <PMIssuesPage />
+                <OfflineGuard pageName="Issues list">
+                  <PMIssuesPage />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -122,7 +131,9 @@ const AppRoutes = () => {
             path="/project/:id/issues/:issueId"
             element={
               <ProtectedRoute>
-                <IssueDetail />
+                <OfflineGuard pageName="Issue details">
+                  <IssueDetail />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -162,7 +173,9 @@ const AppRoutes = () => {
             path="/wire-drops"
             element={
               <ProtectedRoute>
-                <WireDropsHub />
+                <OfflineGuard pageName="Wire Drops Hub">
+                  <WireDropsHub />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -170,7 +183,9 @@ const AppRoutes = () => {
             path="/wire-drops-list"
             element={
               <ProtectedRoute>
-                <WireDropsList />
+                <OfflineGuard pageName="Wire Drops list">
+                  <WireDropsList />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -178,7 +193,9 @@ const AppRoutes = () => {
             path="/wire-drops/new"
             element={
               <ProtectedRoute>
-                <WireDropNew />
+                <OfflineGuard pageName="New Wire Drop">
+                  <WireDropNew />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
@@ -186,7 +203,9 @@ const AppRoutes = () => {
             path="/wire-drops/:id"
             element={
               <ProtectedRoute>
-                <WireDropDetailEnhanced />
+                <OfflineGuard pageName="Wire Drop details">
+                  <WireDropDetailEnhanced />
+                </OfflineGuard>
               </ProtectedRoute>
             }
           />
