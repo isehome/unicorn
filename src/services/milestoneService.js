@@ -486,9 +486,223 @@ class MilestoneService {
   }
 
   /**
+   * Get pre-calculated milestone percentages from materialized view
+   * HIGHLY OPTIMIZED: Single query instead of 10+ queries
+   * Falls back to calculated method if view doesn't exist
+   *
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<Object>} Milestone percentages
+   */
+  async getAllPercentagesOptimized(projectId) {
+    try {
+      // Try to fetch from materialized view first
+      const { data, error } = await supabase
+        .from('project_milestone_percentages')
+        .select('*')
+        .eq('project_id', projectId)
+        .single();
+
+      if (error) {
+        // View doesn't exist or other error - fall back to calculation
+        console.warn('[Milestone] View not available, falling back to calculation:', error.message);
+        return this.calculateAllPercentages(projectId);
+      }
+
+      if (!data) {
+        // No data in view - fall back to calculation
+        console.warn('[Milestone] No data in view for project, calculating...');
+        return this.calculateAllPercentages(projectId);
+      }
+
+      // Transform view data to match expected format
+      return {
+        planning_design: data.planning_design_percentage,
+        prewire_orders: {
+          percentage: data.prewire_orders_percentage,
+          itemCount: data.prewire_orders_count,
+          totalItems: data.prewire_orders_total
+        },
+        prewire_receiving: {
+          percentage: data.prewire_receiving_percentage,
+          itemCount: data.prewire_receiving_count,
+          totalItems: data.prewire_receiving_total
+        },
+        prewire: data.prewire_stages_percentage,
+        prewire_phase: {
+          percentage: data.prewire_phase_percentage,
+          orders: {
+            percentage: data.prewire_orders_percentage,
+            itemCount: data.prewire_orders_count,
+            totalItems: data.prewire_orders_total
+          },
+          receiving: {
+            percentage: data.prewire_receiving_percentage,
+            itemCount: data.prewire_receiving_count,
+            totalItems: data.prewire_receiving_total
+          },
+          stages: data.prewire_stages_percentage
+        },
+        trim_orders: {
+          percentage: data.trim_orders_percentage,
+          itemCount: data.trim_orders_count,
+          totalItems: data.trim_orders_total
+        },
+        trim_receiving: {
+          percentage: data.trim_receiving_percentage,
+          itemCount: data.trim_receiving_count,
+          totalItems: data.trim_receiving_total
+        },
+        trim: data.trim_stages_percentage,
+        trim_phase: {
+          percentage: data.trim_phase_percentage,
+          orders: {
+            percentage: data.trim_orders_percentage,
+            itemCount: data.trim_orders_count,
+            totalItems: data.trim_orders_total
+          },
+          receiving: {
+            percentage: data.trim_receiving_percentage,
+            itemCount: data.trim_receiving_count,
+            totalItems: data.trim_receiving_total
+          },
+          stages: data.trim_stages_percentage
+        },
+        commissioning: data.commissioning_percentage,
+        // Legacy compatibility
+        prewire_prep: Math.round((data.prewire_orders_percentage + data.prewire_receiving_percentage) / 2),
+        trim_prep: Math.round((data.trim_orders_percentage + data.trim_receiving_percentage) / 2),
+        // Metadata
+        _cachedAt: data.last_calculated_at,
+        _fromCache: true
+      };
+    } catch (error) {
+      console.error('[Milestone] Error fetching from view, falling back:', error);
+      return this.calculateAllPercentages(projectId);
+    }
+  }
+
+  /**
+   * Get pre-calculated milestones for MULTIPLE projects (batch)
+   * SUPER OPTIMIZED: One query for all projects instead of 10+ per project
+   *
+   * @param {string[]} projectIds - Array of project UUIDs
+   * @returns {Promise<Object>} Map of projectId → milestone percentages
+   */
+  async getAllPercentagesBatch(projectIds) {
+    try {
+      if (!projectIds || projectIds.length === 0) {
+        return {};
+      }
+
+      // Fetch all projects in one query
+      const { data, error } = await supabase
+        .from('project_milestone_percentages')
+        .select('*')
+        .in('project_id', projectIds);
+
+      if (error) {
+        console.warn('[Milestone] Batch view query failed, falling back:', error.message);
+        // Fall back to individual calculations
+        const results = {};
+        await Promise.all(projectIds.map(async (projectId) => {
+          results[projectId] = await this.calculateAllPercentages(projectId);
+        }));
+        return results;
+      }
+
+      // Transform to map
+      const results = {};
+      data.forEach(row => {
+        results[row.project_id] = {
+          planning_design: row.planning_design_percentage,
+          prewire_orders: {
+            percentage: row.prewire_orders_percentage,
+            itemCount: row.prewire_orders_count,
+            totalItems: row.prewire_orders_total
+          },
+          prewire_receiving: {
+            percentage: row.prewire_receiving_percentage,
+            itemCount: row.prewire_receiving_count,
+            totalItems: row.prewire_receiving_total
+          },
+          prewire: row.prewire_stages_percentage,
+          prewire_phase: {
+            percentage: row.prewire_phase_percentage,
+            orders: {
+              percentage: row.prewire_orders_percentage,
+              itemCount: row.prewire_orders_count,
+              totalItems: row.prewire_orders_total
+            },
+            receiving: {
+              percentage: row.prewire_receiving_percentage,
+              itemCount: row.prewire_receiving_count,
+              totalItems: row.prewire_receiving_total
+            },
+            stages: row.prewire_stages_percentage
+          },
+          trim_orders: {
+            percentage: row.trim_orders_percentage,
+            itemCount: row.trim_orders_count,
+            totalItems: row.trim_orders_total
+          },
+          trim_receiving: {
+            percentage: row.trim_receiving_percentage,
+            itemCount: row.trim_receiving_count,
+            totalItems: row.trim_receiving_total
+          },
+          trim: row.trim_stages_percentage,
+          trim_phase: {
+            percentage: row.trim_phase_percentage,
+            orders: {
+              percentage: row.trim_orders_percentage,
+              itemCount: row.trim_orders_count,
+              totalItems: row.trim_orders_total
+            },
+            receiving: {
+              percentage: row.trim_receiving_percentage,
+              itemCount: row.trim_receiving_count,
+              totalItems: row.trim_receiving_total
+            },
+            stages: row.trim_stages_percentage
+          },
+          commissioning: row.commissioning_percentage,
+          prewire_prep: Math.round((row.prewire_orders_percentage + row.prewire_receiving_percentage) / 2),
+          trim_prep: Math.round((row.trim_orders_percentage + row.trim_receiving_percentage) / 2),
+          _cachedAt: row.last_calculated_at,
+          _fromCache: true
+        };
+      });
+
+      return results;
+    } catch (error) {
+      console.error('[Milestone] Batch fetch error:', error);
+      return {};
+    }
+  }
+
+  /**
+   * Refresh the materialized view
+   * Call this after significant data changes (equipment updates, wire drop stages, etc.)
+   *
+   * @returns {Promise<void>}
+   */
+  async refreshMilestoneCache() {
+    try {
+      const { error } = await supabase.rpc('refresh_milestone_percentages');
+      if (error) throw error;
+      console.log('[Milestone] Cache refreshed successfully');
+    } catch (error) {
+      console.error('[Milestone] Failed to refresh cache:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Calculate all milestone percentages for a project
    * OPTIMIZED: All 10 calculations run in parallel for maximum performance
    * Returns 8 individual gauges + 2 rollup gauges
+   *
+   * @deprecated Use getAllPercentagesOptimized() instead for better performance
    */
   async calculateAllPercentages(projectId) {
     try {

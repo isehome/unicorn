@@ -19,52 +19,25 @@ export const useTechnicianProjects = (projects, userProjectIds, user) => {
   const [milestonePercentages, setMilestonePercentages] = useState({});
   const [projectOwners, setProjectOwners] = useState({});
 
-  // Load milestone percentages for all projects - OPTIMIZED: Parallel loading using Promise.all
+  // Load milestone percentages for all projects - SUPER OPTIMIZED: Single batch query using materialized view
   useEffect(() => {
     const loadMilestonePercentages = async () => {
-      if (!projects) return;
+      if (!projects || projects.length === 0) return;
 
-      const milestoneData = {};
+      try {
+        // Extract all project IDs
+        const projectIds = projects.map(p => p.id);
 
-      // Run all project calculations in parallel
-      const milestonePromises = projects.map(async (project) => {
-        try {
-          const percentages = await milestoneService.calculateAllPercentages(project.id);
-          return {
-            projectId: project.id,
-            percentages
-          };
-        } catch (error) {
-          console.error(`Failed to load milestone percentages for project ${project.id}:`, error);
-          return {
-            projectId: project.id,
-            percentages: {
-              planning_design: 0,
-              prewire_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
-              prewire_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
-              prewire: 0,
-              prewire_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
-              trim_orders: { percentage: 0, itemCount: 0, totalItems: 0 },
-              trim_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
-              trim: 0,
-              trim_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
-              commissioning: 0,
-              prewire_prep: 0,
-              trim_prep: 0
-            }
-          };
-        }
-      });
+        // Fetch all milestones in ONE query using the materialized view
+        const milestoneData = await milestoneService.getAllPercentagesBatch(projectIds);
 
-      // Wait for all promises to resolve
-      const results = await Promise.all(milestonePromises);
-
-      // Populate milestone data
-      results.forEach(({ projectId, percentages }) => {
-        milestoneData[projectId] = percentages;
-      });
-
-      setMilestonePercentages(milestoneData);
+        setMilestonePercentages(milestoneData);
+        console.log(`[Dashboard] Loaded milestones for ${Object.keys(milestoneData).length} projects`);
+      } catch (error) {
+        console.error('Failed to load milestone percentages:', error);
+        // Set empty object on error
+        setMilestonePercentages({});
+      }
     };
 
     loadMilestonePercentages();

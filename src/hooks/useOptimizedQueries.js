@@ -59,8 +59,8 @@ export const useUserProjectsOptimized = (userEmail) => {
   });
 };
 
-// Optimized Calendar Events Hook - Now with auth context support
-export const useCalendarEventsOptimized = (authContext) => {
+// Optimized Calendar Events Hook - Now with auth context support and lazy loading
+export const useCalendarEventsOptimized = (authContext, options = {}) => {
   return useQuery({
     queryKey: queryKeys.calendarEvents,
     queryFn: async () => {
@@ -79,6 +79,7 @@ export const useCalendarEventsOptimized = (authContext) => {
     staleTime: 15 * 60 * 1000, // Calendar events cached for 15 minutes
     refetchInterval: 30 * 60 * 1000, // Auto-refresh every 30 minutes
     retry: 1, // Reduce retries to avoid multiple auth redirects
+    enabled: options.enabled !== false, // Allow lazy loading
   });
 };
 
@@ -204,7 +205,11 @@ export const prefetchProjectData = async (queryClient, projectId) => {
 export const useDashboardData = (userEmail, authContext) => {
   const projectsQuery = useProjectsOptimized();
   const userProjectsQuery = useUserProjectsOptimized(userEmail);
-  const calendarQuery = useCalendarEventsOptimized(authContext);
+
+  // Load calendar AFTER projects load (lazy loading for faster initial render)
+  const calendarQuery = useCalendarEventsOptimized(authContext, {
+    enabled: !projectsQuery.isLoading && !userProjectsQuery.isLoading
+  });
   
   // Batch load todo and issue counts
   const countsQuery = useQuery({
