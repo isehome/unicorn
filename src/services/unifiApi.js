@@ -576,6 +576,61 @@ export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) 
 };
 
 /**
+ * Extract potential client information from device port tables
+ * @param {Array} devices - Array of device objects from /v1/devices
+ * @returns {Array} Array of discovered client connections
+ */
+export const extractClientsFromDevices = (devices) => {
+  const clients = [];
+
+  devices.forEach(device => {
+    // Only switches have useful port_table data
+    if (!device.port_table) return;
+
+    console.log(`🔍 Checking ${device.name || device.model} for client data in port_table...`);
+
+    device.port_table.forEach(port => {
+      // Check if port has active connection
+      if (!port.up) return;
+
+      // Try to find client identifier in port data
+      // Different controller versions use different field names
+      const clientMac = port.mac ||
+                       port.client_mac ||
+                       port.port_poe?.client_mac ||
+                       port.poe_client_mac;
+
+      if (clientMac) {
+        console.log(`✅ Found client on ${device.name} port ${port.port_idx}:`, clientMac);
+        clients.push({
+          mac: clientMac,
+          switch_mac: device.mac,
+          switch_name: device.name,
+          switch_model: device.model,
+          switch_port: port.port_idx,
+          port_name: port.name,
+          vlan: port.native_networkconf_id || port.vlan,
+          poe_enabled: port.poe_enable,
+          poe_mode: port.poe_mode,
+          poe_power: port.poe_power,
+          speed: port.speed,
+          discovered_from: 'device_port_table',
+          raw_port_data: port
+        });
+      } else {
+        // Log port structure to see what fields are available
+        if (port.up && port.port_idx <= 3) { // Only log first 3 ports to avoid spam
+          console.log(`Port ${port.port_idx} fields:`, Object.keys(port));
+        }
+      }
+    });
+  });
+
+  console.log(`📊 Extracted ${clients.length} clients from ${devices.length} devices`);
+  return clients;
+};
+
+/**
  * Parse client data from various potential response formats
  * @param {Object} rawData - Raw API response
  * @returns {Array} Parsed client array

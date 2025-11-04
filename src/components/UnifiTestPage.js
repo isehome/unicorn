@@ -1464,14 +1464,27 @@ const UnifiTestPage = () => {
               Test different UniFi API endpoints to find which one returns client data
             </p>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="primary"
+                onClick={() => {
+                  console.log('🔬 Testing device port_table extraction...');
+                  const extractedClients = unifiApi.extractClientsFromDevices(devices);
+                  console.log('📊 Extraction complete:', extractedClients);
+                  alert(`Found ${extractedClients.length} clients in device data. Check console for details.`);
+                }}
+                disabled={loading || devices.length === 0}
+                icon={Users}
+              >
+                🔬 Extract Clients from Devices
+              </Button>
               <Button
                 variant="primary"
                 onClick={() => handleHardcodedClientTest()}
                 disabled={loading}
                 icon={Activity}
               >
-                🔥 HARDCODED TEST (Bill-Thomas Site)
+                🔥 Test API Endpoints
               </Button>
               <Button
                 variant="secondary"
@@ -1479,7 +1492,7 @@ const UnifiTestPage = () => {
                 disabled={loading}
                 icon={RefreshCw}
               >
-                Test All Client Endpoints
+                Test All Variations
               </Button>
 
               {clientTestResults && (
