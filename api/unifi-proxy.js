@@ -54,10 +54,12 @@ module.exports = async function handler(req, res) {
 
   try {
     let url;
+    let useNetworkApiKey = false;
 
     if (directUrl) {
       // If directUrl is true, endpoint is already a full URL (e.g., https://47.199.106.32/...)
       url = endpoint;
+      useNetworkApiKey = true; // Direct controller calls need the Network API key
       console.log('Using direct URL:', url);
     } else {
       // ALWAYS use the static API URL - we don't use controllerUrl as a base
@@ -70,13 +72,19 @@ module.exports = async function handler(req, res) {
 
       url = `${baseUrl}${endpoint}`;
     }
-    
+
     console.log('Calling UniFi API:', url, 'method:', method);
+
+    // HARDCODED Network API key for testing direct controller access
+    const networkApiKey = 'j_ChcU0fSMHlxPoj8djPhkBYgFVy0LAq';
+    const keyToUse = useNetworkApiKey ? networkApiKey : apiKey;
+
+    console.log('Using API key type:', useNetworkApiKey ? 'Network API key (hardcoded)' : 'Cloud API key (env)');
 
     const fetchOptions = {
       method: method?.toUpperCase() || 'GET',
       headers: {
-        'X-API-KEY': apiKey,
+        'X-API-KEY': keyToUse,
         'Accept': 'application/json',
         'Content-Type': 'application/json',
         ...(upstreamHeaders || {})
