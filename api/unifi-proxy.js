@@ -91,6 +91,19 @@ module.exports = async function handler(req, res) {
       }
     };
 
+    // For direct WAN IP calls, we need to handle self-signed SSL certificates
+    // and set a timeout to avoid Vercel function timeout
+    if (useNetworkApiKey && typeof global !== 'undefined' && global.fetch) {
+      // Add a timeout for direct controller calls (5 seconds max)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      fetchOptions.signal = controller.signal;
+
+      // Note: We can't disable SSL verification in browser fetch or Vercel edge functions
+      // This might fail due to self-signed certificates
+      console.log('Direct WAN call with 5s timeout and potential SSL certificate issues');
+    }
+
     if (fetchOptions.method === 'GET') {
       // Remove content-type for GET to avoid potential issues
       delete fetchOptions.headers['Content-Type'];
@@ -129,15 +142,29 @@ module.exports = async function handler(req, res) {
 
   } catch (error) {
     console.error('Error fetching from UniFi API:', error);
+
+    // Handle specific error types
+    if (error.name === 'AbortError') {
+      console.error('Request timed out after 5 seconds');
+      return res.status(504).json({
+        error: 'Gateway Timeout',
+        message: 'Request to controller timed out (WAN IP may not be accessible or has SSL certificate issues)',
+        details: 'The controller did not respond within 5 seconds. This is likely due to SSL certificate issues with self-signed certificates or the WAN IP not being publicly accessible.'
+      });
+    }
+
     console.error('Error details:', {
       message: error.message,
       stack: error.stack,
-      url: `${baseUrl}${endpoint}`
+      name: error.name,
+      endpoint: endpoint
     });
+
     return res.status(500).json({
       error: 'Failed to fetch data',
       message: error.message,
-      details: error.toString()
+      details: error.toString(),
+      hint: useNetworkApiKey ? 'Direct WAN IP calls may fail due to SSL certificate issues or firewall restrictions' : null
     });
   }
 }
