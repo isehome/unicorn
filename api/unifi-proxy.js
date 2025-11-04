@@ -71,6 +71,12 @@ module.exports = async function handler(req, res) {
       }
 
       url = `${baseUrl}${endpoint}`;
+
+      // Check if this is a Network API proxy endpoint
+      if (endpoint.includes('/proxy/network/')) {
+        useNetworkApiKey = true;
+        console.log('Detected Network API proxy endpoint, will use Network API key');
+      }
     }
 
     console.log('Calling UniFi API:', url, 'method:', method);
