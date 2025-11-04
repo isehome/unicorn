@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import * as unifiApi from '../services/unifiApi';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
-import { 
-  ArrowLeft, 
-  RefreshCw, 
-  Wifi, 
-  Users, 
+import {
+  RefreshCw,
+  Wifi,
+  Users,
   Server,
   Activity,
   Globe,
@@ -21,7 +19,6 @@ import {
 } from 'lucide-react';
 
 const UnifiTestPage = () => {
-  const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -38,6 +35,12 @@ const UnifiTestPage = () => {
   const [error, setError] = useState(null);
   const [parsedConsoleId, setParsedConsoleId] = useState(null);
   const [deviceSource, setDeviceSource] = useState(null);
+  const [clientTestResults, setClientTestResults] = useState(null);
+  const [selectedClientEndpoint, setSelectedClientEndpoint] = useState(null);
+  const [clientEndpointData, setClientEndpointData] = useState(null);
+  const [showClientData, setShowClientData] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [hardcodedTestResult, setHardcodedTestResult] = useState(null);
 
   const cleanString = (value) => (typeof value === 'string' ? value.trim() : value);
 
@@ -341,17 +344,17 @@ const UnifiTestPage = () => {
       const { data, error: fetchError } = await supabase
         .from('projects')
         .select('id, project_number, unifi_url')
-        .not('unifi_url', 'is', null)
         .order('project_number');
       
       if (fetchError) throw fetchError;
       
+      console.log('Projects loaded:', data);
       setProjects(data || []);
-      
-      // Auto-select first project if available
-      if (data && data.length > 0) {
-        handleProjectSelect(data[0]);
-      }
+
+      // Don't auto-select - let user choose
+      // if (data && data.length > 0) {
+      //   handleProjectSelect(data[0]);
+      // }
     } catch (err) {
       console.error('Failed to load projects:', err);
       setError(err.message);
@@ -361,26 +364,49 @@ const UnifiTestPage = () => {
   };
 
   const handleProjectSelect = async (project) => {
+    console.log('Project selected:', project);
     setSelectedProject(project);
-    setUseManualUrl(false);
     setConnectionStatus(null);
     setSelectedSite('');
     setDeviceSource(null);
     setSites([]);
     setDevices([]);
     setClients([]);
-    
-    // Parse console ID from the URL
-    const consoleId = parseUnifiUrl(project.unifi_url);
-    setParsedConsoleId(consoleId);
-    
-    await testConnection(project.unifi_url);
+    setClientTestResults(null);
+    setShowClientData(false);
+
+    // If project has a UniFi URL, use it
+    if (project.unifi_url) {
+      setUseManualUrl(false);
+      setManualUrl(project.unifi_url);
+
+      // Parse console ID from the URL
+      const consoleId = parseUnifiUrl(project.unifi_url);
+      setParsedConsoleId(consoleId);
+
+      const sitesResult = await testConnection(project.unifi_url);
+
+      // Auto-test client endpoints if site was auto-selected
+      if (sitesResult && sitesResult.length > 0) {
+        setTimeout(() => {
+          console.log('Auto-testing client endpoints after site selection');
+          handleClientEndpointTest();
+        }, 1500);
+      }
+    } else {
+      // No UniFi URL in project, use manual URL
+      setUseManualUrl(true);
+      console.log('Project has no UniFi URL, please enter one manually');
+    }
   };
 
   const handleManualTest = async () => {
-    if (!manualUrl) {
-      setError('Please enter a UniFi URL');
+    if (!apiKey) {
+      setError('Please enter a UniFi API key');
       return;
+    }
+    if (!manualUrl) {
+      setManualUrl('https://api.ui.com'); // Default to cloud API
     }
     setUseManualUrl(true);
     setSelectedProject(null);
@@ -390,35 +416,44 @@ const UnifiTestPage = () => {
     setSites([]);
     setDevices([]);
     setClients([]);
-    
+
     // Parse console ID from the URL
-    const consoleId = parseUnifiUrl(manualUrl);
+    const consoleId = parseUnifiUrl(manualUrl || 'https://api.ui.com');
     setParsedConsoleId(consoleId);
-    
-    await testConnection(manualUrl);
+
+    await testConnection(manualUrl || 'https://api.ui.com');
   };
 
   const testConnection = async (controllerUrl) => {
     if (!controllerUrl) {
-      setError('No UniFi URL configured for this project');
+      setError('No UniFi URL configured');
       setConnectionStatus({ success: false, error: 'No UniFi URL configured' });
-      return;
+      return [];
+    }
+
+    if (!apiKey) {
+      setError('No UniFi API key provided');
+      setConnectionStatus({ success: false, error: 'No API key provided' });
+      return [];
     }
 
     try {
       setLoading(true);
       setError(null);
-      
-      const result = await unifiApi.testConnection(controllerUrl);
+
+      const result = await unifiApi.testConnection(controllerUrl, apiKey);
       setConnectionStatus(result);
-      
+
       if (result.success) {
-        await loadSites(controllerUrl);
+        const sites = await loadSites(controllerUrl);
+        return sites;
       }
+      return [];
     } catch (err) {
       console.error('Connection test failed:', err);
       setError(err.message);
       setConnectionStatus({ success: false, error: err.message });
+      return [];
     } finally {
       setLoading(false);
     }
@@ -428,9 +463,9 @@ const UnifiTestPage = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       console.log('Loading sites from:', controllerUrl);
-      const response = await unifiApi.fetchSites(controllerUrl);
+      const response = await unifiApi.fetchSites(controllerUrl, apiKey);
       console.log('Full API Response:', JSON.stringify(response, null, 2));
       
       // The API has data array with host objects
@@ -446,13 +481,8 @@ const UnifiTestPage = () => {
       const normalizedSites = normalizeHostsToSites(sitesArray);
       console.log('Normalized site entries:', normalizedSites);
 
-      setSites(normalizedSites);
-
-      if (normalizedSites.length === 0) {
-        console.warn('No site entries were derived from host data');
-        return;
-      }
-
+      // If we have a parsed console ID from the project URL, filter to only show that site
+      let sitesToDisplay = normalizedSites;
       let defaultSite = normalizedSites[0];
 
       if (parsedConsoleId) {
@@ -468,19 +498,31 @@ const UnifiTestPage = () => {
         if (matchingSite) {
           console.log('Found matching site for console ID:', matchingSite);
           defaultSite = matchingSite;
+          // Only show the matching site, not all 17 sites
+          sitesToDisplay = [matchingSite];
         } else {
           console.log('No matching site found for console ID:', parsedConsoleId);
           console.log('Available hostSiteIds:', normalizedSites.map((site) => site.hostSiteId));
         }
       }
 
+      setSites(sitesToDisplay);
+
+      if (sitesToDisplay.length === 0) {
+        console.warn('No site entries were derived from host data');
+        return sitesToDisplay;
+      }
+
       if (defaultSite) {
         setSelectedSite(defaultSite.hostSiteId);
         await loadSiteData(defaultSite.hostSiteId, controllerUrl, defaultSite);
       }
+
+      return sitesToDisplay;
     } catch (err) {
       console.error('Failed to load sites:', err);
       setError(err.message);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -519,7 +561,7 @@ const UnifiTestPage = () => {
       const devicesResult = await unifiApi.fetchDevices(hostIdsForRequest, url, {
         fetchAll: true,
         pageSize: 200
-      });
+      }, apiKey);
       console.log('Devices response summary:', {
         pagesFetched: devicesResult?.pagesFetched,
         total: devicesResult?.data?.length,
@@ -616,64 +658,259 @@ const UnifiTestPage = () => {
     }
   };
 
+  const handleHardcodedClientTest = async () => {
+    const proxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
+
+    // Get the actual selected site data
+    const selectedSiteData = sites.find(s => s.hostSiteId === selectedSite);
+    const siteParts = selectedSite ? selectedSite.split(':') : [];
+    const consoleIdPart = siteParts[0] || '';
+    const siteIdPart = siteParts[1] || '';
+    const wanIp = selectedSiteData?.ipAddress || '47.199.106.32'; // Fallback to Bill-Thomas WAN IP
+
+    console.log('🔥 HARDCODED TEST - Site Data Being Used:', {
+      siteName: selectedSiteData?.siteName || 'Unknown',
+      fullHostSiteId: selectedSite,
+      consoleIdPart,
+      siteIdPart,
+      wanIp: wanIp,
+      wanIpSource: selectedSiteData?.ipAddress ? 'from site data' : 'hardcoded fallback',
+      location: selectedSiteData?.location,
+      firmware: selectedSiteData?.firmware,
+      fullSiteData: selectedSiteData
+    });
+
+    // Test endpoints with ALL possible variations
+    // Based on UniFi API documentation:
+    // - Site Manager API: https://api.ui.com/v1/* (for hosts, sites, devices)
+    // - Network API: runs on controller, path /v1/sites/{siteId}/clients
+    // - Network API via proxy: /proxy/network/integration/v1/sites/{siteId}/clients
+    const testEndpoints = [
+      // ===== Site Manager API path (v1) via api.ui.com =====
+      { direct: false, path: '/v1/clients', label: 'Site Manager API - /v1/clients (no site)' },
+      { direct: false, path: `/v1/sites/${siteIdPart}/clients`, label: `Site Manager API - /v1/sites/${siteIdPart}/clients` },
+      { direct: false, path: '/v1/sites/default/clients', label: 'Site Manager API - /v1/sites/default/clients' },
+
+      // ===== Network API proxy path via api.ui.com =====
+      { direct: false, path: '/proxy/network/integration/v1/clients', label: 'Network API Proxy - No site filter' },
+      { direct: false, path: `/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: `Network API Proxy - Site suffix: ${siteIdPart}` },
+      { direct: false, path: `/proxy/network/integration/v1/sites/${consoleIdPart}/clients`, label: `Network API Proxy - Console ID: ${consoleIdPart.substring(0, 20)}...` },
+      { direct: false, path: '/proxy/network/integration/v1/sites/default/clients', label: 'Network API Proxy - Default site' },
+
+      // ===== DIRECT to controller WAN IP (Network API native path) =====
+      { direct: true, path: '/v1/clients', label: `WAN ${wanIp} - /v1/clients (no site)` },
+      { direct: true, path: `/v1/sites/${siteIdPart}/clients`, label: `WAN ${wanIp} - /v1/sites/${siteIdPart}/clients` },
+      { direct: true, path: '/v1/sites/default/clients', label: `WAN ${wanIp} - /v1/sites/default/clients` },
+    ];
+
+    const results = {};
+
+    try {
+      setLoading(true);
+      setHardcodedTestResult(null);
+      setError(null);
+
+      for (const endpointConfig of testEndpoints) {
+        const isDirect = endpointConfig.direct;
+        const path = endpointConfig.path;
+        const label = endpointConfig.label;
+
+        // Construct the full URL
+        const fullUrl = isDirect ? `https://${wanIp}${path}` : path;
+        const displayKey = `${label}|||${fullUrl}`; // Use label + URL as key
+
+        console.log('🔥 HARDCODED TEST:', label);
+        console.log('   Full URL:', isDirect ? fullUrl : `https://api.ui.com${fullUrl}`);
+
+        try {
+          let response, data;
+
+          if (isDirect) {
+            // For direct calls to WAN IP, we still go through our proxy to handle CORS/SSL
+            // But we tell our proxy to call the full URL directly
+            response = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                endpoint: fullUrl,
+                method: 'GET',
+                directUrl: true  // Signal to proxy this is a full URL
+              })
+            });
+          } else {
+            // Normal api.ui.com proxy call
+            response = await fetch(proxyUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                endpoint: path,
+                method: 'GET'
+              })
+            });
+          }
+
+          data = await response.json();
+
+          results[displayKey] = {
+            status: response.status,
+            success: response.ok,
+            data: data,
+            recordCount: Array.isArray(data?.data) ? data.data.length : 0,
+            isDirect,
+            label,
+            fullUrl: isDirect ? fullUrl : `https://api.ui.com${path}`
+          };
+
+          console.log('✅ RESULT:', response.status, data);
+        } catch (err) {
+          results[displayKey] = {
+            status: 'error',
+            success: false,
+            error: err.message,
+            isDirect,
+            label,
+            fullUrl: isDirect ? fullUrl : `https://api.ui.com${path}`
+          };
+          console.log('❌ ERROR:', err.message);
+        }
+      }
+
+      setHardcodedTestResult(results);
+    } catch (err) {
+      console.error('Hardcoded test error:', err);
+      setError(`Hardcoded test failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClientEndpointTest = async () => {
+    if (!selectedSite) {
+      setError('Please select a site first');
+      return;
+    }
+
+    const url = useManualUrl ? manualUrl : selectedProject?.unifi_url;
+    if (!url) {
+      setError('No UniFi URL available');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setClientTestResults(null);
+      setError(null);
+
+      console.log('Testing client endpoints for site:', selectedSite);
+
+      // Call the test endpoints function
+      const results = await unifiApi.testClientEndpoints(selectedSite, url, apiKey);
+
+      console.log('Client endpoint test results:', results);
+      setClientTestResults(results);
+
+      // Check if any endpoint returned data
+      const successfulEndpoints = Object.entries(results).filter(
+        ([name, result]) => result.success && result.recordCount > 0
+      );
+
+      if (successfulEndpoints.length > 0) {
+        console.log(`Found ${successfulEndpoints.length} working client endpoint(s)`);
+      } else {
+        console.log('No client endpoints returned data');
+      }
+    } catch (err) {
+      console.error('Error testing client endpoints:', err);
+      setError(`Failed to test client endpoints: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 pb-24 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={ArrowLeft}
-          onClick={() => navigate(-1)}
-        >
-          Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            UniFi API Test Page
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Test UniFi API connection and view client data
-          </p>
-        </div>
+      {/* Page Title - No back button since we have bottom nav */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          UniFi Test
+        </h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          Test UniFi API connection and discover client endpoints
+        </p>
       </div>
 
-      {/* Manual URL Input */}
+      {/* Error Display */}
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-red-800 dark:text-red-300">Error</p>
+              <p className="text-sm text-red-700 dark:text-red-400 mt-1 font-mono">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Configuration */}
       <div style={sectionStyles.card} className="p-6">
         <div className="flex items-center gap-2 mb-4">
           <Globe className="w-5 h-5 text-violet-600" />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Test with Manual URL
+            UniFi API Configuration
           </h2>
         </div>
 
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Enter UniFi Controller URL
+              UniFi API Key
             </label>
             <input
-              type="text"
-              value={manualUrl}
-              onChange={(e) => setManualUrl(e.target.value)}
-              placeholder="https://api.ui.com or your controller URL"
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter your UniFi API key"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-violet-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Example: https://api.ui.com (for UniFi Cloud) or https://your-controller-ip:8443 (for self-hosted)
+              Get your API key from Network > Control Plane > Integrations
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              UniFi Console URL (optional)
+            </label>
+            <input
+              type="text"
+              value={manualUrl}
+              onChange={(e) => setManualUrl(e.target.value)}
+              placeholder="https://api.ui.com"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       focus:ring-2 focus:ring-violet-500 focus:border-transparent
+                       placeholder-gray-400 dark:placeholder-gray-500"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Leave as https://api.ui.com for cloud-hosted controllers
             </p>
           </div>
           
           <Button
             variant="primary"
             onClick={handleManualTest}
-            disabled={loading || !manualUrl}
+            disabled={loading || !apiKey}
             icon={Wifi}
           >
-            Test Connection
+            Connect to UniFi
           </Button>
 
           {useManualUrl && manualUrl && (
@@ -694,18 +931,26 @@ const UnifiTestPage = () => {
       </div>
 
       {/* Project Selection */}
-      {projects.length > 0 && (
-        <div style={sectionStyles.card} className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <FolderOpen className="w-5 h-5 text-violet-600" />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Or Select From Projects
-            </h2>
-          </div>
+      <div style={sectionStyles.card} className="p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <FolderOpen className="w-5 h-5 text-violet-600" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Or Select From Projects
+          </h2>
+        </div>
 
+        {loading && <p className="text-sm text-gray-500">Loading projects...</p>}
+
+        {!loading && projects.length === 0 && (
+          <p className="text-sm text-amber-600 dark:text-amber-400">
+            No projects found in database. Check browser console for details.
+          </p>
+        )}
+
+        {!loading && projects.length > 0 && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Choose a project to test
+              Choose a project to test ({projects.length} available)
             </label>
             <select
               value={selectedProject ? String(selectedProject.id) : ''}
@@ -725,23 +970,31 @@ const UnifiTestPage = () => {
               ))}
             </select>
             
-            {selectedProject && !useManualUrl && (
+            {selectedProject && (
               <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-2">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  <span className="font-medium">UniFi URL:</span>{' '}
-                  <span className="text-gray-900 dark:text-white text-xs break-all">{selectedProject.unifi_url}</span>
-                </p>
-                {parsedConsoleId && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    <span className="font-medium">Parsed Console ID:</span>{' '}
-                    <span className="text-gray-900 dark:text-white font-mono text-xs break-all">{parsedConsoleId}</span>
+                {selectedProject.unifi_url ? (
+                  <>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">UniFi URL:</span>{' '}
+                      <span className="text-gray-900 dark:text-white text-xs break-all">{selectedProject.unifi_url}</span>
+                    </p>
+                    {parsedConsoleId && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">Parsed Console ID:</span>{' '}
+                        <span className="text-gray-900 dark:text-white font-mono text-xs break-all">{parsedConsoleId}</span>
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    ⚠️ This project has no UniFi URL. Please enter one in the field above and click "Test Connection".
                   </p>
                 )}
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Debug Info */}
       {sites.length > 0 && (
@@ -830,7 +1083,7 @@ const UnifiTestPage = () => {
             )}
             <div className="flex-1">
               <p className={`font-medium ${
-                connectionStatus.success 
+                connectionStatus.success
                   ? 'text-green-800 dark:text-green-300'
                   : 'text-red-800 dark:text-red-300'
               }`}>
@@ -843,6 +1096,11 @@ const UnifiTestPage = () => {
                     : 'text-red-700 dark:text-red-400'
                 }`}>
                   {connectionStatus.message}
+                </p>
+              )}
+              {connectionStatus.error && (
+                <p className="text-sm mt-1 text-red-700 dark:text-red-400 font-mono">
+                  Error: {connectionStatus.error}
                 </p>
               )}
             </div>
@@ -868,32 +1126,51 @@ const UnifiTestPage = () => {
           <div className="flex items-center gap-2 mb-4">
             <Globe className="w-5 h-5 text-violet-600" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Sites ({sites.length})
+              {sites.length === 1 ? 'Site Connected' : `Sites (${sites.length})`}
             </h2>
           </div>
 
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Select Site
-            </label>
-            <select
-              value={selectedSite}
-              onChange={handleSiteChange}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                       focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-            >
-              <option value="">Choose a site...</option>
-              {sites.map(site => (
-                <option key={site.hostSiteId} value={site.hostSiteId}>
-                  {`${site.siteLabel || site.siteName || site.hostName || 'Unnamed Site'}${site.location ? ` – ${site.location}` : ''}`}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Only show selector if multiple sites */}
+          {sites.length > 1 && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Select Site
+              </label>
+              <select
+                value={selectedSite}
+                onChange={handleSiteChange}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              >
+                <option value="">Choose a site...</option>
+                {sites.map(site => (
+                  <option key={site.hostSiteId} value={site.hostSiteId}>
+                    {`${site.siteLabel || site.siteName || site.hostName || 'Unnamed Site'}${site.location ? ` – ${site.location}` : ''}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {sites.map(site => (
+          {/* Simplified view for single site */}
+          {sites.length === 1 ? (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {sites[0].siteLabel || sites[0].siteName || sites[0].hostName || 'Site'}
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Connected and ready for client discovery
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {sites.map(site => (
               <div
                 key={site.hostSiteId}
                 className={`p-4 rounded-lg border transition-colors cursor-pointer ${
@@ -948,7 +1225,8 @@ const UnifiTestPage = () => {
                 </div>
               </div>
             ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1152,6 +1430,282 @@ const UnifiTestPage = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Important Notice */}
+      {selectedSite && (
+        <div style={sectionStyles.card} className="p-6">
+          <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-800 dark:text-blue-300">Network API Discovery</p>
+              <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                Testing both Site Manager API (cloud) and Network API (via /proxy/network/ path).
+                The Network API runs on your controller and may provide client data.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Client Endpoint Testing Section */}
+      {selectedSite && (
+        <div style={sectionStyles.card} className="p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-5 h-5 text-purple-600" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Client Endpoint Discovery
+            </h2>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Test different UniFi API endpoints to find which one returns client data
+            </p>
+
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                onClick={() => handleHardcodedClientTest()}
+                disabled={loading}
+                icon={Activity}
+              >
+                🔥 HARDCODED TEST (Bill-Thomas Site)
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => handleClientEndpointTest()}
+                disabled={loading}
+                icon={RefreshCw}
+              >
+                Test All Client Endpoints
+              </Button>
+
+              {clientTestResults && (
+                <Button
+                  variant="secondary"
+                  onClick={() => setClientTestResults(null)}
+                >
+                  Clear Results
+                </Button>
+              )}
+            </div>
+
+            {/* Hardcoded Test Results */}
+            {hardcodedTestResult && (
+              <div className="space-y-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                <h3 className="font-medium text-sm text-yellow-800 dark:text-yellow-300">
+                  🔥 Hardcoded Test Results (Bill-Thomas):
+                </h3>
+                <div className="space-y-2">
+                  {Object.entries(hardcodedTestResult).map(([key, result]) => {
+                    const displayLabel = result.label || (result.isDirect ? '🌐 DIRECT to WAN IP' : '☁️ Via api.ui.com');
+                    const fullUrl = result.fullUrl;
+
+                    return (
+                    <div key={key} className="bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 space-y-1">
+                          <div className="text-xs font-semibold text-blue-600 dark:text-blue-400">{displayLabel}</div>
+                          <div className="text-xs font-mono text-gray-900 dark:text-white break-all font-semibold">{fullUrl}</div>
+                        </div>
+                        <div className="ml-3">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            result.success && result.recordCount > 0
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                              : result.success
+                              ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                          }`}>
+                            {result.status}
+                          </span>
+                        </div>
+                      </div>
+                      {result.recordCount > 0 && (
+                        <div className="text-sm font-medium text-green-600 dark:text-green-400">
+                          ✅ Found {result.recordCount} clients!
+                        </div>
+                      )}
+                      {result.success && result.recordCount === 0 && (
+                        <div className="text-xs text-gray-500">Empty response</div>
+                      )}
+                      {result.error && (
+                        <div className="text-xs text-red-600 dark:text-red-400">{result.error}</div>
+                      )}
+                      {result.data && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer">View Raw Data</summary>
+                          <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 rounded mt-1 overflow-auto max-h-40">
+                            {JSON.stringify(result.data, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Test Results */}
+            {clientTestResults && (
+              <div className="space-y-2">
+                <h3 className="font-medium text-sm text-gray-700 dark:text-gray-300 mt-4">
+                  Test Results:
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="text-left py-2 px-3 font-medium text-gray-700 dark:text-gray-300">Endpoint</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700 dark:text-gray-300">Status</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700 dark:text-gray-300">Records</th>
+                        <th className="text-left py-2 px-3 font-medium text-gray-700 dark:text-gray-300">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(clientTestResults).map(([name, result]) => (
+                        <tr key={name} className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-2 px-3">
+                            <div>
+                              <div className="font-medium text-gray-900 dark:text-white">{name}</div>
+                              <div className="text-xs text-gray-500 font-mono">{result.path}</div>
+                            </div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                              result.success
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                                : result.status === 404
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                            }`}>
+                              {result.status === 'Network Error' ? 'Error' : result.status}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-gray-600 dark:text-gray-400">
+                            {result.recordCount !== undefined ? result.recordCount : '-'}
+                          </td>
+                          <td className="py-2 px-3">
+                            {result.success && result.recordCount > 0 && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setSelectedClientEndpoint(result.path);
+                                  setClientEndpointData(result.data);
+                                  setShowClientData(true);
+                                }}
+                              >
+                                View Data
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Summary */}
+                {Object.values(clientTestResults).some(r => r.success && r.recordCount > 0) && (
+                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                    <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                      ✓ Found working endpoint(s) with client data!
+                    </p>
+                    <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                      Use the "View Data" button to inspect the response structure
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Client Data Viewer Modal */}
+            {showClientData && clientEndpointData && (
+              <div className="mt-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-gray-900 dark:text-white">
+                    Client Data from: {selectedClientEndpoint}
+                  </h3>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowClientData(false);
+                      setClientEndpointData(null);
+                    }}
+                  >
+                    Close
+                  </Button>
+                </div>
+
+                {/* Parse and display clients */}
+                <div className="space-y-2">
+                  {(() => {
+                    const parsedClients = unifiApi.parseClientData(clientEndpointData);
+                    return parsedClients.slice(0, 5).map((client, idx) => (
+                      <div key={idx} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">Hostname:</span>{' '}
+                            <span className="text-gray-900 dark:text-white">{client.hostname || 'Unknown'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">MAC:</span>{' '}
+                            <span className="font-mono text-xs">{client.mac || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">IP:</span>{' '}
+                            <span className="font-mono text-xs">{client.ip || 'N/A'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">Switch/Port:</span>{' '}
+                            <span className="text-gray-900 dark:text-white">
+                              {client.switch_name || client.switch_mac || 'N/A'} / {client.switch_port || 'N/A'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">VLAN:</span>{' '}
+                            <span className="text-gray-900 dark:text-white">{client.vlan || 'Default'}</span>
+                          </div>
+                          <div>
+                            <span className="font-medium text-gray-700 dark:text-gray-300">Type:</span>{' '}
+                            <span className={`px-1.5 py-0.5 text-xs rounded ${
+                              client.is_wired
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            }`}>
+                              {client.is_wired ? '🔌 Wired' : '📶 Wireless'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Show raw JSON for first client */}
+                        {idx === 0 && (
+                          <details className="mt-3">
+                            <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
+                              View Raw JSON
+                            </summary>
+                            <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-auto max-h-60">
+                              {JSON.stringify(client._raw, null, 2)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    ));
+                  })()}
+
+                  {unifiApi.parseClientData(clientEndpointData).length > 5 && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                      ... and {unifiApi.parseClientData(clientEndpointData).length - 5} more clients
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

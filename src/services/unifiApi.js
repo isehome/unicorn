@@ -236,19 +236,33 @@ const buildDeviceKey = (device) => {
   return parts.join('::');
 };
 
-const callUnifiProxy = async (payload = {}) => {
+const callUnifiProxy = async (payload = {}, apiKey = null) => {
+  // ALWAYS use the proxy endpoint - never call UniFi API directly from browser
+  // This avoids CORS issues
   const proxyUrl = resolveProxyUrl();
+
+  console.log('[UniFi API] Calling proxy:', proxyUrl);
+  console.log('[UniFi API] Endpoint:', payload.endpoint);
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  // NOTE: API key should be set in environment variable on deployed proxy
+  // Don't pass it via header to avoid CORS issues with deployed version
+  // if (apiKey) {
+  //   headers['x-unifi-api-key'] = apiKey;
+  // }
+
   const response = await fetch(proxyUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
   const rawText = await response.text();
   let data;
-  
+
   try {
     data = rawText ? JSON.parse(rawText) : {};
   } catch (parseError) {
@@ -261,8 +275,23 @@ const callUnifiProxy = async (payload = {}) => {
     error.status = response.status;
     error.details = data;
 
-    if (response.status === 404 && proxyUrl === PROXY_ENDPOINT) {
-      error.suggestedFix = 'The UniFi proxy function is not running locally. Start the Vercel dev server (`vercel dev`) or set REACT_APP_UNIFI_PROXY_URL to a deployed API endpoint.';
+    // Check if error is "Cannot POST /" - this means using npm start instead of npm run dev
+    if (rawText?.includes('Cannot POST')) {
+      error.message = 'UniFi proxy endpoint not available. You must use "npm run dev" to enable the API proxy.';
+      error.suggestedFix = `
+SOLUTION:
+1. Stop your current server (Ctrl+C)
+2. Run: npm run dev
+3. Your app will be available at http://localhost:3000
+
+Why? The proxy endpoint (/api/unifi-proxy) is a Vercel serverless function that only runs with Vercel dev.
+      `;
+      console.error('⚠️  ERROR: Run "npm run dev" instead to start the UniFi API proxy!');
+    } else if (response.status === 404 && proxyUrl === PROXY_ENDPOINT) {
+      error.message = 'UniFi proxy endpoint not found.';
+      error.suggestedFix = `
+Run the development server: npm run dev
+      `;
     }
 
     throw error;
@@ -278,12 +307,12 @@ const callUnifiProxy = async (payload = {}) => {
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Array>} List of UniFi hosts
  */
-export const fetchSites = async (controllerUrl) => {
+export const fetchSites = async (controllerUrl, apiKey = null) => {
   try {
-    return await callUnifiProxy({ 
+    return await callUnifiProxy({
       endpoint: '/v1/hosts',
       controllerUrl
-    });
+    }, apiKey);
   } catch (error) {
     console.error('Error fetching UniFi hosts:', error);
     throw error;
@@ -298,7 +327,7 @@ export const fetchSites = async (controllerUrl) => {
  * @param {string} controllerUrl - UniFi controller base URL (not used, kept for compatibility)
  * @returns {Promise<Object>} Response with devices data
  */
-export const fetchDevices = async (hostIds, controllerUrl = null, options = {}) => {
+export const fetchDevices = async (hostIds, controllerUrl = null, options = {}, apiKey = null) => {
   try {
     const ids = hostIds
       ? (Array.isArray(hostIds) ? hostIds.filter(Boolean) : [hostIds])
@@ -342,7 +371,7 @@ export const fetchDevices = async (hostIds, controllerUrl = null, options = {}) 
       const response = await callUnifiProxy({
         endpoint,
         controllerUrl // Maintained for API signature parity
-      });
+      }, apiKey);
 
       lastResponse = response;
 
@@ -438,6 +467,236 @@ export const fetchClients = async (hostId, controllerUrl) => {
 };
 
 /**
+ * Test various client endpoint patterns to discover the correct one
+ * @param {string} siteId - UniFi site ID or hostSiteId
+ * @param {string} controllerUrl - UniFi controller URL
+ * @returns {Promise<Object>} Test results for each endpoint
+ */
+export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) => {
+  const results = {};
+
+  // Extract console ID from the URL
+  const extractConsoleIdFromUrl = (url) => {
+    if (!url) return null;
+    // Try to extract from various URL formats - including the new format
+    const patterns = [
+      /consoles\/([A-F0-9:]+)/i,  // New format: consoles/6C63F82BC2D10000000008E7C92D00000000096176EB0000000067E300F0:1380092638
+      /console\.ui\.com\/([a-f0-9-]+)/i,
+      /api\.ui\.com\/ea\/console\/([a-f0-9-]+)/i,
+      /console-id[=:]([a-f0-9-]+)/i,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const consoleId = extractConsoleIdFromUrl(controllerUrl);
+
+  // Extract actual site ID parts
+  const siteParts = siteId ? siteId.split(':') : [];
+  const actualSiteId = siteParts[1] || siteParts[0] || 'default';
+
+  // Potential client endpoints to test - including Network API proxy endpoints
+  const endpoints = [
+    // Network API via api.ui.com proxy - MOST LIKELY TO WORK
+    { path: `/proxy/network/integration/v1/clients`, name: 'Network API - All Clients (NO site filter)' },
+    { path: `/proxy/network/integration/v1/sites/default/clients`, name: 'Network API - Default Site Clients' },
+
+    // Try with URL-encoded hostSiteId (colon becomes %3A)
+    { path: `/proxy/network/integration/v1/sites/${encodeURIComponent(siteId)}/clients`, name: `Network API - Encoded Full ID` },
+    { path: `/proxy/network/integration/v1/sites/${actualSiteId}/clients`, name: `Network API - Site part only (${actualSiteId})` },
+    { path: `/proxy/network/integration/v1/sites/${consoleId}/clients`, name: `Network API - Console ID` },
+
+    // Site Manager API (cloud) - less likely to have clients
+    { path: '/v1/clients', name: 'Site Manager - All Clients' },
+    { path: `/v1/hosts/${consoleId}/clients`, name: 'Site Manager - Host Clients' },
+
+    // Legacy controller endpoints
+    { path: `/api/s/default/stat/sta`, name: 'Legacy - Default Site Active Clients' },
+    { path: `/api/s/${actualSiteId}/stat/sta`, name: `Legacy - Site ${actualSiteId} Active Clients` }
+  ];
+
+  // Always use the proxy to avoid CORS issues
+  const proxyUrl = resolveProxyUrl();
+
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`Testing endpoint: ${endpoint.name} - ${endpoint.path}`);
+
+      // Use the proxy endpoint with POST method
+      const headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      };
+
+      // Don't pass API key in header - use env var on deployed proxy
+      // if (apiKey) {
+      //   headers['x-unifi-api-key'] = apiKey;
+      // }
+
+      const response = await fetch(proxyUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          endpoint: endpoint.path,
+          method: 'GET',
+          controllerUrl
+        })
+      });
+
+      results[endpoint.name] = {
+        path: endpoint.path,
+        status: response.status,
+        statusText: response.statusText,
+        success: response.ok
+      };
+
+      if (response.ok) {
+        const data = await response.json();
+        results[endpoint.name].data = data;
+        results[endpoint.name].recordCount = Array.isArray(data) ? data.length :
+                                             Array.isArray(data?.data) ? data.data.length :
+                                             Array.isArray(data?.clients) ? data.clients.length : 0;
+      } else {
+        const errorText = await response.text();
+        results[endpoint.name].error = errorText;
+      }
+    } catch (error) {
+      results[endpoint.name] = {
+        path: endpoint.path,
+        error: error.message,
+        status: 'Network Error'
+      };
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Parse client data from various potential response formats
+ * @param {Object} rawData - Raw API response
+ * @returns {Array} Parsed client array
+ */
+export const parseClientData = (rawData) => {
+  if (!rawData) return [];
+
+  // Handle different response structures
+  let clients = [];
+  if (Array.isArray(rawData)) {
+    clients = rawData;
+  } else if (Array.isArray(rawData?.data)) {
+    clients = rawData.data;
+  } else if (Array.isArray(rawData?.clients)) {
+    clients = rawData.clients;
+  } else if (Array.isArray(rawData?.items)) {
+    clients = rawData.items;
+  }
+
+  // Map to consistent format
+  return clients.map(client => ({
+    // Basic identification
+    mac: client.mac || client.mac_address || client.client_mac,
+    ip: client.ip || client.fixed_ip || client.last_ip || client.network?.ip,
+    hostname: client.hostname || client.name || client.display_name || client.device_name,
+
+    // Network connection info
+    switch_mac: client.sw_mac || client.switch_mac || client.uplink_mac,
+    switch_port: client.sw_port || client.switch_port || client.port_idx,
+    switch_name: client.sw_name || client.switch_name,
+    vlan: client.vlan || client.network?.vlan_id,
+    network: client.network?.name || client.network || client.essid,
+
+    // Connection type
+    is_wired: client.is_wired !== undefined ? client.is_wired :
+              client.connection_type === 'wired' ||
+              client.type === 'wired' ||
+              !client.essid,
+
+    // Status info
+    is_online: client.is_online || client.status === 'online' || client.last_seen_by_uap > Date.now()/1000 - 300,
+    last_seen: client.last_seen || client.last_seen_by_uap || client.disconnect_timestamp,
+    uptime: client.uptime || client.association_time,
+
+    // Traffic stats
+    rx_bytes: client.rx_bytes || client.bytes_r,
+    tx_bytes: client.tx_bytes || client.bytes,
+
+    // Additional info
+    oui: client.oui || client.vendor,
+    device_type: client.dev_cat || client.device_category,
+    os: client.os_name || client.os,
+
+    // Raw data for debugging
+    _raw: client
+  }));
+};
+
+/**
+ * Fetch clients using the discovered endpoint
+ * @param {string} siteId - UniFi site ID
+ * @param {string} controllerUrl - UniFi controller URL
+ * @param {string} endpoint - Specific endpoint to use (optional)
+ * @returns {Promise<Array>} Array of client objects
+ */
+export const fetchClientsWithEndpoint = async (siteId, controllerUrl, endpoint = '/v1/clients', apiKey = null) => {
+  try {
+    // Extract console ID from the URL
+    const extractConsoleIdFromUrl = (url) => {
+      if (!url) return null;
+      const patterns = [
+        /consoles\/([A-F0-9:]+)/i,  // New format: consoles/6C63F82BC2D10000000008E7C92D00000000096176EB0000000067E300F0:1380092638
+        /console\.ui\.com\/([a-f0-9-]+)/i,
+        /api\.ui\.com\/ea\/console\/([a-f0-9-]+)/i,
+        /console-id[=:]([a-f0-9-]+)/i,
+      ];
+      for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match) return match[1];
+      }
+      return null;
+    };
+
+    const consoleId = extractConsoleIdFromUrl(controllerUrl);
+    const proxyUrl = resolveProxyUrl();
+
+    console.log(`Fetching clients from: ${endpoint}`);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    // Don't pass API key in header - use env var on deployed proxy
+    // if (apiKey) {
+    //   headers['x-unifi-api-key'] = apiKey;
+    // }
+
+    const response = await fetch(proxyUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        endpoint,
+        method: 'GET',
+        controllerUrl
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch clients: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return parseClientData(data);
+  } catch (error) {
+    console.error('Error fetching UniFi clients:', error);
+    throw error;
+  }
+};
+
+/**
  * Fetch port configurations for a specific switch
  * @param {string} siteId - UniFi site ID
  * @param {string} deviceMac - Switch MAC address
@@ -472,18 +731,18 @@ export const fetchSwitchPorts = async (siteId, deviceMac, controllerUrl) => {
  * @param {string} controllerUrl - UniFi controller base URL
  * @returns {Promise<Object>} Connection status result
  */
-export const testConnection = async (controllerUrl) => {
+export const testConnection = async (controllerUrl, apiKey = null) => {
   try {
-    await fetchSites(controllerUrl);
-    return { 
-      success: true, 
-      message: 'Successfully connected to UniFi API' 
+    await fetchSites(controllerUrl, apiKey);
+    return {
+      success: true,
+      message: 'Successfully connected to UniFi API'
     };
   } catch (error) {
     console.error('UniFi connection test failed:', error);
-    return { 
-      success: false, 
-      error: error.message 
+    return {
+      success: false,
+      error: error.message
     };
   }
 };

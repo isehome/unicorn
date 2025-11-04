@@ -9,7 +9,7 @@ module.exports = async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-KEY');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-KEY, x-unifi-api-key');
 
   // Handle preflight
   if (req.method === 'OPTIONS') {
@@ -20,7 +20,8 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.UNIFI_API_KEY;
+  // Allow API key from header (for local testing) or environment variable (for production)
+  const apiKey = req.headers['x-unifi-api-key'] || process.env.UNIFI_API_KEY;
   
   console.log('Environment variables:', {
     hasUnifiApiKey: !!apiKey,
@@ -43,23 +44,32 @@ module.exports = async function handler(req, res) {
     controllerUrl,
     method = 'GET',
     body: upstreamBody,
-    headers: upstreamHeaders
+    headers: upstreamHeaders,
+    directUrl = false
   } = req.method === 'POST' ? req.body : req.query;
 
   if (!endpoint) {
     return res.status(400).json({ error: 'Endpoint is required' });
   }
 
-  // ALWAYS use the static API URL - we don't use controllerUrl as a base
-  // The controllerUrl parameter is only used by the frontend to parse console IDs
-  const baseUrl = UNIFI_API_BASE_URL;
-
-  if (!baseUrl) {
-    return res.status(400).json({ error: 'API base URL not configured' });
-  }
-
   try {
-    let url = `${baseUrl}${endpoint}`;
+    let url;
+
+    if (directUrl) {
+      // If directUrl is true, endpoint is already a full URL (e.g., https://47.199.106.32/...)
+      url = endpoint;
+      console.log('Using direct URL:', url);
+    } else {
+      // ALWAYS use the static API URL - we don't use controllerUrl as a base
+      // The controllerUrl parameter is only used by the frontend to parse console IDs
+      const baseUrl = UNIFI_API_BASE_URL;
+
+      if (!baseUrl) {
+        return res.status(400).json({ error: 'API base URL not configured' });
+      }
+
+      url = `${baseUrl}${endpoint}`;
+    }
     
     console.log('Calling UniFi API:', url, 'method:', method);
 
