@@ -685,22 +685,21 @@ const UnifiTestPage = () => {
     // - Site Manager API: https://api.ui.com/v1/* (for hosts, sites, devices)
     // - Network API: runs on controller, path /v1/sites/{siteId}/clients
     // - Network API via proxy: /proxy/network/integration/v1/sites/{siteId}/clients
+    // - Console-specific proxy: /v1/consoles/{consoleId}/proxy/network/...
     const testEndpoints = [
       // ===== Site Manager API path (v1) via api.ui.com =====
       { direct: false, path: '/v1/clients', label: 'Site Manager API - /v1/clients (no site)' },
       { direct: false, path: `/v1/sites/${siteIdPart}/clients`, label: `Site Manager API - /v1/sites/${siteIdPart}/clients` },
-      { direct: false, path: '/v1/sites/default/clients', label: 'Site Manager API - /v1/sites/default/clients' },
 
-      // ===== Network API proxy path via api.ui.com =====
+      // ===== Network API proxy path via api.ui.com - Standard format =====
       { direct: false, path: '/proxy/network/integration/v1/clients', label: 'Network API Proxy - No site filter' },
       { direct: false, path: `/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: `Network API Proxy - Site suffix: ${siteIdPart}` },
-      { direct: false, path: `/proxy/network/integration/v1/sites/${consoleIdPart}/clients`, label: `Network API Proxy - Console ID: ${consoleIdPart.substring(0, 20)}...` },
       { direct: false, path: '/proxy/network/integration/v1/sites/default/clients', label: 'Network API Proxy - Default site' },
 
-      // ===== DIRECT to controller WAN IP (Network API native path) =====
-      { direct: true, path: '/v1/clients', label: `WAN ${wanIp} - /v1/clients (no site)` },
-      { direct: true, path: `/v1/sites/${siteIdPart}/clients`, label: `WAN ${wanIp} - /v1/sites/${siteIdPart}/clients` },
-      { direct: true, path: '/v1/sites/default/clients', label: `WAN ${wanIp} - /v1/sites/default/clients` },
+      // ===== Network API via console-specific proxy path =====
+      { direct: false, path: `/v1/consoles/${selectedSite}/proxy/network/integration/v1/clients`, label: `Console Proxy - Full hostSiteId path` },
+      { direct: false, path: `/v1/consoles/${consoleIdPart}/proxy/network/integration/v1/clients`, label: `Console Proxy - Console ID only` },
+      { direct: false, path: `/v1/consoles/${selectedSite}/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: `Console Proxy - With site ID` },
     ];
 
     const results = {};

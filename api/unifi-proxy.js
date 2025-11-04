@@ -73,7 +73,8 @@ module.exports = async function handler(req, res) {
       url = `${baseUrl}${endpoint}`;
 
       // Check if this is a Network API proxy endpoint
-      if (endpoint.includes('/proxy/network/')) {
+      // Patterns: /proxy/network/... or /v1/consoles/.../proxy/network/...
+      if (endpoint.includes('/proxy/network/') || endpoint.includes('/consoles/')) {
         useNetworkApiKey = true;
         console.log('Detected Network API proxy endpoint, will use Network API key');
       }
