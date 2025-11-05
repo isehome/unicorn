@@ -1360,10 +1360,8 @@ const UnifiTestPage = () => {
               {showSitesSection ? '▼ Click to collapse' : '▶ Click to expand'}
             </span>
           </div>
-          {showSitesSection && (<>
-          {/* Show site selector always, even when collapsed header */}
-          </>)}
-
+          {showSitesSection && (
+          <>
           {/* Only show selector if multiple sites */}
           {sites.length > 1 && (
             <div className="mb-4">
@@ -1460,6 +1458,8 @@ const UnifiTestPage = () => {
               </div>
             ))}
             </div>
+          )}
+          </>
           )}
         </div>
       )}
