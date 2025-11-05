@@ -1675,8 +1675,6 @@ const UnifiTestPage = () => {
               </div>
             ))}
           </div>
-          </>
-          )}
         </div>
       )}
 
