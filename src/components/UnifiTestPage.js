@@ -41,6 +41,12 @@ const UnifiTestPage = () => {
   const [showClientData, setShowClientData] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [hardcodedTestResult, setHardcodedTestResult] = useState(null);
+  const [localControllerIp, setLocalControllerIp] = useState('');
+  const [localNetworkApiKey, setLocalNetworkApiKey] = useState('');
+  const [localApiTestResult, setLocalApiTestResult] = useState(null);
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  const [showSitesSection, setShowSitesSection] = useState(true);
+  const [showDevicesSection, setShowDevicesSection] = useState(true);
 
   const cleanString = (value) => (typeof value === 'string' ? value.trim() : value);
 
@@ -787,6 +793,92 @@ const UnifiTestPage = () => {
     }
   };
 
+  const handleLocalNetworkApiTest = async () => {
+    if (!localControllerIp) {
+      setError('Please enter the local controller IP address');
+      return;
+    }
+    if (!localNetworkApiKey) {
+      setError('Please enter the Network API key');
+      return;
+    }
+
+    const proxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
+
+    // Get site ID from selected site
+    const siteParts = selectedSite ? selectedSite.split(':') : [];
+    const siteIdPart = siteParts[1] || 'default';
+
+    console.log('🌐 Testing LOCAL Network API:', {
+      controllerIp: localControllerIp,
+      siteId: siteIdPart,
+      hasApiKey: !!localNetworkApiKey
+    });
+
+    const testEndpoints = [
+      { path: `/proxy/network/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API)' },
+      { path: `/proxy/network/api/s/default/stat/sta`, label: 'Active Clients (Default Site)' },
+      { path: `/proxy/network/integration/v1/clients`, label: 'All Clients (v1 API - no site)' },
+      { path: `/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: `Site Clients (v1 API - ${siteIdPart})` },
+    ];
+
+    const results = {};
+
+    try {
+      setLoading(true);
+      setLocalApiTestResult(null);
+      setError(null);
+
+      for (const endpointConfig of testEndpoints) {
+        const fullUrl = `https://${localControllerIp}${endpointConfig.path}`;
+
+        console.log('Testing:', endpointConfig.label, fullUrl);
+
+        try {
+          const response = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              endpoint: fullUrl,
+              method: 'GET',
+              directUrl: true,
+              networkApiKey: localNetworkApiKey
+            })
+          });
+
+          const data = await response.json();
+
+          results[endpointConfig.label] = {
+            status: response.status,
+            success: response.ok,
+            data: data,
+            clientCount: Array.isArray(data?.data) ? data.data.length : 0,
+            path: endpointConfig.path,
+            fullUrl
+          };
+
+          console.log(`✅ ${endpointConfig.label}:`, response.status, `(${results[endpointConfig.label].clientCount} clients)`);
+        } catch (err) {
+          results[endpointConfig.label] = {
+            status: 'error',
+            success: false,
+            error: err.message,
+            path: endpointConfig.path,
+            fullUrl
+          };
+          console.log(`❌ ${endpointConfig.label}:`, err.message);
+        }
+      }
+
+      setLocalApiTestResult(results);
+    } catch (err) {
+      console.error('Local API test error:', err);
+      setError(`Local API test failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleClientEndpointTest = async () => {
     if (!selectedSite) {
       setError('Please select a site first');
@@ -855,7 +947,133 @@ const UnifiTestPage = () => {
         </div>
       )}
 
-      {/* API Configuration */}
+      {/* LOCAL NETWORK API TESTING - Priority Section */}
+      <div style={sectionStyles.card} className="p-6 border-2 border-green-500">
+        <div className="flex items-center gap-2 mb-4">
+          <Wifi className="w-5 h-5 text-green-600" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Local Network API - Client Data
+          </h2>
+          <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded">
+            RECOMMENDED
+          </span>
+        </div>
+
+        <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <p className="text-sm text-green-800 dark:text-green-300">
+            <strong>Note:</strong> You must be on the same local network as your UniFi controller.
+            This accesses the Network API directly to retrieve client data (MAC addresses, hostnames, switch ports, etc.)
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Local Controller IP Address
+            </label>
+            <input
+              type="text"
+              value={localControllerIp}
+              onChange={(e) => setLocalControllerIp(e.target.value)}
+              placeholder="192.168.1.1 or 10.0.0.1"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       focus:ring-2 focus:ring-green-500 focus:border-transparent
+                       placeholder-gray-400 dark:placeholder-gray-500"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Enter the LAN IP address of your UniFi controller/console (e.g., 192.168.1.1)
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Network API Key
+            </label>
+            <input
+              type="password"
+              value={localNetworkApiKey}
+              onChange={(e) => setLocalNetworkApiKey(e.target.value)}
+              placeholder="Enter Network API key"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       focus:ring-2 focus:ring-green-500 focus:border-transparent
+                       placeholder-gray-400 dark:placeholder-gray-500"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Generated from: Network Application → Settings → Control Plane → Integrations
+            </p>
+          </div>
+
+          <Button
+            variant="primary"
+            onClick={handleLocalNetworkApiTest}
+            disabled={loading || !localControllerIp || !localNetworkApiKey}
+            icon={Activity}
+          >
+            Test Local Network API
+          </Button>
+        </div>
+
+        {/* Local API Test Results */}
+        {localApiTestResult && (
+          <div className="mt-6 space-y-3">
+            <h3 className="font-medium text-sm text-gray-900 dark:text-white">
+              Local Network API Results:
+            </h3>
+            {Object.entries(localApiTestResult).map(([label, result]) => (
+              <div key={label} className={`p-4 rounded-lg border ${
+                result.success && result.clientCount > 0
+                  ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  : result.success
+                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                  : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+              }`}>
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-gray-900 dark:text-white">{label}</p>
+                    <p className="text-xs font-mono text-gray-600 dark:text-gray-400 mt-1">{result.path}</p>
+                  </div>
+                  <span className={`px-2 py-1 text-xs rounded font-medium ${
+                    result.success && result.clientCount > 0
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
+                      : result.success
+                      ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
+                  }`}>
+                    {result.status}
+                  </span>
+                </div>
+
+                {result.success && result.clientCount > 0 && (
+                  <div className="text-sm font-medium text-green-600 dark:text-green-400">
+                    ✅ Found {result.clientCount} clients!
+                  </div>
+                )}
+
+                {result.error && (
+                  <div className="text-xs text-red-600 dark:text-red-400 mt-2">
+                    Error: {result.error}
+                  </div>
+                )}
+
+                {result.data && (
+                  <details className="mt-3">
+                    <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer font-medium">
+                      View Client Data
+                    </summary>
+                    <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-3 rounded mt-2 overflow-auto max-h-60">
+                      {JSON.stringify(result.data, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Cloud API Configuration */}
       <div style={sectionStyles.card} className="p-6">
         <div className="flex items-center gap-2 mb-4">
           <Globe className="w-5 h-5 text-violet-600" />
@@ -995,15 +1213,22 @@ const UnifiTestPage = () => {
         )}
       </div>
 
-      {/* Debug Info */}
+      {/* Debug Info - Collapsible */}
       {sites.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            onClick={() => setShowDebugInfo(!showDebugInfo)}
+          >
             <AlertCircle className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               Debug Info
             </h2>
+            <span className="text-xs text-gray-500 ml-auto">
+              {showDebugInfo ? '▼ Click to collapse' : '▶ Click to expand'}
+            </span>
           </div>
+          {showDebugInfo && (
           <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg font-mono text-xs overflow-auto">
             <p className="mb-2 text-gray-900 dark:text-white font-semibold">API Response Summary:</p>
             <p className="text-gray-700 dark:text-gray-300">Total site entries: {sites.length}</p>
@@ -1036,6 +1261,7 @@ const UnifiTestPage = () => {
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
@@ -1119,15 +1345,24 @@ const UnifiTestPage = () => {
         )}
       </div>
 
-      {/* Sites */}
+      {/* Sites - Collapsible */}
       {sites.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            onClick={() => setShowSitesSection(!showSitesSection)}
+          >
             <Globe className="w-5 h-5 text-violet-600" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               {sites.length === 1 ? 'Site Connected' : `Sites (${sites.length})`}
             </h2>
+            <span className="text-xs text-gray-500 ml-auto">
+              {showSitesSection ? '▼ Click to collapse' : '▶ Click to expand'}
+            </span>
           </div>
+          {showSitesSection && (<>
+          {/* Show site selector always, even when collapsed header */}
+          </>)}
 
           {/* Only show selector if multiple sites */}
           {sites.length > 1 && (
@@ -1229,15 +1464,23 @@ const UnifiTestPage = () => {
         </div>
       )}
 
-      {/* Devices */}
+      {/* Devices - Collapsible */}
       {selectedSite && devices.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
-          <div className="flex items-center gap-2 mb-4">
+          <div
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            onClick={() => setShowDevicesSection(!showDevicesSection)}
+          >
             <Server className="w-5 h-5 text-blue-600" />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
               Devices ({devices.length})
             </h2>
+            <span className="text-xs text-gray-500 ml-auto">
+              {showDevicesSection ? '▼ Click to collapse' : '▶ Click to expand'}
+            </span>
           </div>
+          {showDevicesSection && (
+          <>
 
           {deviceSource && (
             <div
@@ -1430,6 +1673,8 @@ const UnifiTestPage = () => {
               </div>
             ))}
           </div>
+          </>
+          )}
         </div>
       )}
 

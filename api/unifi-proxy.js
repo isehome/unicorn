@@ -45,7 +45,8 @@ module.exports = async function handler(req, res) {
     method = 'GET',
     body: upstreamBody,
     headers: upstreamHeaders,
-    directUrl = false
+    directUrl = false,
+    networkApiKey: customNetworkApiKey
   } = req.method === 'POST' ? req.body : req.query;
 
   if (!endpoint) {
@@ -82,11 +83,12 @@ module.exports = async function handler(req, res) {
 
     console.log('Calling UniFi API:', url, 'method:', method);
 
-    // HARDCODED Network API key for testing direct controller access
-    const networkApiKey = 'j_ChcU0fSMHlxPoj8djPhkBYgFVy0LAq';
+    // Use custom Network API key if provided, otherwise use hardcoded fallback
+    const hardcodedNetworkApiKey = 'j_ChcU0fSMHlxPoj8djPhkBYgFVy0LAq';
+    const networkApiKey = customNetworkApiKey || hardcodedNetworkApiKey;
     const keyToUse = useNetworkApiKey ? networkApiKey : apiKey;
 
-    console.log('Using API key type:', useNetworkApiKey ? 'Network API key (hardcoded)' : 'Cloud API key (env)');
+    console.log('Using API key type:', useNetworkApiKey ? `Network API key (${customNetworkApiKey ? 'custom' : 'hardcoded'})` : 'Cloud API key (env)');
 
     const fetchOptions = {
       method: method?.toUpperCase() || 'GET',
