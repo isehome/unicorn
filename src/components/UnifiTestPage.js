@@ -803,13 +803,11 @@ const UnifiTestPage = () => {
       return;
     }
 
-    const proxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
-
     // Get site ID from selected site
     const siteParts = selectedSite ? selectedSite.split(':') : [];
     const siteIdPart = siteParts[1] || 'default';
 
-    console.log('🌐 Testing LOCAL Network API:', {
+    console.log('🌐 Testing LOCAL Network API (Direct from Browser):', {
       controllerIp: localControllerIp,
       siteId: siteIdPart,
       hasApiKey: !!localNetworkApiKey
@@ -830,20 +828,23 @@ const UnifiTestPage = () => {
       setError(null);
 
       for (const endpointConfig of testEndpoints) {
-        const fullUrl = `https://${localControllerIp}${endpointConfig.path}`;
+        // Make direct request from browser to local controller
+        // Use https:// by default, but user can specify http:// in the IP field if needed
+        const protocol = localControllerIp.startsWith('http') ? '' : 'https://';
+        const fullUrl = `${protocol}${localControllerIp}${endpointConfig.path}`;
 
-        console.log('Testing:', endpointConfig.label, fullUrl);
+        console.log('Testing (direct):', endpointConfig.label, fullUrl);
 
         try {
-          const response = await fetch(proxyUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              endpoint: fullUrl,
-              method: 'GET',
-              directUrl: true,
-              networkApiKey: localNetworkApiKey
-            })
+          const response = await fetch(fullUrl, {
+            method: 'GET',
+            headers: {
+              'X-API-KEY': localNetworkApiKey,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            mode: 'cors', // Allow CORS
+            credentials: 'omit' // Don't send cookies
           });
 
           const data = await response.json();
@@ -864,7 +865,12 @@ const UnifiTestPage = () => {
             success: false,
             error: err.message,
             path: endpointConfig.path,
-            fullUrl
+            fullUrl,
+            hint: err.message.includes('CORS')
+              ? 'CORS error - check that the controller allows API requests from this origin'
+              : err.message.includes('Failed to fetch')
+              ? 'Connection failed - verify IP address and that you are on the local network'
+              : null
           };
           console.log(`❌ ${endpointConfig.label}:`, err.message);
         }
@@ -975,14 +981,14 @@ const UnifiTestPage = () => {
               type="text"
               value={localControllerIp}
               onChange={(e) => setLocalControllerIp(e.target.value)}
-              placeholder="192.168.1.1 or 10.0.0.1"
+              placeholder="192.168.1.1:8443 or https://10.0.0.1:8443"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter the LAN IP address of your UniFi controller/console (e.g., 192.168.1.1)
+              Enter the LAN IP address with port (e.g., 192.168.1.1:8443). Use https:// or http:// prefix if needed.
             </p>
           </div>
 
@@ -1052,8 +1058,15 @@ const UnifiTestPage = () => {
                 )}
 
                 {result.error && (
-                  <div className="text-xs text-red-600 dark:text-red-400 mt-2">
-                    Error: {result.error}
+                  <div className="mt-2">
+                    <div className="text-xs text-red-600 dark:text-red-400">
+                      Error: {result.error}
+                    </div>
+                    {result.hint && (
+                      <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        💡 {result.hint}
+                      </div>
+                    )}
                   </div>
                 )}
 
