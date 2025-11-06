@@ -828,33 +828,37 @@ const UnifiTestPage = () => {
       setError(null);
 
       for (const endpointConfig of testEndpoints) {
-        // Use local proxy to avoid CORS issues
-        const localProxyUrl = 'http://localhost:3001/proxy';
-        const proxyPath = endpointConfig.path;
-        const fullProxyUrl = `${localProxyUrl}${proxyPath}`;
+        // Use Vercel proxy for mobile/remote access
+        const vercelProxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
+        const protocol = localControllerIp.startsWith('http') ? '' : 'https://';
+        const fullUrl = `${protocol}${localControllerIp}${endpointConfig.path}`;
 
-        console.log('Testing (via local proxy):', endpointConfig.label, proxyPath);
+        console.log('Testing (via Vercel proxy):', endpointConfig.label, fullUrl);
 
         try {
-          const response = await fetch(fullProxyUrl, {
-            method: 'GET',
+          const response = await fetch(vercelProxyUrl, {
+            method: 'POST',
             headers: {
-              'X-Controller-IP': localControllerIp,
-              'X-API-KEY': localNetworkApiKey,
-              'Accept': 'application/json',
               'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({
+              endpoint: fullUrl,
+              method: 'GET',
+              directUrl: true,
+              networkApiKey: localNetworkApiKey
+            })
           });
 
           const data = await response.json();
 
           results[endpointConfig.label] = {
             status: response.status,
-            success: response.ok,
+            success: response.ok && !data.error,
             data: data,
             clientCount: Array.isArray(data?.data) ? data.data.length : 0,
             path: endpointConfig.path,
-            fullUrl: fullProxyUrl
+            fullUrl,
+            error: data.error || data.message
           };
 
           console.log(`✅ ${endpointConfig.label}:`, response.status, `(${results[endpointConfig.label].clientCount} clients)`);
@@ -864,12 +868,8 @@ const UnifiTestPage = () => {
             success: false,
             error: err.message,
             path: endpointConfig.path,
-            fullUrl: fullProxyUrl,
-            hint: err.message.includes('Failed to fetch')
-              ? 'Cannot connect to local proxy. Make sure to run: node local-unifi-proxy.js'
-              : err.message.includes('CORS')
-              ? 'CORS error - the local proxy should handle this'
-              : null
+            fullUrl,
+            hint: 'Check that you are using the WAN IP or a publicly accessible IP, not a local 192.168.x.x address'
           };
           console.log(`❌ ${endpointConfig.label}:`, err.message);
         }
@@ -964,37 +964,35 @@ const UnifiTestPage = () => {
           </span>
         </div>
 
-        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
-          <p className="text-sm text-blue-800 dark:text-blue-300">
-            <strong>Setup Required:</strong> The UniFi controller doesn't allow direct browser access due to CORS restrictions.
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg space-y-2">
+          <p className="text-sm text-amber-800 dark:text-amber-300">
+            <strong>Important:</strong> Use your controller's <strong>WAN IP address</strong> (public IP), not the local 192.168.x.x IP.
           </p>
-          <div className="text-xs text-blue-700 dark:text-blue-400 font-mono bg-blue-100 dark:bg-blue-900/40 p-2 rounded">
-            <p className="mb-1">1. Open Terminal in the unicorn project folder</p>
-            <p className="mb-1">2. Run: <strong>node local-unifi-proxy.js</strong></p>
-            <p>3. Keep the proxy running while testing</p>
+          <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
+            <p>• You must be onsite on the same local network as the controller</p>
+            <p>• The request routes through Vercel proxy to avoid CORS issues</p>
+            <p>• Find your WAN IP in the Sites section above or check your controller's settings</p>
+            <p>• If you don't have a public IP (CGNAT), this method won't work without port forwarding</p>
           </div>
-          <p className="text-xs text-blue-700 dark:text-blue-400">
-            This local proxy forwards requests to your controller and adds the necessary CORS headers.
-          </p>
         </div>
 
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Local Controller IP Address
+              Controller WAN IP Address or Hostname
             </label>
             <input
               type="text"
               value={localControllerIp}
               onChange={(e) => setLocalControllerIp(e.target.value)}
-              placeholder="192.168.1.1:8443 or https://10.0.0.1:8443"
+              placeholder="47.199.106.32 or your-controller.com"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter the LAN IP address with port (e.g., 192.168.1.1:8443). Use https:// or http:// prefix if needed.
+              Enter your controller's public WAN IP (visible in Sites section above). Do NOT use local 192.168.x.x addresses.
             </p>
           </div>
 
