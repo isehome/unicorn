@@ -475,6 +475,30 @@ export const fetchClients = async (hostId, controllerUrl) => {
 export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) => {
   const results = {};
 
+  // Helper function for retrying requests
+  const fetchWithRetry = async (url, options, maxRetries = 2) => {
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          console.log(`Retry attempt ${attempt} for ${options.body ? JSON.parse(options.body).endpoint : url}`);
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+        }
+
+        const response = await fetch(url, options);
+        return response;
+      } catch (error) {
+        lastError = error;
+        if (attempt === maxRetries) {
+          throw error;
+        }
+      }
+    }
+    throw lastError;
+  };
+
   // Extract console ID from the URL
   const extractConsoleIdFromUrl = (url) => {
     if (!url) return null;
@@ -498,24 +522,39 @@ export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) 
   const siteParts = siteId ? siteId.split(':') : [];
   const actualSiteId = siteParts[1] || siteParts[0] || 'default';
 
-  // Potential client endpoints to test - including Network API proxy endpoints
+  // Enhanced endpoint patterns with more variations
   const endpoints = [
     // Network API via api.ui.com proxy - MOST LIKELY TO WORK
     { path: `/proxy/network/integration/v1/clients`, name: 'Network API - All Clients (NO site filter)' },
     { path: `/proxy/network/integration/v1/sites/default/clients`, name: 'Network API - Default Site Clients' },
+
+    // Legacy API patterns that often work
+    { path: `/proxy/network/api/s/${actualSiteId}/stat/sta`, name: `Legacy Network API - Site ${actualSiteId}` },
+    { path: `/proxy/network/api/s/default/stat/sta`, name: 'Legacy Network API - Default Site' },
 
     // Try with URL-encoded hostSiteId (colon becomes %3A)
     { path: `/proxy/network/integration/v1/sites/${encodeURIComponent(siteId)}/clients`, name: `Network API - Encoded Full ID` },
     { path: `/proxy/network/integration/v1/sites/${actualSiteId}/clients`, name: `Network API - Site part only (${actualSiteId})` },
     { path: `/proxy/network/integration/v1/sites/${consoleId}/clients`, name: `Network API - Console ID` },
 
+    // Alternative v1 format
+    { path: `/proxy/network/v1/sites/${actualSiteId}/clients`, name: `Network v1 - Site ${actualSiteId}` },
+
+    // Query parameter format
+    { path: `/integration/v1/clients?site=${actualSiteId}`, name: `Query Param Format - Site ${actualSiteId}` },
+
+    // Direct legacy format (no proxy prefix)
+    { path: `/api/s/${actualSiteId}/stat/sta`, name: `Direct Legacy - Site ${actualSiteId}` },
+
+    // v2 API format
+    { path: `/v2/api/site/${actualSiteId}/clients`, name: `v2 API - Site ${actualSiteId}` },
+
     // Site Manager API (cloud) - less likely to have clients
     { path: '/v1/clients', name: 'Site Manager - All Clients' },
     { path: `/v1/hosts/${consoleId}/clients`, name: 'Site Manager - Host Clients' },
 
-    // Legacy controller endpoints
-    { path: `/api/s/default/stat/sta`, name: 'Legacy - Default Site Active Clients' },
-    { path: `/api/s/${actualSiteId}/stat/sta`, name: `Legacy - Site ${actualSiteId} Active Clients` }
+    // No site context
+    { path: `/proxy/network/api/stat/sta`, name: 'Legacy Network API - No Site Context' }
   ];
 
   // Always use the proxy to avoid CORS issues
@@ -536,7 +575,8 @@ export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) 
       //   headers['x-unifi-api-key'] = apiKey;
       // }
 
-      const response = await fetch(proxyUrl, {
+      // Use fetchWithRetry for better reliability
+      const response = await fetchWithRetry(proxyUrl, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -544,7 +584,7 @@ export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) 
           method: 'GET',
           controllerUrl
         })
-      });
+      }, 2); // Max 2 retries
 
       results[endpoint.name] = {
         path: endpoint.path,

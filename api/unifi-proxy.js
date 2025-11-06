@@ -3,6 +3,9 @@
  * Keeps the API key secure on the backend
  */
 
+const https = require('https');
+const { URL } = require('url');
+
 const UNIFI_API_BASE_URL = process.env.UNIFI_CONTROLLER_URL || 'https://api.ui.com';
 
 module.exports = async function handler(req, res) {
@@ -100,18 +103,135 @@ module.exports = async function handler(req, res) {
       }
     };
 
-    // For direct WAN IP calls, we need to handle self-signed SSL certificates
-    // and set a timeout to avoid Vercel function timeout
-    if (useNetworkApiKey && typeof global !== 'undefined' && global.fetch) {
-      // Add a timeout for direct controller calls (5 seconds max)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      fetchOptions.signal = controller.signal;
+    // For Network API calls to controller (WAN IP or hostname), use Node.js HTTPS module
+    // This allows us to handle self-signed certificates properly
+    if (useNetworkApiKey && (directUrl || endpoint.includes('/proxy/network/'))) {
+      console.log('Using Node.js HTTPS module for Network API call to handle self-signed certs');
 
-      // Note: We can't disable SSL verification in browser fetch or Vercel edge functions
-      // This might fail due to self-signed certificates
-      console.log('Direct WAN call with 5s timeout and potential SSL certificate issues');
+      return new Promise((resolve, reject) => {
+        try {
+          const parsedUrl = new URL(url);
+
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || 443,
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: method?.toUpperCase() || 'GET',
+            headers: {
+              'X-API-KEY': keyToUse,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              ...(upstreamHeaders || {})
+            },
+            rejectUnauthorized: false,  // Accept self-signed certificates
+            timeout: 10000  // 10 second timeout
+          };
+
+          // Remove content-type for GET requests
+          if (options.method === 'GET') {
+            delete options.headers['Content-Type'];
+          }
+
+          console.log('HTTPS request options:', {
+            hostname: options.hostname,
+            port: options.port,
+            path: options.path,
+            method: options.method
+          });
+
+          const httpsReq = https.request(options, (httpsRes) => {
+            let data = '';
+
+            httpsRes.on('data', (chunk) => {
+              data += chunk;
+            });
+
+            httpsRes.on('end', () => {
+              console.log('HTTPS response status:', httpsRes.statusCode);
+
+              // Handle error status codes
+              if (httpsRes.statusCode >= 400) {
+                console.error('UniFi API error:', httpsRes.statusCode, data);
+
+                switch (httpsRes.statusCode) {
+                  case 401:
+                    res.status(401).json({ error: 'Unauthorized: Invalid API key' });
+                    break;
+                  case 403:
+                    res.status(403).json({ error: 'Forbidden: No access to this resource' });
+                    break;
+                  case 404:
+                    res.status(404).json({ error: 'Resource not found' });
+                    break;
+                  case 429:
+                    res.status(429).json({ error: 'Rate limit exceeded' });
+                    break;
+                  default:
+                    res.status(httpsRes.statusCode).json({
+                      error: `API Error: ${httpsRes.statusMessage}`,
+                      details: data
+                    });
+                }
+                resolve();
+                return;
+              }
+
+              // Parse and return successful response
+              try {
+                const jsonData = data ? JSON.parse(data) : {};
+                res.status(200).json(jsonData);
+              } catch (parseError) {
+                console.error('JSON parse error:', parseError);
+                // If it's not JSON, return raw data
+                res.status(200).send(data);
+              }
+              resolve();
+            });
+          });
+
+          httpsReq.on('error', (error) => {
+            console.error('HTTPS request error:', error);
+            res.status(500).json({
+              error: 'Controller connection failed',
+              details: error.message,
+              hint: 'Check that the controller is accessible and the WAN IP/hostname is correct'
+            });
+            resolve();
+          });
+
+          httpsReq.on('timeout', () => {
+            httpsReq.destroy();
+            console.error('Request timed out after 10 seconds');
+            res.status(504).json({
+              error: 'Gateway Timeout',
+              message: 'Request to controller timed out',
+              hint: 'The controller did not respond within 10 seconds. Check network connectivity and firewall rules.'
+            });
+            resolve();
+          });
+
+          // Send request body if POST
+          if (method?.toUpperCase() === 'POST' && upstreamBody !== undefined && upstreamBody !== null) {
+            const bodyData = typeof upstreamBody === 'string'
+              ? upstreamBody
+              : JSON.stringify(upstreamBody);
+            httpsReq.write(bodyData);
+          }
+
+          httpsReq.end();
+        } catch (error) {
+          console.error('Error setting up HTTPS request:', error);
+          res.status(500).json({
+            error: 'Failed to setup controller request',
+            details: error.message
+          });
+          resolve();
+        }
+      });
     }
+
+    // For Cloud API calls (api.ui.com), continue using fetch
+    console.log('Using fetch for Cloud API call');
 
     if (fetchOptions.method === 'GET') {
       // Remove content-type for GET to avoid potential issues
@@ -127,7 +247,7 @@ module.exports = async function handler(req, res) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('UniFi API error:', response.status, errorText);
-      
+
       switch (response.status) {
         case 401:
           return res.status(401).json({ error: 'Unauthorized: Invalid API key' });

@@ -47,6 +47,8 @@ const UnifiTestPage = () => {
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const [showSitesSection, setShowSitesSection] = useState(true);
   const [showDevicesSection, setShowDevicesSection] = useState(true);
+  const [controllerHostname, setControllerHostname] = useState('');
+  const [connectionTestResult, setConnectionTestResult] = useState(null);
 
   const cleanString = (value) => (typeof value === 'string' ? value.trim() : value);
 
@@ -793,9 +795,82 @@ const UnifiTestPage = () => {
     }
   };
 
+  const testControllerConnection = async () => {
+    setLoading(true);
+    setConnectionTestResult(null);
+    setError(null);
+
+    const baseUrl = controllerHostname
+      ? controllerHostname.startsWith('http') ? controllerHostname : `https://${controllerHostname}`
+      : localControllerIp.startsWith('http') ? localControllerIp : `https://${localControllerIp}`;
+
+    if (!baseUrl || baseUrl === 'https://') {
+      setError('Please enter a controller IP or hostname');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Use the existing unifi-proxy endpoint with a simple test path
+      // Test with /api/self which is a common UniFi endpoint
+      const testEndpoint = `${baseUrl}/proxy/network/api/self`;
+
+      console.log('Testing controller connection to:', baseUrl);
+
+      const response = await fetch('https://unicorn-one.vercel.app/api/unifi-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: testEndpoint,
+          method: 'GET',
+          directUrl: true,  // Tell proxy this is a direct URL
+          networkApiKey: localNetworkApiKey || 'test-api-key'  // Use test key if not provided
+        })
+      });
+
+      // Check if the response is successful
+      if (response.ok) {
+        const data = await response.json();
+        setConnectionTestResult({
+          success: true,
+          message: 'Controller is reachable and responding',
+          statusCode: response.status,
+          data: data
+        });
+        console.log('✅ Controller connection successful');
+
+        // Auto-populate the IP field if hostname was used and successful
+        if (controllerHostname && !localControllerIp) {
+          setLocalControllerIp(controllerHostname);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        setConnectionTestResult({
+          success: false,
+          error: errorData.error || `HTTP ${response.status}`,
+          message: errorData.message || errorData.details || 'Connection failed',
+          suggestion: errorData.hint || 'Check that the controller is accessible and the API key is correct',
+          statusCode: response.status
+        });
+        console.error('❌ Controller connection failed:', errorData);
+        setError(errorData.hint || errorData.error || 'Connection failed');
+      }
+    } catch (error) {
+      console.error('Connection test error:', error);
+      setConnectionTestResult({
+        success: false,
+        error: error.message,
+        suggestion: 'Check your network connection and try again'
+      });
+      setError(`Connection error: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLocalNetworkApiTest = async () => {
-    if (!localControllerIp) {
-      setError('Please enter the local controller IP address');
+    if (!localControllerIp && !controllerHostname) {
+      setError('Please enter the controller IP address or hostname');
       return;
     }
     if (!localNetworkApiKey) {
@@ -803,12 +878,15 @@ const UnifiTestPage = () => {
       return;
     }
 
+    // Use hostname if provided, otherwise use IP
+    const controllerAddress = controllerHostname || localControllerIp;
+
     // Get site ID from selected site
     const siteParts = selectedSite ? selectedSite.split(':') : [];
     const siteIdPart = siteParts[1] || 'default';
 
     console.log('🌐 Testing LOCAL Network API (Direct from Browser):', {
-      controllerIp: localControllerIp,
+      controllerAddress: controllerAddress,
       siteId: siteIdPart,
       hasApiKey: !!localNetworkApiKey
     });
@@ -830,8 +908,8 @@ const UnifiTestPage = () => {
       for (const endpointConfig of testEndpoints) {
         // Use Vercel proxy for mobile/remote access
         const vercelProxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
-        const protocol = localControllerIp.startsWith('http') ? '' : 'https://';
-        const fullUrl = `${protocol}${localControllerIp}${endpointConfig.path}`;
+        const protocol = controllerAddress.startsWith('http') ? '' : 'https://';
+        const fullUrl = `${protocol}${controllerAddress}${endpointConfig.path}`;
 
         console.log('Testing (via Vercel proxy):', endpointConfig.label, fullUrl);
 
@@ -964,28 +1042,31 @@ const UnifiTestPage = () => {
           </span>
         </div>
 
-        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg space-y-2">
-          <p className="text-sm text-amber-800 dark:text-amber-300">
-            <strong>Important:</strong> Use your controller's <strong>WAN IP address</strong> (public IP), not the local 192.168.x.x IP.
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
+          <p className="text-sm text-blue-800 dark:text-blue-300 font-semibold">
+            📱 Mobile Access Instructions:
           </p>
-          <div className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
-            <p>• You must be onsite on the same local network as the controller</p>
-            <p>• The request routes through Vercel proxy to avoid CORS issues</p>
-            <p>• Find your WAN IP in the Sites section above or check your controller's settings</p>
-            <p>• If you don't have a public IP (CGNAT), this method won't work without port forwarding</p>
+          <ol className="text-xs text-blue-700 dark:text-blue-400 space-y-1 list-decimal list-inside">
+            <li>Ensure you're connected to the same network as the UniFi controller</li>
+            <li>Use the controller's WAN IP or hostname (not 192.168.x.x)</li>
+            <li>Enter your Network API key from UniFi Settings → System → Advanced → Integrations</li>
+            <li>Test connection first, then fetch client data</li>
+          </ol>
+          <div className="text-xs text-amber-700 dark:text-amber-400 mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded">
+            <strong>Note:</strong> The request routes through Vercel proxy to handle CORS and SSL certificates.
           </div>
         </div>
 
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Controller WAN IP Address or Hostname
+              Controller WAN IP Address
             </label>
             <input
               type="text"
               value={localControllerIp}
               onChange={(e) => setLocalControllerIp(e.target.value)}
-              placeholder="47.199.106.32 or your-controller.com"
+              placeholder="e.g., 47.199.106.32"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
@@ -993,6 +1074,25 @@ const UnifiTestPage = () => {
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Enter your controller's public WAN IP (visible in Sites section above). Do NOT use local 192.168.x.x addresses.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Controller Hostname (Alternative to IP)
+            </label>
+            <input
+              type="text"
+              value={controllerHostname}
+              onChange={(e) => setControllerHostname(e.target.value)}
+              placeholder="e.g., unifi.local or controller.example.com"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       focus:ring-2 focus:ring-green-500 focus:border-transparent
+                       placeholder-gray-400 dark:placeholder-gray-500"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Use hostname if available (may work better than IP for some controllers)
             </p>
           </div>
 
@@ -1015,15 +1115,64 @@ const UnifiTestPage = () => {
             </p>
           </div>
 
-          <Button
-            variant="primary"
-            onClick={handleLocalNetworkApiTest}
-            disabled={loading || !localControllerIp || !localNetworkApiKey}
-            icon={Activity}
-          >
-            Test Local Network API
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={testControllerConnection}
+              disabled={loading || (!localControllerIp && !controllerHostname)}
+              icon={Wifi}
+            >
+              Test Connection First
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleLocalNetworkApiTest}
+              disabled={loading || (!localControllerIp && !controllerHostname) || !localNetworkApiKey}
+              icon={Activity}
+            >
+              Get Client Data
+            </Button>
+          </div>
         </div>
+
+        {/* Connection Test Result */}
+        {connectionTestResult && (
+          <div className={`mt-4 p-3 rounded-lg border ${
+            connectionTestResult.success
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {connectionTestResult.success ? (
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+              ) : (
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              )}
+              <span className={`text-sm font-medium ${
+                connectionTestResult.success
+                  ? 'text-green-800 dark:text-green-300'
+                  : 'text-red-800 dark:text-red-300'
+              }`}>
+                {connectionTestResult.success ? 'Controller Connected' : 'Connection Failed'}
+              </span>
+            </div>
+            {connectionTestResult.message && (
+              <p className="text-xs mt-1 text-gray-600 dark:text-gray-400">
+                {connectionTestResult.message}
+              </p>
+            )}
+            {connectionTestResult.suggestion && (
+              <p className="text-xs mt-1 text-amber-600 dark:text-amber-400">
+                💡 {connectionTestResult.suggestion}
+              </p>
+            )}
+            {connectionTestResult.statusCode && (
+              <p className="text-xs mt-1 text-gray-500 dark:text-gray-500">
+                Status: {connectionTestResult.statusCode} {connectionTestResult.statusMessage}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Local API Test Results */}
         {localApiTestResult && (
