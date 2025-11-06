@@ -4,9 +4,11 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Plus, Loader, Trash2 } from 'lucide-react';
+import { Search, Plus, Loader, Trash2, Printer } from 'lucide-react';
 import { wireDropService } from '../services/wireDropService';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
+import labelRenderService from '../services/labelRenderService';
+import { usePrinter } from '../contexts/PrinterContext';
 
 const WireDropsList = () => {
   const { mode } = useTheme();
@@ -23,6 +25,10 @@ const WireDropsList = () => {
   const [project, setProject] = useState(null);
   const [showFloorFilter, setShowFloorFilter] = useState(false);
   const [deletingDropId, setDeletingDropId] = useState(null);
+
+  // Printer states from context
+  const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
+  const [printingDropId, setPrintingDropId] = useState(null);
 
   // Reload data on mount and whenever we return to this page
   useEffect(() => {
@@ -73,14 +79,14 @@ const WireDropsList = () => {
       // Filter by project if specified
       if (projectId) {
         query = query.eq('project_id', projectId);
-        
+
         // Also load project info for the header
         const { data: projectData, error: projectError } = await supabase
           .from('projects')
           .select('name, id')
           .eq('id', projectId)
           .single();
-          
+
         if (projectError) {
           console.error('Error loading project:', projectError);
         } else {
@@ -119,6 +125,33 @@ const WireDropsList = () => {
       setError(err.message || 'Failed to load wire drops');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePrintSingleLabel = async (wireDrop, e) => {
+    e.stopPropagation(); // Prevent navigation to detail view
+
+    if (!printerConnected) {
+      alert('Please connect to printer in Settings first');
+      return;
+    }
+
+    setPrintingDropId(wireDrop.id);
+
+    try {
+      // Generate label bitmap
+      const bitmap = await labelRenderService.generateWireDropLabelBitmap(wireDrop);
+
+      // Print 2 copies from list view, cut after each label
+      await printerPrintLabel(bitmap, 2, true);
+
+      console.log(`Successfully printed 2 labels for ${wireDrop.uid}`);
+      alert(`Successfully printed 2 labels for ${wireDrop.uid}`);
+    } catch (err) {
+      console.error('Print error:', err);
+      alert(`Print failed: ${err.message}`);
+    } finally {
+      setPrintingDropId(null);
     }
   };
 
@@ -344,7 +377,29 @@ const WireDropsList = () => {
                       </div>
 
                       <div className="text-right space-y-2">
-                        <div className="flex justify-end">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={(e) => handlePrintSingleLabel(drop, e)}
+                            disabled={!printerConnected || printingDropId === drop.id}
+                            className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                            style={{
+                              backgroundColor: printerConnected ? '#3B82F6' : '#9CA3AF',
+                              color: '#FFFFFF',
+                            }}
+                            title="Print 2 labels"
+                          >
+                            {printingDropId === drop.id ? (
+                              <>
+                                <Loader size={14} className="animate-spin" />
+                                Printing...
+                              </>
+                            ) : (
+                              <>
+                                <Printer size={14} />
+                                Print (2x)
+                              </>
+                            )}
+                          </button>
                           <Button
                             variant="danger"
                             size="sm"

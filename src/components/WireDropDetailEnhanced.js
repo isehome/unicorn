@@ -34,9 +34,12 @@ import {
   RefreshCw,
   Trash2,
   Lock,
-  WifiOff
+  WifiOff,
+  Printer
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
+import labelRenderService from '../services/labelRenderService';
+import { usePrinter } from '../contexts/PrinterContext';
 
 const normalizeRoomName = (value) =>
   typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, ' ') : '';
@@ -87,6 +90,11 @@ const WireDropDetailEnhanced = () => {
   const [selectedPort, setSelectedPort] = useState(null);
   const [cableLabel, setCableLabel] = useState('');
   const [patchPanelPort, setPatchPanelPort] = useState('');
+
+  // Printer states from context
+  const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
+  const [printing, setPrinting] = useState(false);
+  const [printCopies, setPrintCopies] = useState(1);
 
   const styles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
@@ -416,34 +424,34 @@ const WireDropDetailEnhanced = () => {
   const handleDeleteWireDrop = async () => {
     try {
       setDeleting(true);
-      
+
       // First verify the wire drop exists
       const { data: checkExists } = await supabase
         .from('wire_drops')
         .select('id')
         .eq('id', id)
         .single();
-      
+
       if (!checkExists) {
         alert('Wire drop not found or already deleted');
         navigate(-1);
         return;
       }
-      
+
       // Attempt deletion
       await wireDropService.deleteWireDrop(id);
-      
+
       // Verify it was actually deleted
       const { data: stillExists, error: checkError } = await supabase
         .from('wire_drops')
         .select('id')
         .eq('id', id)
         .single();
-      
+
       if (!stillExists || checkError?.code === 'PGRST116') {
         // PGRST116 means no rows found - good, it was deleted
         alert('Wire drop deleted successfully');
-        
+
         // Navigate back to the previous page
         navigate(-1);
       } else {
@@ -457,6 +465,34 @@ const WireDropDetailEnhanced = () => {
     } finally {
       setDeleting(false);
       setShowDeleteConfirm(false);
+    }
+  };
+
+  const handlePrintLabel = async () => {
+    if (!printerConnected) {
+      setError('Please connect to printer in Settings first');
+      return;
+    }
+
+    setPrinting(true);
+    setError(null);
+
+    try {
+      // Generate label bitmap
+      const bitmap = await labelRenderService.generateWireDropLabelBitmap(wireDrop);
+
+      // Print with specified copies, cut after each label
+      await printerPrintLabel(bitmap, printCopies, true);
+
+      // Success feedback
+      console.log(`Successfully printed ${printCopies} label(s)`);
+      alert(`Successfully printed ${printCopies} label(s)`);
+    } catch (err) {
+      console.error('Print error:', err);
+      setError(`Print failed: ${err.message}`);
+      alert(`Print failed: ${err.message}`);
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -1416,6 +1452,94 @@ const WireDropDetailEnhanced = () => {
             )}
           </div>
         </div>
+
+        {/* Print Label Section */}
+        {wireDrop && (
+          <div style={{
+            ...styles.card,
+            padding: '20px',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '16px',
+            }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: 'bold',
+                margin: 0,
+                color: styles.textPrimary.color,
+              }}>
+                Print Label
+              </h3>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '16px',
+            }}>
+              <label style={{
+                color: styles.textPrimary.color,
+                fontSize: '14px',
+                minWidth: '120px'
+              }}>
+                Number of copies:
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={printCopies}
+                onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  border: `1px solid ${styles.card.borderColor}`,
+                  backgroundColor: styles.input.backgroundColor,
+                  color: styles.textPrimary.color,
+                  width: '80px',
+                }}
+              />
+            </div>
+
+            <Button
+              onClick={handlePrintLabel}
+              disabled={!printerConnected || printing}
+              style={{ width: '100%' }}
+            >
+              <Printer size={16} style={{ marginRight: '8px' }} />
+              {printing ? 'Printing...' : `Print Label (${printCopies} ${printCopies === 1 ? 'copy' : 'copies'})`}
+            </Button>
+
+            {!printerConnected && (
+              <div style={{
+                marginTop: '12px',
+                fontSize: '14px',
+                color: '#6B7280',
+              }}>
+                <span style={{ fontStyle: 'italic' }}>Connect printer in </span>
+                <button
+                  onClick={() => navigate('/settings')}
+                  style={{
+                    color: '#3B82F6',
+                    textDecoration: 'underline',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    padding: 0,
+                  }}
+                >
+                  Settings
+                </button>
+                <span style={{ fontStyle: 'italic' }}> to enable printing</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 border-b" style={{ borderColor: styles.card.borderColor }}>

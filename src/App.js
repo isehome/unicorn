@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { PrinterProvider } from './contexts/PrinterContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AppHeader from './components/AppHeader';
 import BottomNavigation from './components/BottomNavigation';
@@ -339,9 +340,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
+          <PrinterProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </PrinterProvider>
         </AuthProvider>
       </ThemeProvider>
       {/* ReactQuery DevTools removed - not needed for production */}
