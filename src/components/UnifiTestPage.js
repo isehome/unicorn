@@ -828,23 +828,22 @@ const UnifiTestPage = () => {
       setError(null);
 
       for (const endpointConfig of testEndpoints) {
-        // Make direct request from browser to local controller
-        // Use https:// by default, but user can specify http:// in the IP field if needed
-        const protocol = localControllerIp.startsWith('http') ? '' : 'https://';
-        const fullUrl = `${protocol}${localControllerIp}${endpointConfig.path}`;
+        // Use local proxy to avoid CORS issues
+        const localProxyUrl = 'http://localhost:3001/proxy';
+        const proxyPath = endpointConfig.path;
+        const fullProxyUrl = `${localProxyUrl}${proxyPath}`;
 
-        console.log('Testing (direct):', endpointConfig.label, fullUrl);
+        console.log('Testing (via local proxy):', endpointConfig.label, proxyPath);
 
         try {
-          const response = await fetch(fullUrl, {
+          const response = await fetch(fullProxyUrl, {
             method: 'GET',
             headers: {
+              'X-Controller-IP': localControllerIp,
               'X-API-KEY': localNetworkApiKey,
               'Accept': 'application/json',
               'Content-Type': 'application/json'
-            },
-            mode: 'cors', // Allow CORS
-            credentials: 'omit' // Don't send cookies
+            }
           });
 
           const data = await response.json();
@@ -855,7 +854,7 @@ const UnifiTestPage = () => {
             data: data,
             clientCount: Array.isArray(data?.data) ? data.data.length : 0,
             path: endpointConfig.path,
-            fullUrl
+            fullUrl: fullProxyUrl
           };
 
           console.log(`✅ ${endpointConfig.label}:`, response.status, `(${results[endpointConfig.label].clientCount} clients)`);
@@ -865,11 +864,11 @@ const UnifiTestPage = () => {
             success: false,
             error: err.message,
             path: endpointConfig.path,
-            fullUrl,
-            hint: err.message.includes('CORS')
-              ? 'CORS error - check that the controller allows API requests from this origin'
-              : err.message.includes('Failed to fetch')
-              ? 'Connection failed - verify IP address and that you are on the local network'
+            fullUrl: fullProxyUrl,
+            hint: err.message.includes('Failed to fetch')
+              ? 'Cannot connect to local proxy. Make sure to run: node local-unifi-proxy.js'
+              : err.message.includes('CORS')
+              ? 'CORS error - the local proxy should handle this'
               : null
           };
           console.log(`❌ ${endpointConfig.label}:`, err.message);
@@ -965,10 +964,17 @@ const UnifiTestPage = () => {
           </span>
         </div>
 
-        <div className="mb-4 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-          <p className="text-sm text-green-800 dark:text-green-300">
-            <strong>Note:</strong> You must be on the same local network as your UniFi controller.
-            This accesses the Network API directly to retrieve client data (MAC addresses, hostnames, switch ports, etc.)
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg space-y-2">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
+            <strong>Setup Required:</strong> The UniFi controller doesn't allow direct browser access due to CORS restrictions.
+          </p>
+          <div className="text-xs text-blue-700 dark:text-blue-400 font-mono bg-blue-100 dark:bg-blue-900/40 p-2 rounded">
+            <p className="mb-1">1. Open Terminal in the unicorn project folder</p>
+            <p className="mb-1">2. Run: <strong>node local-unifi-proxy.js</strong></p>
+            <p>3. Keep the proxy running while testing</p>
+          </div>
+          <p className="text-xs text-blue-700 dark:text-blue-400">
+            This local proxy forwards requests to your controller and adds the necessary CORS headers.
           </p>
         </div>
 

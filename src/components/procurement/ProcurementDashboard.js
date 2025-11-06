@@ -14,7 +14,11 @@ import {
   ChevronRight,
   Plus,
   Loader,
-  X
+  X,
+  ArrowLeft,
+  ChevronDown,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 
 const ProcurementDashboard = () => {
@@ -34,6 +38,9 @@ const ProcurementDashboard = () => {
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [projectFilter, setProjectFilter] = useState('all');
   const [projects, setProjects] = useState([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [selectedPO, setSelectedPO] = useState(null);
+  const [poDetailsLoading, setPoDetailsLoading] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -119,6 +126,46 @@ const ProcurementDashboard = () => {
     ? allPOs
     : allPOs.filter(po => po.project_id === projectFilter);
 
+  const handlePOClick = async (poId) => {
+    try {
+      setPoDetailsLoading(true);
+      const poDetails = await purchaseOrderService.getPurchaseOrder(poId);
+      setSelectedPO(poDetails);
+    } catch (error) {
+      console.error('Error loading PO details:', error);
+      alert('Failed to load purchase order details');
+    } finally {
+      setPoDetailsLoading(false);
+    }
+  };
+
+  const handleDeletePO = async (po) => {
+    if (po.status !== 'draft') {
+      alert('Only draft POs can be deleted');
+      return;
+    }
+
+    // First warning
+    if (!window.confirm(`⚠️ WARNING: Delete PO ${po.po_number}?\n\nThis will:\n- Remove all ${po.items?.length || 0} line items\n- Clear quantity tracking\n\nThis action CANNOT be undone.`)) {
+      return;
+    }
+
+    // Second warning (double confirmation)
+    if (!window.confirm(`🛑 FINAL CONFIRMATION\n\nAre you absolutely sure you want to delete PO ${po.po_number}?\n\nType YES in your mind and click OK to proceed.`)) {
+      return;
+    }
+
+    try {
+      await purchaseOrderService.deletePurchaseOrder(po.id);
+      setAllPOs(prev => prev.filter(p => p.id !== po.id));
+      setSelectedPO(null);
+      alert('Purchase order deleted successfully');
+    } catch (error) {
+      console.error('Error deleting PO:', error);
+      alert('Failed to delete purchase order: ' + error.message);
+    }
+  };
+
   if (loading) {
     return (
       <div style={sectionStyles.card} className="mb-6">
@@ -131,13 +178,25 @@ const ProcurementDashboard = () => {
 
   return (
     <div style={sectionStyles.card} className="mb-6">
-      {/* Header */}
-      <div className="mb-6">
+      {/* Header - Collapsible */}
+      <button
+        type="button"
+        onClick={() => setIsCollapsed(!isCollapsed)}
+        className="w-full flex items-center justify-between mb-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 p-3 -m-3 rounded-lg transition-colors"
+      >
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <Package className="w-6 h-6 text-violet-600" />
           Procurement Overview
         </h2>
-      </div>
+        <ChevronDown
+          className={`w-5 h-5 text-gray-500 transition-transform ${
+            isCollapsed ? '' : 'rotate-180'
+          }`}
+        />
+      </button>
+
+      {!isCollapsed && (
+        <div>
 
       {/* Overview Stats Grid */}
       {showView === 'overview' && (
@@ -209,9 +268,10 @@ const ProcurementDashboard = () => {
                   return (
                     <div
                       key={po.id}
-                      className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors
+                      onClick={() => handlePOClick(po.id)}
+                      className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors cursor-pointer
                         ${isDraft
-                          ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20'
+                          ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
                           : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
                         }`}
                     >
@@ -258,9 +318,19 @@ const ProcurementDashboard = () => {
       {showView === 'suppliers' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              All Suppliers ({suppliers.length})
-            </h3>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={ArrowLeft}
+                onClick={() => setShowView('overview')}
+              >
+                Back
+              </Button>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                All Suppliers ({suppliers.length})
+              </h3>
+            </div>
             <Button
               variant="primary"
               size="sm"
@@ -360,9 +430,19 @@ const ProcurementDashboard = () => {
       {showView === 'pos' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              All Purchase Orders ({filteredPOs.length})
-            </h3>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={ArrowLeft}
+                onClick={() => setShowView('overview')}
+              >
+                Back
+              </Button>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                All Purchase Orders ({filteredPOs.length})
+              </h3>
+            </div>
 
             {/* Project Filter */}
             <div className="flex items-center gap-2">
@@ -405,9 +485,10 @@ const ProcurementDashboard = () => {
                 return (
                   <div
                     key={po.id}
-                    className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors
+                    onClick={() => handlePOClick(po.id)}
+                    className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors cursor-pointer
                       ${isDraft
-                        ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20'
+                        ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
                         : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                   >
@@ -480,6 +561,196 @@ const ProcurementDashboard = () => {
             setCreatingSupplier(false);
           }}
         />
+      )}
+
+      {/* Simple PO Details Modal */}
+      {selectedPO && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedPO(null)}>
+          <div
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  {selectedPO.po_number}
+                </h2>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(selectedPO.status)}`}>
+                    {selectedPO.status.charAt(0).toUpperCase() + selectedPO.status.slice(1)}
+                  </span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {selectedPO.supplier?.name}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedPO(null)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-4 space-y-6">
+              {/* PO Details */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Order Date
+                  </label>
+                  <p className="text-gray-900 dark:text-white">
+                    {selectedPO.order_date ? new Date(selectedPO.order_date).toLocaleDateString() : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Requested Delivery
+                  </label>
+                  <p className="text-gray-900 dark:text-white">
+                    {selectedPO.requested_delivery_date ? new Date(selectedPO.requested_delivery_date).toLocaleDateString() : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  Line Items ({selectedPO.items?.length || 0})
+                </h3>
+                <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-800/50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">#</th>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Part Number</th>
+                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Description</th>
+                        <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Qty</th>
+                        <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Unit Cost</th>
+                        <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {selectedPO.items?.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white">{item.line_number}</td>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white">
+                            {item.equipment?.part_number || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 text-gray-900 dark:text-white">
+                            {item.equipment?.name || item.equipment?.description || 'N/A'}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                            {item.quantity_ordered}
+                          </td>
+                          <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                            ${(item.unit_cost || 0).toFixed(2)}
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">
+                            ${(item.line_total || 0).toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Subtotal</span>
+                  <span className="text-gray-900 dark:text-white font-semibold">
+                    ${(selectedPO.subtotal || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Tax</span>
+                  <span className="text-gray-900 dark:text-white font-semibold">
+                    ${(selectedPO.tax_amount || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Shipping</span>
+                  <span className="text-gray-900 dark:text-white font-semibold">
+                    ${(selectedPO.shipping_cost || 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-gray-300 dark:border-gray-600">
+                  <span className="text-base font-bold text-gray-900 dark:text-white">Total</span>
+                  <span className="text-xl font-bold text-violet-600 dark:text-violet-400">
+                    ${(selectedPO.total_amount || 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {(selectedPO.internal_notes || selectedPO.supplier_notes) && (
+                <div className="space-y-3">
+                  {selectedPO.internal_notes && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Internal Notes
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{selectedPO.internal_notes}</p>
+                    </div>
+                  )}
+                  {selectedPO.supplier_notes && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Supplier Notes
+                      </label>
+                      <p className="text-gray-900 dark:text-white">{selectedPO.supplier_notes}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4">
+              <div className="flex flex-wrap gap-2 justify-between items-center">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                  {selectedPO.status !== 'draft' && (
+                    <span>Only draft POs can be edited or deleted</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    icon={Edit3}
+                    onClick={() => {
+                      // Navigate to order equipment page for this PO's project
+                      window.location.href = `/pm/order-equipment/${selectedPO.project_id}`;
+                    }}
+                    disabled={selectedPO.status !== 'draft'}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="danger"
+                    icon={Trash2}
+                    onClick={() => handleDeletePO(selectedPO)}
+                    disabled={selectedPO.status !== 'draft'}
+                  >
+                    Delete
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setSelectedPO(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+        </div>
       )}
     </div>
   );
