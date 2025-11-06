@@ -85,18 +85,86 @@ export const projectsService = {
   async update(id, updates) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('projects')
         .update(updates)
         .eq('id', id)
         .select()
         .single();
-        
+
       if (error) throw error;
       return data;
     } catch (error) {
       handleError(error, 'Failed to update project');
+    }
+  },
+
+  async delete(id) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      console.log('Starting project deletion for ID:', id);
+
+      // Import storage and floor plan services
+      const { deleteProjectFloorPlans } = await import('./storageService');
+      const { deleteCachedFloorPlans } = await import('./floorPlanProcessor');
+
+      // Step 1: Check for purchase orders (these will block deletion)
+      console.log('Checking for purchase orders...');
+      const { data: purchaseOrders, error: poError } = await supabase
+        .from('purchase_orders')
+        .select('id')
+        .eq('project_id', id)
+        .limit(1);
+
+      if (poError) {
+        console.error('Error checking purchase orders:', poError);
+        throw poError;
+      }
+
+      if (purchaseOrders && purchaseOrders.length > 0) {
+        console.warn('Project has purchase orders, blocking deletion');
+        throw new Error('Cannot delete project with existing purchase orders. Please delete purchase orders first.');
+      }
+
+      // Step 2: Delete floor plan images from storage bucket
+      console.log('Deleting floor plan images...');
+      try {
+        await deleteProjectFloorPlans(id);
+        console.log('Floor plan images deleted successfully');
+      } catch (storageError) {
+        console.warn('Failed to delete floor plan images:', storageError);
+        // Continue with deletion even if storage cleanup fails
+      }
+
+      // Step 3: Delete cached floor plan metadata
+      console.log('Deleting cached floor plans...');
+      try {
+        await deleteCachedFloorPlans(id);
+        console.log('Cached floor plans deleted successfully');
+      } catch (cacheError) {
+        console.warn('Failed to delete cached floor plans:', cacheError);
+        // Continue with deletion even if cache cleanup fails
+      }
+
+      // Step 4: Delete the project (this triggers CASCADE delete on all related tables)
+      console.log('Deleting project from database...');
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error deleting project:', error);
+        throw error;
+      }
+
+      console.log('Project deleted successfully!');
+      return { success: true };
+    } catch (error) {
+      console.error('Delete project failed with error:', error);
+      handleError(error, 'Failed to delete project');
     }
   },
 };

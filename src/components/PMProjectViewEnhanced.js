@@ -18,12 +18,12 @@ import LucidChartCarousel from './LucidChartCarousel';
 import ProjectEquipmentManager from './ProjectEquipmentManager';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
-import { 
-  Save, 
-  ExternalLink, 
-  Clock, 
-  Users, 
-  CheckCircle, 
+import {
+  Save,
+  ExternalLink,
+  Clock,
+  Users,
+  CheckCircle,
   XCircle,
   Edit,
   Loader,
@@ -42,7 +42,8 @@ import {
   Link,
   Upload,
   Package,
-  ShoppingCart
+  ShoppingCart,
+  Trash2
 } from 'lucide-react';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
@@ -305,6 +306,9 @@ const PMProjectViewEnhanced = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showPhaseModal, setShowPhaseModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteStep, setDeleteStep] = useState(1);
+  const [deleting, setDeleting] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showPhaseOrderModal, setShowPhaseOrderModal] = useState(false);
   const [newPhase, setNewPhase] = useState({ name: '', description: '', color: '#6b7280' });
@@ -1182,6 +1186,45 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
+  const handleDeleteProject = async () => {
+    try {
+      setDeleting(true);
+
+      console.log('Attempting to delete project:', projectId);
+
+      // Call the delete service method which handles all cleanup
+      const result = await projectsService.delete(projectId);
+
+      console.log('Delete result:', result);
+
+      if (result && result.success) {
+        // Close modal and navigate immediately to prevent errors
+        setShowDeleteConfirm(false);
+        setDeleteStep(1);
+
+        // Show success message
+        alert('Project deleted successfully!');
+
+        // Navigate back to PM dashboard after successful deletion
+        // Use replace to prevent going back to deleted project
+        navigate('/pm-dashboard', { replace: true });
+      } else {
+        throw new Error('Delete operation did not return success');
+      }
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert(`Failed to delete project: ${error.message || 'Unknown error'}`);
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+      setDeleteStep(1);
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setDeleteStep(1);
+    setShowDeleteConfirm(true);
+  };
+
   useEffect(() => {
     if (!projectId) return;
 
@@ -1986,14 +2029,26 @@ const PMProjectViewEnhanced = () => {
               </span>
             )}
           </div>
-          <Button
-            onClick={() => (editMode ? handleSave() : setEditMode(true))}
-            variant={editMode ? 'primary' : 'secondary'}
-            icon={editMode ? Save : Edit}
-            disabled={saving}
-          >
-            {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {editMode && (
+              <Button
+                onClick={handleDeleteClick}
+                variant="danger"
+                icon={Trash2}
+                disabled={saving || deleting}
+              >
+                Delete Project
+              </Button>
+            )}
+            <Button
+              onClick={() => (editMode ? handleSave() : setEditMode(true))}
+              variant={editMode ? 'primary' : 'secondary'}
+              icon={editMode ? Save : Edit}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : editMode ? 'Save Changes' : 'Edit Project'}
+            </Button>
+          </div>
         </div>
 
         {/* Project Info */}
@@ -3708,6 +3763,129 @@ const PMProjectViewEnhanced = () => {
               >
                 Cancel
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 backdrop-blur-sm">
+          <div style={sectionStyles.card} className="p-6 max-w-md w-full mx-4 shadow-2xl">
+            <div className="mb-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30">
+                  <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Delete Project
+                </h3>
+              </div>
+
+              {deleteStep === 1 && (
+                <div className="space-y-4 mt-4">
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-800 dark:text-red-200 font-medium">
+                      ⚠️ Warning: This action cannot be undone!
+                    </p>
+                  </div>
+
+                  <p className="text-gray-700 dark:text-gray-300">
+                    You are about to permanently delete:
+                  </p>
+
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                    <p className="font-semibold text-gray-900 dark:text-white mb-2">
+                      {project.name}
+                    </p>
+                    {formData.project_number && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Project #{formData.project_number}
+                      </p>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    This will permanently delete:
+                  </p>
+                  <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1 ml-4">
+                    <li>• All wire drops and locations</li>
+                    <li>• All issues and todos</li>
+                    <li>• All stakeholders and contacts</li>
+                    <li>• All equipment and inventory</li>
+                    <li>• All milestones and time logs</li>
+                    <li>• All floor plans and documents</li>
+                    <li>• All permits and secure data</li>
+                  </ul>
+
+                  <div className="flex gap-2 mt-6">
+                    <Button
+                      onClick={() => setDeleteStep(2)}
+                      variant="danger"
+                      className="flex-1"
+                    >
+                      Continue
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setShowDeleteConfirm(false);
+                        setDeleteStep(1);
+                      }}
+                      variant="secondary"
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {deleteStep === 2 && (
+                <div className="space-y-4 mt-4">
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg">
+                    <p className="text-base text-red-900 dark:text-red-100 font-bold mb-2">
+                      Final Confirmation Required
+                    </p>
+                    <p className="text-sm text-red-800 dark:text-red-200">
+                      This is your last chance to cancel. Once you click "Delete Forever",
+                      all project data will be permanently removed from the database.
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+                    <p className="text-gray-900 dark:text-white font-semibold mb-1">
+                      Deleting: {project.name}
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      ID: {projectId}
+                    </p>
+                  </div>
+
+                  <p className="text-sm text-gray-600 dark:text-gray-400 italic">
+                    Are you absolutely sure you want to delete this project?
+                  </p>
+
+                  <div className="flex gap-2 mt-6">
+                    <Button
+                      onClick={handleDeleteProject}
+                      variant="danger"
+                      icon={Trash2}
+                      disabled={deleting}
+                      className="flex-1"
+                    >
+                      {deleting ? 'Deleting...' : 'Delete Forever'}
+                    </Button>
+                    <Button
+                      onClick={() => setDeleteStep(1)}
+                      variant="secondary"
+                      disabled={deleting}
+                      className="flex-1"
+                    >
+                      Go Back
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

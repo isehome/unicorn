@@ -213,16 +213,17 @@ SELECT
   COALESCE(c.percentage, 0) as commissioning_percentage,
 
   -- Rollup milestones (weighted averages)
+  -- Updated weights: Orders 25% + Receiving 25% + Stages 50%
   ROUND(
     (COALESCE(po.percentage, 0) * 0.25) +
-    (COALESCE(pr.percentage, 0) * 0.35) +
-    (COALESCE(ps.percentage, 0) * 0.40)
+    (COALESCE(pr.percentage, 0) * 0.25) +
+    (COALESCE(ps.percentage, 0) * 0.50)
   ) as prewire_phase_percentage,
 
   ROUND(
     (COALESCE(tro.percentage, 0) * 0.25) +
-    (COALESCE(trr.percentage, 0) * 0.35) +
-    (COALESCE(ts.percentage, 0) * 0.40)
+    (COALESCE(trr.percentage, 0) * 0.25) +
+    (COALESCE(ts.percentage, 0) * 0.50)
   ) as trim_phase_percentage,
 
   -- Metadata

@@ -28,7 +28,6 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "dev": "vercel dev",
     "build": "GENERATE_SOURCEMAP=false CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -60,6 +59,6 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
-    "vercel": "^34.0.0"
+    "vercel": "^48.8.2"
   }
 }

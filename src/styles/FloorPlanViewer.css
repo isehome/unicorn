@@ -17,7 +17,7 @@
   background: #2a2a2a;
   color: white;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  z-index: 10;
+  z-index: 40;
   flex-shrink: 0;
 }
 

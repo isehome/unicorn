@@ -223,27 +223,6 @@ const WireDropsList = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
-      <div style={sectionStyles.header} className="shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
-            {projectId && (
-              <div>{/* Spacer for layout */}</div>
-            )}
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                {project ? `${project.name} - Wire Drops` : 'All Wire Drops'}
-              </h1>
-              {filteredDrops.length > 0 && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {filteredDrops.length} wire drop{filteredDrops.length === 1 ? '' : 's'}
-                  {searchTerm && ` matching "${searchTerm}"`}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div style={sectionStyles.card}>
           <div className="flex gap-2 mb-6">

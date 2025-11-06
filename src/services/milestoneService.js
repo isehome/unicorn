@@ -43,11 +43,11 @@ class MilestoneService {
     prewire_orders: 'Count of items with ordered_quantity > 0',
     prewire_receiving: 'Count of items fully received (received >= ordered)',
     prewire: '% = (Wire drops with prewire photo) / (Total wire drops)',
-    prewire_phase: 'Rollup: Orders 25% + Receiving 35% + Stages 40%',
+    prewire_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     trim_orders: 'Count of items with ordered_quantity > 0',
     trim_receiving: 'Count of items fully received (received >= ordered)',
     trim: '% = (Wire drops with trim photo & equipment attached) / (Total wire drops)',
-    trim_phase: 'Rollup: Orders 25% + Receiving 35% + Stages 40%',
+    trim_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     commissioning: 'Complete when equipment is attached in head end field',
     handoff_training: 'Manual completion checkbox',
     // Legacy
@@ -415,7 +415,7 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Phase rollup percentage
-   * Weighted average: (Orders × 25%) + (Receiving × 35%) + (Stages × 40%)
+   * Weighted average: (Orders × 25%) + (Receiving × 25%) + (Stages × 50%)
    */
   async calculatePrewirePhasePercentage(projectId) {
     try {
@@ -425,11 +425,11 @@ class MilestoneService {
         this.calculatePrewirePercentage(projectId)
       ]);
 
-      // Weighted average: Orders 25%, Receiving 35%, Stages 40%
+      // Weighted average: Orders 25%, Receiving 25%, Stages 50%
       const rollup = Math.round(
         (orders.percentage * 0.25) +
-        (receiving.percentage * 0.35) +
-        (stages * 0.40)
+        (receiving.percentage * 0.25) +
+        (stages * 0.50)
       );
 
       return {
@@ -451,7 +451,7 @@ class MilestoneService {
 
   /**
    * Calculate Trim Phase rollup percentage
-   * Weighted average: (Orders × 25%) + (Receiving × 35%) + (Stages × 40%)
+   * Weighted average: (Orders × 25%) + (Receiving × 25%) + (Stages × 50%)
    */
   async calculateTrimPhasePercentage(projectId) {
     try {
@@ -461,11 +461,11 @@ class MilestoneService {
         this.calculateTrimPercentage(projectId)
       ]);
 
-      // Weighted average: Orders 25%, Receiving 35%, Stages 40%
+      // Weighted average: Orders 25%, Receiving 25%, Stages 50%
       const rollup = Math.round(
         (orders.percentage * 0.25) +
-        (receiving.percentage * 0.35) +
-        (stages * 0.40)
+        (receiving.percentage * 0.25) +
+        (stages * 0.50)
       );
 
       return {
