@@ -667,7 +667,11 @@ const UnifiTestPage = () => {
   };
 
   const handleHardcodedClientTest = async () => {
-    const proxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
+    // Use the same proxy resolution logic as unifiApi.js
+    const proxyUrl = process.env.REACT_APP_UNIFI_PROXY_URL ||
+                    (process.env.REACT_APP_UNIFI_PROXY_ORIGIN
+                      ? `${process.env.REACT_APP_UNIFI_PROXY_ORIGIN}/api/unifi-proxy`
+                      : '/api/unifi-proxy');
 
     // Get the actual selected site data
     const selectedSiteData = sites.find(s => s.hostSiteId === selectedSite);
@@ -817,7 +821,15 @@ const UnifiTestPage = () => {
 
       console.log('Testing controller connection to:', baseUrl);
 
-      const response = await fetch('https://unicorn-one.vercel.app/api/unifi-proxy', {
+      // Use the same proxy resolution logic as unifiApi.js
+      const proxyUrl = process.env.REACT_APP_UNIFI_PROXY_URL ||
+                      (process.env.REACT_APP_UNIFI_PROXY_ORIGIN
+                        ? `${process.env.REACT_APP_UNIFI_PROXY_ORIGIN}/api/unifi-proxy`
+                        : '/api/unifi-proxy');
+
+      console.log('Using proxy URL:', proxyUrl);
+
+      const response = await fetch(proxyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -906,15 +918,18 @@ const UnifiTestPage = () => {
       setError(null);
 
       for (const endpointConfig of testEndpoints) {
-        // Use Vercel proxy for mobile/remote access
-        const vercelProxyUrl = 'https://unicorn-one.vercel.app/api/unifi-proxy';
+        // Use proxy for mobile/remote access
+        const proxyUrl = process.env.REACT_APP_UNIFI_PROXY_URL ||
+                        (process.env.REACT_APP_UNIFI_PROXY_ORIGIN
+                          ? `${process.env.REACT_APP_UNIFI_PROXY_ORIGIN}/api/unifi-proxy`
+                          : '/api/unifi-proxy');
         const protocol = controllerAddress.startsWith('http') ? '' : 'https://';
         const fullUrl = `${protocol}${controllerAddress}${endpointConfig.path}`;
 
-        console.log('Testing (via Vercel proxy):', endpointConfig.label, fullUrl);
+        console.log('Testing (via proxy):', endpointConfig.label, fullUrl);
 
         try {
-          const response = await fetch(vercelProxyUrl, {
+          const response = await fetch(proxyUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
