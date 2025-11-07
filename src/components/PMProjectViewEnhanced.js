@@ -1062,36 +1062,42 @@ const PMProjectViewEnhanced = () => {
   );
 
   const fetchUnifiSiteData = async () => {
-    // Only fetch if we have both controller IP and API key
-    if (!formData.unifi_controller_ip || !formData.unifi_network_api_key) {
-      console.log('[fetchUnifiSiteData] Skipping - missing controller IP or API key');
+    // Need the UniFi URL from the project to fetch site data from Cloud API
+    if (!formData.unifi_url) {
+      console.log('[fetchUnifiSiteData] Skipping - missing UniFi URL');
       return;
     }
 
     try {
-      console.log('[fetchUnifiSiteData] Fetching site data from controller...');
-      const controllerUrl = formData.unifi_controller_ip.startsWith('http')
-        ? formData.unifi_controller_ip
-        : `https://${formData.unifi_controller_ip}`;
+      console.log('[fetchUnifiSiteData] Fetching site data from Cloud API...');
 
-      const sitesResponse = await unifiApi.fetchLocalSites(
-        controllerUrl,
-        formData.unifi_network_api_key
+      // TODO: This should come from program settings, not hardcoded
+      // For now, hardcode the Cloud API key
+      const CLOUD_API_KEY = 'Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu';
+
+      // Use the Cloud API to fetch hosts/sites
+      const sitesResponse = await unifiApi.fetchSites(
+        formData.unifi_url,
+        CLOUD_API_KEY
       );
 
       console.log('[fetchUnifiSiteData] Sites response:', sitesResponse);
 
-      if (sitesResponse.data && sitesResponse.data.length > 0) {
-        const firstSite = sitesResponse.data[0];
-        const siteId = firstSite.id || firstSite.siteId || firstSite._id;
-        const siteName = firstSite.description || firstSite.name || firstSite.desc || siteId;
+      // The Cloud API returns hosts with sites nested inside
+      if (Array.isArray(sitesResponse) && sitesResponse.length > 0) {
+        const host = sitesResponse[0];
+
+        // Extract site info from the host
+        // The response structure has: host.reportedState with controller info
+        const siteId = host.id || host.hostId || host._id;
+        const siteName = host.reportedState?.hostname || host.name || host.hostName || siteId;
 
         console.log('[fetchUnifiSiteData] Populating site data:', { siteId, siteName });
 
         // Return the site data so caller can use it immediately
         return { siteId, siteName };
       } else {
-        console.warn('[fetchUnifiSiteData] No sites returned from controller');
+        console.warn('[fetchUnifiSiteData] No sites returned from Cloud API');
         return null;
       }
     } catch (error) {
@@ -2715,15 +2721,15 @@ const PMProjectViewEnhanced = () => {
                             if (result) {
                               alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
                             } else {
-                              alert('Failed to connect. Check your controller IP and API key.');
+                              alert('Failed to connect. Check your UniFi Network URL in the field above.');
                             }
                           }}
-                          disabled={!formData.unifi_controller_ip || !formData.unifi_network_api_key}
+                          disabled={!formData.unifi_url}
                         >
                           Test Connection & Fetch Site Data
                         </Button>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Click to verify connection and auto-populate Site ID below
+                          Click to fetch site info from Cloud API and auto-populate Site ID below
                         </p>
                       </div>
 
