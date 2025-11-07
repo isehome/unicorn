@@ -123,7 +123,8 @@ const canvasToImage = (canvas) => {
       const url = URL.createObjectURL(blob);
       const img = new Image();
       img.onload = () => {
-        URL.revokeObjectURL(url); // Clean up
+        // Don't revoke the URL immediately - the printer SDK needs it
+        // The browser will clean it up when the page unloads
         resolve(img);
       };
       img.onerror = reject;

@@ -119,23 +119,45 @@ export const printLabel = async (bitmap, copies = 1, cutAfterPrint = true) => {
   }
 
   try {
+    console.log('[BradySDK] Printing label...', {
+      bitmapType: bitmap?.constructor?.name,
+      bitmapSrc: bitmap?.src?.substring(0, 50),
+      width: bitmap?.width,
+      height: bitmap?.height,
+      copies,
+      cutAfterPrint
+    });
+
+    // Ensure the image is fully loaded
+    if (bitmap instanceof HTMLImageElement && !bitmap.complete) {
+      console.log('[BradySDK] Waiting for image to load...');
+      await new Promise((resolve, reject) => {
+        bitmap.onload = resolve;
+        bitmap.onerror = reject;
+      });
+    }
+
     // Set number of copies
     bradySdk.setCopies(copies);
+    console.log('[BradySDK] Set copies to:', copies);
 
     // Set cut option (1 = cut after each label, 0 = cut at end of job, 2 = never cut)
     bradySdk.setCutOption(cutAfterPrint ? 1 : 0);
+    console.log('[BradySDK] Set cut option to:', cutAfterPrint ? 1 : 0);
 
     // Print the bitmap (no offset needed for centered printing)
+    console.log('[BradySDK] Calling printBitmap...');
     const success = await bradySdk.printBitmap(bitmap);
+    console.log('[BradySDK] Print result:', success);
 
     if (!success) {
-      throw new Error('Print job failed');
+      throw new Error('Print job failed - SDK returned false');
     }
 
     return true;
   } catch (error) {
-    console.error('Error printing label:', error);
-    throw new Error(`Print failed: ${error.message}`);
+    console.error('[BradySDK] Error printing label:', error);
+    throw new Error(`Print failed: ${error.message || error}`);
   }
 };
 
