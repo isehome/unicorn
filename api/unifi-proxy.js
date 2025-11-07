@@ -78,6 +78,7 @@ module.exports = async function handler(req, res) {
 
       // Check if this is a Network API proxy endpoint
       // Patterns: /proxy/network/... or /v1/consoles/.../proxy/network/...
+      // This includes: /proxy/network/integration/v1/..., /proxy/network/api/s/.../stat/sta
       if (endpoint.includes('/proxy/network/') || endpoint.includes('/consoles/')) {
         useNetworkApiKey = true;
         console.log('Detected Network API proxy endpoint, will use Network API key');
@@ -122,7 +123,7 @@ module.exports = async function handler(req, res) {
 
           const options = {
             hostname: parsedUrl.hostname,
-            port: parsedUrl.port || 8443,  // UniFi controllers use port 8443 by default
+            port: parsedUrl.port || 443,  // UDM Pro uses port 443 by default (not 8443)
             path: parsedUrl.pathname + parsedUrl.search,
             method: method?.toUpperCase() || 'GET',
             headers: {
@@ -205,11 +206,11 @@ module.exports = async function handler(req, res) {
             let hint = 'Check that the controller is accessible and the WAN IP/hostname is correct';
 
             if (error.code === 'ECONNREFUSED') {
-              hint = `Connection refused on port ${options.port}. Ensure the controller is running and port ${options.port} is open.`;
+              hint = `Connection refused on port ${options.port}. Ensure the controller is running and accessible. For UDM Pro, use port 443 (not 8443).`;
             } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
-              hint = `Connection timed out. Check firewall rules, port forwarding for port ${options.port}, and ensure you're on the same network.`;
+              hint = `Connection timed out. Ensure you're on the same local network as the controller. Local API keys only work from the local network.`;
             } else if (error.code === 'ENOTFOUND') {
-              hint = 'Hostname not found. Check the controller hostname or use the IP address instead.';
+              hint = 'Hostname not found. Use the local IP address (e.g., 192.168.1.1) instead.';
             }
 
             res.status(500).json({

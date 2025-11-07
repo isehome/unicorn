@@ -329,7 +329,11 @@ const PMProjectViewEnhanced = () => {
     one_drive_photos: '',
     one_drive_files: '',
     one_drive_procurement: '',
-    unifi_url: ''
+    unifi_url: '',
+    unifi_controller_ip: '192.168.1.1',
+    unifi_network_api_key: '',
+    unifi_site_id: '',
+    unifi_site_name: ''
   });
 
   // Lucid integration state
@@ -371,6 +375,7 @@ const PMProjectViewEnhanced = () => {
   const [unmatchedRoomEntries, setUnmatchedRoomEntries] = useState([]);
   const [roomAssignments, setRoomAssignments] = useState({});
   const [roomAliasSaving, setRoomAliasSaving] = useState(null);
+  const [showUnifiApiKey, setShowUnifiApiKey] = useState(false);
 
   // Collapsible sections state - all default to collapsed (true)
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
@@ -777,7 +782,11 @@ const PMProjectViewEnhanced = () => {
           one_drive_photos: currentProject.one_drive_photos || '',
           one_drive_files: currentProject.one_drive_files || '',
           one_drive_procurement: currentProject.one_drive_procurement || '',
-          unifi_url: currentProject.unifi_url || ''
+          unifi_url: currentProject.unifi_url || '',
+          unifi_controller_ip: currentProject.unifi_controller_ip || '192.168.1.1',
+          unifi_network_api_key: currentProject.unifi_network_api_key || '',
+          unifi_site_id: currentProject.unifi_site_id || '',
+          unifi_site_name: currentProject.unifi_site_name || ''
         });
 
         // Load milestones
@@ -1087,6 +1096,10 @@ const PMProjectViewEnhanced = () => {
         one_drive_files: formData.one_drive_files || null,
         one_drive_procurement: formData.one_drive_procurement || null,
         unifi_url: formData.unifi_url || null,
+        unifi_controller_ip: formData.unifi_controller_ip || null,
+        unifi_network_api_key: formData.unifi_network_api_key || null,
+        unifi_site_id: formData.unifi_site_id || null,
+        unifi_site_name: formData.unifi_site_name || null,
         lucid_document_id: lucidDocId,
         lucid_document_url: lucidDocUrl
       };
@@ -2581,6 +2594,143 @@ const PMProjectViewEnhanced = () => {
                     )}
                   </div>
                 )}
+
+                {/* UniFi Network Configuration Section */}
+                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    UniFi Network Configuration
+                  </h3>
+
+                  {editMode ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Controller Local IP Address
+                        </label>
+                        <input
+                          type="text"
+                          name="unifi_controller_ip"
+                          value={formData.unifi_controller_ip}
+                          onChange={handleInputChange}
+                          placeholder="192.168.1.1"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                        />
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Local IP of your UDM Pro (only works on the same network)
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Network API Key
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showUnifiApiKey ? "text" : "password"}
+                            name="unifi_network_api_key"
+                            value={formData.unifi_network_api_key}
+                            onChange={handleInputChange}
+                            placeholder="Enter Network API Key"
+                            className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowUnifiApiKey(!showUnifiApiKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
+                                     text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300"
+                          >
+                            {showUnifiApiKey ? 'Hide' : 'Show'}
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Generate from: Network Application → Settings → System → Integrations
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Site ID
+                          </label>
+                          <input
+                            type="text"
+                            name="unifi_site_id"
+                            value={formData.unifi_site_id}
+                            onChange={handleInputChange}
+                            placeholder="Auto-fetched from API"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                            readOnly
+                          />
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Automatically populated from controller
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Site Name
+                          </label>
+                          <input
+                            type="text"
+                            name="unifi_site_name"
+                            value={formData.unifi_site_name}
+                            onChange={handleInputChange}
+                            placeholder="Auto-fetched from API"
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                            readOnly
+                          />
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Automatically populated from controller
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            Controller IP
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                            {formData.unifi_controller_ip || 'Not configured'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            Network API Key
+                          </div>
+                          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                            {formData.unifi_network_api_key ? '••••••••••••••••' : 'Not configured'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {formData.unifi_site_id && (
+                        <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                          <div className="flex-1">
+                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                              Site: {formData.unifi_site_name || 'Unknown'}
+                            </div>
+                            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 font-mono">
+                              {formData.unifi_site_id}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               </div>
             )}

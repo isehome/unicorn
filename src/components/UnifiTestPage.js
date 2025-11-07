@@ -905,12 +905,12 @@ const UnifiTestPage = () => {
       hasApiKey: !!localNetworkApiKey
     });
 
-    // Direct controller API paths (without /proxy/network prefix)
+    // UniFi Network API paths (UDM Pro format with /proxy/network prefix)
     const testEndpoints = [
-      { path: `/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API)' },
-      { path: `/api/s/default/stat/sta`, label: 'Active Clients (Default Site)' },
-      { path: `/v2/api/site/${siteIdPart}/clients`, label: 'Clients (v2 API)' },
-      { path: `/api/stat/sta`, label: 'All Active Clients (no site filter)' },
+      { path: `/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: 'Clients (Integration v1 API - RECOMMENDED)' },
+      { path: `/proxy/network/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API with proxy)' },
+      { path: `/proxy/network/api/s/default/stat/sta`, label: 'Active Clients (Default Site with proxy)' },
+      { path: `/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API direct)' },
     ];
 
     const results = {};
@@ -932,9 +932,9 @@ const UnifiTestPage = () => {
                           ? `${process.env.REACT_APP_UNIFI_PROXY_ORIGIN}/api/unifi-proxy`
                           : '/api/unifi-proxy');
 
-        // UniFi controllers typically use port 8443 for HTTPS API access
+        // UDM Pro uses port 443 (standard HTTPS), older controllers may use 8443
         const protocol = controllerAddress.startsWith('http') ? '' : 'https://';
-        const port = controllerAddress.includes(':') ? '' : ':8443';  // Add port 8443 if not specified
+        const port = controllerAddress.includes(':') ? '' : '';  // No port needed for UDM Pro (uses 443)
         const fullUrl = `${protocol}${controllerAddress}${port}${endpointConfig.path}`;
 
         // For local IPs, we can either use the local proxy (if running) or the Vercel proxy
@@ -995,6 +995,7 @@ const UnifiTestPage = () => {
           });
         }
 
+        try {
           const data = await response.json();
 
           results[endpointConfig.label] = {
@@ -1025,6 +1026,68 @@ const UnifiTestPage = () => {
     } catch (err) {
       console.error('Local API test error:', err);
       setError(`Local API test failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFetchLocalClients = async () => {
+    if (!localControllerIp && !controllerHostname) {
+      setError('Please enter the controller IP address or hostname');
+      return;
+    }
+    if (!localNetworkApiKey) {
+      setError('Please enter the Network API key');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      setClients([]);
+
+      const controllerAddress = controllerHostname || localControllerIp;
+      const controllerUrl = controllerAddress.startsWith('http')
+        ? controllerAddress
+        : `https://${controllerAddress}`;
+
+      console.log('🔍 Fetching sites from local controller:', controllerUrl);
+
+      // Step 1: Fetch sites to get site ID
+      const sitesResponse = await unifiApi.fetchLocalSites(controllerUrl, localNetworkApiKey);
+      console.log('Sites response:', sitesResponse);
+
+      if (!sitesResponse.data || sitesResponse.data.length === 0) {
+        setError('No sites found on this controller');
+        return;
+      }
+
+      // Use first site
+      const siteId = sitesResponse.data[0].id || sitesResponse.data[0].siteId;
+      console.log('Using site ID:', siteId);
+
+      // Step 2: Fetch clients for this site
+      console.log('🔍 Fetching clients for site:', siteId);
+      const clientsResponse = await unifiApi.fetchClients(siteId, controllerUrl, localNetworkApiKey);
+      console.log('Clients response:', clientsResponse);
+
+      setClients(clientsResponse.data || []);
+      setLocalApiTestResult({
+        success: true,
+        siteId: siteId,
+        siteName: sitesResponse.data[0].description || sitesResponse.data[0].name || siteId,
+        totalClients: clientsResponse.total || clientsResponse.data?.length || 0,
+        clients: clientsResponse.data || []
+      });
+
+      console.log(`✅ Successfully fetched ${clientsResponse.total || 0} clients`);
+    } catch (error) {
+      console.error('Error fetching local clients:', error);
+      setError(`Failed to fetch clients: ${error.message}`);
+      setLocalApiTestResult({
+        success: false,
+        error: error.message
+      });
     } finally {
       setLoading(false);
     }
@@ -1116,32 +1179,32 @@ const UnifiTestPage = () => {
           </p>
           <ol className="text-xs text-blue-700 dark:text-blue-400 space-y-1 list-decimal list-inside">
             <li>Ensure you're connected to the same network as the UniFi controller</li>
-            <li>Use the controller's WAN IP or hostname (not 192.168.x.x)</li>
-            <li>Enter your Network API key from UniFi Settings → System → Advanced → Integrations</li>
-            <li>Test connection first, then fetch client data</li>
+            <li>Use the controller's LOCAL IP address (e.g., 192.168.1.1) - This only works from the local network</li>
+            <li>Enter your Network API key from: Network Application → Settings → System → Integrations</li>
+            <li>Click "Fetch Clients (Integration API)" to retrieve all client data</li>
           </ol>
           <div className="text-xs text-amber-700 dark:text-amber-400 mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded">
-            <strong>Note:</strong> The request routes through Vercel proxy to handle CORS and SSL certificates.
+            <strong>Important:</strong> Local API keys only work when you're on the same network as the controller. The request routes through Vercel proxy to handle CORS and SSL certificates.
           </div>
         </div>
 
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Controller WAN IP Address
+              Controller Local IP Address
             </label>
             <input
               type="text"
               value={localControllerIp}
               onChange={(e) => setLocalControllerIp(e.target.value)}
-              placeholder="e.g., 47.199.106.32"
+              placeholder="e.g., 192.168.1.1"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Enter your controller's public WAN IP (visible in Sites section above). Do NOT use local 192.168.x.x addresses.
+              Enter your controller's local IP address (must be on the same network). For UDM Pro, this is typically 192.168.1.1.
             </p>
           </div>
 
@@ -1183,7 +1246,7 @@ const UnifiTestPage = () => {
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant="secondary"
               onClick={testControllerConnection}
@@ -1191,6 +1254,14 @@ const UnifiTestPage = () => {
               icon={Wifi}
             >
               Test Connection First
+            </Button>
+            <Button
+              variant="success"
+              onClick={handleFetchLocalClients}
+              disabled={loading || (!localControllerIp && !controllerHostname) || !localNetworkApiKey}
+              icon={Users}
+            >
+              Fetch Clients (Integration API)
             </Button>
             <Button
               variant="primary"

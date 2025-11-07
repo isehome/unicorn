@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniFi Local Network API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0052a3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        h1 {
+            color: #333;
+        }
+        h2 {
+            color: #555;
+            margin-top: 0;
+        }
+        .endpoint-info {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-left: 4px solid #0066cc;
+            margin: 10px 0;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 UniFi Local Network API Test</h1>
+
+    <div class="warning">
+        <strong>⚠️ Important:</strong> Before testing, make sure you've accepted the SSL certificate warning by visiting
+        <a href="https://47.199.106.32:8443" target="_blank">https://47.199.106.32:8443</a>
+        and clicking "Visit Site Anyway" or "Accept Risk and Continue"
+    </div>
+
+    <div class="test-section">
+        <h2>Configuration</h2>
+        <p><strong>Controller:</strong> 47.199.106.32:8443</p>
+        <p><strong>API Key:</strong> Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu</p>
+        <p><strong>Site:</strong> default</p>
+    </div>
+
+    <!-- Test 1: Controller Status -->
+    <div class="test-section">
+        <h2>Test 1: Controller Status (No Auth)</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/status<br>
+            <em>Tests if controller responds at all</em>
+        </div>
+        <button onclick="testControllerStatus()">Run Test 1</button>
+        <div id="result1"></div>
+    </div>
+
+    <!-- Test 2: Site Health with API Key -->
+    <div class="test-section">
+        <h2>Test 2: Site Health (With API Key)</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/s/default/stat/health<br>
+            <strong>Header:</strong> X-API-KEY: Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu<br>
+            <em>Tests API key authentication</em>
+        </div>
+        <button onclick="testSiteHealth()">Run Test 2</button>
+        <div id="result2"></div>
+    </div>
+
+    <!-- Test 3: Active Clients with API Key -->
+    <div class="test-section">
+        <h2>Test 3: Active Clients (With API Key)</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/s/default/stat/sta<br>
+            <strong>Header:</strong> X-API-KEY: Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu<br>
+            <em>This is the main endpoint for client data</em>
+        </div>
+        <button onclick="testActiveClients()">Run Test 3</button>
+        <div id="result3"></div>
+    </div>
+
+    <!-- Test 4: All Devices -->
+    <div class="test-section">
+        <h2>Test 4: All Devices (With API Key)</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/s/default/stat/device<br>
+            <strong>Header:</strong> X-API-KEY: Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu<br>
+            <em>Gets switch/AP info</em>
+        </div>
+        <button onclick="testDevices()">Run Test 4</button>
+        <div id="result4"></div>
+    </div>
+
+    <!-- Test 5: Login Endpoint -->
+    <div class="test-section">
+        <h2>Test 5: Login Endpoint (Check Auth Type)</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/login<br>
+            <em>Tests if we need session-based auth instead</em>
+        </div>
+        <button onclick="testLoginEndpoint()">Run Test 5</button>
+        <div id="result5"></div>
+    </div>
+
+    <!-- Test 6: Self Endpoint -->
+    <div class="test-section">
+        <h2>Test 6: Self/Info Endpoint</h2>
+        <div class="endpoint-info">
+            <strong>GET</strong> https://47.199.106.32:8443/api/self<br>
+            <strong>Header:</strong> X-API-KEY: Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu<br>
+            <em>Gets controller info</em>
+        </div>
+        <button onclick="testSelfEndpoint()">Run Test 6</button>
+        <div id="result6"></div>
+    </div>
+
+    <script>
+        const CONTROLLER = 'https://47.199.106.32:8443';
+        const API_KEY = 'Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu';
+
+        function displayResult(elementId, status, message, data = null) {
+            const resultDiv = document.getElementById(elementId);
+            let className = status === 'success' ? 'success' : status === 'error' ? 'error' : 'info';
+
+            let content = message + '\n\n';
+
+            if (data) {
+                content += 'Response Data:\n' + JSON.stringify(data, null, 2);
+            }
+
+            resultDiv.className = 'result ' + className;
+            resultDiv.textContent = content;
+        }
+
+        async function makeRequest(url, withApiKey = false) {
+            const options = {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            };
+
+            if (withApiKey) {
+                options.headers['X-API-KEY'] = API_KEY;
+            }
+
+            console.log('Making request to:', url);
+            console.log('Headers:', options.headers);
+
+            try {
+                const response = await fetch(url, options);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', [...response.headers.entries()]);
+
+                let data;
+                const contentType = response.headers.get('content-type');
+
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = await response.text();
+                }
+
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    statusText: response.statusText,
+                    data: data,
+                    headers: Object.fromEntries(response.headers.entries())
+                };
+            } catch (error) {
+                console.error('Request error:', error);
+                return {
+                    success: false,
+                    error: error.message,
+                    type: error.name
+                };
+            }
+        }
+
+        async function testControllerStatus() {
+            displayResult('result1', 'info', '⏳ Testing controller status...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/status`, false);
+
+            if (result.success) {
+                displayResult('result1', 'success',
+                    `✅ SUCCESS (${result.status})\n` +
+                    'Controller is responding!',
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result1', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}\n` +
+                    'Controller responded but returned an error.',
+                    result.data
+                );
+            } else {
+                displayResult('result1', 'error',
+                    `❌ ${result.type}: ${result.error}\n` +
+                    'Could not connect to controller. Check SSL certificate.'
+                );
+            }
+        }
+
+        async function testSiteHealth() {
+            displayResult('result2', 'info', '⏳ Testing site health with API key...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/s/default/stat/health`, true);
+
+            if (result.success) {
+                displayResult('result2', 'success',
+                    `✅ SUCCESS (${result.status})\n` +
+                    '🎉 API KEY WORKS! Health endpoint responding.',
+                    result.data
+                );
+            } else if (result.status === 401) {
+                displayResult('result2', 'error',
+                    `❌ 401 UNAUTHORIZED\n` +
+                    'API key was rejected. Key might be:\n' +
+                    '  - Wrong key for this controller\n' +
+                    '  - Cloud API key instead of Network API key\n' +
+                    '  - Session auth required instead',
+                    result.data
+                );
+            } else if (result.status === 404) {
+                displayResult('result2', 'error',
+                    `❌ 404 NOT FOUND\n` +
+                    'Endpoint does not exist. Controller might use different paths.',
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result2', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}`,
+                    result.data
+                );
+            } else {
+                displayResult('result2', 'error',
+                    `❌ ${result.type}: ${result.error}\n` +
+                    'Network error. CORS or SSL issue.'
+                );
+            }
+        }
+
+        async function testActiveClients() {
+            displayResult('result3', 'info', '⏳ Testing active clients endpoint...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/s/default/stat/sta`, true);
+
+            if (result.success) {
+                const clientCount = Array.isArray(result.data?.data) ? result.data.data.length : 0;
+                displayResult('result3', 'success',
+                    `✅ SUCCESS (${result.status})\n` +
+                    `🎉 FOUND ${clientCount} CLIENTS!`,
+                    result.data
+                );
+            } else if (result.status === 401) {
+                displayResult('result3', 'error',
+                    `❌ 401 UNAUTHORIZED\n` +
+                    'API key authentication failed for client data.',
+                    result.data
+                );
+            } else if (result.status === 404) {
+                displayResult('result3', 'error',
+                    `❌ 404 NOT FOUND\n` +
+                    'Client endpoint not found at this path.',
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result3', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}`,
+                    result.data
+                );
+            } else {
+                displayResult('result3', 'error',
+                    `❌ ${result.type}: ${result.error}`
+                );
+            }
+        }
+
+        async function testDevices() {
+            displayResult('result4', 'info', '⏳ Testing devices endpoint...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/s/default/stat/device`, true);
+
+            if (result.success) {
+                const deviceCount = Array.isArray(result.data?.data) ? result.data.data.length : 0;
+                displayResult('result4', 'success',
+                    `✅ SUCCESS (${result.status})\n` +
+                    `Found ${deviceCount} devices!`,
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result4', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}`,
+                    result.data
+                );
+            } else {
+                displayResult('result4', 'error',
+                    `❌ ${result.type}: ${result.error}`
+                );
+            }
+        }
+
+        async function testLoginEndpoint() {
+            displayResult('result5', 'info', '⏳ Checking login endpoint...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/login`, false);
+
+            if (result.status === 400 || result.status === 401) {
+                displayResult('result5', 'info',
+                    `ℹ️ Login endpoint exists (${result.status})\n` +
+                    'This suggests session-based auth may be required.\n' +
+                    'Getting 400/401 without credentials is expected.',
+                    result.data
+                );
+            } else if (result.success) {
+                displayResult('result5', 'success',
+                    `✅ Login endpoint responded (${result.status})`,
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result5', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}`,
+                    result.data
+                );
+            } else {
+                displayResult('result5', 'error',
+                    `❌ ${result.type}: ${result.error}`
+                );
+            }
+        }
+
+        async function testSelfEndpoint() {
+            displayResult('result6', 'info', '⏳ Testing self endpoint...');
+
+            const result = await makeRequest(`${CONTROLLER}/api/self`, true);
+
+            if (result.success) {
+                displayResult('result6', 'success',
+                    `✅ SUCCESS (${result.status})\n` +
+                    'Self endpoint responding with API key!',
+                    result.data
+                );
+            } else if (result.status) {
+                displayResult('result6', 'error',
+                    `❌ HTTP ${result.status}: ${result.statusText}`,
+                    result.data
+                );
+            } else {
+                displayResult('result6', 'error',
+                    `❌ ${result.type}: ${result.error}`
+                );
+            }
+        }
+
+        // Show browser info
+        console.log('Browser:', navigator.userAgent);
+        console.log('HTTPS supported:', window.location.protocol === 'https:');
+    </script>
+</body>
+</html>

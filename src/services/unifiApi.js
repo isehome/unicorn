@@ -301,7 +301,7 @@ Run the development server: npm run dev
 };
 
 /**
- * Fetch all hosts from UniFi Site Manager
+ * Fetch all hosts from UniFi Site Manager (Cloud API)
  * Official endpoint: https://api.ui.com/v1/hosts
  * Each host has a hostname (UUID) that identifies it
  * @param {string} controllerUrl - UniFi controller base URL
@@ -315,6 +315,47 @@ export const fetchSites = async (controllerUrl, apiKey = null) => {
     }, apiKey);
   } catch (error) {
     console.error('Error fetching UniFi hosts:', error);
+    throw error;
+  }
+};
+
+/**
+ * Fetch sites from local UniFi controller
+ * Uses local Network API endpoint: /proxy/network/integration/v1/sites
+ * @param {string} controllerUrl - Local controller IP (e.g., 'https://192.168.1.1')
+ * @param {string} networkApiKey - Local Network API key
+ * @returns {Promise<Array>} List of sites
+ */
+export const fetchLocalSites = async (controllerUrl, networkApiKey = null) => {
+  try {
+    if (!controllerUrl) {
+      throw new Error('Controller URL is required');
+    }
+
+    // Build full URL for local controller access
+    const baseUrl = controllerUrl.endsWith('/') ? controllerUrl.slice(0, -1) : controllerUrl;
+    const endpoint = `${baseUrl}/proxy/network/integration/v1/sites`;
+
+    console.log('[fetchLocalSites] Full endpoint URL:', endpoint);
+
+    const response = await callUnifiProxy({
+      endpoint,
+      directUrl: true,
+      networkApiKey
+    }, networkApiKey);
+
+    // Parse response - API returns data in various formats
+    const sites = response?.data || response?.sites || response || [];
+
+    console.log('[fetchLocalSites] Retrieved sites:', Array.isArray(sites) ? sites.length : 'non-array response');
+
+    return {
+      data: sites,
+      total: Array.isArray(sites) ? sites.length : 0,
+      raw: response
+    };
+  } catch (error) {
+    console.error('Error fetching local UniFi sites:', error);
     throw error;
   }
 };
@@ -449,17 +490,46 @@ export const fetchDevices = async (hostIds, controllerUrl = null, options = {}, 
 
 /**
  * Fetch all clients connected to the network
- * Note: Client data may be included in device data or require a different endpoint
- * @param {string} hostId - UniFi host ID
- * @param {string} controllerUrl - UniFi controller base URL
- * @returns {Promise<Array>} List of connected clients
+ * Uses the local Network API endpoint: /proxy/network/integration/v1/sites/{siteId}/clients
+ *
+ * @param {string} siteId - UniFi site ID (e.g., '88f7af54-98f8-306a-a1c7-c9349722b1f6')
+ * @param {string} controllerUrl - Local controller IP (e.g., 'https://192.168.1.1')
+ * @param {string} networkApiKey - Local Network API key
+ * @returns {Promise<Object>} Response with clients data
  */
-export const fetchClients = async (hostId, controllerUrl) => {
+export const fetchClients = async (siteId, controllerUrl, networkApiKey = null) => {
   try {
-    // TODO: Check if there's a separate clients endpoint in the API docs
-    // For now, returning empty array as clients might be in device data
-    console.warn('Clients endpoint not yet implemented - check API docs for correct endpoint');
-    return { data: [] };
+    if (!siteId) {
+      throw new Error('Site ID is required to fetch clients');
+    }
+
+    if (!controllerUrl) {
+      throw new Error('Controller URL is required to fetch clients');
+    }
+
+    // Build full URL for local controller access
+    // Format: https://192.168.1.1/proxy/network/integration/v1/sites/{siteId}/clients
+    const baseUrl = controllerUrl.endsWith('/') ? controllerUrl.slice(0, -1) : controllerUrl;
+    const endpoint = `${baseUrl}/proxy/network/integration/v1/sites/${siteId}/clients`;
+
+    console.log('[fetchClients] Full endpoint URL:', endpoint);
+
+    const response = await callUnifiProxy({
+      endpoint,  // Full URL
+      directUrl: true,  // This tells proxy to treat endpoint as a complete URL
+      networkApiKey
+    }, networkApiKey);
+
+    // Parse response - API returns data in various formats
+    const clients = response?.data || response?.clients || response || [];
+
+    console.log('[fetchClients] Retrieved clients:', Array.isArray(clients) ? clients.length : 'non-array response');
+
+    return {
+      data: parseClientData(clients),
+      total: Array.isArray(clients) ? clients.length : 0,
+      raw: response
+    };
   } catch (error) {
     console.error('Error fetching UniFi clients:', error);
     throw error;
@@ -844,8 +914,13 @@ export const testConnection = async (controllerUrl, apiKey = null) => {
 
 export default {
   fetchSites,
+  fetchLocalSites,
   fetchDevices,
   fetchClients,
   fetchSwitchPorts,
-  testConnection
+  testConnection,
+  testClientEndpoints,
+  fetchClientsWithEndpoint,
+  parseClientData,
+  extractClientsFromDevices
 };
