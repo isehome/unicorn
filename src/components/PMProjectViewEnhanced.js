@@ -1074,30 +1074,48 @@ const PMProjectViewEnhanced = () => {
       // TODO: This should come from program settings, not hardcoded
       // For now, hardcode the Cloud API key
       const CLOUD_API_KEY = 'Uz0CvgeS2Zn5O3y46DvNzloXw_fLDeVu';
+      const CLOUD_API_BASE_URL = 'https://api.ui.com';
 
-      // Use the Cloud API to fetch hosts/sites
-      const sitesResponse = await unifiApi.fetchSites(
-        formData.unifi_url,
+      // Parse the project's UniFi URL to extract host/console ID
+      const { hostId, siteId: parsedSiteId } = unifiApi.parseUnifiUrl(formData.unifi_url);
+      console.log('[fetchUnifiSiteData] Parsed URL:', { hostId, parsedSiteId });
+
+      // ALWAYS use the Cloud API base URL (not the project URL)
+      const hostsResponse = await unifiApi.fetchSites(
+        CLOUD_API_BASE_URL,
         CLOUD_API_KEY
       );
 
-      console.log('[fetchUnifiSiteData] Sites response:', sitesResponse);
+      console.log('[fetchUnifiSiteData] Hosts response:', hostsResponse);
 
-      // The Cloud API returns hosts with sites nested inside
-      if (Array.isArray(sitesResponse) && sitesResponse.length > 0) {
-        const host = sitesResponse[0];
+      // The Cloud API returns an array of hosts
+      if (Array.isArray(hostsResponse) && hostsResponse.length > 0) {
+        // If we have a host ID, try to find the matching host
+        let targetHost = hostsResponse[0]; // Default to first host
+
+        if (hostId) {
+          const matchingHost = hostsResponse.find(h =>
+            h.id === hostId || h.hostId === hostId
+          );
+          if (matchingHost) {
+            targetHost = matchingHost;
+            console.log('[fetchUnifiSiteData] Found matching host by ID:', hostId);
+          } else {
+            console.warn('[fetchUnifiSiteData] No matching host found for ID:', hostId, '- using first host');
+          }
+        }
 
         // Extract site info from the host
         // The response structure has: host.reportedState with controller info
-        const siteId = host.id || host.hostId || host._id;
-        const siteName = host.reportedState?.hostname || host.name || host.hostName || siteId;
+        const siteId = targetHost.id || targetHost.hostId || targetHost._id;
+        const siteName = targetHost.reportedState?.hostname || targetHost.name || targetHost.hostName || siteId;
 
         console.log('[fetchUnifiSiteData] Populating site data:', { siteId, siteName });
 
         // Return the site data so caller can use it immediately
         return { siteId, siteName };
       } else {
-        console.warn('[fetchUnifiSiteData] No sites returned from Cloud API');
+        console.warn('[fetchUnifiSiteData] No hosts returned from Cloud API');
         return null;
       }
     } catch (error) {

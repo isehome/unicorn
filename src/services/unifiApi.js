@@ -302,6 +302,42 @@ Run the development server: npm run dev
 };
 
 /**
+ * Parse UniFi URL to extract host ID and site ID
+ * Supports patterns like:
+ * - /consoles/{hostId}/network/{siteId}/...
+ * - /network/{siteId}/...
+ * @param {string} unifiUrl - Full UniFi URL from project
+ * @returns {Object} { hostId, siteId }
+ */
+export const parseUnifiUrl = (unifiUrl) => {
+  try {
+    const url = new URL(unifiUrl);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+
+    // Pattern 1: /consoles/{hostId}/network/{siteId}/...
+    if (pathParts[0] === 'consoles' && pathParts[1]) {
+      return {
+        hostId: pathParts[1],
+        siteId: pathParts[3] || 'default'
+      };
+    }
+
+    // Pattern 2: /network/{siteId}/...
+    if (pathParts[0] === 'network' && pathParts[1]) {
+      return {
+        hostId: null,
+        siteId: pathParts[1]
+      };
+    }
+
+    return { hostId: null, siteId: 'default' };
+  } catch (error) {
+    console.error('[parseUnifiUrl] Failed to parse URL:', error);
+    return { hostId: null, siteId: 'default' };
+  }
+};
+
+/**
  * Fetch all hosts from UniFi Site Manager (Cloud API)
  * Official endpoint: https://api.ui.com/v1/hosts
  * Each host has a hostname (UUID) that identifies it
@@ -923,5 +959,6 @@ export default {
   testClientEndpoints,
   fetchClientsWithEndpoint,
   parseClientData,
-  extractClientsFromDevices
+  extractClientsFromDevices,
+  parseUnifiUrl
 };
