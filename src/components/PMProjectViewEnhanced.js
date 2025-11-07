@@ -1088,13 +1088,18 @@ const PMProjectViewEnhanced = () => {
 
       console.log('[fetchUnifiSiteData] Hosts response:', hostsResponse);
 
-      // The Cloud API returns an array of hosts
-      if (Array.isArray(hostsResponse) && hostsResponse.length > 0) {
+      // Extract the hosts array from the response
+      // Cloud API returns: { data: [...], httpStatusCode: 200, traceId: "..." }
+      const hosts = hostsResponse?.data || hostsResponse || [];
+      console.log('[fetchUnifiSiteData] Extracted hosts array:', hosts);
+
+      // Check if we have any hosts
+      if (Array.isArray(hosts) && hosts.length > 0) {
         // If we have a host ID, try to find the matching host
-        let targetHost = hostsResponse[0]; // Default to first host
+        let targetHost = hosts[0]; // Default to first host
 
         if (hostId) {
-          const matchingHost = hostsResponse.find(h =>
+          const matchingHost = hosts.find(h =>
             h.id === hostId || h.hostId === hostId
           );
           if (matchingHost) {
