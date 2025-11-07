@@ -12,14 +12,15 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
   const [selectedClientMac, setSelectedClientMac] = useState('');
   const [currentAssignment, setCurrentAssignment] = useState(null);
   const [unifiUrl, setUnifiUrl] = useState('');
+  const [networkApiKey, setNetworkApiKey] = useState('');
   const [error, setError] = useState('');
 
-  // Load project UniFi URL
+  // Load project UniFi configuration
   useEffect(() => {
     const loadProject = async () => {
       const { data } = await supabase
         .from('projects')
-        .select('unifi_url')
+        .select('unifi_url, unifi_network_api_key, unifi_site_id')
         .eq('id', projectId)
         .single();
 
@@ -27,6 +28,10 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
         setUnifiUrl(data.unifi_url);
       } else {
         setError('No UniFi URL configured for this project');
+      }
+
+      if (data?.unifi_network_api_key) {
+        setNetworkApiKey(data.unifi_network_api_key);
       }
     };
     loadProject();
@@ -56,6 +61,11 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
       return;
     }
 
+    if (!networkApiKey) {
+      setError('No Network API key configured for this project');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -76,8 +86,8 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
         throw new Error('No UniFi host found');
       }
 
-      // Fetch clients
-      const clientsData = await unifiApi.fetchClients(hostId, unifiUrl);
+      // Fetch clients - passing the Network API key
+      const clientsData = await unifiApi.fetchClients(hostId, unifiUrl, networkApiKey);
       setClients(clientsData.data || []);
 
     } catch (err) {
