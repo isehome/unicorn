@@ -29,25 +29,32 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+  // Add margins to prevent cutoff
+  const MARGIN_TOP = 8;
+  const MARGIN_BOTTOM = 8;
+  const MARGIN_LEFT = 8;
+  const MARGIN_RIGHT = 8;
+
   // Draw vertical divider line
   const halfWidth = WIDTH / 2;
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(halfWidth, 0);
-  ctx.lineTo(halfWidth, HEIGHT);
+  ctx.moveTo(halfWidth, MARGIN_TOP);
+  ctx.lineTo(halfWidth, HEIGHT - MARGIN_BOTTOM);
   ctx.stroke();
 
-  // LEFT SIDE: QR Code (0.7" x 0.7" centered in left half)
-  const qrSize = Math.floor(0.7 * DPI); // 142 pixels
-  const qrX = (halfWidth - qrSize) / 2;
-  const qrY = (HEIGHT - qrSize) / 2;
+  // LEFT SIDE: QR Code (0.6" x 0.6" centered in left half)
+  const qrSize = Math.floor(0.6 * DPI); // 122 pixels
+  const qrX = MARGIN_LEFT + (halfWidth - MARGIN_LEFT - MARGIN_RIGHT - qrSize) / 2;
+  const qrY = MARGIN_TOP + (HEIGHT - MARGIN_TOP - MARGIN_BOTTOM - qrSize) / 2;
 
   try {
     // Generate QR code as data URL
     const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
       width: qrSize,
-      margin: 1,
+      margin: 0,
+      errorCorrectionLevel: 'M',
       color: {
         dark: '#000000',
         light: '#FFFFFF',
@@ -65,33 +72,40 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   }
 
   // RIGHT SIDE: Text Information
-  const textStartX = halfWidth + 8; // 8px padding from divider
-  const textWidth = halfWidth - 16; // 8px padding on each side
-  const textStartY = 15; // Start from top
+  const textStartX = halfWidth + 6; // Small padding from divider
+  const textWidth = halfWidth - 12; // Padding on both sides
+  const textStartY = MARGIN_TOP + 8; // Start below top margin
 
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'left';
 
-  // Line 1: Wire Drop UID (Bold, larger)
-  ctx.font = 'bold 24px Arial';
-  ctx.fillText(truncateText(ctx, wireDrop.uid || 'NO-UID', textWidth), textStartX, textStartY + 25);
+  // Line 1: Wire Drop UID (Bold, medium size)
+  ctx.font = 'bold 18px Arial';
+  ctx.fillText(truncateText(ctx, wireDrop.uid || 'NO-UID', textWidth), textStartX, textStartY + 16);
 
-  // Line 2: Room Name
-  ctx.font = '18px Arial';
+  // Line 2: Room Name (wrap if needed)
+  ctx.font = '14px Arial';
   const roomName = wireDrop.room_name || wireDrop.drop_name || 'No Room';
-  ctx.fillText(truncateText(ctx, roomName, textWidth), textStartX, textStartY + 55);
+  const wrappedLines = wrapText(ctx, roomName, textWidth);
+  let currentY = textStartY + 38;
+  wrappedLines.forEach((line, index) => {
+    if (index < 2) { // Max 2 lines for room name
+      ctx.fillText(line, textStartX, currentY);
+      currentY += 16;
+    }
+  });
 
-  // Line 3: Wire Type / Drop Type
-  ctx.font = '16px Arial';
+  // Line 3: Wire Type / Drop Type (smaller, at bottom)
+  ctx.font = '11px Arial';
   const wireType = wireDrop.wire_type || 'N/A';
   const dropType = wireDrop.drop_type || 'N/A';
   const typeText = `${wireType} / ${dropType}`;
-  ctx.fillText(truncateText(ctx, typeText, textWidth), textStartX, textStartY + 80);
+  ctx.fillText(truncateText(ctx, typeText, textWidth), textStartX, HEIGHT - MARGIN_BOTTOM - 8);
 
-  // Draw border around entire label
+  // Draw border around entire label (thinner)
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(0, 0, WIDTH, HEIGHT);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, WIDTH - 2, HEIGHT - 2);
 
   // Convert canvas to image
   return await canvasToImage(canvas);
@@ -131,6 +145,33 @@ const canvasToImage = (canvas) => {
       img.src = url;
     });
   });
+};
+
+/**
+ * Wrap text to fit within specified width
+ */
+const wrapText = (ctx, text, maxWidth) => {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+
+  words.forEach(word => {
+    const testLine = currentLine + (currentLine ? ' ' : '') + word;
+    const metrics = ctx.measureText(testLine);
+
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
 };
 
 /**

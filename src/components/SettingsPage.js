@@ -72,10 +72,10 @@ const SettingsPage = () => {
               <Smartphone size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                  iPhone/iPad Users
+                  iPhone/iPad - Label Printing
                 </h3>
                 <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
-                  Safari doesn't support Web Bluetooth. To print labels from your iPhone/iPad:
+                  Safari and Chrome on iOS don't support Bluetooth printing. When printing is required, please use the Bluefy browser:
                 </p>
                 <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-2 ml-4 list-decimal">
                   <li>
@@ -86,14 +86,15 @@ const SettingsPage = () => {
                       rel="noopener noreferrer"
                       className="block mt-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                     >
-                      Download Bluefy →
+                      Download Bluefy from App Store →
                     </a>
                   </li>
                   <li>Open this web app in Bluefy browser</li>
-                  <li>Return to this Settings page to connect your printer</li>
+                  <li>Return to this Settings page to connect your Brady M211 printer</li>
+                  <li>If connection fails: Hold the printer's power button for 5 seconds to reset ownership</li>
                 </ol>
                 <p className="text-xs text-blue-700 dark:text-blue-300 mt-3 italic">
-                  Alternatively, use Chrome or Edge on a desktop computer
+                  You can continue using Safari/Chrome for everything else - only switch to Bluefy when you need to print labels.
                 </p>
               </div>
             </div>
@@ -159,8 +160,13 @@ const SettingsPage = () => {
             )}
 
             <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-              <p>ℹ️ Labels will print at 1.5" × 0.75" with QR code</p>
+              <p>ℹ️ Labels print at 1.5" × 0.75" with QR code and wire drop info</p>
               <p>💡 Requires Chrome or Edge browser with Bluetooth enabled</p>
+              {!connected && (
+                <p className="text-amber-600 dark:text-amber-400">
+                  ⚠️ Connection fails? Hold printer power button for 5 seconds to reset ownership
+                </p>
+              )}
               {connected && (
                 <p className="text-green-600 dark:text-green-400 font-medium">
                   ✓ Ready to print from Wire Drops pages
