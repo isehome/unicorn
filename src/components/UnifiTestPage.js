@@ -818,7 +818,8 @@ const UnifiTestPage = () => {
       // Use the existing unifi-proxy endpoint with a simple test path
       // Add port 8443 if not specified (UniFi controllers use 8443 for HTTPS API)
       const port = baseUrl.includes(':') ? '' : ':8443';
-      const testEndpoint = `${baseUrl}${port}/api/self`;
+      // Use a standard UniFi endpoint - get default site stats
+      const testEndpoint = `${baseUrl}${port}/api/s/default/stat/health`;
 
       console.log('Testing controller connection to:', baseUrl);
 

@@ -98,7 +98,7 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    console.log('Using API key type:', useNetworkApiKey ? `Network API key (${customNetworkApiKey ? 'custom' : 'hardcoded'})` : 'Cloud API key (env)');
+    console.log('Using API key type:', useNetworkApiKey ? 'Network API key (custom)' : 'Cloud API key (env)');
 
     const fetchOptions = {
       method: method?.toUpperCase() || 'GET',
@@ -114,6 +114,7 @@ module.exports = async function handler(req, res) {
     // This allows us to handle self-signed certificates properly
     if (useNetworkApiKey && (directUrl || endpoint.includes('/proxy/network/'))) {
       console.log('Using Node.js HTTPS module for Network API call to handle self-signed certs');
+      console.log('Full URL being requested:', url);
 
       return new Promise((resolve, reject) => {
         try {
@@ -121,7 +122,7 @@ module.exports = async function handler(req, res) {
 
           const options = {
             hostname: parsedUrl.hostname,
-            port: parsedUrl.port || 443,
+            port: parsedUrl.port || 8443,  // UniFi controllers use port 8443 by default
             path: parsedUrl.pathname + parsedUrl.search,
             method: method?.toUpperCase() || 'GET',
             headers: {
@@ -198,10 +199,26 @@ module.exports = async function handler(req, res) {
 
           httpsReq.on('error', (error) => {
             console.error('HTTPS request error:', error);
+            console.error('Error code:', error.code);
+            console.error('Failed URL:', url);
+
+            let hint = 'Check that the controller is accessible and the WAN IP/hostname is correct';
+
+            if (error.code === 'ECONNREFUSED') {
+              hint = `Connection refused on port ${options.port}. Ensure the controller is running and port ${options.port} is open.`;
+            } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {
+              hint = `Connection timed out. Check firewall rules, port forwarding for port ${options.port}, and ensure you're on the same network.`;
+            } else if (error.code === 'ENOTFOUND') {
+              hint = 'Hostname not found. Check the controller hostname or use the IP address instead.';
+            }
+
             res.status(500).json({
               error: 'Controller connection failed',
               details: error.message,
-              hint: 'Check that the controller is accessible and the WAN IP/hostname is correct'
+              errorCode: error.code,
+              url: url,
+              port: options.port,
+              hint: hint
             });
             resolve();
           });
