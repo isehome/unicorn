@@ -816,8 +816,9 @@ const UnifiTestPage = () => {
 
     try {
       // Use the existing unifi-proxy endpoint with a simple test path
-      // Test with /api/self which is a common UniFi endpoint
-      const testEndpoint = `${baseUrl}/proxy/network/api/self`;
+      // Add port 8443 if not specified (UniFi controllers use 8443 for HTTPS API)
+      const port = baseUrl.includes(':') ? '' : ':8443';
+      const testEndpoint = `${baseUrl}${port}/api/self`;
 
       console.log('Testing controller connection to:', baseUrl);
 
@@ -903,11 +904,12 @@ const UnifiTestPage = () => {
       hasApiKey: !!localNetworkApiKey
     });
 
+    // Direct controller API paths (without /proxy/network prefix)
     const testEndpoints = [
-      { path: `/proxy/network/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API)' },
-      { path: `/proxy/network/api/s/default/stat/sta`, label: 'Active Clients (Default Site)' },
-      { path: `/proxy/network/integration/v1/clients`, label: 'All Clients (v1 API - no site)' },
-      { path: `/proxy/network/integration/v1/sites/${siteIdPart}/clients`, label: `Site Clients (v1 API - ${siteIdPart})` },
+      { path: `/api/s/${siteIdPart}/stat/sta`, label: 'Active Clients (Legacy API)' },
+      { path: `/api/s/default/stat/sta`, label: 'Active Clients (Default Site)' },
+      { path: `/v2/api/site/${siteIdPart}/clients`, label: 'Clients (v2 API)' },
+      { path: `/api/stat/sta`, label: 'All Active Clients (no site filter)' },
     ];
 
     const results = {};
@@ -918,18 +920,67 @@ const UnifiTestPage = () => {
       setError(null);
 
       for (const endpointConfig of testEndpoints) {
+        // Determine if this is a local IP address
+        const isLocalIP = controllerAddress.match(/^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/);
+        const isLocalhost = controllerAddress.includes('localhost') || controllerAddress.includes('127.0.0.1');
+        const isLocal = isLocalIP || isLocalhost;
+
         // Use proxy for mobile/remote access
         const proxyUrl = process.env.REACT_APP_UNIFI_PROXY_URL ||
                         (process.env.REACT_APP_UNIFI_PROXY_ORIGIN
                           ? `${process.env.REACT_APP_UNIFI_PROXY_ORIGIN}/api/unifi-proxy`
                           : '/api/unifi-proxy');
+
+        // UniFi controllers typically use port 8443 for HTTPS API access
         const protocol = controllerAddress.startsWith('http') ? '' : 'https://';
-        const fullUrl = `${protocol}${controllerAddress}${endpointConfig.path}`;
+        const port = controllerAddress.includes(':') ? '' : ':8443';  // Add port 8443 if not specified
+        const fullUrl = `${protocol}${controllerAddress}${port}${endpointConfig.path}`;
 
-        console.log('Testing (via proxy):', endpointConfig.label, fullUrl);
+        // For local IPs, we can either use the local proxy (if running) or the Vercel proxy
+        // The Vercel proxy won't work for local IPs, so we need to handle this differently
+        let response;
 
-        try {
-          const response = await fetch(proxyUrl, {
+        if (isLocal) {
+          // For local IPs, try the local proxy first (localhost:3001)
+          // If that fails, show an error message
+          console.log('Local IP detected, attempting local proxy:', fullUrl);
+
+          try {
+            // First check if local proxy is running
+            const localProxyUrl = 'http://localhost:3001/proxy' + endpointConfig.path;
+            const testResponse = await fetch('http://localhost:3001/health').catch(() => null);
+
+            if (testResponse && testResponse.ok) {
+              // Local proxy is running, use it
+              console.log('Using local proxy at localhost:3001');
+              response = await fetch(localProxyUrl, {
+                method: 'GET',
+                headers: {
+                  'X-API-KEY': localNetworkApiKey,
+                  'X-Controller-IP': controllerAddress
+                }
+              });
+            } else {
+              // Local proxy not running, provide instructions
+              throw new Error('Local proxy not running. Run: node local-unifi-proxy.js');
+            }
+          } catch (localError) {
+            // If local proxy fails, explain the issue
+            results[endpointConfig.label] = {
+              status: 0,
+              success: false,
+              error: `Cannot access local IP ${controllerAddress} from browser. ${localError.message}`,
+              hint: 'For local IPs, run the local proxy: node local-unifi-proxy.js',
+              path: endpointConfig.path,
+              fullUrl
+            };
+            continue;
+          }
+        } else {
+          // For WAN IPs/hostnames, use the Vercel proxy
+          console.log('Testing via Vercel proxy:', endpointConfig.label, fullUrl);
+
+          response = await fetch(proxyUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -941,6 +992,7 @@ const UnifiTestPage = () => {
               networkApiKey: localNetworkApiKey
             })
           });
+        }
 
           const data = await response.json();
 

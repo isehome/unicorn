@@ -86,10 +86,17 @@ module.exports = async function handler(req, res) {
 
     console.log('Calling UniFi API:', url, 'method:', method);
 
-    // Use custom Network API key if provided, otherwise use hardcoded fallback
-    const hardcodedNetworkApiKey = 'j_ChcU0fSMHlxPoj8djPhkBYgFVy0LAq';
-    const networkApiKey = customNetworkApiKey || hardcodedNetworkApiKey;
+    // Use custom Network API key if provided (no fallback - must be provided)
+    const networkApiKey = customNetworkApiKey;
     const keyToUse = useNetworkApiKey ? networkApiKey : apiKey;
+
+    // Ensure Network API key is provided for Network API calls
+    if (useNetworkApiKey && !networkApiKey) {
+      return res.status(400).json({
+        error: 'Network API key required',
+        hint: 'Please provide a Network API key for accessing the UniFi controller directly'
+      });
+    }
 
     console.log('Using API key type:', useNetworkApiKey ? `Network API key (${customNetworkApiKey ? 'custom' : 'hardcoded'})` : 'Cloud API key (env)');
 
