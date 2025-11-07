@@ -10,24 +10,29 @@ export const PrinterProvider = ({ children }) => {
   const [supported, setSupported] = useState(true);
   const [sdkInitialized, setSdkInitialized] = useState(false);
 
-  // Detect if user is on iOS Safari
+  // Detect if user is on iOS Safari (but allow Bluefy browser which has Web Bluetooth support)
   const isIOSSafari = /iPhone|iPad|iPod/.test(navigator.userAgent) &&
                       /Safari/.test(navigator.userAgent) &&
-                      !/Chrome|CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+                      !/Chrome|CriOS|FxiOS|EdgiOS|Bluefy/.test(navigator.userAgent);
 
   // Initialize Brady SDK on mount
   useEffect(() => {
     const initSDK = async () => {
+      // Check if Web Bluetooth is actually available (works for all browsers including Bluefy)
+      const hasWebBluetooth = 'bluetooth' in navigator;
+
       // Skip SDK initialization on iOS Safari since Web Bluetooth is not supported
-      if (isIOSSafari) {
+      // But allow browsers like Bluefy that have Web Bluetooth
+      if (isIOSSafari && !hasWebBluetooth) {
         setSupported(false);
-        setError('Web Bluetooth is not supported on iPhone/iPad Safari. Please use Chrome or Edge on a desktop computer.');
+        setError('Web Bluetooth is not supported on iPhone/iPad Safari. Please use Bluefy browser or Chrome/Edge on a desktop computer.');
         setSdkInitialized(true);
         return;
       }
 
       try {
         console.log('[PrinterContext] Starting SDK initialization...');
+        console.log('[PrinterContext] Web Bluetooth available:', hasWebBluetooth);
 
         // Check browser support first
         const isSupported = bradyPrintService.isSupportedBrowser();
@@ -35,7 +40,7 @@ export const PrinterProvider = ({ children }) => {
         setSupported(isSupported);
 
         if (!isSupported) {
-          setError('Web Bluetooth not supported. Please use Chrome or Edge browser on a desktop computer.');
+          setError('Web Bluetooth not supported. Please use Bluefy browser on iOS, or Chrome/Edge on a desktop computer.');
           setSdkInitialized(true);
           return;
         }

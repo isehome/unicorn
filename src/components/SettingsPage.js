@@ -66,7 +66,7 @@ const SettingsPage = () => {
         </div>
 
         {isIOSSafari ? (
-          // iOS Safari - Show instructions for Brady app
+          // iOS Safari - Show instructions for Bluefy browser
           <div className="space-y-3">
             <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
               <Smartphone size={20} className="text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
@@ -75,21 +75,26 @@ const SettingsPage = () => {
                   iPhone/iPad Users
                 </h3>
                 <p className="text-xs text-blue-800 dark:text-blue-200 mb-2">
-                  Web Bluetooth is not supported on iPhone/iPad. To print labels:
+                  Safari doesn't support Web Bluetooth. To print labels from your iPhone/iPad:
                 </p>
-                <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-1 ml-4 list-decimal">
-                  <li>Download the <strong>Brady Express Labels</strong> app (free)</li>
-                  <li>Connect to your M211 printer in the app</li>
-                  <li>Use this web app on a desktop with Chrome/Edge for printing</li>
+                <ol className="text-xs text-blue-800 dark:text-blue-200 space-y-2 ml-4 list-decimal">
+                  <li>
+                    Download the <strong>Bluefy - Web BLE Browser</strong> app (free)
+                    <a
+                      href="https://apps.apple.com/us/app/bluefy-web-ble-browser/id1492822055"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block mt-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      Download Bluefy →
+                    </a>
+                  </li>
+                  <li>Open this web app in Bluefy browser</li>
+                  <li>Return to this Settings page to connect your printer</li>
                 </ol>
-                <a
-                  href="https://apps.apple.com/us/app/brady-express-labels/id1428966237"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-3 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  Download Brady Express Labels App →
-                </a>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-3 italic">
+                  Alternatively, use Chrome or Edge on a desktop computer
+                </p>
               </div>
             </div>
           </div>
