@@ -12,8 +12,9 @@ export const initializeBradySdk = async (callback) => {
   if (isInitialized) return bradySdk;
 
   try {
-    // Import Brady SDK (uses import map)
-    const BradySdk = (await import('brady-web-sdk')).default;
+    // Import Brady SDK from public vendor folder
+    const module = await import('/vendor/brady-web-sdk.js');
+    const BradySdk = module.default;
 
     printerStatusCallback = callback;
 
@@ -24,7 +25,7 @@ export const initializeBradySdk = async (callback) => {
     return bradySdk;
   } catch (error) {
     console.error('Failed to initialize Brady SDK:', error);
-    throw new Error('Brady SDK initialization failed. Please ensure you are using a supported browser (Chrome or Edge).');
+    throw new Error(`Brady SDK initialization failed: ${error.message}. Please ensure you are using a supported browser (Chrome or Edge).`);
   }
 };
 
