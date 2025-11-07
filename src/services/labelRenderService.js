@@ -30,31 +30,35 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
   // Add margins to prevent cutoff
-  const MARGIN_TOP = 8;
-  const MARGIN_BOTTOM = 8;
-  const MARGIN_LEFT = 8;
-  const MARGIN_RIGHT = 8;
+  const MARGIN = 6;
 
-  // Draw vertical divider line
-  const halfWidth = WIDTH / 2;
+  // Flag-style layout: QR (40%) | GAP (20%) | TEXT (40%)
+  const QR_SECTION_WIDTH = Math.floor(WIDTH * 0.4);
+  const GAP_SECTION_WIDTH = Math.floor(WIDTH * 0.2);
+  const TEXT_SECTION_WIDTH = WIDTH - QR_SECTION_WIDTH - GAP_SECTION_WIDTH;
+
+  // Draw center line in the gap section (for wrapping around wire)
+  const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = 1;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([5, 3]); // Dashed line
   ctx.beginPath();
-  ctx.moveTo(halfWidth, MARGIN_TOP);
-  ctx.lineTo(halfWidth, HEIGHT - MARGIN_BOTTOM);
+  ctx.moveTo(centerLineX, MARGIN);
+  ctx.lineTo(centerLineX, HEIGHT - MARGIN);
   ctx.stroke();
+  ctx.setLineDash([]); // Reset to solid line
 
-  // LEFT SIDE: QR Code (0.6" x 0.6" centered in left half)
-  const qrSize = Math.floor(0.6 * DPI); // 122 pixels
-  const qrX = MARGIN_LEFT + (halfWidth - MARGIN_LEFT - MARGIN_RIGHT - qrSize) / 2;
-  const qrY = MARGIN_TOP + (HEIGHT - MARGIN_TOP - MARGIN_BOTTOM - qrSize) / 2;
+  // LEFT SECTION: QR Code (0.5" x 0.5", bottom-aligned)
+  const qrSize = Math.floor(0.5 * DPI); // 102 pixels
+  const qrX = (QR_SECTION_WIDTH - qrSize) / 2; // Center horizontally in left section
+  const qrY = HEIGHT - MARGIN - qrSize; // Bottom-align
 
   try {
     // Generate QR code as data URL
     const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
       width: qrSize,
       margin: 0,
-      errorCorrectionLevel: 'M',
+      errorCorrectionLevel: 'H',
       color: {
         dark: '#000000',
         light: '#FFFFFF',
@@ -71,38 +75,51 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
     ctx.fillRect(qrX, qrY, qrSize, qrSize);
   }
 
-  // RIGHT SIDE: Text Information
-  const textStartX = halfWidth + 6; // Small padding from divider
-  const textWidth = halfWidth - 12; // Padding on both sides
-  const textStartY = MARGIN_TOP + 8; // Start below top margin
+  // RIGHT SECTION: Text Information
+  const textStartX = QR_SECTION_WIDTH + GAP_SECTION_WIDTH + 6; // Start after gap
+  const textWidth = TEXT_SECTION_WIDTH - 12; // Padding
+  const textStartY = MARGIN + 8;
 
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'left';
 
-  // Line 1: Wire Drop UID (Bold, medium size)
-  ctx.font = 'bold 18px Arial';
-  ctx.fillText(truncateText(ctx, wireDrop.uid || 'NO-UID', textWidth), textStartX, textStartY + 16);
-
-  // Line 2: Room Name (wrap if needed)
-  ctx.font = '14px Arial';
+  // Top: Room Name (larger, bold, wrapped)
+  ctx.font = 'bold 16px Arial';
   const roomName = wireDrop.room_name || wireDrop.drop_name || 'No Room';
-  const wrappedLines = wrapText(ctx, roomName, textWidth);
-  let currentY = textStartY + 38;
-  wrappedLines.forEach((line, index) => {
-    if (index < 2) { // Max 2 lines for room name
+  const roomLines = wrapText(ctx, roomName, textWidth);
+  let currentY = textStartY + 16;
+  roomLines.forEach((line, index) => {
+    if (index < 3) { // Max 3 lines for room name
       ctx.fillText(line, textStartX, currentY);
-      currentY += 16;
+      currentY += 18;
     }
   });
 
-  // Line 3: Wire Type / Drop Type (smaller, at bottom)
-  ctx.font = '11px Arial';
+  // Bottom section: UID and Wire/Drop Type
+  let bottomY = HEIGHT - MARGIN - 8;
+
+  // Wire Type / Drop Type (bottom)
+  ctx.font = '14px Arial';
   const wireType = wireDrop.wire_type || 'N/A';
   const dropType = wireDrop.drop_type || 'N/A';
   const typeText = `${wireType} / ${dropType}`;
-  ctx.fillText(truncateText(ctx, typeText, textWidth), textStartX, HEIGHT - MARGIN_BOTTOM - 8);
+  const typeLines = wrapText(ctx, typeText, textWidth);
+  // Draw from bottom up
+  for (let i = typeLines.length - 1; i >= 0; i--) {
+    ctx.fillText(typeLines[i], textStartX, bottomY);
+    bottomY -= 16;
+  }
 
-  // Draw border around entire label (thinner)
+  // UID (above wire type)
+  ctx.font = 'bold 16px Arial';
+  const uidLines = wrapText(ctx, wireDrop.uid || 'NO-UID', textWidth);
+  bottomY -= 4; // Small gap
+  for (let i = uidLines.length - 1; i >= 0; i--) {
+    ctx.fillText(uidLines[i], textStartX, bottomY);
+    bottomY -= 18;
+  }
+
+  // Draw border around entire label
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 2;
   ctx.strokeRect(1, 1, WIDTH - 2, HEIGHT - 2);
