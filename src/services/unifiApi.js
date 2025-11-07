@@ -243,16 +243,17 @@ const callUnifiProxy = async (payload = {}, apiKey = null) => {
 
   console.log('[UniFi API] Calling proxy:', proxyUrl);
   console.log('[UniFi API] Endpoint:', payload.endpoint);
+  console.log('[UniFi API] Has API key:', !!apiKey);
 
   const headers = {
     'Content-Type': 'application/json'
   };
 
-  // NOTE: API key should be set in environment variable on deployed proxy
-  // Don't pass it via header to avoid CORS issues with deployed version
-  // if (apiKey) {
-  //   headers['x-unifi-api-key'] = apiKey;
-  // }
+  // Pass API key via header for local testing and production
+  if (apiKey) {
+    headers['x-unifi-api-key'] = apiKey;
+    console.log('[UniFi API] Passing API key in header');
+  }
 
   const response = await fetch(proxyUrl, {
     method: 'POST',
