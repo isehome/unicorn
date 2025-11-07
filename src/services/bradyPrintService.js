@@ -12,8 +12,13 @@ export const initializeBradySdk = async (callback) => {
   if (isInitialized) return bradySdk;
 
   try {
-    // Import Brady SDK from public vendor folder
-    const module = await import('/vendor/brady-web-sdk.js');
+    // Import Brady SDK from public folder using absolute URL
+    // In production, this resolves to https://your-domain.com/vendor/brady-web-sdk.js
+    // In development, this resolves to http://localhost:3000/vendor/brady-web-sdk.js
+    const sdkUrl = `${window.location.origin}/vendor/brady-web-sdk.js`;
+    console.log('[BradySDK] Loading from:', sdkUrl);
+
+    const module = await import(/* webpackIgnore: true */ sdkUrl);
     const BradySdk = module.default;
 
     printerStatusCallback = callback;
