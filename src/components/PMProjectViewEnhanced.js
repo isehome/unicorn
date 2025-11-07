@@ -11,6 +11,7 @@ import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
 import { sharePointFolderService } from '../services/sharePointFolderService';
+import * as unifiApi from '../services/unifiApi';
 import { supabase } from '../lib/supabase';
 import { normalizeRoomName, similarityScore } from '../utils/roomUtils';
 import Button from './ui/Button';
@@ -1060,13 +1061,56 @@ const PMProjectViewEnhanced = () => {
     [loadEquipmentStats, loadLaborSummary]
   );
 
+  const fetchUnifiSiteData = async () => {
+    // Only fetch if we have both controller IP and API key
+    if (!formData.unifi_controller_ip || !formData.unifi_network_api_key) {
+      console.log('[fetchUnifiSiteData] Skipping - missing controller IP or API key');
+      return;
+    }
+
+    try {
+      console.log('[fetchUnifiSiteData] Fetching site data from controller...');
+      const controllerUrl = formData.unifi_controller_ip.startsWith('http')
+        ? formData.unifi_controller_ip
+        : `https://${formData.unifi_controller_ip}`;
+
+      const sitesResponse = await unifiApi.fetchLocalSites(
+        controllerUrl,
+        formData.unifi_network_api_key
+      );
+
+      console.log('[fetchUnifiSiteData] Sites response:', sitesResponse);
+
+      if (sitesResponse.data && sitesResponse.data.length > 0) {
+        const firstSite = sitesResponse.data[0];
+        const siteId = firstSite.id || firstSite.siteId || firstSite._id;
+        const siteName = firstSite.description || firstSite.name || firstSite.desc || siteId;
+
+        console.log('[fetchUnifiSiteData] Populating site data:', { siteId, siteName });
+
+        // Return the site data so caller can use it immediately
+        return { siteId, siteName };
+      } else {
+        console.warn('[fetchUnifiSiteData] No sites returned from controller');
+        return null;
+      }
+    } catch (error) {
+      console.error('[fetchUnifiSiteData] Failed to fetch site data:', error);
+      // Don't throw - we still want to save the project even if site fetch fails
+      return null;
+    }
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
       console.log('Starting save with formData:', formData);
       console.log('selectedClient state:', selectedClient);
       console.log('Project ID:', projectId);
-      
+
+      // Fetch UniFi site data before saving if controller info is provided
+      const unifiSiteData = await fetchUnifiSiteData();
+
       // Extract Lucid document ID from wiring diagram URL
       let lucidDocId = null;
       let lucidDocUrl = null;
@@ -1077,7 +1121,7 @@ const PMProjectViewEnhanced = () => {
           console.log('Extracted Lucid document ID:', lucidDocId);
         }
       }
-      
+
       // Only send fields that exist in the database
       const validFields = {
         name: formData.name,
@@ -1098,8 +1142,8 @@ const PMProjectViewEnhanced = () => {
         unifi_url: formData.unifi_url || null,
         unifi_controller_ip: formData.unifi_controller_ip || null,
         unifi_network_api_key: formData.unifi_network_api_key || null,
-        unifi_site_id: formData.unifi_site_id || null,
-        unifi_site_name: formData.unifi_site_name || null,
+        unifi_site_id: unifiSiteData?.siteId || formData.unifi_site_id || null,
+        unifi_site_name: unifiSiteData?.siteName || formData.unifi_site_name || null,
         lucid_document_id: lucidDocId,
         lucid_document_url: lucidDocUrl
       };
@@ -1121,6 +1165,15 @@ const PMProjectViewEnhanced = () => {
       
       console.log('Update successful:', data);
       setProject({ ...project, ...data });
+
+      // Update formData with the fetched site data if we got it
+      if (unifiSiteData) {
+        setFormData(prev => ({
+          ...prev,
+          unifi_site_id: unifiSiteData.siteId,
+          unifi_site_name: unifiSiteData.siteName
+        }));
+      }
 
       // Initialize SharePoint folder structure if client_folder_url is provided
       if (formData.client_folder_url && formData.client_folder_url.trim()) {
@@ -2649,6 +2702,28 @@ const PMProjectViewEnhanced = () => {
                         </div>
                         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                           Generate from: Network Application → Settings → System → Integrations
+                        </p>
+                      </div>
+
+                      <div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon={RefreshCw}
+                          onClick={async () => {
+                            const result = await fetchUnifiSiteData();
+                            if (result) {
+                              alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
+                            } else {
+                              alert('Failed to connect. Check your controller IP and API key.');
+                            }
+                          }}
+                          disabled={!formData.unifi_controller_ip || !formData.unifi_network_api_key}
+                        >
+                          Test Connection & Fetch Site Data
+                        </Button>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Click to verify connection and auto-populate Site ID below
                         </p>
                       </div>
 
