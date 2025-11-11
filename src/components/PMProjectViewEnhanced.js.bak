@@ -1025,7 +1025,7 @@ const PMProjectViewEnhanced = () => {
       };
 
       try {
-        percentages = await milestoneService.calculateAllPercentages(projectId);
+        percentages = await milestoneService.getAllPercentagesOptimized(projectId);
         // Cache the fresh data
         milestoneCacheService.setCached(projectId, percentages);
         console.log('[PMProjectView] Calculated and cached fresh milestones');

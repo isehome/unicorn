@@ -183,13 +183,13 @@ const POGenerationModal = ({
           const csv = csvExportService.generatePOCSV(exportData);
           const csvBlob = new Blob([csv], { type: 'text/csv' });
 
-          // Create folder path: Procurement/{Vendor Name}/
-          const folderPath = `Procurement/${supplierName}`;
+          // Only create vendor-specific folder under the Procurement root
+          const vendorFolder = sharePointStorageService.sanitizeForFileName(supplierName || 'Vendor');
 
           // Upload both files to SharePoint (don't block on this)
           sharePointStorageService.uploadToSharePoint(
             projectUrl,
-            folderPath,
+            vendorFolder,
             `${result.po.po_number}.pdf`,
             pdfBlob
           ).then(() => {
@@ -198,7 +198,7 @@ const POGenerationModal = ({
 
           sharePointStorageService.uploadToSharePoint(
             projectUrl,
-            folderPath,
+            vendorFolder,
             `${result.po.po_number}.csv`,
             csvBlob
           ).then(() => {

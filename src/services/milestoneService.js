@@ -344,7 +344,7 @@ class MilestoneService {
       const totalDrops = wireDrops?.length || 0;
       if (totalDrops === 0) return 0;
 
-      // Get trim_out stages that are completed (have photo AND equipment attached)
+      // Get trim_out stages that are completed
       const { data: stages, error: stageError } = await supabase
         .from('wire_drop_stages')
         .select('wire_drop_id, completed, photo_url, equipment_attached, wire_drops!inner(project_id)')
@@ -353,11 +353,12 @@ class MilestoneService {
 
       if (stageError) throw stageError;
 
-      // Count completed trim stages (marked completed OR has both photo and equipment)
-      const completedStages = (stages || []).filter(stage => 
-        stage.completed === true || 
-        (Boolean(stage.photo_url) && stage.equipment_attached === true)
-      );
+      // Count completed trim stages (explicitly marked completed OR legacy fallback)
+      const completedStages = (stages || []).filter(stage => {
+        if (stage.completed === true) return true;
+        // Legacy fallback for older records where completed wasn't set but photos exist
+        return Boolean(stage.photo_url) && stage.equipment_attached === true;
+      });
 
       const percentage = Math.round((completedStages.length / totalDrops) * 100);
       return percentage;
@@ -515,7 +516,7 @@ class MilestoneService {
       }
 
       // Transform view data to match expected format
-      return {
+      const result = {
         planning_design: data.planning_design_percentage,
         prewire_orders: {
           percentage: data.prewire_orders_percentage,
@@ -575,6 +576,47 @@ class MilestoneService {
         _cachedAt: data.last_calculated_at,
         _fromCache: true
       };
+
+      // Stage percentages (prewire/trim) can change more frequently than the materialized view refresh.
+      // Recalculate them live so we always show the latest install progress.
+      try {
+        const [freshPrewire, freshTrim] = await Promise.all([
+          this.calculatePrewirePercentage(projectId),
+          this.calculateTrimPercentage(projectId)
+        ]);
+
+        if (typeof freshPrewire === 'number' && result.prewire !== freshPrewire) {
+          result.prewire = freshPrewire;
+          result.prewire_phase = {
+            ...result.prewire_phase,
+            stages: freshPrewire,
+            percentage: Math.round(
+              (result.prewire_phase.orders.percentage * 0.25) +
+              (result.prewire_phase.receiving.percentage * 0.25) +
+              (freshPrewire * 0.50)
+            )
+          };
+          result._fromCache = false;
+        }
+
+        if (typeof freshTrim === 'number' && result.trim !== freshTrim) {
+          result.trim = freshTrim;
+          result.trim_phase = {
+            ...result.trim_phase,
+            stages: freshTrim,
+            percentage: Math.round(
+              (result.trim_phase.orders.percentage * 0.25) +
+              (result.trim_phase.receiving.percentage * 0.25) +
+              (freshTrim * 0.50)
+            )
+          };
+          result._fromCache = false;
+        }
+      } catch (stageError) {
+        console.warn('[Milestone] Failed to refresh stage percentages from live data:', stageError);
+      }
+
+      return result;
     } catch (error) {
       console.error('[Milestone] Error fetching from view, falling back:', error);
       return this.calculateAllPercentages(projectId);

@@ -137,7 +137,7 @@ const PMDashboard = () => {
         const results = await Promise.all(
           projects.map(async (project) => {
             try {
-              const percentages = await milestoneService.calculateAllPercentages(project.id);
+              const percentages = await milestoneService.getAllPercentagesOptimized(project.id);
 
               // Cache the fresh data
               milestoneCacheService.setCached(project.id, percentages);

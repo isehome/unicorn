@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { milestoneService } from '../services/milestoneService';
+import { milestoneCacheService } from '../services/milestoneCacheService';
 
 /**
  * Custom hook for managing technician project data, including:
@@ -19,28 +20,71 @@ export const useTechnicianProjects = (projects, userProjectIds, user) => {
   const [milestonePercentages, setMilestonePercentages] = useState({});
   const [projectOwners, setProjectOwners] = useState({});
 
-  // Load milestone percentages for all projects - SUPER OPTIMIZED: Single batch query using materialized view
+  // Load milestone percentages for all projects - use cache → batch view → optimized per-project refresh
   useEffect(() => {
+    if (!projects || projects.length === 0) {
+      setMilestonePercentages({});
+      return;
+    }
+
+    const projectIds = projects.map(p => p.id);
+
+    // STEP 1: hydrate from cache (instant display)
+    const cachedBatch = milestoneCacheService.getCachedBatch(projectIds);
+    const cachedMap = {};
+    Object.entries(cachedBatch).forEach(([projectId, cachedEntry]) => {
+      if (cachedEntry?.data) {
+        cachedMap[projectId] = cachedEntry.data;
+      }
+    });
+    if (Object.keys(cachedMap).length > 0) {
+      setMilestonePercentages(prev => ({ ...cachedMap, ...prev }));
+    }
+
+    let isCancelled = false;
+
     const loadMilestonePercentages = async () => {
-      if (!projects || projects.length === 0) return;
+      try {
+        // STEP 2: fast batch read from materialized view
+        const batchData = await milestoneService.getAllPercentagesBatch(projectIds);
+        if (!isCancelled && batchData) {
+          setMilestonePercentages(prev => ({ ...prev, ...batchData }));
+          Object.entries(batchData).forEach(([projectId, data]) => {
+            milestoneCacheService.setCached(projectId, data);
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load milestone percentages (batch):', error);
+      }
 
       try {
-        // Extract all project IDs
-        const projectIds = projects.map(p => p.id);
+        // STEP 3: precise refresh per project using optimized calculator (matches detail pages)
+        const refreshed = {};
+        await Promise.all(
+          projectIds.map(async (projectId) => {
+            try {
+              const data = await milestoneService.getAllPercentagesOptimized(projectId);
+              refreshed[projectId] = data;
+              milestoneCacheService.setCached(projectId, data);
+            } catch (error) {
+              console.warn(`[Dashboard] Precise milestone load failed for project ${projectId}:`, error);
+            }
+          })
+        );
 
-        // Fetch all milestones in ONE query using the materialized view
-        const milestoneData = await milestoneService.getAllPercentagesBatch(projectIds);
-
-        setMilestonePercentages(milestoneData);
-        console.log(`[Dashboard] Loaded milestones for ${Object.keys(milestoneData).length} projects`);
+        if (!isCancelled && Object.keys(refreshed).length > 0) {
+          setMilestonePercentages(prev => ({ ...prev, ...refreshed }));
+        }
       } catch (error) {
-        console.error('Failed to load milestone percentages:', error);
-        // Set empty object on error
-        setMilestonePercentages({});
+        console.error('Failed to refresh milestone percentages:', error);
       }
     };
 
     loadMilestonePercentages();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [projects]);
 
   // Load project owners (stakeholders) for all projects

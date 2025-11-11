@@ -33,9 +33,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Trash2,
-  Lock,
   WifiOff,
-  Printer
+  Printer,
+  FileText
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -67,10 +67,10 @@ const WireDropDetailEnhanced = () => {
   const [equipmentLoading, setEquipmentLoading] = useState(false);
   const [equipmentError, setEquipmentError] = useState(null);
   const [activeTab, setActiveTab] = useState('prewire');
-  const [showFullRecord, setShowFullRecord] = useState(false);
-  const [showMetadata, setShowMetadata] = useState(false);
   const [qrCodeSrc, setQrCodeSrc] = useState(null);
+  const [primaryRoomEquipmentId, setPrimaryRoomEquipmentId] = useState(null);
   const [showAllRooms, setShowAllRooms] = useState(false);
+  const [showAllHeadEquipment, setShowAllHeadEquipment] = useState(false);
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
@@ -155,6 +155,32 @@ const WireDropDetailEnhanced = () => {
     };
   }, [mode, palette, sectionStyles]);
 
+  const buildDocumentationLinks = useCallback((globalPart) => {
+    if (!globalPart) return [];
+    const docLinks = [];
+    if (globalPart.schematic_url) {
+      docLinks.push({
+        label: 'Schematic / Wiring Diagram',
+        url: globalPart.schematic_url
+      });
+    }
+    (globalPart.install_manual_urls || []).forEach((url, index) => {
+      if (!url) return;
+      docLinks.push({
+        label: `Install Manual ${index + 1}`,
+        url
+      });
+    });
+    (globalPart.technical_manual_urls || []).forEach((url, index) => {
+      if (!url) return;
+      docLinks.push({
+        label: `Technical Manual ${index + 1}`,
+        url
+      });
+    });
+    return docLinks;
+  }, []);
+
   useEffect(() => {
     if (!wireDrop) {
       setQrCodeSrc(null);
@@ -190,6 +216,16 @@ const WireDropDetailEnhanced = () => {
       isCancelled = true;
     };
   }, [wireDrop]);
+
+  useEffect(() => {
+    if (!roomEquipmentSelection || roomEquipmentSelection.length === 0) {
+      setPrimaryRoomEquipmentId(null);
+      return;
+    }
+    if (!primaryRoomEquipmentId || !roomEquipmentSelection.includes(primaryRoomEquipmentId)) {
+      setPrimaryRoomEquipmentId(roomEquipmentSelection[0]);
+    }
+  }, [roomEquipmentSelection, primaryRoomEquipmentId]);
 
   const loadProjectEquipmentOptions = useCallback(
     async (projectId) => {
@@ -522,16 +558,6 @@ const WireDropDetailEnhanced = () => {
     }
   };
 
-  // Single-select behavior for room equipment (1 wire drop = 1 equipment)
-  const handleSelectRoomEquipment = (equipmentId) => {
-    if (!equipmentId) return;
-    setRoomEquipmentSelection([equipmentId]); // Single selection only
-  };
-
-  const handleDeselectRoomEquipment = (equipmentId) => {
-    setRoomEquipmentSelection(prev => prev.filter(id => id !== equipmentId));
-  };
-
   // Legacy toggle function (kept for backward compatibility with existing UI)
   const toggleRoomEquipment = (equipmentId) => {
     setRoomEquipmentSelection((prev) => {
@@ -540,6 +566,17 @@ const WireDropDetailEnhanced = () => {
         ? prev.filter((idValue) => idValue !== equipmentId)
         : [...prev, equipmentId];
     });
+  };
+
+  const handleSetPrimaryRoomEquipment = (equipmentId) => {
+    if (!equipmentId) return;
+    setRoomEquipmentSelection((prev = []) => {
+      if (prev.includes(equipmentId)) {
+        return prev;
+      }
+      return [...prev, equipmentId];
+    });
+    setPrimaryRoomEquipmentId(equipmentId);
   };
 
   const toggleHeadEquipment = (equipmentId) => {
@@ -792,6 +829,14 @@ const WireDropDetailEnhanced = () => {
     [projectEquipment, roomEquipmentSelection]
   );
 
+  const primaryRoomEquipment = useMemo(() => {
+    if (!selectedRoomEquipmentDetails.length) return null;
+    if (primaryRoomEquipmentId) {
+      return selectedRoomEquipmentDetails.find(item => item.id === primaryRoomEquipmentId) || selectedRoomEquipmentDetails[0];
+    }
+    return selectedRoomEquipmentDetails[0];
+  }, [primaryRoomEquipmentId, selectedRoomEquipmentDetails]);
+
   const selectedHeadEquipmentDetails = useMemo(
     () =>
       projectEquipment.filter((item) =>
@@ -800,81 +845,58 @@ const WireDropDetailEnhanced = () => {
     [projectEquipment, headEquipmentSelection]
   );
 
-  const roomSelectOptions = useMemo(() => {
-    const map = new Map();
+  const primaryHeadEquipment = useMemo(() => {
+    if (!selectedHeadEquipmentDetails.length) return null;
+    return selectedHeadEquipmentDetails[0];
+  }, [selectedHeadEquipmentDetails]);
 
-    const addItems = (items, group) => {
-      items.forEach((item) => {
-        if (!item || map.has(item.id)) return;
-        map.set(item.id, {
-          id: item.id,
-          name: item.name || 'Unnamed equipment',
-          group,
-          location: item.location || item.project_rooms?.name || '',
-          sku: item.global_part?.sku || ''
-        });
-      });
+  const headEquipmentCatalog = useMemo(() => {
+    const selectedSet = new Set(headEquipmentSelection);
+    const sortAlpha = (a, b) => (a.name || '').localeCompare(b.name || '');
+
+    const formatItem = (item) => ({
+      id: item.id,
+      name: item.name || 'Unnamed equipment',
+      manufacturer: item.manufacturer || '',
+      model: item.model || '',
+      location: item.project_rooms?.name || item.location || 'Unassigned',
+      part_number: item.part_number || ''
+    });
+
+    const headEndAvailable = headEndEquipmentOptions
+      .filter((item) => item && !selectedSet.has(item.id))
+      .map(formatItem)
+      .sort(sortAlpha);
+
+    const otherRoomsMap = new Map();
+    otherHeadEquipment.forEach((item) => {
+      if (!item || selectedSet.has(item.id)) return;
+      const roomName = item.project_rooms?.name || item.location || 'Other Equipment';
+      if (!otherRoomsMap.has(roomName)) {
+        otherRoomsMap.set(roomName, []);
+      }
+      otherRoomsMap.get(roomName).push(formatItem(item));
+    });
+
+    const otherRooms = Array.from(otherRoomsMap.entries())
+      .map(([roomName, items]) => ({
+        roomName,
+        items: items.sort(sortAlpha)
+      }))
+      .sort((a, b) => a.roomName.localeCompare(b.roomName));
+
+    return {
+      headEndAvailable,
+      otherRooms,
+      hasOtherRooms: otherRooms.length > 0
     };
+  }, [headEndEquipmentOptions, otherHeadEquipment, headEquipmentSelection]);
 
-    addItems(matchingRoomEquipment, 'Matches this room');
-    addItems(otherRoomEquipment, 'Other project equipment');
-    addItems(selectedRoomEquipmentDetails, 'Selected');
-
-    return Array.from(map.values());
-  }, [matchingRoomEquipment, otherRoomEquipment, selectedRoomEquipmentDetails]);
-
-  const headSelectOptions = useMemo(() => {
-    const map = new Map();
-
-    const addItems = (items, group) => {
-      items.forEach((item) => {
-        if (!item || map.has(item.id)) return;
-        map.set(item.id, {
-          id: item.id,
-          name: item.name || 'Unnamed equipment',
-          group,
-          location: item.location || item.project_rooms?.name || '',
-          sku: item.global_part?.sku || ''
-        });
-      });
-    };
-
-    addItems(headEndEquipmentOptions, 'Head-end rooms');
-    addItems(otherHeadEquipment, 'Other equipment');
-    addItems(selectedHeadEquipmentDetails, 'Selected');
-
-    return Array.from(map.values());
-  }, [headEndEquipmentOptions, otherHeadEquipment, selectedHeadEquipmentDetails]);
-
-  const roomOptionGroups = useMemo(() => {
-    const grouped = roomSelectOptions.reduce((acc, option) => {
-      if (!option) return acc;
-      if (!acc[option.group]) acc[option.group] = [];
-      acc[option.group].push(option);
-      return acc;
-    }, {});
-    return Object.entries(grouped).filter(([, options]) => Array.isArray(options) && options.length > 0);
-  }, [roomSelectOptions]);
-
-  const headOptionGroups = useMemo(() => {
-    const grouped = headSelectOptions.reduce((acc, option) => {
-      if (!option) return acc;
-      if (!acc[option.group]) acc[option.group] = [];
-      acc[option.group].push(option);
-      return acc;
-    }, {});
-    return Object.entries(grouped).filter(([, options]) => Array.isArray(options) && options.length > 0);
-  }, [headSelectOptions]);
-
-  const roomGroupsForDisplay = useMemo(
-    () => roomOptionGroups.filter(([label]) => label !== 'Selected'),
-    [roomOptionGroups]
-  );
-
-  const headGroupsForDisplay = useMemo(
-    () => headOptionGroups.filter(([label]) => label !== 'Selected'),
-    [headOptionGroups]
-  );
+  useEffect(() => {
+    if (!headEquipmentCatalog.hasOtherRooms && showAllHeadEquipment) {
+      setShowAllHeadEquipment(false);
+    }
+  }, [headEquipmentCatalog.hasOtherRooms, showAllHeadEquipment]);
 
   const handleSaveRoomEnd = async () => {
     try {
@@ -1267,191 +1289,229 @@ const WireDropDetailEnhanced = () => {
               </div>
             )}
 
-            {/* Collapsible Lucid Metadata Section */}
-            {!editing && (wireDrop.shape_x || wireDrop.shape_y || wireDrop.shape_color || wireDrop.shape_fill_color) && (
-              <div className="border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
-                <button
-                  onClick={() => setShowMetadata(!showMetadata)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg transition-all"
-                  style={{
-                    backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(191, 219, 254, 0.5)',
-                    borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(147, 197, 253, 0.6)',
-                    borderWidth: 1,
-                    borderStyle: 'solid'
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-semibold" style={{ color: mode === 'dark' ? '#60a5fa' : '#1e40af' }}>
-                      📍 Lucid Diagram Metadata
-                    </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{
-                      backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(147, 197, 253, 0.4)',
-                      color: mode === 'dark' ? '#93c5fd' : '#1e40af'
-                    }}>
-                      For future "Show on Map" feature
-                    </span>
-                  </div>
-                  <div className="text-lg" style={{ color: mode === 'dark' ? '#60a5fa' : '#1e40af' }}>
-                    {showMetadata ? '▼' : '▶'}
-                  </div>
-                </button>
-
-                {showMetadata && (
-                  <div className="mt-3 p-4 rounded-lg space-y-4" style={{
-                    backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.05)' : 'rgba(239, 246, 255, 0.8)',
-                    borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(191, 219, 254, 0.6)',
-                    borderWidth: 1,
-                    borderStyle: 'solid'
-                  }}>
-                    {/* Shape Position Data */}
-                    {(wireDrop.shape_x || wireDrop.shape_y || wireDrop.shape_width || wireDrop.shape_height) && (
-                      <div>
-                        <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#1e40af' }}>
-                          Shape Position (for navigation)
-                        </h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          {wireDrop.shape_x && (
-                            <div className="px-3 py-2 rounded" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>X Position</div>
-                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                {wireDrop.shape_x}
-                              </div>
-                            </div>
-                          )}
-                          {wireDrop.shape_y && (
-                            <div className="px-3 py-2 rounded" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Y Position</div>
-                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                {wireDrop.shape_y}
-                              </div>
-                            </div>
-                          )}
-                          {wireDrop.shape_width && (
-                            <div className="px-3 py-2 rounded" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Width</div>
-                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                {wireDrop.shape_width}
-                              </div>
-                            </div>
-                          )}
-                          {wireDrop.shape_height && (
-                            <div className="px-3 py-2 rounded" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Height</div>
-                              <div className="text-sm font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                {wireDrop.shape_height}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Shape Color Data */}
-                    {(wireDrop.shape_color || wireDrop.shape_fill_color || wireDrop.shape_line_color) && (
-                      <div>
-                        <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#1e40af' }}>
-                          Shape Colors (visual metadata)
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          {wireDrop.shape_color && (
-                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div 
-                                className="w-6 h-6 rounded border"
-                                style={{
-                                  backgroundColor: wireDrop.shape_color,
-                                  borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
-                                }}
-                              />
-                              <div className="flex-1">
-                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Color</div>
-                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                  {wireDrop.shape_color}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {wireDrop.shape_fill_color && (
-                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div 
-                                className="w-6 h-6 rounded border"
-                                style={{
-                                  backgroundColor: wireDrop.shape_fill_color,
-                                  borderColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
-                                }}
-                              />
-                              <div className="flex-1">
-                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Fill Color</div>
-                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                  {wireDrop.shape_fill_color}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          {wireDrop.shape_line_color && (
-                            <div className="px-3 py-2 rounded flex items-center gap-2" style={{
-                              backgroundColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.1)' : '#ffffff',
-                              borderColor: mode === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(191, 219, 254, 0.8)',
-                              borderWidth: 1,
-                              borderStyle: 'solid'
-                            }}>
-                              <div 
-                                className="w-6 h-6 rounded border-2"
-                                style={{
-                                  borderColor: wireDrop.shape_line_color,
-                                  backgroundColor: 'transparent'
-                                }}
-                              />
-                              <div className="flex-1">
-                                <div className="text-[10px] uppercase tracking-wide" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>Line Color</div>
-                                <div className="text-xs font-mono font-semibold" style={{ color: mode === 'dark' ? '#bfdbfe' : '#1e40af' }}>
-                                  {wireDrop.shape_line_color}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="pt-2 text-xs" style={{ color: mode === 'dark' ? '#93c5fd' : '#60a5fa' }}>
-                      💡 This data will enable future features like "Show this drop on floor plan" navigation
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
+
+        {primaryRoomEquipment && !editing && (
+          <div className="rounded-2xl overflow-hidden" style={styles.card}>
+            <div className="p-6 space-y-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Room Device
+                  </p>
+                  <h2 className="text-xl font-semibold" style={styles.textPrimary}>
+                    {primaryRoomEquipment.name}
+                  </h2>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                    {primaryRoomEquipment.manufacturer && (
+                      <div>
+                        <span className="font-medium">Manufacturer:</span>{' '}
+                        {primaryRoomEquipment.manufacturer}
+                      </div>
+                    )}
+                    {primaryRoomEquipment.model && (
+                      <div>
+                        <span className="font-medium">Model:</span>{' '}
+                        {primaryRoomEquipment.model}
+                      </div>
+                    )}
+                    {primaryRoomEquipment.part_number && (
+                      <div>
+                        <span className="font-medium">Part #:</span>{' '}
+                        {primaryRoomEquipment.part_number}
+                      </div>
+                    )}
+                    {(primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name) && (
+                      <div>
+                        <span className="font-medium">Location:</span>{' '}
+                        {primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveTab('room')}
+                  >
+                    Manage Room Equipment
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleSetPrimaryRoomEquipment(primaryRoomEquipment.id)}
+                    disabled={primaryRoomEquipmentId === primaryRoomEquipment.id}
+                  >
+                    {primaryRoomEquipmentId === primaryRoomEquipment.id ? 'Primary Device' : 'Set as Primary'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold" style={styles.textPrimary}>
+                    Documentation & Resources
+                  </h4>
+                  {(() => {
+                    const docLinks = buildDocumentationLinks(primaryRoomEquipment.global_part);
+                    if (docLinks.length === 0) {
+                      return (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          No documentation links yet. Add manuals on the part record to make them available here.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {docLinks.map((doc) => (
+                          <a
+                            key={doc.label + doc.url}
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-900/30 dark:text-violet-200"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            {doc.label}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2" style={styles.textPrimary}>
+                    <Network size={16} />
+                    Network Client
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Link this device to a UniFi client to verify it’s online and automatically update the commission stage.
+                  </p>
+                  <UniFiClientSelector
+                    projectId={wireDrop.project_id}
+                    equipmentId={primaryRoomEquipment.id}
+                    wireDropId={wireDrop.id}
+                    onAssign={() => loadWireDrop()}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {primaryHeadEquipment && !editing && (
+          <div className="rounded-2xl overflow-hidden" style={styles.card}>
+            <div className="p-6 space-y-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Head End Device
+                  </p>
+                  <h2 className="text-xl font-semibold" style={styles.textPrimary}>
+                    {primaryHeadEquipment.name}
+                  </h2>
+                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 space-y-1">
+                    {primaryHeadEquipment.manufacturer && (
+                      <div>
+                        <span className="font-medium">Manufacturer:</span>{' '}
+                        {primaryHeadEquipment.manufacturer}
+                      </div>
+                    )}
+                    {primaryHeadEquipment.model && (
+                      <div>
+                        <span className="font-medium">Model:</span>{' '}
+                        {primaryHeadEquipment.model}
+                      </div>
+                    )}
+                    {primaryHeadEquipment.part_number && (
+                      <div>
+                        <span className="font-medium">Part #:</span>{' '}
+                        {primaryHeadEquipment.part_number}
+                      </div>
+                    )}
+                    {(primaryHeadEquipment.location || primaryHeadEquipment.project_rooms?.name) && (
+                      <div>
+                        <span className="font-medium">Location:</span>{' '}
+                        {primaryHeadEquipment.project_rooms?.name || primaryHeadEquipment.location}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setActiveTab('head-end')}
+                  >
+                    Manage Head End
+                  </Button>
+                  {selectedHeadEquipmentDetails.length > 1 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+                      +{selectedHeadEquipmentDetails.length - 1} linked
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold" style={styles.textPrimary}>
+                    Documentation & Resources
+                  </h4>
+                  {(() => {
+                    const docLinks = buildDocumentationLinks(primaryHeadEquipment.global_part);
+                    if (docLinks.length === 0) {
+                      return (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          No rack documentation yet. Attach manuals on the part record to keep install steps handy.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="flex flex-wrap gap-2">
+                        {docLinks.map((doc) => (
+                          <a
+                            key={doc.label + doc.url}
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 dark:border-purple-500/40 dark:bg-purple-900/30 dark:text-purple-200"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                            {doc.label}
+                          </a>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold flex items-center gap-2" style={styles.textPrimary}>
+                    <Server size={16} />
+                    Rack & Port Planning
+                  </h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Track which switch, port, and patch panel this drop lands on. Use the tools in the Head End tab to assign UniFi ports and label the cabling.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setActiveTab('head-end')}
+                    className="w-full md:w-auto"
+                  >
+                    Open Head End Tools
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Print Label Section */}
         {wireDrop && (
@@ -1543,18 +1603,16 @@ const WireDropDetailEnhanced = () => {
 
         {/* Tabs */}
         <div className="flex gap-2 border-b" style={{ borderColor: styles.card.borderColor }}>
-          {['prewire', 'room', 'head-end', 'commission'].map((tab) => (
+          {['prewire', 'room', 'head-end'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className="px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2"
               style={activeTab === tab ? styles.tabActive : styles.tabInactive}
             >
-              {tab === 'commission' && <Network size={16} />}
               {tab === 'prewire' && 'Prewire'}
               {tab === 'room' && 'Room'}
               {tab === 'head-end' && 'Head End'}
-              {tab === 'commission' && 'Commission'}
             </button>
           ))}
         </div>
@@ -1838,6 +1896,11 @@ const WireDropDetailEnhanced = () => {
                               className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-200"
                             >
                               {item.name}
+                              {primaryRoomEquipmentId === item.id && (
+                                <span className="text-[10px] uppercase tracking-wide text-green-700 dark:text-green-300">
+                                  Primary
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={(event) => {
@@ -1863,37 +1926,53 @@ const WireDropDetailEnhanced = () => {
                         {/* Same Room - Unassigned (Primary List) */}
                         {sortedRoomEquipment.sameRoomUnassigned.length > 0 ? (
                           <div className="space-y-2 mb-3">
-                            {sortedRoomEquipment.sameRoomUnassigned.map(item => (
-                              <button
-                                key={item.id}
-                                onClick={() => handleSelectRoomEquipment(item.id)}
-                                className={`w-full text-left p-3 rounded-lg transition-all border-2 ${
-                                  roomEquipmentSelection.includes(item.id)
-                                    ? 'bg-violet-50 border-violet-400 dark:bg-violet-900/20 dark:border-violet-500'
-                                    : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                      {item.name}
-                                    </div>
-                                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                                      {item.manufacturer && `${item.manufacturer} `}
-                                      {item.model}
-                                    </div>
-                                    {item.part_number && (
-                                      <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
-                                        P/N: {item.part_number}
+                            {sortedRoomEquipment.sameRoomUnassigned.map(item => {
+                              const isLinked = roomEquipmentSelection.includes(item.id);
+                              const isPrimary = primaryRoomEquipmentId === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => toggleRoomEquipment(item.id)}
+                                  className={`w-full text-left p-3 rounded-lg transition-all border-2 ${
+                                    isLinked
+                                      ? 'bg-violet-50 border-violet-400 dark:bg-violet-900/20 dark:border-violet-500'
+                                      : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-gray-900 dark:text-gray-100">
+                                        {item.name}
                                       </div>
-                                    )}
+                                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                                        {item.manufacturer && `${item.manufacturer} `}
+                                        {item.model}
+                                      </div>
+                                      {item.part_number && (
+                                        <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
+                                          P/N: {item.part_number}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                      {isLinked && (
+                                        <CheckCircle size={20} className="text-violet-600 dark:text-violet-400" />
+                                      )}
+                                      <Button
+                                        variant={isPrimary ? 'secondary' : 'ghost'}
+                                        size="xs"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSetPrimaryRoomEquipment(item.id);
+                                        }}
+                                      >
+                                        {isPrimary ? 'Primary' : 'Set Primary'}
+                                      </Button>
+                                    </div>
                                   </div>
-                                  {roomEquipmentSelection.includes(item.id) && (
-                                    <CheckCircle size={20} className="text-violet-600 dark:text-violet-400 ml-3 flex-shrink-0" />
-                                  )}
-                                </div>
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
@@ -1907,31 +1986,44 @@ const WireDropDetailEnhanced = () => {
                             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">
                               Already Assigned
                             </p>
-                            {sortedRoomEquipment.sameRoomAssigned.map(item => (
-                              <button
-                                key={item.id}
-                                onClick={() => handleDeselectRoomEquipment(item.id)}
-                                className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
-                                style={{ opacity: 0.75 }}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                      {item.name}
+                            {sortedRoomEquipment.sameRoomAssigned.map(item => {
+                              const isPrimary = primaryRoomEquipmentId === item.id;
+                              return (
+                                <button
+                                  key={item.id}
+                                  onClick={() => toggleRoomEquipment(item.id)}
+                                  className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
+                                  style={{ opacity: 0.85 }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-gray-900 dark:text-gray-100">
+                                        {item.name}
+                                      </div>
+                                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+                                        {item.manufacturer && `${item.manufacturer} `}
+                                        {item.model}
+                                      </div>
                                     </div>
-                                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                                      {item.manufacturer && `${item.manufacturer} `}
-                                      {item.model}
+                                    <div className="ml-3 flex-shrink-0 flex flex-col items-end gap-1">
+                                      <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
+                                        Assigned
+                                      </div>
+                                      <Button
+                                        variant={isPrimary ? 'secondary' : 'ghost'}
+                                        size="xs"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSetPrimaryRoomEquipment(item.id);
+                                        }}
+                                      >
+                                        {isPrimary ? 'Primary' : 'Set Primary'}
+                                      </Button>
                                     </div>
                                   </div>
-                                  <div className="ml-3 flex-shrink-0">
-                                    <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
-                                      Assigned
-                                    </div>
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
 
@@ -1963,10 +2055,7 @@ const WireDropDetailEnhanced = () => {
                                   {items.map(({ item, isAssigned }) => (
                                     <button
                                       key={item.id}
-                                      onClick={() => isAssigned
-                                        ? handleDeselectRoomEquipment(item.id)
-                                        : handleSelectRoomEquipment(item.id)
-                                      }
+                                      onClick={() => toggleRoomEquipment(item.id)}
                                       className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
                                       style={{ opacity: isAssigned ? 0.75 : 1 }}
                                     >
@@ -1980,13 +2069,23 @@ const WireDropDetailEnhanced = () => {
                                             {item.model}
                                           </div>
                                         </div>
-                                        {isAssigned && (
-                                          <div className="ml-3 flex-shrink-0">
+                                        <div className="ml-3 flex-shrink-0 flex flex-col items-end gap-1">
+                                          {isAssigned && (
                                             <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
                                               Assigned
                                             </div>
-                                          </div>
-                                        )}
+                                          )}
+                                          <Button
+                                            variant={primaryRoomEquipmentId === item.id ? 'secondary' : 'ghost'}
+                                            size="xs"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleSetPrimaryRoomEquipment(item.id);
+                                            }}
+                                          >
+                                            {primaryRoomEquipmentId === item.id ? 'Primary' : 'Set Primary'}
+                                          </Button>
+                                        </div>
                                       </div>
                                     </button>
                                   ))}
@@ -2149,62 +2248,104 @@ const WireDropDetailEnhanced = () => {
 
                     <div className="space-y-3">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                          Choose head-end equipment
+                        <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                          Head-end racks in this project
                         </label>
-                        <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-3 space-y-4">
-                          {headGroupsForDisplay.length === 0 ? (
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              No additional equipment available.
-                            </p>
-                          ) : (
-                            headGroupsForDisplay.map(([groupLabel, options]) => (
-                              <div key={groupLabel} className="space-y-2">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                  {groupLabel}
-                                </p>
-                                <div className="space-y-1">
-                                  {options.map((option) => {
-                                    const isSelected = headEquipmentSelection.includes(option.id);
-                                    return (
-                                      <label
-                                        key={option.id}
-                                        className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                                          isSelected
-                                            ? 'bg-purple-50 border border-purple-400 dark:bg-purple-900/20 dark:border-purple-500/40'
-                                            : 'border border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
-                                        }`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          className="mt-1 h-4 w-4 rounded border-gray-300 text-violet-500 focus:ring-violet-400 dark:border-gray-600"
-                                          checked={isSelected}
-                                          onChange={() => toggleHeadEquipment(option.id)}
-                                        />
-                                        <span className="flex-1">
-                                          <span className="font-medium text-gray-900 dark:text-gray-100 block">
-                                            {option.name}
-                                          </span>
-                                          {option.location && (
-                                            <span className="text-xs text-gray-500 dark:text-gray-400 block">
-                                              {option.location}
-                                            </span>
-                                          )}
-                                          {option.sku && (
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 block">
-                                              SKU: {option.sku}
-                                            </span>
-                                          )}
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
+
+                        {headEquipmentCatalog.headEndAvailable.length === 0 ? (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            All head-end equipment is already linked to this drop. Add more equipment from the Head End catalog to make it available here.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {headEquipmentCatalog.headEndAvailable.map((item) => (
+                              <button
+                                key={item.id}
+                                onClick={() => toggleHeadEquipment(item.id)}
+                                className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-purple-50 hover:border-purple-200 dark:hover:bg-purple-900/10 dark:hover:border-purple-500/30"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                                      {item.name}
+                                    </div>
+                                    {(item.manufacturer || item.model) && (
+                                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                        {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                      </div>
+                                    )}
+                                    {item.part_number && (
+                                      <div className="text-[11px] text-gray-500 dark:text-gray-500">
+                                        P/N: {item.part_number}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1">
+                                    {item.location && (
+                                      <span className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        {item.location}
+                                      </span>
+                                    )}
+                                    <span className="text-[11px] text-purple-700 dark:text-purple-300">
+                                      Tap to link
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                            ))
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {headEquipmentCatalog.hasOtherRooms && (
+                        <div className="pt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full mb-2"
+                            onClick={() => setShowAllHeadEquipment((prev) => !prev)}
+                          >
+                            {showAllHeadEquipment ? 'Hide Other Rooms' : 'Show Equipment from Other Rooms'}
+                          </Button>
+
+                          {showAllHeadEquipment && (
+                            <div className="space-y-3">
+                              {headEquipmentCatalog.otherRooms.map(({ roomName, items }) => (
+                                <div key={roomName}>
+                                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                                    {roomName}
+                                  </p>
+                                  <div className="space-y-1">
+                                    {items.map((item) => (
+                                      <button
+                                        key={item.id}
+                                        onClick={() => toggleHeadEquipment(item.id)}
+                                        className="w-full text-left p-3 rounded-lg transition-all border-2 border-dashed border-gray-200 hover:border-purple-200 dark:border-gray-700 dark:hover:border-purple-500/40"
+                                      >
+                                        <div className="flex items-center justify-between gap-3">
+                                          <div>
+                                            <div className="font-medium text-gray-900 dark:text-gray-100">
+                                              {item.name}
+                                            </div>
+                                            {(item.manufacturer || item.model) && (
+                                              <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                                                {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <span className="text-[11px] text-purple-700 dark:text-purple-300">
+                                            Link
+                                          </span>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
-                      </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -2328,299 +2469,7 @@ const WireDropDetailEnhanced = () => {
           </div>
         )}
 
-        {/* Commission Tab */}
-        {activeTab === 'commission' && (
-          <div className="space-y-6">
-            <div className="rounded-2xl overflow-hidden" style={styles.card}>
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center gap-2" style={styles.textPrimary}>
-                    <Network size={20} />
-                    Network Commissioning
-                  </h3>
-                  {commissionStage?.completed ? (
-                    <CheckCircle size={24} className="text-green-500" />
-                  ) : (
-                    <Circle size={24} className="text-gray-400" />
-                  )}
-                </div>
 
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Verify network connectivity by assigning UniFi clients to equipment endpoints.
-                </p>
-
-                {/* Room End Equipment + UniFi Client */}
-                <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800">
-                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={styles.textPrimary}>
-                    <Monitor size={16} />
-                    Room End Device
-                  </h4>
-
-                  {selectedRoomEquipmentDetails.length > 0 ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 p-3 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {selectedRoomEquipmentDetails[0].name}
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">
-                            {selectedRoomEquipmentDetails[0].manufacturer} {selectedRoomEquipmentDetails[0].model}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* UniFi Client Dropdown */}
-                      <UniFiClientSelector
-                        projectId={wireDrop.project_id}
-                        equipmentId={selectedRoomEquipmentDetails[0].id}
-                        wireDropId={wireDrop.id}
-                        onAssign={async () => {
-                          // Reload wire drop to show updated commission status
-                          await loadWireDrop();
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-md bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700">
-                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        No room equipment assigned. Go to the Room tab to select equipment first.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Head End Equipment + UniFi Port (Future) */}
-                <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800">
-                  <h4 className="text-sm font-semibold mb-3 flex items-center gap-2" style={styles.textPrimary}>
-                    <Server size={16} />
-                    Head End Connection
-                  </h4>
-
-                  {selectedHeadEquipmentDetails.length > 0 ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 p-3 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {selectedHeadEquipmentDetails[0].name}
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">
-                            {selectedHeadEquipmentDetails[0].manufacturer} {selectedHeadEquipmentDetails[0].model}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Placeholder for UniFi Port Selector */}
-                      <div className="p-3 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700">
-                        <p className="text-sm text-blue-800 dark:text-blue-200">
-                          UniFi switch port selector coming in next phase
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-3 rounded-md bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        No head-end equipment assigned yet.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Auto-Complete Notice */}
-                {!commissionStage?.completed && (
-                  <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-green-900 dark:text-green-100 mb-1">
-                          Auto-Complete Enabled
-                        </p>
-                        <p className="text-xs text-green-700 dark:text-green-300">
-                          This stage will be automatically marked complete when you assign a UniFi client to the room equipment.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Complete Wire Drop Record */}
-        <div className="rounded-2xl overflow-hidden mt-6" style={styles.card}>
-          <div
-            className="flex items-center justify-between gap-3 p-4 border-b"
-            style={{ borderColor: styles.card.borderColor }}
-          >
-            <div>
-              <h3 className="text-sm font-semibold" style={styles.textPrimary}>
-                COMPLETE WIRE DROP RECORD (All Database Fields)
-              </h3>
-              <p className="text-xs" style={styles.subtleText}>
-                View every stored field plus raw Lucid shape data.
-              </p>
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowFullRecord((prev) => !prev)}
-            >
-              {showFullRecord ? 'Hide Details' : 'Show Details'}
-            </Button>
-          </div>
-
-          {showFullRecord && (
-            <div className="p-4 space-y-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                {(() => {
-                  const allFields = [
-                    { name: 'Record ID', key: 'id', value: wireDrop.id, locked: true, source: 'system' },
-                    { name: 'Project ID', key: 'project_id', value: wireDrop.project_id, locked: true, source: 'system' },
-                    { name: 'Created At', key: 'created_at', value: wireDrop.created_at ? new Date(wireDrop.created_at).toLocaleDateString() : null, locked: true, source: 'system' },
-                    { name: 'Updated At', key: 'updated_at', value: wireDrop.updated_at ? new Date(wireDrop.updated_at).toLocaleDateString() : null, locked: true, source: 'system' },
-                    { name: 'UID', key: 'uid', value: wireDrop.uid, locked: true, source: 'generated', description: 'Auto-generated from room & drop names' },
-                    { name: 'Lucid Shape ID', key: 'lucid_shape_id', value: wireDrop.lucid_shape_id, locked: true, source: 'lucid_link', description: 'Links to Lucid shape' },
-                    { name: 'Lucid Page ID', key: 'lucid_page_id', value: wireDrop.lucid_page_id, locked: true, source: 'lucid_link', description: 'Lucid page/floor reference' },
-                    { name: 'Shape X', key: 'shape_x', value: wireDrop.shape_x, locked: true, source: 'lucid_position' },
-                    { name: 'Shape Y', key: 'shape_y', value: wireDrop.shape_y, locked: true, source: 'lucid_position' },
-                    { name: 'Shape Width', key: 'shape_width', value: wireDrop.shape_width, locked: true, source: 'lucid_position' },
-                    { name: 'Shape Height', key: 'shape_height', value: wireDrop.shape_height, locked: true, source: 'lucid_position' },
-                    { name: 'Shape Rotation', key: 'shape_rotation', value: wireDrop.shape_rotation, locked: true, source: 'lucid_position' },
-                    { 
-                      name: 'Wire Type (Basic)', 
-                      key: 'type', 
-                      value: wireDrop.type, 
-                      editable: true, 
-                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
-                      description: 'Basic wire type field' 
-                    },
-                    { 
-                      name: 'Wire Type (Enhanced)', 
-                      key: 'wire_type', 
-                      value: wireDrop.wire_type, 
-                      editable: true, 
-                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
-                      description: 'Detailed wire type from Lucid' 
-                    },
-                    { 
-                      name: 'Room Name', 
-                      key: 'room_name', 
-                      value: wireDrop.project_room?.name || wireDrop.room_name, 
-                      editable: true, 
-                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual'
-                    },
-                    { 
-                      name: 'Drop Name', 
-                      key: 'drop_name', 
-                      value: wireDrop.drop_name, 
-                      editable: true, 
-                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
-                      description: 'Drop identifier from Lucid' 
-                    },
-                    { 
-                      name: 'Drop Type', 
-                      key: 'drop_type', 
-                      value: wireDrop.drop_type, 
-                      editable: true, 
-                      source: wireDrop.lucid_shape_id ? 'lucid' : 'manual',
-                      description: 'Type of drop (e.g., TV, Keypad, Camera)' 
-                    },
-                    { name: 'Name', key: 'name', value: wireDrop.name, editable: true, source: 'manual', description: 'Legacy/alternative name field' },
-                    { name: 'Location', key: 'location', value: wireDrop.location, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
-                    { name: 'Floor', key: 'floor', value: wireDrop.floor, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
-                    { name: 'Notes', key: 'notes', value: wireDrop.notes, editable: true, source: 'manual' },
-                    { name: 'Install Note', key: 'install_note', value: wireDrop.install_note, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual', description: 'Installation notes from Lucid' },
-                    { name: 'Device', key: 'device', value: wireDrop.device, editable: true, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual', description: 'Device type from Lucid' },
-                    { name: 'Shape Color', key: 'shape_color', value: wireDrop.shape_color, locked: true, source: 'lucid', description: 'Primary color from Lucid shape' },
-                    { name: 'Shape Fill Color', key: 'shape_fill_color', value: wireDrop.shape_fill_color, locked: true, source: 'lucid', description: 'Fill color from Lucid shape' },
-                    { name: 'Shape Line Color', key: 'shape_line_color', value: wireDrop.shape_line_color, locked: true, source: 'lucid', description: 'Line color from Lucid shape' },
-                    { name: 'Lucid Synced At', key: 'lucid_synced_at', value: wireDrop.lucid_synced_at ? new Date(wireDrop.lucid_synced_at).toLocaleString() : null, locked: true, source: 'lucid', description: 'Last sync from Lucid' },
-                    { name: 'QR Code URL', key: 'qr_code_url', value: wireDrop.qr_code_url, editable: true, source: 'manual' },
-                    { name: 'IS Drop', key: 'is_drop', value: wireDrop.is_drop !== undefined ? String(wireDrop.is_drop) : null, editable: false, source: wireDrop.lucid_shape_id ? 'lucid' : 'manual' },
-                    { name: 'Schematic Reference', key: 'schematic_reference', value: wireDrop.schematic_reference, editable: true, source: 'manual' },
-                    { name: 'Prewire Photo (Legacy)', key: 'prewire_photo', value: wireDrop.prewire_photo, locked: true, source: 'legacy', description: 'Old photo system' },
-                    { name: 'Installed Photo (Legacy)', key: 'installed_photo', value: wireDrop.installed_photo, locked: true, source: 'legacy', description: 'Old photo system' }
-                  ];
-
-                  const getFieldStyle = (field) => {
-                    if (field.source === 'lucid' || field.source === 'lucid_link' || field.source === 'lucid_position') {
-                      return {
-                        borderColor: mode === 'dark' ? '#16a34a' : '#86efac',
-                        backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(134, 239, 172, 0.2)',
-                        labelColor: mode === 'dark' ? '#86efac' : '#15803d',
-                        valueColor: mode === 'dark' ? '#bbf7d0' : '#166534'
-                      };
-                    }
-                    return {
-                      borderColor: mode === 'dark' ? '#9333ea' : '#c084fc',
-                      backgroundColor: mode === 'dark' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(192, 132, 252, 0.2)',
-                      labelColor: mode === 'dark' ? '#c084fc' : '#7c3aed',
-                      valueColor: mode === 'dark' ? '#e9d5ff' : '#6b21a8'
-                    };
-                  };
-
-                  return allFields
-                    .map((field) => {
-                      if (field.value === null || field.value === undefined) {
-                        if (field.key !== 'is_drop') return null;
-                      }
-
-                      const style = getFieldStyle(field);
-
-                      return (
-                        <div
-                          key={field.key}
-                          className="px-3 py-2 rounded-lg border-2 relative"
-                          style={{
-                            borderColor: style.borderColor,
-                            backgroundColor: style.backgroundColor
-                          }}
-                          title={field.description || ''}
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <span className="text-xs font-medium" style={{ color: style.labelColor }}>
-                                {field.name}:
-                              </span>
-                              <p className="text-sm font-semibold break-all" style={{ color: style.valueColor }}>
-                                {field.value || '(empty)'}
-                              </p>
-                              {field.source && (
-                                <span className="text-xs opacity-60" style={{ color: style.labelColor }}>
-                                  Source: {field.source}
-                                </span>
-                              )}
-                            </div>
-                            <div className="ml-2 flex-shrink-0">
-                              {field.locked ? (
-                                <Lock size={12} className="text-gray-500" title="System/Locked Field" />
-                              ) : field.editable ? (
-                                <Edit size={12} className="text-blue-500" title="Editable Field" />
-                              ) : null}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                    .filter(Boolean);
-                })()}
-              </div>
-
-              {wireDrop.shape_data && Object.keys(wireDrop.shape_data).length > 0 && (
-                <div>
-                  <h4 className="text-xs font-semibold mb-2 text-green-600 dark:text-green-400">
-                    RAW LUCID SHAPE DATA (shape_data JSONB field)
-                  </h4>
-                  <div className="p-3 rounded-lg border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/10">
-                    <pre className="text-xs overflow-x-auto text-green-900 dark:text-green-100">
-                      {JSON.stringify(wireDrop.shape_data, null, 2)}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
 
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (

@@ -324,7 +324,7 @@ const ProjectDetailView = () => {
           setMilestonePercentages(cachedData.data);
         }
 
-        const percentages = await milestoneService.calculateAllPercentages(id);
+        const percentages = await milestoneService.getAllPercentagesOptimized(id);
         milestoneCacheService.setCached(id, percentages);
         setMilestonePercentages(percentages);
       } catch (milestoneError) {
@@ -1431,7 +1431,7 @@ const ProjectDetailView = () => {
           <MilestoneGaugesDisplay
             milestonePercentages={milestonePercentages}
             projectOwners={projectOwners}
-            
+            startCollapsed={false}
           />
         </div>
 

@@ -6,7 +6,7 @@
 import { supabase } from '../lib/supabase';
 
 // Standard subfolder structure for all projects
-const STANDARD_SUBFOLDERS = {
+export const STANDARD_SUBFOLDERS = {
   photos: 'Photos',
   files: 'Files',
   procurement: 'Procurement',
@@ -14,6 +14,41 @@ const STANDARD_SUBFOLDERS = {
   data: 'Data',
   business: 'Business'
 };
+
+const STANDARD_SUBFOLDER_SUFFIXES = Object.values(STANDARD_SUBFOLDERS)
+  .map(name => `/${name.toLowerCase()}`);
+
+export function normalizeSharePointRootUrl(url = '') {
+  if (!url) return '';
+
+  let trimmed = url.trim();
+  if (!trimmed) return '';
+
+  const isShareLink = trimmed.includes('/:');
+  let querySuffix = '';
+
+  if (isShareLink) {
+    const [pathPart, ...queryParts] = trimmed.split('?');
+    trimmed = pathPart;
+    if (queryParts.length > 0) {
+      querySuffix = '?' + queryParts.join('?');
+    }
+  } else {
+    trimmed = trimmed.split('?')[0].split('#')[0];
+  }
+
+  let cleaned = trimmed.replace(/\/+$/, '');
+
+  const lowerCleaned = cleaned.toLowerCase();
+  const suffix = STANDARD_SUBFOLDER_SUFFIXES.find(sfx => lowerCleaned.endsWith(sfx));
+
+  if (suffix) {
+    cleaned = cleaned.slice(0, cleaned.length - suffix.length);
+    cleaned = cleaned.replace(/\/+$/, '');
+  }
+
+  return isShareLink ? `${cleaned}${querySuffix}` : cleaned;
+}
 
 class SharePointFolderService {
   /**
@@ -26,15 +61,18 @@ class SharePointFolderService {
   async initializeProjectFolders(projectId, rootFolderUrl) {
     try {
       console.log(`Initializing SharePoint folders for project ${projectId}`);
-      console.log(`Root folder: ${rootFolderUrl}`);
+
+      const normalizedRootUrl = normalizeSharePointRootUrl(rootFolderUrl) || rootFolderUrl;
+
+      console.log(`Root folder: ${normalizedRootUrl}`);
 
       // Validate root URL
-      if (!rootFolderUrl || !this.isValidSharePointUrl(rootFolderUrl)) {
+      if (!normalizedRootUrl || !this.isValidSharePointUrl(normalizedRootUrl)) {
         throw new Error('Invalid SharePoint URL. Please provide a valid Document Library URL.');
       }
 
       // Check if it's a Site Pages URL (common mistake)
-      if (rootFolderUrl.includes('/SitePages/')) {
+      if (normalizedRootUrl.includes('/SitePages/')) {
         throw new Error('Cannot use a Site Pages URL. Please provide a Document Library URL (e.g., Shared Documents).');
       }
 
@@ -45,7 +83,7 @@ class SharePointFolderService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rootFolderUrl,
+          rootFolderUrl: normalizedRootUrl,
           subfolders: Object.values(STANDARD_SUBFOLDERS)
         })
       });
@@ -69,13 +107,13 @@ class SharePointFolderService {
       // }
 
       // Store the folder structure in the project record
-      await this.saveProjectFolderStructure(projectId, rootFolderUrl, result);
+      await this.saveProjectFolderStructure(projectId, normalizedRootUrl, result);
 
       console.log('SharePoint folders initialized successfully:', result);
 
       return {
         success: true,
-        rootUrl: rootFolderUrl,
+        rootUrl: normalizedRootUrl,
         foldersCreated: result.subfolders,
         photos: result.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl,
         files: result.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl,
@@ -98,14 +136,16 @@ class SharePointFolderService {
    */
   async saveProjectFolderStructure(projectId, rootUrl, folderStructure) {
     try {
+      const normalizedRoot = normalizeSharePointRootUrl(rootUrl) || rootUrl;
+
       const { error } = await supabase
         .from('projects')
         .update({
-          client_folder_url: rootUrl,
+          client_folder_url: normalizedRoot,
           // Keep old fields for backward compatibility (populated from subfolders)
-          one_drive_photos: folderStructure.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl || rootUrl,
-          one_drive_files: folderStructure.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl || rootUrl,
-          one_drive_procurement: folderStructure.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl || rootUrl
+          one_drive_photos: folderStructure.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl || `${normalizedRoot}/Photos`,
+          one_drive_files: folderStructure.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl || `${normalizedRoot}/Files`,
+          one_drive_procurement: folderStructure.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl || `${normalizedRoot}/Procurement`
         })
         .eq('id', projectId);
 
@@ -127,35 +167,28 @@ class SharePointFolderService {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('client_folder_url, one_drive_photos, one_drive_files, one_drive_procurement')
+        .select('client_folder_url')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      // If we have the new client_folder_url, use it
-      if (project.client_folder_url) {
-        return {
-          rootUrl: project.client_folder_url,
-          photos: project.one_drive_photos || `${project.client_folder_url}/Photos`,
-          files: project.one_drive_files || `${project.client_folder_url}/Files`,
-          procurement: project.one_drive_procurement || `${project.client_folder_url}/Procurement`,
-          business: `${project.client_folder_url}/Business`,
-          design: `${project.client_folder_url}/Design`,
-          data: `${project.client_folder_url}/Data`
-        };
+      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+
+      if (!normalizedRoot) {
+        throw new Error('Client folder URL not configured. Please set Client Folder URL in project settings.');
       }
 
-      // Fallback to old single URL
-      if (project.one_drive_photos) {
-        return {
-          rootUrl: project.one_drive_photos,
-          photos: project.one_drive_photos
-        };
-      }
-
-      throw new Error('No SharePoint folder configured for this project');
+      return {
+        rootUrl: normalizedRoot,
+        photos: `${normalizedRoot}/Photos`,
+        files: `${normalizedRoot}/Files`,
+        procurement: `${normalizedRoot}/Procurement`,
+        business: `${normalizedRoot}/Business`,
+        design: `${normalizedRoot}/Design`,
+        data: `${normalizedRoot}/Data`
+      };
     } catch (error) {
       console.error('Failed to get folder structure:', error);
       throw error;

@@ -282,21 +282,20 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       const csv = csvExportService.generatePOCSV(exportData);
       const csvBlob = new Blob([csv], { type: 'text/csv' });
 
-      // Create folder path: Procurement/{Vendor Name}/
       const vendorName = po.supplier?.name || 'Unknown Vendor';
-      const folderPath = `Procurement/${vendorName}`;
+      const vendorFolder = sharePointStorageService.sanitizeForFileName(vendorName);
 
       // Upload both files to SharePoint
       await sharePointStorageService.uploadToSharePoint(
         projectUrl,
-        folderPath,
+        vendorFolder,
         `${po.po_number}.pdf`,
         pdfBlob
       );
 
       await sharePointStorageService.uploadToSharePoint(
         projectUrl,
-        folderPath,
+        vendorFolder,
         `${po.po_number}.csv`,
         csvBlob
       );

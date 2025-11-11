@@ -10,7 +10,7 @@ import { milestoneCacheService } from '../services/milestoneCacheService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
-import { sharePointFolderService } from '../services/sharePointFolderService';
+import { sharePointFolderService, normalizeSharePointRootUrl } from '../services/sharePointFolderService';
 import * as unifiApi from '../services/unifiApi';
 import { supabase } from '../lib/supabase';
 import { normalizeRoomName, similarityScore } from '../utils/roomUtils';
@@ -1002,7 +1002,7 @@ const PMProjectViewEnhanced = () => {
       };
 
       try {
-        percentages = await milestoneService.calculateAllPercentages(projectId);
+        percentages = await milestoneService.getAllPercentagesOptimized(projectId);
         // Cache the fresh data
         milestoneCacheService.setCached(projectId, percentages);
         console.log('[PMProjectView] Calculated and cached fresh milestones');
@@ -1151,6 +1151,12 @@ const PMProjectViewEnhanced = () => {
         }
       }
 
+      const normalizedClientFolderUrl = formData.client_folder_url && formData.client_folder_url.trim()
+        ? normalizeSharePointRootUrl(formData.client_folder_url)
+        : null;
+
+      const clientFolderUrlToSave = normalizedClientFolderUrl || null;
+
       // Only send fields that exist in the database
       const validFields = {
         name: formData.name,
@@ -1164,7 +1170,7 @@ const PMProjectViewEnhanced = () => {
         end_date: formData.end_date || null,
         wiring_diagram_url: formData.wiring_diagram_url || null,
         portal_proposal_url: formData.portal_proposal_url || null,
-        client_folder_url: formData.client_folder_url || null,
+        client_folder_url: clientFolderUrlToSave,
         one_drive_photos: formData.one_drive_photos || null,
         one_drive_files: formData.one_drive_files || null,
         one_drive_procurement: formData.one_drive_procurement || null,
@@ -1195,6 +1201,12 @@ const PMProjectViewEnhanced = () => {
       console.log('Update successful:', data);
       setProject({ ...project, ...data });
 
+      // Ensure form displays the normalized value
+      setFormData(prev => ({
+        ...prev,
+        client_folder_url: clientFolderUrlToSave || '',
+      }));
+
       // Update formData with the fetched site data if we got it
       if (unifiSiteData) {
         setFormData(prev => ({
@@ -1205,14 +1217,14 @@ const PMProjectViewEnhanced = () => {
       }
 
       // Initialize SharePoint folder structure if client_folder_url is provided
-      if (formData.client_folder_url && formData.client_folder_url.trim()) {
+      if (clientFolderUrlToSave) {
         try {
           setFolderInitializing(true);
-          console.log('Initializing SharePoint folders for:', formData.client_folder_url);
+          console.log('Initializing SharePoint folders for:', clientFolderUrlToSave);
 
           const folderResult = await sharePointFolderService.initializeProjectFolders(
             projectId,
-            formData.client_folder_url.trim()
+            clientFolderUrlToSave
           );
 
           console.log('Folder initialization result:', folderResult);
@@ -2861,7 +2873,7 @@ const PMProjectViewEnhanced = () => {
         <MilestoneGaugesDisplay
           milestonePercentages={milestonePercentages}
           projectOwners={projectOwners}
-          
+          startCollapsed={false}
         />
       </div>
 

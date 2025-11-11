@@ -10,6 +10,7 @@
 
 import { supabase } from '../lib/supabase';
 import { thumbnailCache } from '../lib/thumbnailCache';
+import { normalizeSharePointRootUrl } from './sharePointFolderService';
 
 // SharePoint thumbnail size configurations
 const THUMBNAIL_SIZES = {
@@ -175,12 +176,14 @@ class SharePointStorageService {
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+
+      if (!normalizedRoot) {
         throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
       }
 
       // Return the Photos subfolder under client folder
-      return `${project.client_folder_url}/Photos`;
+      return `${normalizedRoot}/Photos`;
     } catch (error) {
       console.error('Failed to get project SharePoint URL:', error);
       throw error;
@@ -203,11 +206,13 @@ class SharePointStorageService {
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+
+      if (!normalizedRoot) {
         throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
       }
 
-      return `${project.client_folder_url}/Procurement`;
+      return `${normalizedRoot}/Procurement`;
     } catch (error) {
       console.error('Failed to get project procurement SharePoint URL:', error);
       throw error;
@@ -230,11 +235,13 @@ class SharePointStorageService {
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      if (!project.client_folder_url || project.client_folder_url.trim() === '') {
+      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+
+      if (!normalizedRoot) {
         throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
       }
 
-      return `${project.client_folder_url}/Business`;
+      return `${normalizedRoot}/Business`;
     } catch (error) {
       console.error('Failed to get project business folder URL:', error);
       throw error;

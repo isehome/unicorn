@@ -14,7 +14,7 @@ import CircularProgressGauge from './CircularProgressGauge';
  *
  * Always uses 140px circular gauges for consistent sizing across all views.
  *
- * @param {Object} milestonePercentages - Object containing all milestone percentages from milestoneService.calculateAllPercentages()
+ * @param {Object} milestonePercentages - Object containing all milestone percentages from milestoneService.getAllPercentagesOptimized()
  * @param {Object} projectOwners - Object with { pm: string, technician: string } names from stakeholders
  * @param {boolean} startCollapsed - Whether to start in collapsed view (dashboard list) or expanded view (detail pages)
  */
