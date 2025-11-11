@@ -169,21 +169,31 @@ class SharePointStorageService {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('client_folder_url')
+        .select('client_folder_url, one_drive_photos')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
+        { key: 'one_drive_photos', needsSubfolder: false }
+      ]);
 
-      if (!normalizedRoot) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
+      if (!rootUrl) {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Photos URL) in project settings to enable auto folder management.');
       }
 
-      // Return the Photos subfolder under client folder
-      return `${normalizedRoot}/Photos`;
+      const photosUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Photos') : rootUrl;
+
+      console.debug?.('[SharePointStorage] Resolved Photos folder', {
+        projectId,
+        source,
+        needsSubfolder,
+        photosUrl
+      });
+
+      return photosUrl;
     } catch (error) {
       console.error('Failed to get project SharePoint URL:', error);
       throw error;
@@ -199,20 +209,32 @@ class SharePointStorageService {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('client_folder_url')
+        .select('client_folder_url, one_drive_procurement, one_drive_photos')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
+        { key: 'one_drive_procurement', needsSubfolder: false },
+        { key: 'one_drive_photos', needsSubfolder: true }
+      ]);
 
-      if (!normalizedRoot) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
+      if (!rootUrl) {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Procurement/Photos URL) in project settings to enable auto folder management.');
       }
 
-      return `${normalizedRoot}/Procurement`;
+      const procurementUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Procurement') : rootUrl;
+
+      console.debug?.('[SharePointStorage] Resolved Procurement folder', {
+        projectId,
+        source,
+        needsSubfolder,
+        procurementUrl
+      });
+
+      return procurementUrl;
     } catch (error) {
       console.error('Failed to get project procurement SharePoint URL:', error);
       throw error;
@@ -228,20 +250,32 @@ class SharePointStorageService {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('client_folder_url')
+        .select('client_folder_url, one_drive_files, one_drive_photos')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
+      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
+        { key: 'one_drive_files', needsSubfolder: false },
+        { key: 'one_drive_photos', needsSubfolder: true }
+      ]);
 
-      if (!normalizedRoot) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable auto folder management.');
+      if (!rootUrl) {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Files/Photos URL) in project settings to enable auto folder management.');
       }
 
-      return `${normalizedRoot}/Business`;
+      const businessUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Business') : rootUrl;
+
+      console.debug?.('[SharePointStorage] Resolved Business folder', {
+        projectId,
+        source,
+        needsSubfolder,
+        businessUrl
+      });
+
+      return businessUrl;
     } catch (error) {
       console.error('Failed to get project business folder URL:', error);
       throw error;
@@ -263,6 +297,76 @@ class SharePointStorageService {
       console.warn('Failed to clean SharePoint URL:', error);
       return url;
     }
+  }
+
+  /**
+   * Resolve the base client folder URL, falling back to legacy fields when needed
+   * @param {Object} project - Project record with folder fields
+   * @param {Array<string|{key: string, needsSubfolder?: boolean, normalize?: boolean}>} fallbackFields - Additional fields to try
+   * @returns {{rootUrl: string|null, source: string|null, needsSubfolder: boolean}} Resolved root URL metadata
+   */
+  resolveFolderRoot(project, fallbackFields = []) {
+    const candidates = [
+      {
+        key: 'client_folder_url',
+        value: project?.client_folder_url,
+        needsSubfolder: true,
+        normalize: true
+      },
+      ...fallbackFields.map(field =>
+        typeof field === 'string'
+          ? {
+              key: field,
+              value: project?.[field],
+              needsSubfolder: false,
+              normalize: false
+            }
+          : {
+              key: field.key,
+              value: project?.[field.key],
+              needsSubfolder: field.needsSubfolder ?? false,
+              normalize: field.normalize ?? false
+            }
+      )
+    ];
+
+    for (const candidate of candidates) {
+      if (!candidate.value || typeof candidate.value !== 'string') continue;
+
+      const baseValue = candidate.normalize
+        ? (normalizeSharePointRootUrl(candidate.value) || candidate.value.trim())
+        : candidate.value.trim();
+
+      if (baseValue) {
+        return {
+          rootUrl: baseValue.replace(/\/+$/, ''),
+          source: candidate.key,
+          needsSubfolder: candidate.needsSubfolder === true
+        };
+      }
+    }
+
+    return { rootUrl: null, source: null, needsSubfolder: false };
+  }
+
+  /**
+   * Ensure a URL points to the expected subfolder (e.g., Photos, Procurement)
+   * without duplicating the folder segment.
+   * @param {string} rootUrl - Base URL
+   * @param {string} folderName - Target subfolder name
+   * @returns {string} URL that ends with the folder
+   */
+  ensureSubfolderUrl(rootUrl, folderName) {
+    if (!rootUrl) return '';
+
+    const trimmed = rootUrl.trim().replace(/\/+$/, '');
+    const suffix = `/${folderName}`.toLowerCase();
+
+    if (trimmed.toLowerCase().endsWith(suffix)) {
+      return trimmed;
+    }
+
+    return `${trimmed}/${folderName}`;
   }
 
   /**
