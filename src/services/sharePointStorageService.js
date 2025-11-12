@@ -10,7 +10,7 @@
 
 import { supabase } from '../lib/supabase';
 import { thumbnailCache } from '../lib/thumbnailCache';
-import { normalizeSharePointRootUrl } from './sharePointFolderService';
+import { STANDARD_SUBFOLDERS, normalizeSharePointRootUrl } from './sharePointFolderService';
 
 // SharePoint thumbnail size configurations
 const THUMBNAIL_SIZES = {
@@ -23,6 +23,9 @@ const THUMBNAIL_SIZES = {
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY = 1000; // 1 second
 
+const PHOTOS_FOLDER_NAME = STANDARD_SUBFOLDERS?.photos || 'Photos';
+const PHOTOS_SEGMENT = `/${PHOTOS_FOLDER_NAME.toLowerCase()}`;
+
 class SharePointStorageService {
   /**
    * Upload wire drop photo to SharePoint
@@ -34,8 +37,8 @@ class SharePointStorageService {
    */
   async uploadWireDropPhoto(projectId, wireDropId, stageType, file) {
     try {
-      // Get project SharePoint URL
-      const sharePointUrl = await this.getProjectSharePointUrl(projectId);
+      // Get project SharePoint folder context
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
       
       // Get wire drop details for naming
       const { data: wireDrop, error: wireDropError } = await supabase
@@ -52,7 +55,7 @@ class SharePointStorageService {
       
       // Create folder structure: wire_drops/{Room Name}_{Drop Name}/
       const folderName = `${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}`;
-      const subPath = `wire_drops/${folderName}`;
+      const subPath = `${photosSubPath}wire_drops/${folderName}`;
       
       // Create consistent filename WITHOUT timestamp so it replaces the existing file
       const stagePrefix = stageType.toUpperCase();
@@ -61,7 +64,7 @@ class SharePointStorageService {
       
       // Debug logging
       console.log('SharePoint Upload Debug:', {
-        rootUrl: sharePointUrl,
+        rootUrl: uploadRoot,
         subPath,
         filename,
         folderName,
@@ -70,7 +73,7 @@ class SharePointStorageService {
       });
       
       // Upload to SharePoint
-      const url = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
+      const url = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
       
       return url;
     } catch (error) {
@@ -89,8 +92,8 @@ class SharePointStorageService {
    */
   async uploadIssuePhoto(projectId, issueId, file, photoDescription = '') {
     try {
-      // Get project SharePoint URL
-      const sharePointUrl = await this.getProjectSharePointUrl(projectId);
+      // Get project SharePoint folder context
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
       
       // Get issue details for naming
       const { data: issue, error: issueError } = await supabase
@@ -106,7 +109,7 @@ class SharePointStorageService {
       
       // Create folder structure: issues/{Issue Title}/
       const folderName = this.sanitizeForFileName(issueTitle);
-      const subPath = `issues/${folderName}`;
+      const subPath = `${photosSubPath}issues/${folderName}`;
       
       // Create filename
       const timestamp = this.formatTimestamp(new Date());
@@ -115,7 +118,7 @@ class SharePointStorageService {
       const filename = `ISSUE_${this.sanitizeForFileName(issueTitle)}${description}_${timestamp}.${extension}`;
       
       // Upload to SharePoint - returns metadata object
-      const metadata = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
+      const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
       
       return metadata;
     } catch (error) {
@@ -134,14 +137,14 @@ class SharePointStorageService {
    */
   async uploadFloorPlan(projectId, pageId, pageTitle, imageBlob) {
     try {
-      // Get project SharePoint URL
-      const sharePointUrl = await this.getProjectSharePointUrl(projectId);
+      // Get project SharePoint folder context
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
       
       const pageTitleSafe = pageTitle || 'Floor Plan';
       
       // Create folder structure: floor_plans/{Page Title}/
       const folderName = this.sanitizeForFileName(pageTitleSafe);
-      const subPath = `floor_plans/${folderName}`;
+      const subPath = `${photosSubPath}floor_plans/${folderName}`;
       
       // Create filename
       const timestamp = this.formatTimestamp(new Date());
@@ -151,7 +154,7 @@ class SharePointStorageService {
       const file = new File([imageBlob], filename, { type: 'image/png' });
       
       // Upload to SharePoint - returns metadata object
-      const metadata = await this.uploadToSharePoint(sharePointUrl, subPath, filename, file);
+      const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
       
       return metadata;
     } catch (error) {
@@ -190,18 +193,42 @@ class SharePointStorageService {
   }
 
   /**
+   * Resolve the correct Photos folder context for uploads
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<{uploadRoot: string, photosSubPath: string}>}
+   */
+  async getPhotosFolderContext(projectId) {
+    const rootUrl = await this.getProjectRootFolder(projectId);
+    const trimmedRoot = (rootUrl || '').replace(/\/+$/, '');
+    const lowerRoot = trimmedRoot.toLowerCase();
+
+    if (lowerRoot.endsWith(PHOTOS_SEGMENT)) {
+      return {
+        uploadRoot: trimmedRoot,
+        photosSubPath: ''
+      };
+    }
+
+    return {
+      uploadRoot: trimmedRoot,
+      photosSubPath: `${PHOTOS_FOLDER_NAME}/`
+    };
+  }
+
+  /**
    * Get project's Photos folder URL using auto folder management
    * @param {string} projectId - Project UUID
    * @returns {Promise<string>} Photos folder URL
    */
   async getProjectSharePointUrl(projectId) {
     try {
-      const rootUrl = await this.getProjectRootFolder(projectId);
-      const photosUrl = `${rootUrl}/Photos`;
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
+      const normalizedSubPath = photosSubPath.replace(/\/+$/, '');
+      const photosUrl = normalizedSubPath ? `${uploadRoot}/${normalizedSubPath}` : uploadRoot;
 
       console.debug?.('[SharePointStorage] Resolved Photos folder', {
         projectId,
-        rootUrl,
+        rootUrl: uploadRoot,
         photosUrl
       });
 

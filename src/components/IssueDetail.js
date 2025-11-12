@@ -22,7 +22,7 @@ import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Pho
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, acquireToken } = useAuth();
   const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
@@ -415,18 +415,22 @@ const IssueDetail = () => {
           title: newTitle,
           project_id: projectId
         };
-        notifyIssueComment({
-          issue: issueContext,
-          project: projectInfo,
-          comment: {
-            author: author_name,
-            text,
-            createdAt: created.created_at
+        const graphToken = await acquireToken();
+        await notifyIssueComment(
+          {
+            issue: issueContext,
+            project: projectInfo,
+            comment: {
+              author: author_name,
+              text,
+              createdAt: created.created_at
+            },
+            stakeholders: tags,
+            actor: currentUserSummary,
+            issueUrl: link
           },
-          stakeholders: tags,
-          actor: currentUserSummary,
-          issueUrl: link
-        });
+          { authToken: graphToken }
+        );
       }
     } catch (e) {
       setError(e.message || 'Failed to add comment');
@@ -551,13 +555,18 @@ const IssueDetail = () => {
         title: newTitle,
         project_id: projectId
       };
-      notifyStakeholderAdded({
-        issue: issueContext,
-        project: projectInfo,
-        stakeholder,
-        actor: currentUserSummary,
-        issueUrl: link
-      });
+      const graphToken = await acquireToken();
+
+      await notifyStakeholderAdded(
+        {
+          issue: issueContext,
+          project: projectInfo,
+          stakeholder,
+          actor: currentUserSummary,
+          issueUrl: link
+        },
+        { authToken: graphToken }
+      );
     } catch (e) {
       setError(e.message || 'Failed to tag stakeholder');
     } finally {

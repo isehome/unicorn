@@ -56,7 +56,8 @@ export const loginRequest = {
     'offline_access',
     'User.Read',
     'Calendars.Read',
-    'Contacts.Read'
+    'Contacts.Read',
+    'Mail.Send'
   ],
   prompt: 'select_account',
 };
@@ -66,7 +67,8 @@ export const tokenRequest = {
   scopes: [
     'User.Read',
     'Calendars.Read', 
-    'Contacts.Read'
+    'Contacts.Read',
+    'Mail.Send'
   ],
 };
 

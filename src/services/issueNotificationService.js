@@ -18,15 +18,20 @@ const escapeHtml = (text = '') =>
     }
   });
 
-const postNotification = async ({ to, subject, html, text }) => {
+const postNotification = async ({ to, subject, html, text }, options = {}) => {
   if (!Array.isArray(to) || to.length === 0) return;
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (options.authToken) {
+    headers.Authorization = `Bearer ${options.authToken}`;
+  }
 
   try {
     const response = await fetch(NOTIFICATION_ENDPOINT, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({ to, subject, html, text })
     });
 
@@ -45,7 +50,7 @@ const formatIssueContext = (issue, project) => {
   return { issueTitle, projectName };
 };
 
-export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl }) => {
+export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl }, options = {}) => {
   if (!stakeholder?.email) return;
 
   const { issueTitle, projectName } = formatIssueContext(issue, project);
@@ -70,15 +75,18 @@ ${actorName} added you as a stakeholder on issue "${issueTitle}"${projectName}.
 Open the issue: ${safeUrl}
 `;
 
-  await postNotification({
-    to: [stakeholder.email],
-    subject: `You were added to "${issueTitle}"`,
-    html,
-    text
-  });
+  await postNotification(
+    {
+      to: [stakeholder.email],
+      subject: `You were added to "${issueTitle}"`,
+      html,
+      text
+    },
+    { authToken: options?.authToken }
+  );
 };
 
-export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl }) => {
+export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl }, options = {}) => {
   if (!Array.isArray(stakeholders) || stakeholders.length === 0) return;
 
   const recipients = Array.from(
@@ -115,11 +123,13 @@ export const notifyIssueComment = async ({ issue, project, comment, stakeholders
 Open the issue: ${safeUrl}
 `;
 
-  await postNotification({
-    to: recipients,
-    subject: `New comment on "${issueTitle}"`,
-    html,
-    text
-  });
+  await postNotification(
+    {
+      to: recipients,
+      subject: `New comment on "${issueTitle}"`,
+      html,
+      text
+    },
+    { authToken: options?.authToken }
+  );
 };
-

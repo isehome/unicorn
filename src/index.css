@@ -17,6 +17,22 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+html, body {
+  width: 100%;
+  min-height: 100%;
+  overscroll-behavior-x: none;
+}
+
+#root {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  touch-action: pan-y pinch-zoom;
 }
 
 /* Enhanced font size for mobile devices */
