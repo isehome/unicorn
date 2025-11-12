@@ -38,9 +38,6 @@ const PMDashboard = () => {
     status: 'active',
     wiring_diagram_url: '',
     portal_proposal_url: '',
-    one_drive_photos: '',
-    one_drive_files: '',
-    one_drive_procurement: '',
   });
 
   // Load projects and contacts on mount
@@ -226,9 +223,6 @@ const PMDashboard = () => {
         status: 'active',
         wiring_diagram_url: '',
         portal_proposal_url: '',
-        one_drive_photos: '',
-        one_drive_files: '',
-        one_drive_procurement: '',
       });
       setShowNewProjectForm(false);
       loadProjects();

@@ -3,29 +3,33 @@ with p1 as (
   insert into public.projects (
     name, client, address, phase, start_date, end_date,
     wiring_diagram_url, portal_proposal_url,
+    client_folder_url,
     one_drive_photos, one_drive_files, one_drive_procurement
   ) values (
     'Smith Residence', 'John Smith', '123 Main St, Austin, TX', 'Install',
     '2025-01-15', '2025-02-28',
     'https://lucid.app/lucidchart/f0e89b19-d72d-4ab1-8cb9-2712dbca4bc1/edit',
     'https://portal.company.com/proposals/smith-residence-2025',
-    'https://onedrive.live.com/smith-residence/photos',
-    'https://onedrive.live.com/smith-residence/files',
-    'https://onedrive.live.com/smith-residence/procurement'
+    'https://onedrive.live.com/smith-residence',
+    null,
+    null,
+    null
   ) returning id
 ), p2 as (
   insert into public.projects (
     name, client, address, phase, start_date, end_date,
     wiring_diagram_url, portal_proposal_url,
+    client_folder_url,
     one_drive_photos, one_drive_files, one_drive_procurement
   ) values (
     'Office Complex', 'ABC Corp', '456 Business Ave, Austin, TX', 'Planning',
     '2025-02-01', '2025-03-15',
     'https://lucid.app/lucidchart/office-complex-diagram',
     'https://portal.company.com/proposals/office-complex-2025',
-    'https://onedrive.live.com/office-complex/photos',
-    'https://onedrive.live.com/office-complex/files',
-    'https://onedrive.live.com/office-complex/procurement'
+    'https://onedrive.live.com/office-complex',
+    null,
+    null,
+    null
   ) returning id
 )
 insert into public.wire_drops (project_id, uid, name, location, type, prewire_photo, installed_photo)

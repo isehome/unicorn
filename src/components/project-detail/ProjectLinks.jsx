@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package,
@@ -9,6 +9,7 @@ import {
   FileText,
   ChevronRight
 } from 'lucide-react';
+import { normalizeSharePointRootUrl } from '../../services/sharePointFolderService';
 
 /**
  * ProjectLinks - Bottom section with navigation and external links
@@ -19,6 +20,16 @@ import {
  */
 const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink }) => {
   const navigate = useNavigate();
+  const normalizedClientFolder = useMemo(() => {
+    if (!project?.client_folder_url) return '';
+    const normalized =
+      normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url.trim();
+    return normalized ? normalized.replace(/\/+$/, '') : '';
+  }, [project?.client_folder_url]);
+
+  const photosUrl = normalizedClientFolder ? `${normalizedClientFolder}/Photos` : null;
+  const filesUrl = normalizedClientFolder ? `${normalizedClientFolder}/Files` : null;
+  const procurementUrl = normalizedClientFolder ? `${normalizedClientFolder}/Procurement` : null;
 
   return (
     <>
@@ -88,7 +99,8 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
       {/* External Links Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <button
-          onClick={() => openLink(project.one_drive_photos)}
+          disabled={!photosUrl}
+          onClick={() => photosUrl && openLink(photosUrl)}
           className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
           style={styles.card}
         >
@@ -96,7 +108,8 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
           <span className="text-sm" style={styles.textPrimary}>Photos</span>
         </button>
         <button
-          onClick={() => openLink(project.one_drive_files)}
+          disabled={!filesUrl}
+          onClick={() => filesUrl && openLink(filesUrl)}
           className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
           style={styles.card}
         >
@@ -104,7 +117,8 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
           <span className="text-sm" style={styles.textPrimary}>Files</span>
         </button>
         <button
-          onClick={() => openLink(project.one_drive_procurement)}
+          disabled={!procurementUrl}
+          onClick={() => procurementUrl && openLink(procurementUrl)}
           className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
           style={styles.card}
         >

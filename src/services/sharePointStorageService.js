@@ -161,35 +161,47 @@ class SharePointStorageService {
   }
 
   /**
-   * Get project's Photos folder URL using auto folder management
+   * Resolve and validate the client's root SharePoint folder for a project
    * @param {string} projectId - Project UUID
-   * @returns {Promise<string>} Photos folder URL
+   * @returns {Promise<string>} Normalized root URL
    */
-  async getProjectSharePointUrl(projectId) {
+  async getProjectRootFolder(projectId) {
     try {
       const { data: project, error } = await supabase
         .from('projects')
-        .select('client_folder_url, one_drive_photos')
+        .select('client_folder_url')
         .eq('id', projectId)
         .single();
 
       if (error) throw error;
       if (!project) throw new Error('Project not found');
 
-      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
-        { key: 'one_drive_photos', needsSubfolder: false }
-      ]);
+      const normalizedRoot = normalizeSharePointRootUrl(project.client_folder_url) || project.client_folder_url?.trim();
 
-      if (!rootUrl) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Photos URL) in project settings to enable auto folder management.');
+      if (!normalizedRoot) {
+        throw new Error('Client Folder URL not configured. Please set Client Folder URL in project settings to enable SharePoint uploads.');
       }
 
-      const photosUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Photos') : rootUrl;
+      return normalizedRoot.replace(/\/+$/, '');
+    } catch (error) {
+      console.error('Failed to resolve project SharePoint root:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get project's Photos folder URL using auto folder management
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<string>} Photos folder URL
+   */
+  async getProjectSharePointUrl(projectId) {
+    try {
+      const rootUrl = await this.getProjectRootFolder(projectId);
+      const photosUrl = `${rootUrl}/Photos`;
 
       console.debug?.('[SharePointStorage] Resolved Photos folder', {
         projectId,
-        source,
-        needsSubfolder,
+        rootUrl,
         photosUrl
       });
 
@@ -207,30 +219,12 @@ class SharePointStorageService {
    */
   async getProjectProcurementUrl(projectId) {
     try {
-      const { data: project, error } = await supabase
-        .from('projects')
-        .select('client_folder_url, one_drive_procurement, one_drive_photos')
-        .eq('id', projectId)
-        .single();
-
-      if (error) throw error;
-      if (!project) throw new Error('Project not found');
-
-      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
-        { key: 'one_drive_procurement', needsSubfolder: false },
-        { key: 'one_drive_photos', needsSubfolder: true }
-      ]);
-
-      if (!rootUrl) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Procurement/Photos URL) in project settings to enable auto folder management.');
-      }
-
-      const procurementUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Procurement') : rootUrl;
+      const rootUrl = await this.getProjectRootFolder(projectId);
+      const procurementUrl = `${rootUrl}/Procurement`;
 
       console.debug?.('[SharePointStorage] Resolved Procurement folder', {
         projectId,
-        source,
-        needsSubfolder,
+        rootUrl,
         procurementUrl
       });
 
@@ -248,30 +242,12 @@ class SharePointStorageService {
    */
   async getProjectBusinessUrl(projectId) {
     try {
-      const { data: project, error } = await supabase
-        .from('projects')
-        .select('client_folder_url, one_drive_files, one_drive_photos')
-        .eq('id', projectId)
-        .single();
-
-      if (error) throw error;
-      if (!project) throw new Error('Project not found');
-
-      const { rootUrl, source, needsSubfolder } = this.resolveFolderRoot(project, [
-        { key: 'one_drive_files', needsSubfolder: false },
-        { key: 'one_drive_photos', needsSubfolder: true }
-      ]);
-
-      if (!rootUrl) {
-        throw new Error('Client Folder URL not configured. Please set Client Folder URL (or legacy Files/Photos URL) in project settings to enable auto folder management.');
-      }
-
-      const businessUrl = needsSubfolder ? this.ensureSubfolderUrl(rootUrl, 'Business') : rootUrl;
+      const rootUrl = await this.getProjectRootFolder(projectId);
+      const businessUrl = `${rootUrl}/Business`;
 
       console.debug?.('[SharePointStorage] Resolved Business folder', {
         projectId,
-        source,
-        needsSubfolder,
+        rootUrl,
         businessUrl
       });
 
@@ -300,76 +276,6 @@ class SharePointStorageService {
   }
 
   /**
-   * Resolve the base client folder URL, falling back to legacy fields when needed
-   * @param {Object} project - Project record with folder fields
-   * @param {Array<string|{key: string, needsSubfolder?: boolean, normalize?: boolean}>} fallbackFields - Additional fields to try
-   * @returns {{rootUrl: string|null, source: string|null, needsSubfolder: boolean}} Resolved root URL metadata
-   */
-  resolveFolderRoot(project, fallbackFields = []) {
-    const candidates = [
-      {
-        key: 'client_folder_url',
-        value: project?.client_folder_url,
-        needsSubfolder: true,
-        normalize: true
-      },
-      ...fallbackFields.map(field =>
-        typeof field === 'string'
-          ? {
-              key: field,
-              value: project?.[field],
-              needsSubfolder: false,
-              normalize: false
-            }
-          : {
-              key: field.key,
-              value: project?.[field.key],
-              needsSubfolder: field.needsSubfolder ?? false,
-              normalize: field.normalize ?? false
-            }
-      )
-    ];
-
-    for (const candidate of candidates) {
-      if (!candidate.value || typeof candidate.value !== 'string') continue;
-
-      const baseValue = candidate.normalize
-        ? (normalizeSharePointRootUrl(candidate.value) || candidate.value.trim())
-        : candidate.value.trim();
-
-      if (baseValue) {
-        return {
-          rootUrl: baseValue.replace(/\/+$/, ''),
-          source: candidate.key,
-          needsSubfolder: candidate.needsSubfolder === true
-        };
-      }
-    }
-
-    return { rootUrl: null, source: null, needsSubfolder: false };
-  }
-
-  /**
-   * Ensure a URL points to the expected subfolder (e.g., Photos, Procurement)
-   * without duplicating the folder segment.
-   * @param {string} rootUrl - Base URL
-   * @param {string} folderName - Target subfolder name
-   * @returns {string} URL that ends with the folder
-   */
-  ensureSubfolderUrl(rootUrl, folderName) {
-    if (!rootUrl) return '';
-
-    const trimmed = rootUrl.trim().replace(/\/+$/, '');
-    const suffix = `/${folderName}`.toLowerCase();
-
-    if (trimmed.toLowerCase().endsWith(suffix)) {
-      return trimmed;
-    }
-
-    return `${trimmed}/${folderName}`;
-  }
-
-  /**
    * Upload file to SharePoint with retry logic
    * @param {string} rootUrl - SharePoint root URL
    * @param {string} subPath - Subfolder path
@@ -380,8 +286,9 @@ class SharePointStorageService {
   async uploadToSharePoint(rootUrl, subPath, filename, file) {
     let lastError;
 
-    // Clean the root URL to remove query parameters
+    // Clean the root URL to remove query parameters and encode spaces for Graph
     const cleanedRootUrl = this.cleanSharePointUrl(rootUrl);
+    const graphSafeRootUrl = encodeURI(cleanedRootUrl);
     
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -392,6 +299,7 @@ class SharePointStorageService {
         console.log('SharePoint upload attempt', attempt, {
           originalRootUrl: rootUrl,
           cleanedRootUrl,
+          graphSafeRootUrl,
           subPath,
           filename,
           fileSize: file.size,
@@ -405,7 +313,7 @@ class SharePointStorageService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            rootUrl: cleanedRootUrl,
+            rootUrl: graphSafeRootUrl,
             subPath,
             filename,
             fileBase64,

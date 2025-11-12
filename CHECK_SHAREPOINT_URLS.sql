@@ -4,6 +4,7 @@
 SELECT
     id,
     name,
+    client_folder_url,
     one_drive_photos,
     one_drive_files,
     one_drive_procurement

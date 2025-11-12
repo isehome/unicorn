@@ -5,6 +5,164 @@ const handleError = (error, defaultMessage) => {
   throw new Error(error?.message || defaultMessage);
 };
 
+const DEFAULT_INTERNAL_STAKEHOLDERS = [
+  {
+    key: 'orders',
+    displayName: 'Orders',
+    email: 'orders@isehome.com',
+    roleName: 'Orders',
+    department: 'Operations',
+    company: 'Intelligent Systems'
+  },
+  {
+    key: 'accounting',
+    displayName: 'Accounting',
+    email: 'accounting@isehome.com',
+    roleName: 'Accounting',
+    department: 'Finance',
+    company: 'Intelligent Systems'
+  }
+];
+
+const ensuredDefaultStakeholderProjects = new Set();
+
+const normalizeEmail = (email = '') => `${email}`.trim().toLowerCase();
+
+const ensureStakeholderRole = async (roleName, description = null) => {
+  if (!supabase || !roleName) return null;
+
+  const normalizedName = roleName.trim();
+
+  try {
+    const { data: existing } = await supabase
+      .from('stakeholder_roles')
+      .select('id')
+      .eq('name', normalizedName)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return existing.id;
+    }
+
+    const { data, error } = await supabase
+      .from('stakeholder_roles')
+      .insert([{
+        name: normalizedName,
+        category: 'internal',
+        description: description || `Auto-generated role for ${normalizedName}`,
+        sort_order: 50
+      }])
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data?.id || null;
+  } catch (error) {
+    console.error('Failed to ensure stakeholder role:', error);
+    return null;
+  }
+};
+
+const ensureInternalContact = async (spec) => {
+  if (!supabase || !spec?.email) return null;
+  const email = normalizeEmail(spec.email);
+
+  try {
+    const { data: existing } = await supabase
+      .from('contacts')
+      .select('id')
+      .ilike('email', email)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return existing.id;
+    }
+
+    const [firstName, ...rest] = (spec.displayName || '').trim().split(' ');
+    const lastName = rest.join(' ');
+
+    const insertPayload = {
+      name: spec.displayName || spec.roleName,
+      full_name: spec.displayName || spec.roleName,
+      first_name: firstName || spec.displayName || spec.roleName,
+      last_name: lastName || '',
+      email,
+      company: spec.company || 'Internal',
+      role: spec.roleName || spec.displayName,
+      department: spec.department || null,
+      is_internal: true,
+      is_active: true
+    };
+
+    const { data, error } = await supabase
+      .from('contacts')
+      .insert([insertPayload])
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    return data?.id || null;
+  } catch (error) {
+    console.error('Failed to ensure contact exists:', error);
+    return null;
+  }
+};
+
+const ensureProjectStakeholderAssignment = async (projectId, contactId, roleId) => {
+  if (!supabase || !projectId || !contactId || !roleId) return;
+
+  try {
+    const { data: existing } = await supabase
+      .from('project_stakeholders')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('contact_id', contactId)
+      .eq('stakeholder_role_id', roleId)
+      .maybeSingle();
+
+    if (existing?.id) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('project_stakeholders')
+      .insert([{
+        project_id: projectId,
+        contact_id: contactId,
+        stakeholder_role_id: roleId,
+        is_primary: false
+      }]);
+
+    if (error && error.code !== '23505') {
+      throw error;
+    }
+  } catch (error) {
+    console.error('Failed to ensure project stakeholder assignment:', error);
+  }
+};
+
+const ensureDefaultInternalStakeholders = async (projectId) => {
+  if (!projectId || ensuredDefaultStakeholderProjects.has(projectId)) {
+    return;
+  }
+
+  let allEnsured = true;
+
+  for (const spec of DEFAULT_INTERNAL_STAKEHOLDERS) {
+    const roleId = await ensureStakeholderRole(spec.roleName, `${spec.displayName} automated stakeholder`);
+    const contactId = await ensureInternalContact(spec);
+    if (contactId && roleId) {
+      await ensureProjectStakeholderAssignment(projectId, contactId, roleId);
+    } else {
+      allEnsured = false;
+    }
+  }
+
+  if (allEnsured) {
+    ensuredDefaultStakeholderProjects.add(projectId);
+  }
+};
+
 // ============= PROJECTS SERVICE =============
 export const projectsService = {
   async getAll() {
@@ -21,6 +179,24 @@ export const projectsService = {
     } catch (error) {
       console.error('Failed to fetch projects:', error);
       return [];
+    }
+  },
+
+  async getById(projectId) {
+    try {
+      if (!supabase || !projectId) return null;
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch project:', error);
+      return null;
     }
   },
 
@@ -176,6 +352,8 @@ export const projectStakeholdersService = {
       if (!supabase) {
         return { internal: [], external: [] };
       }
+
+      await ensureDefaultInternalStakeholders(projectId);
 
       const { data, error } = await supabase
         .from('project_stakeholders_detailed')
@@ -599,6 +777,22 @@ export const contactsService = {
         query = query.eq('is_internal', filters.isInternal);
       }
 
+      if (filters.search) {
+        const rawTerm = filters.search.trim();
+        if (rawTerm.length > 0) {
+          const escaped = rawTerm.replace(/[%_]/g, '\\$&');
+          const pattern = `%${escaped}%`;
+          query = query.or([
+            `name.ilike.${pattern}`,
+            `first_name.ilike.${pattern}`,
+            `last_name.ilike.${pattern}`,
+            `email.ilike.${pattern}`,
+            `company.ilike.${pattern}`,
+            `role.ilike.${pattern}`
+          ].join(','));
+        }
+      }
+
       const { data, error } = await query;
       if (error) throw error;
       return data || [];
@@ -640,6 +834,39 @@ export const contactsService = {
       return data;
     } catch (error) {
       handleError(error, 'Failed to create contact');
+    }
+  },
+
+  async update(id, updates) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      const { data, error } = await supabase
+        .from('contacts')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to update contact');
+    }
+  },
+
+  async delete(id) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+      
+      const { error } = await supabase
+        .from('contacts')
+        .update({ is_active: false })
+        .eq('id', id);
+      
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to delete contact');
     }
   }
 };

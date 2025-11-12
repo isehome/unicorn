@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
@@ -14,6 +14,11 @@ const PeopleManagement = () => {
   const [editingContact, setEditingContact] = useState(null);
   const [filter, setFilter] = useState('all'); // all, internal, external
   
+  const contactFilters = useMemo(() => ({
+    search: searchTerm.trim() || '',
+    isInternal: filter === 'all' ? undefined : filter === 'internal'
+  }), [searchTerm, filter]);
+
   const { 
     contacts, 
     loading, 
@@ -21,10 +26,7 @@ const PeopleManagement = () => {
     createContact, 
     updateContact, 
     deleteContact 
-  } = useContacts({
-    search: searchTerm,
-    isInternal: filter === 'all' ? undefined : filter === 'internal'
-  });
+  } = useContacts(contactFilters);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -42,11 +44,16 @@ const PeopleManagement = () => {
     e.preventDefault();
     
     try {
+      const payload = { ...formData };
+      delete payload.id;
+      delete payload.created_at;
+      delete payload.updated_at;
+
       if (editingContact) {
-        await updateContact(editingContact.id, formData);
+        await updateContact(editingContact.id, payload);
         setEditingContact(null);
       } else {
-        await createContact(formData);
+        await createContact(payload);
         setShowAddModal(false);
       }
       

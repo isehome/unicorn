@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './ui/Button';
@@ -8,10 +8,12 @@ import {
   issuesService,
   issueCommentsService,
   issueStakeholderTagsService,
-  projectStakeholdersService
+  projectStakeholdersService,
+  projectsService
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
@@ -50,21 +52,44 @@ const IssueDetail = () => {
   const [newPriority, setNewPriority] = useState('medium');
   const [newDueDate, setNewDueDate] = useState('');
   const [expandedStakeholder, setExpandedStakeholder] = useState(null);
+  const [projectInfo, setProjectInfo] = useState(null);
+  const [draftIssue, setDraftIssue] = useState(null);
+  const authorProfileIdRef = useRef(undefined);
+  const draftIssuePromiseRef = useRef(null);
 
   const isNew = issueId === 'new';
+  const resolvedIssue = issue || draftIssue || null;
+  const activeIssueId = resolvedIssue?.id || null;
+  const hasIssueRecord = Boolean(activeIssueId);
+  const canManageStakeholders = !isNew || hasIssueRecord;
+  const canUploadPhotos = !isNew || hasIssueRecord;
+  const canComment = !isNew || hasIssueRecord;
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
+
+      const projectPromise = projectId ? projectsService.getById(projectId) : Promise.resolve(null);
+
       if (!isNew) {
-        const [issueData, commentsData, tagsData, projectStakeholders] = await Promise.all([
+        const [
+          issueData,
+          commentsData,
+          tagsData,
+          projectStakeholders,
+          projectDetails
+        ] = await Promise.all([
           issuesService.getById(issueId),
           issueCommentsService.getForIssue(issueId),
           issueStakeholderTagsService.getDetailed(issueId),
-          projectStakeholdersService.getForProject(projectId)
+          projectStakeholdersService.getForProject(projectId),
+          projectPromise
         ]);
         
+        setDraftIssue(null);
+        draftIssuePromiseRef.current = null;
+
         // Debug logging to check the issue data
         console.log('Issue Data Loaded:', issueData);
         console.log('Is Blocked:', issueData?.is_blocked);
@@ -73,6 +98,7 @@ const IssueDetail = () => {
         setIssue(issueData);
         setComments(commentsData);
         setTags(tagsData);
+        setProjectInfo(projectDetails);
         setDetailsText(String(issueData?.description ?? issueData?.notes ?? ''));
         // load photos
         const { data: photoData } = await supabase
@@ -87,13 +113,18 @@ const IssueDetail = () => {
         ];
         setAvailableProjectStakeholders(combined);
       } else {
-        // For new issue form, preload stakeholders list
-        const projectStakeholders = await projectStakeholdersService.getForProject(projectId);
+        const [projectStakeholders, projectDetails] = await Promise.all([
+          projectStakeholdersService.getForProject(projectId),
+          projectPromise
+        ]);
         const combined = [
           ...(projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' })),
           ...(projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }))
         ];
+        setProjectInfo(projectDetails);
         setAvailableProjectStakeholders(combined);
+        setDraftIssue(null);
+        draftIssuePromiseRef.current = null;
         setIssue(null);
         setComments([]);
         setTags([]);
@@ -116,6 +147,185 @@ const IssueDetail = () => {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    // Reset cached profile id when user changes
+    authorProfileIdRef.current = undefined;
+  }, [user?.id]);
+
+  const issueLink = useMemo(() => {
+    if (!activeIssueId || !projectId) return '';
+    if (typeof window === 'undefined') return '';
+    try {
+      return `${window.location.origin}/project/${projectId}/issues/${activeIssueId}`;
+    } catch {
+      return '';
+    }
+  }, [activeIssueId, projectId]);
+
+  const currentUserSummary = useMemo(() => ({
+    name: user?.full_name || user?.name || user?.email || 'User',
+    email: user?.email || null
+  }), [user?.full_name, user?.name, user?.email]);
+
+  const getAuthorInfo = useCallback(async () => {
+    const author_name = user?.full_name || user?.name || user?.email || 'User';
+    const author_email = user?.email || null;
+
+    let author_id = null;
+    if (user?.id) {
+      if (authorProfileIdRef.current === undefined) {
+        try {
+          const { data: profileRow } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+          authorProfileIdRef.current = profileRow?.id || null;
+        } catch (err) {
+          console.warn('Failed to resolve author profile id:', err);
+          authorProfileIdRef.current = null;
+        }
+      }
+      author_id = authorProfileIdRef.current;
+    }
+
+    return { author_id, author_name, author_email };
+  }, [user]);
+
+  const resolveCreatorProfileId = useCallback(async () => {
+    if (!user?.id) return null;
+    try {
+      const { data: profileRow } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+      return profileRow?.id || null;
+    } catch (err) {
+      console.warn('Failed to resolve creator profile id:', err);
+      return null;
+    }
+  }, [user?.id]);
+
+  const createIssueRecord = useCallback(async () => {
+    const title = newTitle.trim();
+    if (!title) {
+      throw new Error('Enter a title before adding stakeholders, comments, or photos.');
+    }
+
+    const ownerMatch = user?.email
+      ? availableProjectStakeholders.find(
+          p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase()
+        )
+      : null;
+
+    const creatorProfileId = await resolveCreatorProfileId();
+    const assignedTo = ownerMatch?.profile_id || creatorProfileId || null;
+
+    const payload = {
+      project_id: projectId,
+      title,
+      description: detailsText,
+      priority: newPriority,
+      status: 'open',
+      assigned_to: assignedTo,
+      created_by: creatorProfileId,
+      due_date: newDueDate || null
+    };
+
+    setSaving(true);
+    try {
+      const created = await issuesService.create(payload);
+      setDraftIssue(created);
+
+      if (created?.id && ownerMatch?.assignment_id) {
+        try {
+          await issueStakeholderTagsService.add(created.id, ownerMatch.assignment_id, 'owner');
+          const updatedTags = await issueStakeholderTagsService.getDetailed(created.id);
+          setTags(updatedTags);
+        } catch (tagError) {
+          console.warn('Failed to auto-tag owner:', tagError);
+        }
+      }
+
+      return created;
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    availableProjectStakeholders,
+    detailsText,
+    newDueDate,
+    newPriority,
+    newTitle,
+    projectId,
+    resolveCreatorProfileId,
+    user?.email
+  ]);
+
+  const ensureIssueId = useCallback(async () => {
+    if (issue?.id) return issue.id;
+    if (draftIssue?.id) return draftIssue.id;
+
+    if (draftIssuePromiseRef.current) {
+      const pending = await draftIssuePromiseRef.current;
+      return pending?.id || null;
+    }
+
+    const creationPromise = createIssueRecord();
+    draftIssuePromiseRef.current = creationPromise;
+    try {
+      const created = await creationPromise;
+      return created?.id || null;
+    } finally {
+      draftIssuePromiseRef.current = null;
+    }
+  }, [createIssueRecord, draftIssue?.id, issue?.id]);
+
+  const appendStatusChangeComment = useCallback(async (nextStatusLabel) => {
+    if (!issue?.id || !nextStatusLabel) return;
+    try {
+      const { author_id, author_name, author_email } = await getAuthorInfo();
+      const normalizedStatus = String(nextStatusLabel).toLowerCase();
+      const comment_text = `status changed to ${normalizedStatus}`;
+      const created = await issueCommentsService.add(issue.id, {
+        author_id,
+        author_name,
+        author_email,
+        comment_text,
+        is_internal: true
+      });
+      if (created) {
+        setComments(prev => [...prev, created]);
+      }
+    } catch (err) {
+      console.error('Failed to log status change comment:', err);
+    }
+  }, [getAuthorInfo, issue?.id]);
+
+  const updateStatusAndLog = useCallback(async (nextStatus, errorMessage) => {
+    if (!issue?.id || !nextStatus) return;
+    const currentStatus = (issue?.status || '').toLowerCase();
+    const desiredStatus = nextStatus.toLowerCase();
+    if (currentStatus === desiredStatus) {
+      return;
+    }
+    try {
+      setSaving(true);
+      setError('');
+      const updated = await issuesService.update(issue.id, { status: nextStatus });
+      if (updated) {
+        setIssue(updated);
+        await appendStatusChangeComment(nextStatus);
+      }
+    } catch (err) {
+      console.error(errorMessage, err);
+      setError(errorMessage);
+    } finally {
+      setSaving(false);
+    }
+  }, [appendStatusChangeComment, issue?.id, issue?.status]);
+
   const handleCreate = async (evt) => {
     if (evt) evt.preventDefault();
     const title = newTitle.trim();
@@ -124,43 +334,28 @@ const IssueDetail = () => {
       return;
     }
     try {
+      const existingId = issue?.id || draftIssue?.id || await ensureIssueId();
+      if (!existingId) return;
+
       setSaving(true);
       setError('');
-      const ownerMatch = user?.email
-        ? availableProjectStakeholders.find(p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase())
-        : null;
-      let creatorProfileId = null;
-      if (user?.id) {
-        try {
-          const { data: profileRow } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (profileRow?.id) creatorProfileId = profileRow.id;
-        } catch (_) {
-          creatorProfileId = null;
-        }
-      }
-      const assignedTo = ownerMatch?.profile_id || creatorProfileId || null;
-      const payload = {
-        project_id: projectId,
+
+      const updates = {
         title,
         description: detailsText,
         priority: newPriority,
-        status: 'open',
-        assigned_to: assignedTo,
-        created_by: creatorProfileId,
         due_date: newDueDate || null
       };
-      const created = await issuesService.create(payload);
 
-      // Auto-tag creator as owner if they exist as project stakeholder
-      if (created?.id && ownerMatch?.assignment_id) {
-        try { await issueStakeholderTagsService.add(created.id, ownerMatch.assignment_id, 'owner'); } catch (_) {}
+      if (!issue?.id) {
+        await issuesService.update(existingId, updates);
+        navigate(`/project/${projectId}/issues/${existingId}`, { replace: true });
+      } else {
+        const updated = await issuesService.update(existingId, updates);
+        if (updated) {
+          setIssue(updated);
+        }
       }
-
-      navigate(`/project/${projectId}/issues/${created.id}`);
     } catch (e) {
       setError(e.message || 'Failed to create issue');
     } finally {
@@ -189,22 +384,21 @@ const IssueDetail = () => {
 
   const handleAddComment = async () => {
     const text = commentText.trim();
-    if (!text || !issue?.id) return;
+    if (!text) return;
+    let issueIdToUse = activeIssueId;
+    if (!issueIdToUse) {
+      try {
+        issueIdToUse = await ensureIssueId();
+      } catch (err) {
+        setError(err.message || 'Failed to save the issue before commenting');
+        return;
+      }
+    }
+    if (!issueIdToUse) return;
     try {
       setSaving(true);
-      const author_name = user?.full_name || user?.name || user?.email || 'User';
-      const author_email = user?.email || null;
-      // Only include author_id if a matching profile exists to satisfy FK
-      let author_id = null;
-      if (user?.id) {
-        const { data: profileRow } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (profileRow?.id) author_id = user.id;
-      }
-      const created = await issueCommentsService.add(issue.id, {
+      const { author_id, author_name, author_email } = await getAuthorInfo();
+      const created = await issueCommentsService.add(issueIdToUse, {
         author_id,
         author_name,
         author_email,
@@ -214,6 +408,25 @@ const IssueDetail = () => {
       if (created) {
         setComments(prev => [...prev, created]);
         setCommentText('');
+
+        const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
+        const issueContext = resolvedIssue || {
+          id: issueIdToUse,
+          title: newTitle,
+          project_id: projectId
+        };
+        notifyIssueComment({
+          issue: issueContext,
+          project: projectInfo,
+          comment: {
+            author: author_name,
+            text,
+            createdAt: created.created_at
+          },
+          stakeholders: tags,
+          actor: currentUserSummary,
+          issueUrl: link
+        });
       }
     } catch (e) {
       setError(e.message || 'Failed to add comment');
@@ -224,7 +437,21 @@ const IssueDetail = () => {
 
   const handleUploadPhoto = async (evt) => {
     const file = evt.target.files?.[0];
-    if (!file || !issue?.id) return;
+    if (!file) return;
+    let issueIdToUse = activeIssueId;
+    if (!issueIdToUse) {
+      try {
+        issueIdToUse = await ensureIssueId();
+      } catch (err) {
+        setError(err.message || 'Failed to save the issue before uploading photos');
+        evt.target.value = '';
+        return;
+      }
+    }
+    if (!issueIdToUse) {
+      evt.target.value = '';
+      return;
+    }
     try {
       setUploading(true);
       setError('');
@@ -242,7 +469,7 @@ const IssueDetail = () => {
           projectId,
           file: compressedFile,
           metadata: {
-            issueId: issue.id,
+            issueId: issueIdToUse,
             description: ''
           }
         });
@@ -250,7 +477,7 @@ const IssueDetail = () => {
         // Show optimistic UI with pending indicator
         const optimisticPhoto = {
           id: queueId,
-          issue_id: issue.id,
+          issue_id: issueIdToUse,
           url: URL.createObjectURL(compressedFile),
           file_name: file.name,
           content_type: file.type,
@@ -268,7 +495,7 @@ const IssueDetail = () => {
       // Upload to SharePoint - returns metadata object
       const metadata = await sharePointStorageService.uploadIssuePhoto(
         projectId,
-        issue.id,
+        issueIdToUse,
         compressedFile,
         '' // Optional photo description
       );
@@ -277,7 +504,7 @@ const IssueDetail = () => {
       const { data, error } = await supabase
         .from('issue_photos')
         .insert([{
-          issue_id: issue.id,
+          issue_id: issueIdToUse,
           url: metadata.url,
           sharepoint_drive_id: metadata.driveId,
           sharepoint_item_id: metadata.itemId,
@@ -300,12 +527,37 @@ const IssueDetail = () => {
   };
 
   const handleTagStakeholder = async (assignmentId) => {
-    if (!issue?.id || !assignmentId) return;
+    if (!assignmentId) return;
+    let issueIdToUse = activeIssueId;
+    if (!issueIdToUse) {
+      try {
+        issueIdToUse = await ensureIssueId();
+      } catch (err) {
+        setError(err.message || 'Failed to save the issue before tagging stakeholders');
+        return;
+      }
+    }
+    if (!issueIdToUse) return;
     try {
       setTagging(true);
-      await issueStakeholderTagsService.add(issue.id, assignmentId, 'assigned');
-      const updated = await issueStakeholderTagsService.getDetailed(issue.id);
+      await issueStakeholderTagsService.add(issueIdToUse, assignmentId, 'assigned');
+      const updated = await issueStakeholderTagsService.getDetailed(issueIdToUse);
       setTags(updated);
+
+      const stakeholder = availableProjectStakeholders.find(p => p.assignment_id === assignmentId);
+      const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
+      const issueContext = resolvedIssue || {
+        id: issueIdToUse,
+        title: newTitle,
+        project_id: projectId
+      };
+      notifyStakeholderAdded({
+        issue: issueContext,
+        project: projectInfo,
+        stakeholder,
+        actor: currentUserSummary,
+        issueUrl: link
+      });
     } catch (e) {
       setError(e.message || 'Failed to tag stakeholder');
     } finally {
@@ -458,21 +710,7 @@ const IssueDetail = () => {
                     const nextStatus = isBlocked ? 'open' : 'blocked';
                     console.log('Blocked Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
                     
-                    try {
-                      setSaving(true);
-                      setError('');
-                      // Update only the status field (is_blocked doesn't exist in DB)
-                      const updated = await issuesService.update(issue.id, { status: nextStatus });
-                      console.log('Updated issue:', updated);
-                      if (updated) {
-                        setIssue(updated);  // Use the full updated object from the server
-                      }
-                    } catch (err) {
-                      console.error('Failed to update blocked status:', err);
-                      setError('Failed to update blocked status');
-                    } finally {
-                      setSaving(false);
-                    }
+                    await updateStatusAndLog(nextStatus, 'Failed to update blocked status');
                   }}
                 >
                   <AlertTriangle size={16} />
@@ -521,21 +759,7 @@ const IssueDetail = () => {
                     const nextStatus = isResolved ? 'open' : 'resolved';
                     console.log('Resolved Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
                     
-                    try {
-                      setSaving(true);
-                      setError('');
-                      // Update only the status field (is_blocked doesn't exist in DB)
-                      const updated = await issuesService.update(issue.id, { status: nextStatus });
-                      console.log('Updated issue:', updated);
-                      if (updated) {
-                        setIssue(updated);  // Use the full updated object from the server
-                      }
-                    } catch (err) {
-                      console.error('Failed to update resolved status:', err);
-                      setError('Failed to update resolved status');
-                    } finally {
-                      setSaving(false);
-                    }
+                    await updateStatusAndLog(nextStatus, 'Failed to update resolved status');
                   }}
                 >
                   <CheckCircle size={16} />
@@ -577,21 +801,21 @@ const IssueDetail = () => {
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Photos</h3>
-          <label className={`inline-flex items-center gap-2 text-sm ${isNew ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+          <label className={`inline-flex items-center gap-2 text-sm ${canUploadPhotos ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
             <input
               type="file"
               accept="image/*"
               className="hidden"
               onChange={handleUploadPhoto}
-              disabled={isNew}
+              disabled={!canUploadPhotos}
             />
             <span className={`px-3 py-1.5 rounded-lg border ${ui.subtle}`}>
-              {isNew ? 'Upload after save' : 'Upload'}
+              {canUploadPhotos ? 'Upload' : 'Upload after entering a title'}
             </span>
           </label>
         </div>
-        {isNew ? (
-          <div className={`text-sm ${ui.subtle}`}>Add photos after creating the issue.</div>
+        {!canUploadPhotos ? (
+          <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding photos.</div>
         ) : photos.length === 0 ? (
           <div className={`text-sm ${ui.subtle} flex items-center gap-2`}>
             <ImageIcon size={16} /> No photos yet.
@@ -640,7 +864,7 @@ const IssueDetail = () => {
           <div className="flex items-center gap-2">
             <div className="relative">
               <select
-                disabled={tagging || isNew}
+                disabled={tagging || !canManageStakeholders}
                 onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value=''; } }}
                 className={ui.select}
                 defaultValue=""
@@ -655,8 +879,8 @@ const IssueDetail = () => {
             </div>
           </div>
         </div>
-        {isNew ? (
-          <div className={`text-sm ${ui.subtle}`}>Add stakeholders after creating the issue.</div>
+        {!canManageStakeholders ? (
+          <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding stakeholders.</div>
         ) : tags.length === 0 ? (
           <div className="text-sm text-gray-600 dark:text-gray-300">No stakeholders tagged.</div>
         ) : (
@@ -750,8 +974,8 @@ const IssueDetail = () => {
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <h3 className="text-sm font-semibold">Comments</h3>
-        {isNew ? (
-          <div className={`text-sm ${ui.subtle}`}>Comments will be available after the issue is created.</div>
+        {!canComment ? (
+          <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding comments.</div>
         ) : comments.length === 0 ? (
           <div className="text-sm text-gray-600 dark:text-gray-300">No comments yet.</div>
         ) : (
@@ -769,15 +993,15 @@ const IssueDetail = () => {
             type="text"
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder={isNew ? 'Create the issue to add comments.' : 'Add a comment…'}
+            placeholder={canComment ? 'Add a comment…' : 'Enter a title to add comments.'}
             className={ui.input}
-            disabled={isNew}
+            disabled={!canComment}
           />
           <Button
             variant="primary"
             icon={Plus}
             onClick={handleAddComment}
-            disabled={isNew || saving || !commentText.trim()}
+            disabled={!canComment || saving || !commentText.trim()}
           >
             Add
           </Button>

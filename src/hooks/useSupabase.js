@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   contactsService,
   projectsService,
@@ -62,6 +62,12 @@ export const useContacts = (filters = {}) => {
   const [error, setError] = useState(null);
   const abortControllerRef = useRef(null);
   const mountedRef = useRef(true);
+  const serializedFilters = useMemo(() => JSON.stringify(filters || {}), [filters]);
+  const stableFilters = useMemo(() => {
+    if (!filters || typeof filters !== 'object') return {};
+    // Create a shallow clone to ensure consistent reference for downstream logic
+    return { ...filters };
+  }, [serializedFilters]);
 
   const fetchContacts = useCallback(async (forceRefresh = false) => {
     // Cancel any ongoing request
@@ -69,7 +75,7 @@ export const useContacts = (filters = {}) => {
       abortControllerRef.current.abort();
     }
     
-    const cacheKey = getCacheKey('contacts', filters);
+    const cacheKey = getCacheKey('contacts', stableFilters);
     
     // Clear cache if force refresh
     if (forceRefresh) {
@@ -84,7 +90,7 @@ export const useContacts = (filters = {}) => {
       setError(null);
       
       const data = await deduplicateRequest(cacheKey, () => 
-        contactsService.getAll(filters)
+        contactsService.getAll(stableFilters)
       );
       
       if (mountedRef.current) {
@@ -101,7 +107,7 @@ export const useContacts = (filters = {}) => {
         setLoading(false);
       }
     }
-  }, [filters]);
+  }, [stableFilters]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -119,7 +125,24 @@ export const useContacts = (filters = {}) => {
     fetchContacts(true);
   }, [fetchContacts]);
 
-  return { contacts, loading, error, refresh };
+  const createContact = useCallback(async (payload) => {
+    const created = await contactsService.create(payload);
+    await fetchContacts(true);
+    return created;
+  }, [fetchContacts]);
+
+  const updateContact = useCallback(async (id, updates) => {
+    const updated = await contactsService.update(id, updates);
+    await fetchContacts(true);
+    return updated;
+  }, [fetchContacts]);
+
+  const deleteContact = useCallback(async (id) => {
+    await contactsService.delete(id);
+    await fetchContacts(true);
+  }, [fetchContacts]);
+
+  return { contacts, loading, error, refresh, createContact, updateContact, deleteContact };
 };
 
 // Hook for projects with deduplication

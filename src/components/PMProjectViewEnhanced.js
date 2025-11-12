@@ -327,9 +327,6 @@ const PMProjectViewEnhanced = () => {
     wiring_diagram_url: '',
     portal_proposal_url: '',
     client_folder_url: '',
-    one_drive_photos: '',
-    one_drive_files: '',
-    one_drive_procurement: '',
     unifi_url: '',
     unifi_controller_ip: '192.168.1.1',
     unifi_network_api_key: '',
@@ -567,26 +564,33 @@ const PMProjectViewEnhanced = () => {
     });
   };
 
+  const normalizedClientFolder = useMemo(() => {
+    if (!formData.client_folder_url) return '';
+    const normalized =
+      normalizeSharePointRootUrl(formData.client_folder_url) || formData.client_folder_url.trim();
+    return normalized ? normalized.replace(/\/+$/, '') : '';
+  }, [formData.client_folder_url]);
+
   const quickLinks = useMemo(
     () =>
       [
         { key: 'unifi', label: 'UniFi Site', url: formData.unifi_url, icon: ExternalLink },
         { key: 'lucid', label: 'Lucid Diagram', url: formData.wiring_diagram_url, icon: Link },
         { key: 'proposal', label: 'Proposal', url: formData.portal_proposal_url, icon: FileText },
-        { key: 'client_folder', label: 'Client Folder', url: formData.client_folder_url, icon: FolderOpen },
-        // Backward compatibility: Show old folder URLs if they exist and client_folder_url doesn't
-        ...(formData.one_drive_photos && !formData.client_folder_url ? [{ key: 'photos', label: 'Photos', url: formData.one_drive_photos, icon: Camera }] : []),
-        ...(formData.one_drive_files && !formData.client_folder_url ? [{ key: 'files', label: 'Files', url: formData.one_drive_files, icon: FolderOpen }] : []),
-        ...(formData.one_drive_procurement && !formData.client_folder_url ? [{ key: 'procurement', label: 'Procurement', url: formData.one_drive_procurement, icon: FolderOpen }] : [])
+        { key: 'client_folder', label: 'Client Folder', url: normalizedClientFolder, icon: FolderOpen },
+        ...(normalizedClientFolder
+          ? [
+              { key: 'photos', label: 'Photos', url: `${normalizedClientFolder}/Photos`, icon: Camera },
+              { key: 'files', label: 'Files', url: `${normalizedClientFolder}/Files`, icon: FolderOpen },
+              { key: 'procurement', label: 'Procurement', url: `${normalizedClientFolder}/Procurement`, icon: FolderOpen }
+            ]
+          : [])
       ].filter((item) => Boolean(item.url)),
     [
       formData.unifi_url,
       formData.wiring_diagram_url,
       formData.portal_proposal_url,
-      formData.client_folder_url,
-      formData.one_drive_photos,
-      formData.one_drive_files,
-      formData.one_drive_procurement
+      normalizedClientFolder
     ]
   );
 
@@ -780,9 +784,7 @@ const PMProjectViewEnhanced = () => {
           end_date: currentProject.end_date || '',
           wiring_diagram_url: currentProject.wiring_diagram_url || '',
           portal_proposal_url: currentProject.portal_proposal_url || '',
-          one_drive_photos: currentProject.one_drive_photos || '',
-          one_drive_files: currentProject.one_drive_files || '',
-          one_drive_procurement: currentProject.one_drive_procurement || '',
+          client_folder_url: currentProject.client_folder_url || '',
           unifi_url: currentProject.unifi_url || '',
           unifi_controller_ip: currentProject.unifi_controller_ip || '192.168.1.1',
           unifi_network_api_key: currentProject.unifi_network_api_key || '',
@@ -1171,9 +1173,6 @@ const PMProjectViewEnhanced = () => {
         wiring_diagram_url: formData.wiring_diagram_url || null,
         portal_proposal_url: formData.portal_proposal_url || null,
         client_folder_url: clientFolderUrlToSave,
-        one_drive_photos: formData.one_drive_photos || null,
-        one_drive_files: formData.one_drive_files || null,
-        one_drive_procurement: formData.one_drive_procurement || null,
         unifi_url: formData.unifi_url || null,
         unifi_controller_ip: formData.unifi_controller_ip || null,
         unifi_network_api_key: formData.unifi_network_api_key || null,
@@ -1229,14 +1228,6 @@ const PMProjectViewEnhanced = () => {
 
           console.log('Folder initialization result:', folderResult);
           setFolderInitSuccess(folderResult);
-
-          // Update formData with the populated subfolder URLs
-          setFormData(prev => ({
-            ...prev,
-            one_drive_photos: folderResult.photos || prev.one_drive_photos,
-            one_drive_files: folderResult.files || prev.one_drive_files,
-            one_drive_procurement: folderResult.procurement || prev.one_drive_procurement
-          }));
 
         } catch (folderError) {
           console.error('Failed to initialize folders:', folderError);

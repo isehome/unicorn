@@ -66,6 +66,8 @@ class SharePointFolderService {
 
       console.log(`Root folder: ${normalizedRootUrl}`);
 
+      const graphSafeRootUrl = encodeURI(normalizedRootUrl);
+
       // Validate root URL
       if (!normalizedRootUrl || !this.isValidSharePointUrl(normalizedRootUrl)) {
         throw new Error('Invalid SharePoint URL. Please provide a valid Document Library URL.');
@@ -83,7 +85,7 @@ class SharePointFolderService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rootFolderUrl: normalizedRootUrl,
+          rootFolderUrl: graphSafeRootUrl,
           subfolders: Object.values(STANDARD_SUBFOLDERS)
         })
       });
@@ -141,11 +143,7 @@ class SharePointFolderService {
       const { error } = await supabase
         .from('projects')
         .update({
-          client_folder_url: normalizedRoot,
-          // Keep old fields for backward compatibility (populated from subfolders)
-          one_drive_photos: folderStructure.subfolders[STANDARD_SUBFOLDERS.photos]?.webUrl || `${normalizedRoot}/Photos`,
-          one_drive_files: folderStructure.subfolders[STANDARD_SUBFOLDERS.files]?.webUrl || `${normalizedRoot}/Files`,
-          one_drive_procurement: folderStructure.subfolders[STANDARD_SUBFOLDERS.procurement]?.webUrl || `${normalizedRoot}/Procurement`
+          client_folder_url: normalizedRoot
         })
         .eq('id', projectId);
 
