@@ -74,14 +74,16 @@ async function resolveGroupId(token) {
 }
 
 async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
+  const useDelegated = Boolean(delegatedToken);
   const token = delegatedToken || await getAppToken();
+  const fromAddress = SENDER_GROUP_EMAIL || SENDER_EMAIL;
   const contentType = html ? 'HTML' : 'Text';
   const contentValue = html || (text ? text.replace(/\n/g, '<br/>') : '');
 
   let targetPath = null;
   let groupId = null;
 
-  if (SENDER_GROUP_ID || SENDER_GROUP_EMAIL) {
+  if (!useDelegated && (SENDER_GROUP_ID || SENDER_GROUP_EMAIL)) {
     try {
       groupId = await resolveGroupId(token);
     } catch (error) {
@@ -92,7 +94,9 @@ async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
     }
   }
 
-  if (groupId) {
+  if (useDelegated) {
+    targetPath = '/me/sendMail';
+  } else if (groupId) {
     targetPath = `/groups/${encodeURIComponent(groupId)}/sendMail`;
   } else {
     targetPath = `/users/${encodeURIComponent(SENDER_EMAIL)}/sendMail`;
@@ -111,6 +115,11 @@ async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
     },
     saveToSentItems: false
   };
+
+  if (fromAddress) {
+    payload.message.from = { emailAddress: { address: fromAddress } };
+    payload.message.sender = { emailAddress: { address: fromAddress } };
+  }
 
   const response = await fetch(`${GRAPH_BASE}${targetPath}`, {
     method: 'POST',
