@@ -1,41 +1,67 @@
-// Serverless function to send issue notifications via SendGrid
+// Serverless function to send issue notifications via Microsoft Graph
 
-const SENDGRID_KEY = process.env.SENDGRID_API_KEY;
-const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL || 'no-reply@isehome.com';
-const FROM_NAME = process.env.SENDGRID_FROM_NAME || 'ISE Issue Tracker';
+const TENANT = process.env.AZURE_TENANT_ID;
+const CLIENT_ID = process.env.AZURE_CLIENT_ID;
+const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
+const SENDER_EMAIL = (process.env.NOTIFICATION_SENDER_EMAIL || 'Unicorn@isehome.com').trim();
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-const sendgridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
+async function getAppToken() {
+  const body = new URLSearchParams();
+  body.set('client_id', CLIENT_ID);
+  body.set('client_secret', CLIENT_SECRET);
+  body.set('grant_type', 'client_credentials');
+  body.set('scope', 'https://graph.microsoft.com/.default');
+
+  const resp = await fetch(`https://login.microsoftonline.com/${TENANT}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Token error: ${resp.status} ${text}`);
+  }
+
+  const json = await resp.json();
+  return json.access_token;
+}
 
 async function sendEmail({ to, subject, html, text }) {
+  const token = await getAppToken();
+  const contentType = html ? 'HTML' : 'Text';
+  const contentValue = html || (text ? text.replace(/\n/g, '<br/>') : '');
+
   const payload = {
-    personalizations: [
-      {
-        to: to.map((email) => ({ email }))
-      }
-    ],
-    from: {
-      email: FROM_EMAIL,
-      name: FROM_NAME
+    message: {
+      subject: subject || 'Issue update',
+      body: {
+        contentType,
+        content: contentValue
+      },
+      toRecipients: to.map(email => ({
+        emailAddress: { address: email }
+      }))
     },
-    subject: subject || 'Issue update',
-    content: [
-      { type: 'text/plain', value: text || html || '' },
-      { type: 'text/html', value: html || text || '' }
-    ]
+    saveToSentItems: false
   };
 
-  const response = await fetch(sendgridEndpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SENDGRID_KEY}`
-    },
-    body: JSON.stringify(payload)
-  });
+  const response = await fetch(
+    `${GRAPH_BASE}/users/${encodeURIComponent(SENDER_EMAIL)}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`SendGrid ${response.status}: ${errorText}`);
+    throw new Error(`Graph sendMail ${response.status}: ${errorText}`);
   }
 }
 
@@ -55,8 +81,8 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!SENDGRID_KEY || !FROM_EMAIL) {
-    res.status(500).json({ error: 'Missing SENDGRID_API_KEY or SENDGRID_FROM_EMAIL environment variables' });
+  if (!TENANT || !CLIENT_ID || !CLIENT_SECRET || !SENDER_EMAIL) {
+    res.status(500).json({ error: 'Missing Azure AD credentials or sender email configuration' });
     return;
   }
 
@@ -80,4 +106,3 @@ module.exports = async (req, res) => {
     res.status(500).json({ error: error.message || 'Failed to send notification' });
   }
 };
-
