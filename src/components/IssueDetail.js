@@ -13,7 +13,7 @@ import {
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
-import { notifyIssueComment, notifyIssueStatusChange, notifyStakeholderAdded } from '../services/issueNotificationService';
+import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
@@ -27,8 +27,8 @@ const formatStatusLabel = (label = '') => {
 };
 
 const deriveStatusDisplayLabel = (currentStatus, nextStatus) => {
-  const current = (currentStatus || '').toLowerCase();
-  const next = (nextStatus || '').toLowerCase();
+  const current = (currentStatus || '').toLowerCase().trim();
+  const next = (nextStatus || '').toLowerCase().trim();
 
   if (current === 'blocked' && next === 'open') {
     return 'Unblocked';
@@ -41,6 +41,14 @@ const deriveStatusDisplayLabel = (currentStatus, nextStatus) => {
   if (next === 'open') return 'Open';
 
   return formatStatusLabel(next);
+};
+
+const getStatusDisplayValue = (status) => {
+  const normalized = (status || '').toLowerCase().trim();
+  if (normalized === 'blocked') return 'Blocked';
+  if (normalized === 'resolved') return 'Resolved';
+  if (!normalized || normalized === 'open') return 'Unblocked';
+  return formatStatusLabel(status);
 };
 
 const IssueDetail = () => {
@@ -306,13 +314,72 @@ const IssueDetail = () => {
     }
   }, [createIssueRecord, draftIssue?.id, issue?.id]);
 
+  const notifyCommentActivity = useCallback(async ({
+    issueId,
+    text,
+    createdAt,
+    authorName,
+    issueSnapshot = null
+  }) => {
+    const trimmed = text?.trim();
+    if (!issueId || !trimmed) return;
+
+    const hasRecipients = (tags || []).some(tag => tag?.email) || Boolean(currentUserSummary?.email);
+    if (!hasRecipients) return;
+
+    try {
+      const defaultLink = (() => {
+        if (typeof window === 'undefined') return '';
+        if (!projectId || !issueId) return window.location.href;
+        return `${window.location.origin}/project/${projectId}/issues/${issueId}`;
+      })();
+      const link = issueLink || defaultLink;
+      const graphToken = await acquireToken();
+      const issueContext = issueSnapshot || resolvedIssue || issue || {
+        id: issueId,
+        title: issue?.title || newTitle,
+        project_id: issue?.project_id || projectId
+      };
+
+      await notifyIssueComment(
+        {
+          issue: issueContext,
+          project: projectInfo,
+          comment: {
+            author: authorName || currentUserSummary?.name || currentUserSummary?.email || 'User',
+            text: trimmed,
+            createdAt
+          },
+          stakeholders: tags,
+          actor: currentUserSummary,
+          issueUrl: link
+        },
+        { authToken: graphToken }
+      );
+    } catch (err) {
+      console.warn('Failed to send comment notification:', err);
+    }
+  }, [
+    acquireToken,
+    currentUserSummary,
+    issue,
+    issueLink,
+    newTitle,
+    projectId,
+    projectInfo,
+    resolvedIssue,
+    tags
+  ]);
+
   const appendStatusChangeComment = useCallback(async (nextStatusLabel, options = {}) => {
-    if (!issue?.id || !nextStatusLabel) return null;
+    const targetIssue = options.issueSnapshot || issue;
+    const issueId = targetIssue?.id;
+    if (!issueId || !nextStatusLabel) return null;
     try {
       const { author_id, author_name, author_email } = await getAuthorInfo();
       const displayLabel = options.displayLabel || formatStatusLabel(nextStatusLabel);
       const comment_text = `Status changed to ${displayLabel}`;
-      const created = await issueCommentsService.add(issue.id, {
+      const created = await issueCommentsService.add(issueId, {
         author_id,
         author_name,
         author_email,
@@ -321,18 +388,25 @@ const IssueDetail = () => {
       });
       if (created) {
         setComments(prev => [...prev, created]);
+        await notifyCommentActivity({
+          issueId,
+          text: comment_text,
+          createdAt: created.created_at,
+          authorName,
+          issueSnapshot: targetIssue
+        });
         return created;
       }
     } catch (err) {
       console.error('Failed to log status change comment:', err);
     }
     return null;
-  }, [getAuthorInfo, issue?.id]);
+  }, [getAuthorInfo, issue, notifyCommentActivity]);
 
   const updateStatusAndLog = useCallback(async (nextStatus, errorMessage) => {
     if (!issue?.id || !nextStatus) return;
-    const previousStatus = (issue?.status || '').toLowerCase();
-    const desiredStatus = nextStatus.toLowerCase();
+    const previousStatus = (issue?.status || '').toLowerCase().trim();
+    const desiredStatus = nextStatus.toLowerCase().trim();
     if (previousStatus === desiredStatus) {
       return;
     }
@@ -346,36 +420,10 @@ const IssueDetail = () => {
 
       if (updated) {
         setIssue(updated);
-        await appendStatusChangeComment(nextStatus, { displayLabel: statusLabel });
-
-        const shouldNotify = (tags || []).some(tag => tag?.email) || Boolean(currentUserSummary?.email);
-        if (shouldNotify) {
-          try {
-            const graphToken = await acquireToken();
-            const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
-            const issueContext = updated || {
-              id: issue?.id,
-              title: issue?.title || newTitle,
-              project_id: issue?.project_id || projectId
-            };
-
-            await notifyIssueStatusChange(
-              {
-                issue: issueContext,
-                project: projectInfo,
-                previousStatus,
-                nextStatus: desiredStatus,
-                statusLabel,
-                stakeholders: tags,
-                actor: currentUserSummary,
-                issueUrl: link
-              },
-              { authToken: graphToken }
-            );
-          } catch (notifyError) {
-            console.warn('Failed to send status change notification:', notifyError);
-          }
-        }
+        await appendStatusChangeComment(nextStatus, {
+          displayLabel: statusLabel,
+          issueSnapshot: updated
+        });
       }
     } catch (err) {
       console.error(errorMessage, err);
@@ -384,18 +432,9 @@ const IssueDetail = () => {
       setSaving(false);
     }
   }, [
-    acquireToken,
     appendStatusChangeComment,
-    currentUserSummary,
     issue?.id,
-    issue?.project_id,
-    issue?.status,
-    issue?.title,
-    issueLink,
-    newTitle,
-    projectId,
-    projectInfo,
-    tags
+    issue?.status
   ]);
 
   const handleCreate = async (evt) => {
@@ -481,28 +520,19 @@ const IssueDetail = () => {
         setComments(prev => [...prev, created]);
         setCommentText('');
 
-        const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
         const issueContext = resolvedIssue || {
           id: issueIdToUse,
           title: newTitle,
           project_id: projectId
         };
-        const graphToken = await acquireToken();
-        await notifyIssueComment(
-          {
-            issue: issueContext,
-            project: projectInfo,
-            comment: {
-              author: author_name,
-              text,
-              createdAt: created.created_at
-            },
-            stakeholders: tags,
-            actor: currentUserSummary,
-            issueUrl: link
-          },
-          { authToken: graphToken }
-        );
+
+        await notifyCommentActivity({
+          issueId: issueIdToUse,
+          text,
+          createdAt: created.created_at,
+          authorName: author_name,
+          issueSnapshot: issueContext
+        });
       }
     } catch (e) {
       setError(e.message || 'Failed to add comment');
@@ -737,7 +767,7 @@ const IssueDetail = () => {
           <div>
             <div className="text-lg font-semibold">{issue?.title}</div>
             <div className={`text-xs ${ui.subtle}`}>
-              Priority: {issue?.priority || '—'} • Status: {(issue?.status || 'open').toUpperCase()}
+              Priority: {issue?.priority || '—'} • Status: {getStatusDisplayValue(issue?.status)}
             </div>
           </div>
         )}
