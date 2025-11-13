@@ -50,6 +50,29 @@ const formatIssueContext = (issue, project) => {
   return { issueTitle, projectName };
 };
 
+const collectRecipients = (stakeholders = [], actor) => {
+  const emailMap = new Map();
+
+  (stakeholders || []).forEach((stakeholder) => {
+    const raw = stakeholder?.email;
+    if (!raw) return;
+    const normalized = raw.trim().toLowerCase();
+    if (!normalized) return;
+    if (!emailMap.has(normalized)) {
+      emailMap.set(normalized, raw.trim());
+    }
+  });
+
+  if (actor?.email) {
+    const normalizedActor = actor.email.trim().toLowerCase();
+    if (!emailMap.has(normalizedActor)) {
+      emailMap.set(normalizedActor, actor.email.trim());
+    }
+  }
+
+  return Array.from(emailMap.values());
+};
+
 export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl }, options = {}) => {
   if (!stakeholder?.email) return;
 
@@ -87,18 +110,7 @@ Open the issue: ${safeUrl}
 };
 
 export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl }, options = {}) => {
-  if (!Array.isArray(stakeholders) || stakeholders.length === 0) return;
-
-  const recipients = Array.from(
-    new Set(
-      stakeholders
-        .map((s) => s.email && s.email.toLowerCase())
-        .filter(Boolean)
-    )
-  ).filter((email) => {
-    if (!actor?.email) return true;
-    return email !== actor.email.toLowerCase();
-  });
+  const recipients = collectRecipients(stakeholders, actor);
 
   if (recipients.length === 0) return;
 
@@ -127,6 +139,41 @@ Open the issue: ${safeUrl}
     {
       to: recipients,
       subject: `New comment on "${issueTitle}"`,
+      html,
+      text
+    },
+    { authToken: options?.authToken }
+  );
+};
+
+export const notifyIssueStatusChange = async ({ issue, project, actor, nextStatus, stakeholders, issueUrl }, options = {}) => {
+  if (!nextStatus) return;
+
+  const recipients = collectRecipients(stakeholders, actor);
+  if (recipients.length === 0) return;
+
+  const { issueTitle, projectName } = formatIssueContext(issue, project);
+  const actorName = actor?.name || 'A teammate';
+  const safeActorName = escapeHtml(actorName);
+  const safeIssueTitle = escapeHtml(issueTitle);
+  const safeProjectName = escapeHtml(projectName);
+  const safeStatus = escapeHtml(nextStatus);
+  const safeUrl = issueUrl || '#';
+
+  const html = `
+    <p>${safeActorName} changed the status of <strong>${safeIssueTitle}</strong>${safeProjectName} to <strong>${safeStatus}</strong>.</p>
+    <p><a href="${safeUrl}">Open the issue</a> to review details or add a follow-up.</p>
+  `;
+
+  const text = `${actorName} changed the status of "${issueTitle}"${projectName} to "${nextStatus}".
+
+Open the issue: ${safeUrl}
+`;
+
+  await postNotification(
+    {
+      to: recipients,
+      subject: `Status update for "${issueTitle}"`,
       html,
       text
     },

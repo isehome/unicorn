@@ -7,6 +7,7 @@ import Login from './components/Login'
 import LoginDebug from './components/Login.debug'
 import MyProjectsDebug from './components/MyProjectsDebug'
 import App from './App'
+import NotificationTestPage from './components/NotificationTestPage'
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -14,6 +15,12 @@ const router = createBrowserRouter([
   { path: '/my-projects-debug', element: (
       <ProtectedRoute>
         <MyProjectsDebug />
+      </ProtectedRoute>
+    )
+  },
+  { path: '/notification-test', element: (
+      <ProtectedRoute>
+        <NotificationTestPage />
       </ProtectedRoute>
     )
   },
