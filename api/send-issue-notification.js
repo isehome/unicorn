@@ -76,7 +76,7 @@ async function resolveGroupId(token) {
 async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
   const useDelegated = Boolean(delegatedToken);
   const token = delegatedToken || await getAppToken();
-  const fromAddress = SENDER_GROUP_EMAIL || SENDER_EMAIL;
+  const fromAddress = useDelegated ? (SENDER_GROUP_EMAIL || SENDER_EMAIL) : SENDER_EMAIL;
   const contentType = html ? 'HTML' : 'Text';
   const contentValue = html || (text ? text.replace(/\n/g, '<br/>') : '');
 
@@ -116,9 +116,8 @@ async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
     saveToSentItems: false
   };
 
-  if (fromAddress) {
+  if (useDelegated && fromAddress) {
     payload.message.from = { emailAddress: { address: fromAddress } };
-    payload.message.sender = { emailAddress: { address: fromAddress } };
   }
 
   const response = await fetch(`${GRAPH_BASE}${targetPath}`, {
@@ -134,6 +133,15 @@ async function sendEmail({ to, subject, html, text }, delegatedToken = null) {
     const errorText = await response.text();
     throw new Error(`Graph sendMail ${response.status} (${targetPath}): ${errorText}`);
   }
+
+  console.log('[IssueNotification] sendMail accepted', {
+    mode: useDelegated ? 'delegated' : 'app',
+    path: targetPath,
+    to,
+    from: fromAddress,
+    subject,
+    status: response.status
+  });
 }
 
 module.exports = async (req, res) => {
