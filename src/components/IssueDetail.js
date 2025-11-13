@@ -13,7 +13,7 @@ import {
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
-import { notifyIssueComment, notifyStakeholderAdded, notifyIssueStatusChange } from '../services/issueNotificationService';
+import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
@@ -318,33 +318,7 @@ const IssueDetail = () => {
       const updated = await issuesService.update(issue.id, { status: nextStatus });
       if (updated) {
         setIssue(updated);
-        const statusComment = await appendStatusChangeComment(nextStatus);
-
-        const issueContext =
-          updated ||
-          resolvedIssue || {
-            id: issue.id,
-            title: updated?.title || issue?.title || newTitle,
-            project_id: projectId
-          };
-
-        const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
-        try {
-          const graphToken = await acquireToken();
-          await notifyIssueStatusChange(
-            {
-              issue: issueContext,
-              project: projectInfo,
-              actor: currentUserSummary,
-              nextStatus,
-              stakeholders: tags,
-              issueUrl: link
-            },
-            { authToken: graphToken }
-          );
-        } catch (notifyError) {
-          console.warn('Failed to send status change notification:', notifyError);
-        }
+        await appendStatusChangeComment(nextStatus);
       }
     } catch (err) {
       console.error(errorMessage, err);
@@ -353,17 +327,10 @@ const IssueDetail = () => {
       setSaving(false);
     }
   }, [
-    acquireToken,
     appendStatusChangeComment,
-    currentUserSummary,
     issue?.id,
     issue?.status,
-    issueLink,
-    newTitle,
-    projectId,
-    projectInfo,
-    resolvedIssue,
-    tags
+    newTitle
   ]);
 
   const handleCreate = async (evt) => {
