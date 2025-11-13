@@ -13,11 +13,35 @@ import {
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
-import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
+import { notifyIssueComment, notifyIssueStatusChange, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
 import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown, WifiOff } from 'lucide-react';
+
+const formatStatusLabel = (label = '') => {
+  if (!label) return '';
+  const normalized = `${label}`.trim();
+  if (!normalized) return '';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+};
+
+const deriveStatusDisplayLabel = (currentStatus, nextStatus) => {
+  const current = (currentStatus || '').toLowerCase();
+  const next = (nextStatus || '').toLowerCase();
+
+  if (current === 'blocked' && next === 'open') {
+    return 'Unblocked';
+  }
+
+  if (!next) return '';
+
+  if (next === 'blocked') return 'Blocked';
+  if (next === 'resolved') return 'Resolved';
+  if (next === 'open') return 'Open';
+
+  return formatStatusLabel(next);
+};
 
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
@@ -282,12 +306,12 @@ const IssueDetail = () => {
     }
   }, [createIssueRecord, draftIssue?.id, issue?.id]);
 
-  const appendStatusChangeComment = useCallback(async (nextStatusLabel) => {
+  const appendStatusChangeComment = useCallback(async (nextStatusLabel, options = {}) => {
     if (!issue?.id || !nextStatusLabel) return null;
     try {
       const { author_id, author_name, author_email } = await getAuthorInfo();
-      const normalizedStatus = String(nextStatusLabel).toLowerCase();
-      const comment_text = `status changed to ${normalizedStatus}`;
+      const displayLabel = options.displayLabel || formatStatusLabel(nextStatusLabel);
+      const comment_text = `Status changed to ${displayLabel}`;
       const created = await issueCommentsService.add(issue.id, {
         author_id,
         author_name,
@@ -307,18 +331,51 @@ const IssueDetail = () => {
 
   const updateStatusAndLog = useCallback(async (nextStatus, errorMessage) => {
     if (!issue?.id || !nextStatus) return;
-    const currentStatus = (issue?.status || '').toLowerCase();
+    const previousStatus = (issue?.status || '').toLowerCase();
     const desiredStatus = nextStatus.toLowerCase();
-    if (currentStatus === desiredStatus) {
+    if (previousStatus === desiredStatus) {
       return;
     }
+
+    const statusLabel = deriveStatusDisplayLabel(issue?.status, nextStatus);
+
     try {
       setSaving(true);
       setError('');
       const updated = await issuesService.update(issue.id, { status: nextStatus });
+
       if (updated) {
         setIssue(updated);
-        await appendStatusChangeComment(nextStatus);
+        await appendStatusChangeComment(nextStatus, { displayLabel: statusLabel });
+
+        const shouldNotify = (tags || []).some(tag => tag?.email) || Boolean(currentUserSummary?.email);
+        if (shouldNotify) {
+          try {
+            const graphToken = await acquireToken();
+            const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
+            const issueContext = updated || {
+              id: issue?.id,
+              title: issue?.title || newTitle,
+              project_id: issue?.project_id || projectId
+            };
+
+            await notifyIssueStatusChange(
+              {
+                issue: issueContext,
+                project: projectInfo,
+                previousStatus,
+                nextStatus: desiredStatus,
+                statusLabel,
+                stakeholders: tags,
+                actor: currentUserSummary,
+                issueUrl: link
+              },
+              { authToken: graphToken }
+            );
+          } catch (notifyError) {
+            console.warn('Failed to send status change notification:', notifyError);
+          }
+        }
       }
     } catch (err) {
       console.error(errorMessage, err);
@@ -327,10 +384,18 @@ const IssueDetail = () => {
       setSaving(false);
     }
   }, [
+    acquireToken,
     appendStatusChangeComment,
+    currentUserSummary,
     issue?.id,
+    issue?.project_id,
     issue?.status,
-    newTitle
+    issue?.title,
+    issueLink,
+    newTitle,
+    projectId,
+    projectInfo,
+    tags
   ]);
 
   const handleCreate = async (evt) => {

@@ -73,6 +73,12 @@ const collectRecipients = (stakeholders = [], actor) => {
   return Array.from(emailMap.values());
 };
 
+const formatStatusLabel = (status = '') => {
+  const normalized = `${status}`.trim();
+  if (!normalized) return '';
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+};
+
 export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl }, options = {}) => {
   if (!stakeholder?.email) return;
 
@@ -139,6 +145,53 @@ Open the issue: ${safeUrl}
     {
       to: recipients,
       subject: `New comment on "${issueTitle}"`,
+      html,
+      text
+    },
+    { authToken: options?.authToken }
+  );
+};
+
+export const notifyIssueStatusChange = async ({
+  issue,
+  project,
+  previousStatus,
+  nextStatus,
+  statusLabel,
+  stakeholders,
+  actor,
+  issueUrl
+}, options = {}) => {
+  const recipients = collectRecipients(stakeholders, actor);
+
+  if (recipients.length === 0) return;
+
+  const { issueTitle, projectName } = formatIssueContext(issue, project);
+  const actorName = actor?.name || 'A teammate';
+  const safeActorName = escapeHtml(actorName);
+  const safeIssueTitle = escapeHtml(issueTitle);
+  const safeProjectName = escapeHtml(projectName);
+  const safePrevious = escapeHtml(formatStatusLabel(previousStatus) || 'Updated');
+  const safeNext = escapeHtml(statusLabel || formatStatusLabel(nextStatus) || 'Updated');
+  const safeUrl = issueUrl || '#';
+
+  const html = `
+    <p>${safeActorName} updated the status of <strong>${safeIssueTitle}</strong>${safeProjectName}.</p>
+    <p><strong>${safePrevious}</strong> → <strong>${safeNext}</strong></p>
+    <p><a href="${safeUrl}">Open the issue</a> to review the latest details.</p>
+  `;
+
+  const text = `${actorName} updated the status of "${issueTitle}"${projectName}.
+
+${formatStatusLabel(previousStatus) || 'Updated'} → ${statusLabel || formatStatusLabel(nextStatus) || 'Updated'}
+
+Open the issue: ${safeUrl}
+`;
+
+  await postNotification(
+    {
+      to: recipients,
+      subject: `Status updated for "${issueTitle}"`,
       html,
       text
     },
