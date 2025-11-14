@@ -43,14 +43,6 @@ const deriveStatusDisplayLabel = (currentStatus, nextStatus) => {
   return formatStatusLabel(next);
 };
 
-const getStatusDisplayValue = (status) => {
-  const normalized = (status || '').toLowerCase().trim();
-  if (normalized === 'blocked') return 'Blocked';
-  if (normalized === 'resolved') return 'Resolved';
-  if (!normalized || normalized === 'open') return 'Unblocked';
-  return formatStatusLabel(status);
-};
-
 const IssueDetail = () => {
   const { id: projectId, issueId } = useParams();
   const navigate = useNavigate();
@@ -314,18 +306,30 @@ const IssueDetail = () => {
     }
   }, [createIssueRecord, draftIssue?.id, issue?.id]);
 
+  const resolveNotificationStakeholders = useCallback(async (issueId) => {
+    if ((tags || []).length > 0) {
+      return tags;
+    }
+    if (!issueId) return [];
+    try {
+      const detailed = await issueStakeholderTagsService.getDetailed(issueId);
+      return detailed || [];
+    } catch (err) {
+      console.warn('Failed to resolve stakeholders for notification:', err);
+      return [];
+    }
+  }, [tags]);
+
   const notifyCommentActivity = useCallback(async ({
     issueId,
     text,
     createdAt,
     authorName,
-    issueSnapshot = null
+    issueSnapshot = null,
+    stakeholdersOverride = null
   }) => {
     const trimmed = text?.trim();
     if (!issueId || !trimmed) return;
-
-    const hasRecipients = (tags || []).some(tag => tag?.email) || Boolean(currentUserSummary?.email);
-    if (!hasRecipients) return;
 
     try {
       const defaultLink = (() => {
@@ -340,6 +344,9 @@ const IssueDetail = () => {
         title: issue?.title || newTitle,
         project_id: issue?.project_id || projectId
       };
+      const stakeholderList = Array.isArray(stakeholdersOverride) && stakeholdersOverride.length > 0
+        ? stakeholdersOverride
+        : await resolveNotificationStakeholders(issueId);
 
       await notifyIssueComment(
         {
@@ -350,7 +357,7 @@ const IssueDetail = () => {
             text: trimmed,
             createdAt
           },
-          stakeholders: tags,
+          stakeholders: stakeholderList,
           actor: currentUserSummary,
           issueUrl: link
         },
@@ -368,6 +375,7 @@ const IssueDetail = () => {
     projectId,
     projectInfo,
     resolvedIssue,
+    resolveNotificationStakeholders,
     tags
   ]);
 
@@ -393,7 +401,8 @@ const IssueDetail = () => {
           text: comment_text,
           createdAt: created.created_at,
           authorName,
-          issueSnapshot: targetIssue
+          issueSnapshot: targetIssue,
+          stakeholdersOverride: options.stakeholdersOverride
         });
         return created;
       }
@@ -403,7 +412,7 @@ const IssueDetail = () => {
     return null;
   }, [getAuthorInfo, issue, notifyCommentActivity]);
 
-  const updateStatusAndLog = useCallback(async (nextStatus, errorMessage) => {
+  const updateStatusAndLog = useCallback(async (nextStatus, errorMessage, options = {}) => {
     if (!issue?.id || !nextStatus) return;
     const previousStatus = (issue?.status || '').toLowerCase().trim();
     const desiredStatus = nextStatus.toLowerCase().trim();
@@ -411,7 +420,7 @@ const IssueDetail = () => {
       return;
     }
 
-    const statusLabel = deriveStatusDisplayLabel(issue?.status, nextStatus);
+    const statusLabel = options.displayLabelOverride || deriveStatusDisplayLabel(issue?.status, nextStatus);
 
     try {
       setSaving(true);
@@ -422,7 +431,8 @@ const IssueDetail = () => {
         setIssue(updated);
         await appendStatusChangeComment(nextStatus, {
           displayLabel: statusLabel,
-          issueSnapshot: updated
+          issueSnapshot: updated,
+          stakeholdersOverride: options.stakeholdersOverride
         });
       }
     } catch (err) {
@@ -531,7 +541,8 @@ const IssueDetail = () => {
           text,
           createdAt: created.created_at,
           authorName: author_name,
-          issueSnapshot: issueContext
+          issueSnapshot: issueContext,
+          stakeholdersOverride: tags
         });
       }
     } catch (e) {
@@ -767,7 +778,7 @@ const IssueDetail = () => {
           <div>
             <div className="text-lg font-semibold">{issue?.title}</div>
             <div className={`text-xs ${ui.subtle}`}>
-              Priority: {issue?.priority || '—'} • Status: {getStatusDisplayValue(issue?.status)}
+              Priority: {issue?.priority || '—'} • Status: {formatStatusLabel(issue?.status || 'open')}
             </div>
           </div>
         )}
@@ -817,11 +828,14 @@ const IssueDetail = () => {
                     if (saving) return;
                     
                     // Check status field for blocked state (only field that exists in DB)
-                    const isBlocked = (issue?.status || '').toLowerCase() === 'blocked';
+                    const normalizedStatus = (issue?.status || '').toLowerCase().trim();
+                    const isBlocked = normalizedStatus === 'blocked';
                     const nextStatus = isBlocked ? 'open' : 'blocked';
                     console.log('Blocked Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
                     
-                    await updateStatusAndLog(nextStatus, 'Failed to update blocked status');
+                    await updateStatusAndLog(nextStatus, 'Failed to update blocked status', {
+                      displayLabelOverride: isBlocked ? 'Unblocked' : 'Blocked'
+                    });
                   }}
                 >
                   <AlertTriangle size={16} />
@@ -866,11 +880,14 @@ const IssueDetail = () => {
                     e.stopPropagation();
                     if (saving) return;
                     
-                    const isResolved = (issue?.status || '').toLowerCase() === 'resolved';
+                    const normalizedStatus = (issue?.status || '').toLowerCase().trim();
+                    const isResolved = normalizedStatus === 'resolved';
                     const nextStatus = isResolved ? 'open' : 'resolved';
                     console.log('Resolved Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
                     
-                    await updateStatusAndLog(nextStatus, 'Failed to update resolved status');
+                    await updateStatusAndLog(nextStatus, 'Failed to update resolved status', {
+                      displayLabelOverride: isResolved ? 'Open' : 'Resolved'
+                    });
                   }}
                 >
                   <CheckCircle size={16} />
