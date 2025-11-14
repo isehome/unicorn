@@ -112,33 +112,46 @@ Open the issue: ${safeUrl}
 export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl }, options = {}) => {
   const recipients = collectRecipients(stakeholders, actor);
 
-  if (recipients.length === 0) return;
+  if (recipients.length === 0) {
+    console.log('[IssueNotificationService] No recipients for comment notification');
+    return;
+  }
 
   const { issueTitle, projectName } = formatIssueContext(issue, project);
-  const actorName = actor?.name || 'A teammate';
+  const actorName = actor?.name || comment?.author || 'System';
   const safeActorName = escapeHtml(actorName);
   const safeIssueTitle = escapeHtml(issueTitle);
   const safeProjectName = escapeHtml(projectName);
   const safeComment = escapeHtml(comment?.text || '');
   const safeUrl = issueUrl || '#';
+  
+  // Check if this is a system-generated comment (like status change)
+  const isSystemComment = comment?.text?.startsWith('Status changed to ') || comment?.is_internal;
 
   const html = `
-    <p>${safeActorName} left a new comment on <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
+    <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
     <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
-    <p><a href="${safeUrl}">Open the issue</a> to reply or view the full history.</p>
+    <p><a href="${safeUrl}">Open the issue</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
   `;
 
-  const text = `${actorName} left a new comment on "${issueTitle}"${projectName}:
+  const text = `${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
 
 "${comment?.text || ''}"
 
 Open the issue: ${safeUrl}
 `;
 
+  console.log('[IssueNotificationService] Sending notification', {
+    recipients: recipients.length,
+    isSystemComment,
+    hasAuthToken: !!options?.authToken,
+    commentText: comment?.text?.substring(0, 50)
+  });
+
   await postNotification(
     {
       to: recipients,
-      subject: `New comment on "${issueTitle}"`,
+      subject: `${isSystemComment ? 'Status update' : 'New comment'} on "${issueTitle}"`,
       html,
       text
     },

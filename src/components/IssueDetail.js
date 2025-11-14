@@ -396,21 +396,55 @@ const IssueDetail = () => {
       });
       if (created) {
         setComments(prev => [...prev, created]);
-        await notifyCommentActivity({
-          issueId,
-          text: comment_text,
-          createdAt: created.created_at,
-          authorName,
-          issueSnapshot: targetIssue,
-          stakeholdersOverride: options.stakeholdersOverride
-        });
+        
+        // Ensure we have the auth token for system-generated comments
+        const graphToken = await acquireToken();
+        
+        // Get the current stakeholders
+        const stakeholderList = options.stakeholdersOverride || await resolveNotificationStakeholders(issueId);
+        
+        // Send notification with auth token
+        const defaultLink = (() => {
+          if (typeof window === 'undefined') return '';
+          if (!projectId || !issueId) return window.location.href;
+          return `${window.location.origin}/project/${projectId}/issues/${issueId}`;
+        })();
+        const link = issueLink || defaultLink;
+        
+        await notifyIssueComment(
+          {
+            issue: targetIssue,
+            project: projectInfo,
+            comment: {
+              author: author_name,
+              text: comment_text,
+              createdAt: created.created_at,
+              is_internal: true
+            },
+            stakeholders: stakeholderList,
+            actor: currentUserSummary,
+            issueUrl: link
+          },
+          { authToken: graphToken }
+        );
+        
         return created;
       }
     } catch (err) {
       console.error('Failed to log status change comment:', err);
     }
     return null;
-  }, [getAuthorInfo, issue, notifyCommentActivity]);
+  }, [
+    getAuthorInfo, 
+    issue, 
+    acquireToken, 
+    resolveNotificationStakeholders, 
+    projectId, 
+    issueLink, 
+    notifyIssueComment, 
+    projectInfo, 
+    currentUserSummary
+  ]);
 
   const updateStatusAndLog = useCallback(async (nextStatus, errorMessage, options = {}) => {
     if (!issue?.id || !nextStatus) return;
