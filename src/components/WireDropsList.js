@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Plus, Loader, Trash2, Printer } from 'lucide-react';
+import { Search, Plus, Loader, Trash2, Printer, CheckSquare, Square, AlertTriangle } from 'lucide-react';
 import { wireDropService } from '../services/wireDropService';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -25,6 +25,11 @@ const WireDropsList = () => {
   const [project, setProject] = useState(null);
   const [showFloorFilter, setShowFloorFilter] = useState(false);
   const [deletingDropId, setDeletingDropId] = useState(null);
+  
+  // Bulk selection states
+  const [selectedDropIds, setSelectedDropIds] = useState([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Printer states from context
   const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
@@ -234,6 +239,53 @@ const WireDropsList = () => {
     }
   };
 
+  const handleToggleSelect = (dropId, event) => {
+    event.stopPropagation();
+    setSelectedDropIds(prev => 
+      prev.includes(dropId) 
+        ? prev.filter(id => id !== dropId)
+        : [...prev, dropId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedDropIds.length === filteredDrops.length) {
+      setSelectedDropIds([]);
+    } else {
+      setSelectedDropIds(filteredDrops.map(drop => drop.id));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true);
+    let successCount = 0;
+    let failedDrops = [];
+
+    for (const dropId of selectedDropIds) {
+      try {
+        await wireDropService.deleteWireDrop(dropId);
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to delete wire drop ${dropId}:`, err);
+        failedDrops.push(dropId);
+      }
+    }
+
+    if (successCount > 0) {
+      setAllDrops(prev => prev.filter(drop => !selectedDropIds.includes(drop.id) || failedDrops.includes(drop.id)));
+      setSelectedDropIds(failedDrops);
+    }
+
+    if (failedDrops.length > 0) {
+      alert(`Successfully deleted ${successCount} wire drops. Failed to delete ${failedDrops.length} wire drops.`);
+    } else {
+      alert(`Successfully deleted ${successCount} wire drops.`);
+    }
+
+    setBulkDeleting(false);
+    setShowBulkDeleteConfirm(false);
+  };
+
 
   if (loading) {
     return (
@@ -258,6 +310,33 @@ const WireDropsList = () => {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div style={sectionStyles.card}>
+          {/* Bulk actions bar */}
+          {selectedDropIds.length > 0 && (
+            <div className="mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 rounded-lg flex items-center justify-between">
+              <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
+                {selectedDropIds.length} wire drop{selectedDropIds.length !== 1 ? 's' : ''} selected
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedDropIds([])}
+                >
+                  Clear Selection
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={Trash2}
+                  onClick={() => setShowBulkDeleteConfirm(true)}
+                  disabled={bulkDeleting}
+                >
+                  Delete Selected
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 mb-6">
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -280,6 +359,16 @@ const WireDropsList = () => {
                   <option key={floor} value={floor}>{floor}</option>
                 ))}
               </select>
+            )}
+            {filteredDrops.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={selectedDropIds.length === filteredDrops.length ? CheckSquare : Square}
+                onClick={handleSelectAll}
+              >
+                {selectedDropIds.length === filteredDrops.length ? 'Deselect All' : 'Select All'}
+              </Button>
             )}
             <Button variant="primary" size="sm" icon={Plus} onClick={handleAddWireDrop}>
               Add
@@ -310,13 +399,29 @@ const WireDropsList = () => {
                 const badgeLetter = getWireDropBadgeLetter(drop);
                 const badgeTextColor = getWireDropBadgeTextColor(badgeColor);
                 
+                const isSelected = selectedDropIds.includes(drop.id);
+                
                 return (
                   <div
                     key={drop.id}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
+                    className={`border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
+                      isSelected ? 'ring-2 ring-violet-500 bg-violet-50 dark:bg-violet-900/10' : ''
+                    }`}
                     onClick={() => navigate(`/wire-drops/${drop.id}`)}
                   >
                     <div className="flex gap-4 items-start">
+                      <div className="flex-shrink-0">
+                        <button
+                          onClick={(e) => handleToggleSelect(drop.id, e)}
+                          className="mr-2 mt-1"
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={20} className="text-violet-600 dark:text-violet-400" />
+                          ) : (
+                            <Square size={20} className="text-gray-400 dark:text-gray-500" />
+                          )}
+                        </button>
+                      </div>
                       <div className="flex-shrink-0">
                         <div
                           className="w-14 h-14 rounded-full flex items-center justify-center shadow-md select-none"
@@ -450,6 +555,42 @@ const WireDropsList = () => {
           )}
         </div>
       </div>
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
+              <AlertTriangle size={20} className="text-red-500" />
+              Delete {selectedDropIds.length} Wire Drop{selectedDropIds.length !== 1 ? 's' : ''}?
+            </h3>
+            <p className="text-sm mb-6 text-gray-600 dark:text-gray-300">
+              Are you sure you want to delete {selectedDropIds.length} wire drop{selectedDropIds.length !== 1 ? 's' : ''}? 
+              This action cannot be undone and will remove all associated data including photos, equipment details, and stage progress.
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                disabled={bulkDeleting}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="danger" 
+                icon={Trash2}
+                onClick={handleBulkDelete}
+                loading={bulkDeleting}
+                disabled={bulkDeleting}
+                className="flex-1"
+              >
+                Delete {selectedDropIds.length} Drop{selectedDropIds.length !== 1 ? 's' : ''}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

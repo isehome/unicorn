@@ -17,7 +17,7 @@ import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNot
 import CachedSharePointImage from './CachedSharePointImage';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map, ChevronDown, WifiOff } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff } from 'lucide-react';
 
 const formatStatusLabel = (label = '') => {
   if (!label) return '';
@@ -131,20 +131,52 @@ const IssueDetail = () => {
           .eq('issue_id', issueId)
           .order('created_at', { ascending: true });
         setPhotos(photoData || []);
-        const combined = [
-          ...(projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' })),
-          ...(projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }))
-        ];
+        // Combine stakeholders and ensure no duplicates
+        const internalMapped = (projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' }));
+        const externalMapped = (projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }));
+        
+        // Use a Map to deduplicate by the combination of contact_name, role_name, and category
+        // This prevents the same person/role from appearing multiple times
+        const stakeholderMap = new Map();
+        [...internalMapped, ...externalMapped].forEach(stakeholder => {
+          if (stakeholder.assignment_id) {
+            // Create a unique key based on what's displayed to the user
+            const displayKey = `${stakeholder.contact_name || ''}_${stakeholder.role_name || ''}_${stakeholder.category || ''}`;
+            
+            // Only add if we haven't seen this combination before
+            if (!stakeholderMap.has(displayKey)) {
+              stakeholderMap.set(displayKey, stakeholder);
+            }
+          }
+        });
+        
+        const combined = Array.from(stakeholderMap.values());
         setAvailableProjectStakeholders(combined);
       } else {
         const [projectStakeholders, projectDetails] = await Promise.all([
           projectStakeholdersService.getForProject(projectId),
           projectPromise
         ]);
-        const combined = [
-          ...(projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' })),
-          ...(projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }))
-        ];
+        // Combine stakeholders and ensure no duplicates  
+        const internalMapped = (projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' }));
+        const externalMapped = (projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }));
+        
+        // Use a Map to deduplicate by the combination of contact_name, role_name, and category
+        // This prevents the same person/role from appearing multiple times
+        const stakeholderMap = new Map();
+        [...internalMapped, ...externalMapped].forEach(stakeholder => {
+          if (stakeholder.assignment_id) {
+            // Create a unique key based on what's displayed to the user
+            const displayKey = `${stakeholder.contact_name || ''}_${stakeholder.role_name || ''}_${stakeholder.category || ''}`;
+            
+            // Only add if we haven't seen this combination before
+            if (!stakeholderMap.has(displayKey)) {
+              stakeholderMap.set(displayKey, stakeholder);
+            }
+          }
+        });
+        
+        const combined = Array.from(stakeholderMap.values());
         setProjectInfo(projectDetails);
         setAvailableProjectStakeholders(combined);
         setDraftIssue(null);
@@ -326,7 +358,8 @@ const IssueDetail = () => {
     createdAt,
     authorName,
     issueSnapshot = null,
-    stakeholdersOverride = null
+    stakeholdersOverride = null,
+    authToken = null  // Allow passing token directly
   }) => {
     const trimmed = text?.trim();
     if (!issueId || !trimmed) return;
@@ -338,7 +371,10 @@ const IssueDetail = () => {
         return `${window.location.origin}/project/${projectId}/issues/${issueId}`;
       })();
       const link = issueLink || defaultLink;
-      const graphToken = await acquireToken();
+      
+      // Use provided token or acquire a new one
+      const graphToken = authToken || await acquireToken();
+      
       const issueContext = issueSnapshot || resolvedIssue || issue || {
         id: issueId,
         title: issue?.title || newTitle,
@@ -355,7 +391,8 @@ const IssueDetail = () => {
           comment: {
             author: authorName || currentUserSummary?.name || currentUserSummary?.email || 'User',
             text: trimmed,
-            createdAt
+            createdAt,
+            is_internal: text?.startsWith('Status changed to ')  // Mark system comments
           },
           stakeholders: stakeholderList,
           actor: currentUserSummary,
@@ -558,7 +595,7 @@ const IssueDetail = () => {
         author_name,
         author_email,
         comment_text: text,
-        is_internal: true
+        is_internal: false  // User comments are not internal/system comments
       });
       if (created) {
         setComments(prev => [...prev, created]);
@@ -570,13 +607,17 @@ const IssueDetail = () => {
           project_id: projectId
         };
 
+        // Ensure we pass the auth token for user comments as well
+        const graphToken = await acquireToken();
+        
         await notifyCommentActivity({
           issueId: issueIdToUse,
           text,
           createdAt: created.created_at,
           authorName: author_name,
           issueSnapshot: issueContext,
-          stakeholdersOverride: tags
+          stakeholdersOverride: tags,
+          authToken: graphToken  // Pass the token for proper authentication
         });
       }
     } catch (e) {
@@ -1112,7 +1153,7 @@ const IssueDetail = () => {
                         )}
                         {tag.address && (
                           <div className="flex items-center gap-2">
-                            <Map size={14} className="text-gray-400" />
+                            <MapIcon size={14} className="text-gray-400" />
                             <button
                               onClick={(e) => { e.stopPropagation(); handleContactAction('address', tag.address); }}
                               className="text-blue-600 hover:underline text-left"

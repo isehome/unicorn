@@ -35,7 +35,9 @@ import {
   Trash2,
   WifiOff,
   Printer,
-  FileText
+  FileText,
+  ChevronDown,
+  Search as SearchIcon
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -72,6 +74,12 @@ const WireDropDetailEnhanced = () => {
   const [showAllRooms, setShowAllRooms] = useState(false);
   const [showAllHeadEquipment, setShowAllHeadEquipment] = useState(false);
   
+  // Equipment dropdown states
+  const [showRoomEquipmentDropdown, setShowRoomEquipmentDropdown] = useState(false);
+  const [showHeadEquipmentDropdown, setShowHeadEquipmentDropdown] = useState(false);
+  const [roomEquipmentSearch, setRoomEquipmentSearch] = useState('');
+  const [headEquipmentSearch, setHeadEquipmentSearch] = useState('');
+  
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
   const [completingCommission, setCompletingCommission] = useState(false);
@@ -82,6 +90,16 @@ const WireDropDetailEnhanced = () => {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  
+  // Notes editing
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [tempNotes, setTempNotes] = useState('');
+  
+  // Issue association
+  const [associatedIssues, setAssociatedIssues] = useState([]);
+  const [showIssueSelector, setShowIssueSelector] = useState(false);
+  const [availableIssues, setAvailableIssues] = useState([]);
+  const [selectedIssueId, setSelectedIssueId] = useState(null);
 
   // UniFi Port Assignment
   const [availableSwitches, setAvailableSwitches] = useState([]);
@@ -355,8 +373,96 @@ const WireDropDetailEnhanced = () => {
       loadProjectEquipmentOptions(wireDrop.project_id);
       loadSwitches(wireDrop.project_id);
       loadProjectRooms(wireDrop.project_id);
+      loadAssociatedIssues();
+      loadAvailableIssues();
     }
   }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms]);
+  
+  const loadAssociatedIssues = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drop_issues')
+        .select(`
+          *,
+          issues:issue_id(*)
+        `)
+        .eq('wire_drop_id', id);
+      
+      if (error) throw error;
+      setAssociatedIssues(data || []);
+    } catch (err) {
+      console.error('Failed to load associated issues:', err);
+    }
+  };
+  
+  const loadAvailableIssues = async () => {
+    if (!wireDrop?.project_id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('project_id', wireDrop.project_id)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setAvailableIssues(data || []);
+    } catch (err) {
+      console.error('Failed to load available issues:', err);
+    }
+  };
+  
+  const handleNotesBlur = async () => {
+    setEditingNotes(false);
+    if (tempNotes !== wireDrop.notes) {
+      try {
+        await wireDropService.updateWireDrop(id, { notes: tempNotes });
+        setWireDrop(prev => ({ ...prev, notes: tempNotes }));
+      } catch (err) {
+        console.error('Failed to save notes:', err);
+        alert('Failed to save notes');
+        setTempNotes(wireDrop.notes || '');
+      }
+    }
+  };
+  
+  const handleAssociateIssue = async () => {
+    if (!selectedIssueId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('wire_drop_issues')
+        .insert({
+          wire_drop_id: id,
+          issue_id: selectedIssueId
+        });
+      
+      if (error) throw error;
+      
+      await loadAssociatedIssues();
+      setShowIssueSelector(false);
+      setSelectedIssueId(null);
+    } catch (err) {
+      console.error('Failed to associate issue:', err);
+      alert('Failed to associate issue');
+    }
+  };
+  
+  const handleRemoveIssue = async (issueAssociationId) => {
+    try {
+      const { error } = await supabase
+        .from('wire_drop_issues')
+        .delete()
+        .eq('id', issueAssociationId);
+      
+      if (error) throw error;
+      
+      await loadAssociatedIssues();
+    } catch (err) {
+      console.error('Failed to remove issue association:', err);
+      alert('Failed to remove issue association');
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -1158,59 +1264,177 @@ const WireDropDetailEnhanced = () => {
                           </div>
                         )}
 
-                        {/* Connected Equipment Display */}
-                        {selectedRoomEquipmentDetails.length > 0 && (
-                          <div className="mt-3">
-                            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2"
-                              style={{
-                                backgroundColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(187, 247, 208, 0.5)',
-                                borderColor: mode === 'dark' ? 'rgba(34, 197, 94, 0.4)' : 'rgba(34, 197, 94, 0.6)'
+                        {/* Equipment Selection Dropdown */}
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-semibold" style={styles.textPrimary}>
+                              Equipment
+                            </label>
+                          </div>
+                          
+                          {/* Room Equipment Dropdown */}
+                          <div className="relative mb-2">
+                            <button
+                              onClick={() => {
+                                setShowRoomEquipmentDropdown(!showRoomEquipmentDropdown);
+                                setShowHeadEquipmentDropdown(false);
+                                setRoomEquipmentSearch('');
                               }}
+                              className="w-full px-3 py-2 rounded-lg border flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
+                              style={styles.input}
                             >
-                              <Monitor size={20} className="text-green-600 dark:text-green-400 flex-shrink-0" />
-                              <div className="flex-1">
-                                <div className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wide">
-                                  Room Equipment
-                                </div>
-                                <div className="text-sm font-bold text-gray-900 dark:text-gray-100 mt-0.5">
-                                  {selectedRoomEquipmentDetails[0].name}
-                                </div>
-                                {(selectedRoomEquipmentDetails[0].manufacturer || selectedRoomEquipmentDetails[0].model) && (
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                                    {selectedRoomEquipmentDetails[0].manufacturer} {selectedRoomEquipmentDetails[0].model}
-                                  </div>
-                                )}
-                              </div>
-                              {selectedRoomEquipmentDetails.length > 1 && (
-                                <span className="ml-2 px-2 py-0.5 rounded-full bg-green-600 text-white text-xs font-bold">
-                                  +{selectedRoomEquipmentDetails.length - 1}
+                              <div className="flex items-center gap-2">
+                                <Monitor size={16} className="text-gray-500" />
+                                <span className="text-sm">
+                                  {selectedRoomEquipmentDetails.length > 0
+                                    ? `Room: ${selectedRoomEquipmentDetails[0].name}${selectedRoomEquipmentDetails.length > 1 ? ` +${selectedRoomEquipmentDetails.length - 1}` : ''}`
+                                    : 'Select Room Equipment'}
                                 </span>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Not Connected State */}
-                        {selectedRoomEquipmentDetails.length === 0 && (
-                          <div className="mt-3">
-                            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed"
-                              style={{
-                                backgroundColor: mode === 'dark' ? 'rgba(156, 163, 175, 0.1)' : 'rgba(243, 244, 246, 0.8)',
-                                borderColor: mode === 'dark' ? 'rgba(156, 163, 175, 0.3)' : 'rgba(156, 163, 175, 0.5)'
-                              }}
-                            >
-                              <AlertCircle size={20} className="text-gray-500 dark:text-gray-400 flex-shrink-0" />
-                              <div>
-                                <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
-                                  Room Equipment
+                              </div>
+                              <ChevronDown size={16} className={`transition-transform ${showRoomEquipmentDropdown ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {showRoomEquipmentDropdown && (
+                              <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-lg" style={styles.card}>
+                                <div className="p-3 border-b" style={{ borderColor: styles.card.borderColor }}>
+                                  <div className="relative">
+                                    <SearchIcon size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                    <input
+                                      type="text"
+                                      placeholder="Search equipment..."
+                                      value={roomEquipmentSearch}
+                                      onChange={(e) => setRoomEquipmentSearch(e.target.value)}
+                                      className="w-full pl-9 pr-3 py-2 rounded-lg border"
+                                      style={styles.input}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="text-sm font-semibold text-gray-500 dark:text-gray-400 mt-0.5">
-                                  Not Connected
+                                <div className="max-h-60 overflow-y-auto p-2">
+                                  {nonHeadEquipment
+                                    .filter(item => 
+                                      !roomEquipmentSearch || 
+                                      item.name?.toLowerCase().includes(roomEquipmentSearch.toLowerCase()) ||
+                                      item.model?.toLowerCase().includes(roomEquipmentSearch.toLowerCase())
+                                    )
+                                    .map(item => {
+                                      const isSelected = roomEquipmentSelection.includes(item.id);
+                                      return (
+                                        <button
+                                          key={item.id}
+                                          onClick={() => {
+                                            toggleRoomEquipment(item.id);
+                                            handleSaveRoomEnd();
+                                          }}
+                                          className={`w-full text-left p-2 rounded-lg mb-1 transition-colors ${
+                                            isSelected 
+                                              ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-400 dark:border-violet-500' 
+                                              : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <div className="font-medium text-sm" style={styles.textPrimary}>
+                                                {item.name}
+                                              </div>
+                                              <div className="text-xs" style={styles.subtleText}>
+                                                {item.project_rooms?.name || 'Unassigned'} • {item.model}
+                                              </div>
+                                            </div>
+                                            {isSelected && (
+                                              <CheckCircle size={16} className="text-violet-600 dark:text-violet-400" />
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
                                 </div>
                               </div>
-                            </div>
+                            )}
                           </div>
-                        )}
+                          
+                          {/* Head End Equipment Dropdown */}
+                          <div className="relative">
+                            <button
+                              onClick={() => {
+                                setShowHeadEquipmentDropdown(!showHeadEquipmentDropdown);
+                                setShowRoomEquipmentDropdown(false);
+                                setHeadEquipmentSearch('');
+                              }}
+                              className="w-full px-3 py-2 rounded-lg border flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
+                              style={styles.input}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Server size={16} className="text-gray-500" />
+                                <span className="text-sm">
+                                  {selectedHeadEquipmentDetails.length > 0
+                                    ? `Head End: ${selectedHeadEquipmentDetails[0].name}${selectedHeadEquipmentDetails.length > 1 ? ` +${selectedHeadEquipmentDetails.length - 1}` : ''}`
+                                    : 'Select Head End Equipment'}
+                                </span>
+                              </div>
+                              <ChevronDown size={16} className={`transition-transform ${showHeadEquipmentDropdown ? 'rotate-180' : ''}`} />
+                            </button>
+                            
+                            {showHeadEquipmentDropdown && (
+                              <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-lg" style={styles.card}>
+                                <div className="p-3 border-b" style={{ borderColor: styles.card.borderColor }}>
+                                  <div className="relative">
+                                    <SearchIcon size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                    <input
+                                      type="text"
+                                      placeholder="Search equipment..."
+                                      value={headEquipmentSearch}
+                                      onChange={(e) => setHeadEquipmentSearch(e.target.value)}
+                                      className="w-full pl-9 pr-3 py-2 rounded-lg border"
+                                      style={styles.input}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto p-2">
+                                  {selectableEquipment
+                                    .filter(item => 
+                                      item.project_rooms?.is_headend &&
+                                      (!headEquipmentSearch || 
+                                      item.name?.toLowerCase().includes(headEquipmentSearch.toLowerCase()) ||
+                                      item.model?.toLowerCase().includes(headEquipmentSearch.toLowerCase()))
+                                    )
+                                    .map(item => {
+                                      const isSelected = headEquipmentSelection.includes(item.id);
+                                      return (
+                                        <button
+                                          key={item.id}
+                                          onClick={() => {
+                                            toggleHeadEquipment(item.id);
+                                            handleSaveHeadEnd();
+                                          }}
+                                          className={`w-full text-left p-2 rounded-lg mb-1 transition-colors ${
+                                            isSelected 
+                                              ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-400 dark:border-purple-500' 
+                                              : 'hover:bg-gray-50 dark:hover:bg-gray-800'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between">
+                                            <div>
+                                              <div className="font-medium text-sm" style={styles.textPrimary}>
+                                                {item.name}
+                                              </div>
+                                              <div className="text-xs" style={styles.subtleText}>
+                                                {item.project_rooms?.name || 'Unassigned'} • {item.model}
+                                              </div>
+                                            </div>
+                                            {isSelected && (
+                                              <CheckCircle size={16} className="text-purple-600 dark:text-purple-400" />
+                                            )}
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
 
                         {wireDrop.location && (
                           <p className="mt-2 text-sm" style={styles.textSecondary}>
@@ -1230,6 +1454,122 @@ const WireDropDetailEnhanced = () => {
                     {wireDrop.projects.name}
                   </button>
                 )}
+                
+                {/* Notes Section - Always Editable */}
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold" style={styles.textPrimary}>
+                      Notes
+                    </label>
+                    {!editingNotes && (
+                      <button
+                        onClick={() => {
+                          setEditingNotes(true);
+                          setTempNotes(wireDrop.notes || '');
+                        }}
+                        className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                  {editingNotes ? (
+                    <textarea
+                      value={tempNotes}
+                      onChange={(e) => setTempNotes(e.target.value)}
+                      onBlur={handleNotesBlur}
+                      placeholder="Add notes here..."
+                      rows={4}
+                      className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                      style={styles.input}
+                      autoFocus
+                    />
+                  ) : (
+                    <div 
+                      className="px-3 py-2 rounded-lg border min-h-[100px] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                      style={styles.input}
+                      onClick={() => {
+                        setEditingNotes(true);
+                        setTempNotes(wireDrop.notes || '');
+                      }}
+                    >
+                      {wireDrop.notes || <span style={styles.subtleText}>Click to add notes...</span>}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Associated Issues Section */}
+                <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-semibold" style={styles.textPrimary}>
+                      Associated Issues ({associatedIssues.length})
+                    </label>
+                    <button
+                      onClick={() => setShowIssueSelector(!showIssueSelector)}
+                      className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                    >
+                      {showIssueSelector ? 'Cancel' : 'Add Issue'}
+                    </button>
+                  </div>
+                  
+                  {showIssueSelector && (
+                    <div className="mb-3 p-3 rounded-lg border" style={styles.mutedCard}>
+                      <select
+                        value={selectedIssueId || ''}
+                        onChange={(e) => setSelectedIssueId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border mb-2"
+                        style={styles.input}
+                      >
+                        <option value="">Select an issue...</option>
+                        {availableIssues
+                          .filter(issue => !associatedIssues.find(ai => ai.issue_id === issue.id))
+                          .map(issue => (
+                            <option key={issue.id} value={issue.id}>
+                              {issue.title} - {issue.status}
+                            </option>
+                          ))}
+                      </select>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleAssociateIssue}
+                        disabled={!selectedIssueId}
+                        className="w-full"
+                      >
+                        Associate Issue
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {associatedIssues.length === 0 ? (
+                    <p className="text-sm" style={styles.subtleText}>No associated issues</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {associatedIssues.map(assoc => (
+                        <div
+                          key={assoc.id}
+                          className="flex items-center justify-between p-2 rounded-lg border"
+                          style={styles.mutedCard}
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-sm" style={styles.textPrimary}>
+                              {assoc.issues?.title}
+                            </div>
+                            <div className="text-xs" style={styles.subtleText}>
+                              Status: {assoc.issues?.status} | Priority: {assoc.issues?.priority}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveIssue(assoc.id)}
+                            className="text-red-500 hover:text-red-700 ml-2"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {showQrCard && (
