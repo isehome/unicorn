@@ -760,61 +760,38 @@ class WireDropService {
 
   async updateEquipmentLinks(wireDropId, linkSide, equipmentIds = []) {
     try {
-      const { data: existingLinks, error: existingError } = await supabase
-        .from('wire_drop_equipment_links')
-        .select('id, project_equipment_id')
-        .eq('wire_drop_id', wireDropId)
-        .eq('link_side', linkSide);
+      console.log('[wireDropService] updateEquipmentLinks called:', {
+        wireDropId,
+        linkSide,
+        equipmentIds
+      });
 
-      if (existingError) throw existingError;
+      // USE SERVER-SIDE RPC FUNCTION
+      // This bypasses Supabase JS client issues and runs directly on the database server
+      console.log('[wireDropService] Using RPC function set_wire_drop_equipment_links');
+      
+      const { data, error } = await supabase.rpc('set_wire_drop_equipment_links', {
+        p_wire_drop_id: wireDropId,
+        p_link_side: linkSide,
+        p_equipment_ids: equipmentIds || []
+      });
 
-      const existingIds = new Set((existingLinks || []).map((link) => link.project_equipment_id));
-      const desiredIds = new Set((equipmentIds || []).filter(Boolean));
-
-      const toInsert = Array.from(desiredIds)
-        .filter((id) => !existingIds.has(id))
-        .map((id) => ({
-          wire_drop_id: wireDropId,
-          project_equipment_id: id,
-          link_side: linkSide,
-          created_by: null
-        }));
-
-      const toRemove = (existingLinks || [])
-        .filter((link) => !desiredIds.has(link.project_equipment_id))
-        .map((link) => link.id);
-
-      if (toInsert.length > 0) {
-        const { error: insertError } = await supabase
-          .from('wire_drop_equipment_links')
-          .insert(toInsert);
-        if (insertError) throw insertError;
+      if (error) {
+        console.error('[wireDropService] RPC error:', error);
+        throw error;
       }
 
-      if (toRemove.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('wire_drop_equipment_links')
-          .delete()
-          .in('id', toRemove);
-        if (deleteError) throw deleteError;
-      }
-
-      if (equipmentIds.length > 0) {
-        await Promise.all(
-          equipmentIds.map((equipmentId, index) =>
-            supabase
-              .from('wire_drop_equipment_links')
-              .update({ sort_order: index })
-              .eq('wire_drop_id', wireDropId)
-              .eq('project_equipment_id', equipmentId)
-              .eq('link_side', linkSide)
-          )
-        );
-      }
-
+      console.log('[wireDropService] RPC results:', data);
+      
+      // Data should show: [{operation: 'deleted', count: X}, {operation: 'inserted', count: Y}]
+      const deletedCount = data?.find(r => r.operation === 'deleted')?.count || 0;
+      const insertedCount = data?.find(r => r.operation === 'inserted')?.count || 0;
+      
+      console.log(`[wireDropService] Deleted ${deletedCount} link(s), Inserted ${insertedCount} link(s)`);
+      console.log('[wireDropService] updateEquipmentLinks completed successfully');
       return true;
     } catch (error) {
-      console.error('Failed to update wire drop equipment links:', error);
+      console.error('[wireDropService] Failed to update wire drop equipment links:', error);
       throw error;
     }
   }

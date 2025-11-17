@@ -12,6 +12,8 @@ import Button from './ui/Button';
 import CachedSharePointImage from './CachedSharePointImage';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
+import UniFiClientSelectorEnhanced from './UniFiClientSelectorEnhanced';
+import HomeKitQRUpload from './HomeKitQRUpload';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
 import {
@@ -79,6 +81,11 @@ const WireDropDetailEnhanced = () => {
   const [showHeadEquipmentDropdown, setShowHeadEquipmentDropdown] = useState(false);
   const [roomEquipmentSearch, setRoomEquipmentSearch] = useState('');
   const [headEquipmentSearch, setHeadEquipmentSearch] = useState('');
+  
+  // Debug state changes
+  useEffect(() => {
+    console.log('[Equipment Debug] showRoomEquipmentDropdown changed to:', showRoomEquipmentDropdown);
+  }, [showRoomEquipmentDropdown]);
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
@@ -344,15 +351,30 @@ const WireDropDetailEnhanced = () => {
         notes: data.notes || ''
       });
       
+      // DEBUG: Log raw equipment links to identify data format issues
+      console.log('[Equipment Debug] Raw wire_drop_equipment_links:', data.wire_drop_equipment_links);
+      
       const equipmentLinks = (data.wire_drop_equipment_links || []).filter(
         (link) => link?.project_equipment?.id
       );
+      
+      // DEBUG: Check link_side values in the data
+      console.log('[Equipment Debug] Equipment links with link_side values:');
+      equipmentLinks.forEach(link => {
+        console.log(`  - ID: ${link.id}, link_side: "${link.link_side}", equipment: ${link.project_equipment?.name}`);
+      });
+      
+      // Handle both exact 'room_end' and potentially null/undefined link_side
+      // If link_side is missing or null, we'll treat it as room_end for backward compatibility
       const roomLinks = equipmentLinks
-        .filter((link) => link.link_side === 'room_end')
+        .filter((link) => link.link_side === 'room_end' || !link.link_side || link.link_side === null)
         .map((link) => link.project_equipment.id);
       const headLinks = equipmentLinks
         .filter((link) => link.link_side === 'head_end')
         .map((link) => link.project_equipment.id);
+
+      console.log('[Equipment Debug] Processed room links:', roomLinks);
+      console.log('[Equipment Debug] Processed head links:', headLinks);
 
       setRoomEquipmentSelection(Array.from(new Set(roomLinks)));
       setHeadEquipmentSelection(Array.from(new Set(headLinks)));
@@ -871,51 +893,72 @@ const WireDropDetailEnhanced = () => {
 
   // Smart sorted equipment for room end selector with single-select behavior
   const sortedRoomEquipment = useMemo(() => {
+    console.log('[Equipment Debug] Computing sortedRoomEquipment');
+    console.log('[Equipment Debug] selectableEquipment count:', selectableEquipment.length);
+    console.log('[Equipment Debug] selectableEquipment:', selectableEquipment);
+    
     const wireDropRoom = wireDrop?.room_name?.toLowerCase().trim();
-    const alreadyAssignedIds = new Set(roomEquipmentSelection);
+    const currentSelection = roomEquipmentSelection[0]; // Only care about first selection for single-select
+    
+    console.log('[Equipment Debug] wireDropRoom:', wireDropRoom);
+    console.log('[Equipment Debug] currentSelection:', currentSelection);
 
-    // Categorize equipment
-    const sameRoomUnassigned = [];
-    const sameRoomAssigned = [];
+    // Categorize ALL project equipment (not just non-head-end)
+    const sameRoomItems = [];
     const otherRoomsData = {};
 
-    nonHeadEquipment.forEach(item => {
+    selectableEquipment.forEach(item => {
       const itemRoom = item.project_rooms?.name?.toLowerCase().trim();
       const isSameRoom = itemRoom === wireDropRoom;
-      const isAssigned = alreadyAssignedIds.has(item.id);
+      const isSelected = item.id === currentSelection;
+      
+      // Debug room matching
+      if (selectableEquipment.length > 0 && selectableEquipment.indexOf(item) === 0) {
+        console.log('[Equipment Debug] First item room comparison:', {
+          itemRoom,
+          wireDropRoom,
+          isSameRoom,
+          originalRoomName: item.project_rooms?.name
+        });
+      }
 
-      if (isSameRoom && !isAssigned) {
-        sameRoomUnassigned.push(item);
-      } else if (isSameRoom && isAssigned) {
-        sameRoomAssigned.push(item);
+      if (isSameRoom) {
+        sameRoomItems.push({ item, isSelected });
       } else {
         // Group by room for "other rooms" section
         const roomName = item.project_rooms?.name || 'Unassigned';
         if (!otherRoomsData[roomName]) {
           otherRoomsData[roomName] = [];
         }
-        otherRoomsData[roomName].push({ item, isAssigned });
+        otherRoomsData[roomName].push({ item, isSelected });
       }
     });
 
     // Sort each category alphabetically
-    const sortAlpha = (a, b) => (a.name || '').localeCompare(b.name || '');
-    sameRoomUnassigned.sort(sortAlpha);
-    sameRoomAssigned.sort(sortAlpha);
+    const sortAlpha = (a, b) => (a.item.name || '').localeCompare(b.item.name || '');
+    sameRoomItems.sort(sortAlpha);
 
     // Sort other rooms by room name
     const otherRooms = Object.entries(otherRoomsData).map(([roomName, items]) => ({
       roomName,
-      items: items.sort((a, b) => sortAlpha(a.item, b.item))
+      items: items.sort(sortAlpha)
     })).sort((a, b) => a.roomName.localeCompare(b.roomName));
 
-    return {
-      sameRoomUnassigned,
-      sameRoomAssigned,
+    const result = {
+      sameRoomItems,
       otherRooms,
       hasOtherRooms: otherRooms.length > 0
     };
-  }, [nonHeadEquipment, wireDrop, roomEquipmentSelection]);
+    
+    console.log('[Equipment Debug] sortedRoomEquipment result:', {
+      sameRoomCount: result.sameRoomItems.length,
+      otherRoomsCount: result.otherRooms.length,
+      hasOtherRooms: result.hasOtherRooms,
+      otherRoomNames: result.otherRooms.map(r => r.roomName)
+    });
+    
+    return result;
+  }, [selectableEquipment, wireDrop, roomEquipmentSelection]);
 
   const headEndEquipmentOptions = useMemo(
     () => selectableEquipment.filter((item) => item.project_rooms?.is_headend),
@@ -1076,8 +1119,8 @@ const WireDropDetailEnhanced = () => {
         {/* Main Info Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>
           <div className="p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
+            <div className="flex items-start justify-between gap-6">
+              <div className="flex-1 min-w-0">
                 {editing ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-3">
@@ -1264,178 +1307,6 @@ const WireDropDetailEnhanced = () => {
                           </div>
                         )}
 
-                        {/* Equipment Selection Dropdown */}
-                        <div className="mt-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="text-sm font-semibold" style={styles.textPrimary}>
-                              Equipment
-                            </label>
-                          </div>
-                          
-                          {/* Room Equipment Dropdown */}
-                          <div className="relative mb-2">
-                            <button
-                              onClick={() => {
-                                setShowRoomEquipmentDropdown(!showRoomEquipmentDropdown);
-                                setShowHeadEquipmentDropdown(false);
-                                setRoomEquipmentSearch('');
-                              }}
-                              className="w-full px-3 py-2 rounded-lg border flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
-                              style={styles.input}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Monitor size={16} className="text-gray-500" />
-                                <span className="text-sm">
-                                  {selectedRoomEquipmentDetails.length > 0
-                                    ? `Room: ${selectedRoomEquipmentDetails[0].name}${selectedRoomEquipmentDetails.length > 1 ? ` +${selectedRoomEquipmentDetails.length - 1}` : ''}`
-                                    : 'Select Room Equipment'}
-                                </span>
-                              </div>
-                              <ChevronDown size={16} className={`transition-transform ${showRoomEquipmentDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {showRoomEquipmentDropdown && (
-                              <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-lg" style={styles.card}>
-                                <div className="p-3 border-b" style={{ borderColor: styles.card.borderColor }}>
-                                  <div className="relative">
-                                    <SearchIcon size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Search equipment..."
-                                      value={roomEquipmentSearch}
-                                      onChange={(e) => setRoomEquipmentSearch(e.target.value)}
-                                      className="w-full pl-9 pr-3 py-2 rounded-lg border"
-                                      style={styles.input}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto p-2">
-                                  {nonHeadEquipment
-                                    .filter(item => 
-                                      !roomEquipmentSearch || 
-                                      item.name?.toLowerCase().includes(roomEquipmentSearch.toLowerCase()) ||
-                                      item.model?.toLowerCase().includes(roomEquipmentSearch.toLowerCase())
-                                    )
-                                    .map(item => {
-                                      const isSelected = roomEquipmentSelection.includes(item.id);
-                                      return (
-                                        <button
-                                          key={item.id}
-                                          onClick={() => {
-                                            toggleRoomEquipment(item.id);
-                                            handleSaveRoomEnd();
-                                          }}
-                                          className={`w-full text-left p-2 rounded-lg mb-1 transition-colors ${
-                                            isSelected 
-                                              ? 'bg-violet-50 dark:bg-violet-900/20 border border-violet-400 dark:border-violet-500' 
-                                              : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                                          }`}
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <div className="font-medium text-sm" style={styles.textPrimary}>
-                                                {item.name}
-                                              </div>
-                                              <div className="text-xs" style={styles.subtleText}>
-                                                {item.project_rooms?.name || 'Unassigned'} • {item.model}
-                                              </div>
-                                            </div>
-                                            {isSelected && (
-                                              <CheckCircle size={16} className="text-violet-600 dark:text-violet-400" />
-                                            )}
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          
-                          {/* Head End Equipment Dropdown */}
-                          <div className="relative">
-                            <button
-                              onClick={() => {
-                                setShowHeadEquipmentDropdown(!showHeadEquipmentDropdown);
-                                setShowRoomEquipmentDropdown(false);
-                                setHeadEquipmentSearch('');
-                              }}
-                              className="w-full px-3 py-2 rounded-lg border flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800"
-                              style={styles.input}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Server size={16} className="text-gray-500" />
-                                <span className="text-sm">
-                                  {selectedHeadEquipmentDetails.length > 0
-                                    ? `Head End: ${selectedHeadEquipmentDetails[0].name}${selectedHeadEquipmentDetails.length > 1 ? ` +${selectedHeadEquipmentDetails.length - 1}` : ''}`
-                                    : 'Select Head End Equipment'}
-                                </span>
-                              </div>
-                              <ChevronDown size={16} className={`transition-transform ${showHeadEquipmentDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-                            
-                            {showHeadEquipmentDropdown && (
-                              <div className="absolute z-50 mt-1 w-full rounded-lg border shadow-lg" style={styles.card}>
-                                <div className="p-3 border-b" style={{ borderColor: styles.card.borderColor }}>
-                                  <div className="relative">
-                                    <SearchIcon size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Search equipment..."
-                                      value={headEquipmentSearch}
-                                      onChange={(e) => setHeadEquipmentSearch(e.target.value)}
-                                      className="w-full pl-9 pr-3 py-2 rounded-lg border"
-                                      style={styles.input}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                  </div>
-                                </div>
-                                <div className="max-h-60 overflow-y-auto p-2">
-                                  {selectableEquipment
-                                    .filter(item => 
-                                      item.project_rooms?.is_headend &&
-                                      (!headEquipmentSearch || 
-                                      item.name?.toLowerCase().includes(headEquipmentSearch.toLowerCase()) ||
-                                      item.model?.toLowerCase().includes(headEquipmentSearch.toLowerCase()))
-                                    )
-                                    .map(item => {
-                                      const isSelected = headEquipmentSelection.includes(item.id);
-                                      return (
-                                        <button
-                                          key={item.id}
-                                          onClick={() => {
-                                            toggleHeadEquipment(item.id);
-                                            handleSaveHeadEnd();
-                                          }}
-                                          className={`w-full text-left p-2 rounded-lg mb-1 transition-colors ${
-                                            isSelected 
-                                              ? 'bg-purple-50 dark:bg-purple-900/20 border border-purple-400 dark:border-purple-500' 
-                                              : 'hover:bg-gray-50 dark:hover:bg-gray-800'
-                                          }`}
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <div>
-                                              <div className="font-medium text-sm" style={styles.textPrimary}>
-                                                {item.name}
-                                              </div>
-                                              <div className="text-xs" style={styles.subtleText}>
-                                                {item.project_rooms?.name || 'Unassigned'} • {item.model}
-                                              </div>
-                                            </div>
-                                            {isSelected && (
-                                              <CheckCircle size={16} className="text-purple-600 dark:text-purple-400" />
-                                            )}
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
                         {wireDrop.location && (
                           <p className="mt-2 text-sm" style={styles.textSecondary}>
                             {wireDrop.location}
@@ -1454,9 +1325,225 @@ const WireDropDetailEnhanced = () => {
                     {wireDrop.projects.name}
                   </button>
                 )}
+              </div>
+
+              {showQrCard && !editing && (
+                <div
+                  className="rounded-xl border p-4 text-center flex-shrink-0"
+                  style={{ ...styles.mutedCard, minWidth: '16rem', maxWidth: '16rem' }}
+                >
+                  <h4 className="text-sm font-semibold mb-2" style={styles.textPrimary}>
+                    Wire Drop QR
+                  </h4>
+                  {qrCodeSrc ? (
+                    <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
+                      <img
+                        src={qrCodeSrc}
+                        alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
+                        className="h-40 w-40 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
+                      style={styles.subtleText}
+                    >
+                      QR unavailable
+                    </div>
+                  )}
+                  {wireDrop.uid && (
+                    <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
+                      UID: {wireDrop.uid}
+                    </p>
+                  )}
+                  {wireDrop.qr_code_url && (
+                    <a
+                      href={wireDrop.qr_code_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
+                    >
+                      Open QR asset
+                    </a>
+                  )}
+                  
+                  {/* Print Label - Compact */}
+                  <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                    <p className="text-xs font-medium mb-2" style={styles.textPrimary}>Print Label</p>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={printCopies}
+                        onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
+                        className="w-16 px-2 py-1 text-sm rounded border"
+                        style={styles.input}
+                      />
+                      <span className="text-xs" style={styles.subtleText}>copies</span>
+                    </div>
+                    <Button
+                      onClick={handlePrintLabel}
+                      disabled={!printerConnected || printing}
+                      size="sm"
+                      className="w-full"
+                    >
+                      <Printer size={14} />
+                      {printing ? 'Printing...' : 'Print'}
+                    </Button>
+                    {!printerConnected && (
+                      <p className="text-[10px] mt-1" style={styles.subtleText}>
+                        Connect printer in{' '}
+                        <button
+                          onClick={() => navigate('/settings')}
+                          className="text-blue-500 underline"
+                        >
+                          Settings
+                        </button>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Equipment Section - Below badges, left column */}
+            {!editing && (
+              <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                      Linked Equipment
+                    </h4>
+                  </div>
+                  
+                  {primaryRoomEquipment ? (
+                    <div 
+                      className="rounded-xl border p-4 space-y-3"
+                      style={{
+                        ...styles.mutedCard,
+                        borderColor: mode === 'dark' ? '#8B5CF6' : '#A78BFA',
+                        borderWidth: 2
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h5 className="font-semibold text-base mb-1" style={styles.textPrimary}>
+                            {primaryRoomEquipment.name}
+                          </h5>
+                          {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
+                            <p className="text-sm mb-1" style={styles.textSecondary}>
+                              {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
+                                .filter(Boolean)
+                                .join(' • ')}
+                            </p>
+                          )}
+                          {primaryRoomEquipment.part_number && (
+                            <p className="text-xs" style={styles.subtleText}>
+                              Part #: {primaryRoomEquipment.part_number}
+                            </p>
+                          )}
+                          {(primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name) && (
+                            <p className="text-xs mt-1" style={styles.subtleText}>
+                              <span className="inline-flex items-center gap-1">
+                                <Monitor size={12} />
+                                {primaryRoomEquipment.project_rooms?.name || primaryRoomEquipment.location}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2 pt-2 border-t" style={{ borderColor: styles.card.borderColor }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Edit}
+                          onClick={() => {
+                            console.log('[Equipment] Change button clicked, opening dropdown');
+                            setShowRoomEquipmentDropdown(true);
+                          }}
+                          className="flex-1"
+                        >
+                          Change
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          icon={Trash2}
+                          onClick={async () => {
+                            console.log('[Equipment] Remove button clicked');
+                            console.log('[Equipment] Current room equipment selection:', roomEquipmentSelection);
+                            console.log('[Equipment] Wire drop ID:', id);
+                            
+                            if (!window.confirm('Remove this equipment link from the wire drop?')) {
+                              return;
+                            }
+                            
+                            try {
+                              console.log('[Equipment] Using service method to update equipment');
+                              
+                              // Use the service method with empty array to remove all equipment
+                              const success = await wireDropService.updateEquipmentLinks(id, 'room_end', []);
+                              
+                              if (success) {
+                                console.log('[Equipment] Equipment unlinked successfully');
+                                
+                                // Clear local state
+                                setRoomEquipmentSelection([]);
+                                setPrimaryRoomEquipmentId(null);
+                                
+                                // Reload to confirm changes
+                                await loadWireDrop();
+                              } else {
+                                throw new Error('Failed to update equipment links');
+                              }
+                            } catch (err) {
+                              console.error('[Equipment] Failed to remove equipment link:', err);
+                              alert(`Failed to remove equipment: ${err.message || 'Unknown error'}`);
+                              
+                              // Reload to reset state
+                              await loadWireDrop();
+                            }
+                          }}
+                          className="flex-1"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border-2 border-dashed p-6 text-center" style={{ borderColor: styles.card.borderColor }}>
+                      <Monitor size={32} className="mx-auto mb-2 opacity-40" style={styles.subtleText} />
+                      <p className="text-sm mb-3" style={styles.subtleText}>
+                        No equipment linked
+                      </p>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => {
+                          console.log('[Equipment] Add Equipment button clicked');
+                          console.log('[Equipment] Current showRoomEquipmentDropdown state:', showRoomEquipmentDropdown);
+                          setShowRoomEquipmentDropdown(true);
+                          console.log('[Equipment] Set showRoomEquipmentDropdown to true');
+                        }}
+                        icon={Monitor}
+                      >
+                        Add Equipment
+                      </Button>
+                    </div>
+                  )}
+                </div>
                 
+                {/* Spacer for responsive layout */}
+                <div className="hidden lg:block"></div>
+              </div>
+            )}
+
+            {/* Notes and Issues - Full Width Below */}
+            {!editing && (
+              <>
                 {/* Notes Section - Always Editable */}
-                <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                <div className="mt-6 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-semibold" style={styles.textPrimary}>
                       Notes
@@ -1570,49 +1657,8 @@ const WireDropDetailEnhanced = () => {
                     </div>
                   )}
                 </div>
-              </div>
-
-              {showQrCard && (
-                <div
-                  className="rounded-xl border p-4 text-center flex-shrink-0"
-                  style={{ ...styles.mutedCard, minWidth: '16rem' }}
-                >
-                  <h4 className="text-sm font-semibold mb-2" style={styles.textPrimary}>
-                    Wire Drop QR
-                  </h4>
-                  {qrCodeSrc ? (
-                    <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
-                      <img
-                        src={qrCodeSrc}
-                        alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
-                        className="h-40 w-40 object-contain"
-                      />
-                    </div>
-                  ) : (
-                    <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
-                      style={styles.subtleText}
-                    >
-                      QR unavailable
-                    </div>
-                  )}
-                  {wireDrop.uid && (
-                    <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
-                      UID: {wireDrop.uid}
-                    </p>
-                  )}
-                  {wireDrop.qr_code_url && (
-                    <a
-                      href={wireDrop.qr_code_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
-                    >
-                      Open QR asset
-                    </a>
-                  )}
-                </div>
-              )}
-            </div>
+              </>
+            )}
 
             {/* Completion Percentage */}
             {!editing && (
@@ -1632,116 +1678,6 @@ const WireDropDetailEnhanced = () => {
           </div>
         </div>
 
-        {primaryRoomEquipment && !editing && (
-          <div className="rounded-2xl overflow-hidden" style={styles.card}>
-            <div className="p-6 space-y-6">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Room Device
-                  </p>
-                  <h2 className="text-xl font-semibold" style={styles.textPrimary}>
-                    {primaryRoomEquipment.name}
-                  </h2>
-                  <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 space-y-1">
-                    {primaryRoomEquipment.manufacturer && (
-                      <div>
-                        <span className="font-medium">Manufacturer:</span>{' '}
-                        {primaryRoomEquipment.manufacturer}
-                      </div>
-                    )}
-                    {primaryRoomEquipment.model && (
-                      <div>
-                        <span className="font-medium">Model:</span>{' '}
-                        {primaryRoomEquipment.model}
-                      </div>
-                    )}
-                    {primaryRoomEquipment.part_number && (
-                      <div>
-                        <span className="font-medium">Part #:</span>{' '}
-                        {primaryRoomEquipment.part_number}
-                      </div>
-                    )}
-                    {(primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name) && (
-                      <div>
-                        <span className="font-medium">Location:</span>{' '}
-                        {primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setActiveTab('room')}
-                  >
-                    Manage Room Equipment
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleSetPrimaryRoomEquipment(primaryRoomEquipment.id)}
-                    disabled={primaryRoomEquipmentId === primaryRoomEquipment.id}
-                  >
-                    {primaryRoomEquipmentId === primaryRoomEquipment.id ? 'Primary Device' : 'Set as Primary'}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold" style={styles.textPrimary}>
-                    Documentation & Resources
-                  </h4>
-                  {(() => {
-                    const docLinks = buildDocumentationLinks(primaryRoomEquipment.global_part);
-                    if (docLinks.length === 0) {
-                      return (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          No documentation links yet. Add manuals on the part record to make them available here.
-                        </p>
-                      );
-                    }
-
-                    return (
-                      <div className="flex flex-wrap gap-2">
-                        {docLinks.map((doc) => (
-                          <a
-                            key={doc.label + doc.url}
-                            href={doc.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-500/40 dark:bg-violet-900/30 dark:text-violet-200"
-                          >
-                            <FileText className="h-3.5 w-3.5" />
-                            {doc.label}
-                          </a>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="text-sm font-semibold flex items-center gap-2" style={styles.textPrimary}>
-                    <Network size={16} />
-                    Network Client
-                  </h4>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Link this device to a UniFi client to verify it’s online and automatically update the commission stage.
-                  </p>
-                  <UniFiClientSelector
-                    projectId={wireDrop.project_id}
-                    equipmentId={primaryRoomEquipment.id}
-                    wireDropId={wireDrop.id}
-                    onAssign={() => loadWireDrop()}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {primaryHeadEquipment && !editing && (
           <div className="rounded-2xl overflow-hidden" style={styles.card}>
@@ -1850,94 +1786,6 @@ const WireDropDetailEnhanced = () => {
                 </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Print Label Section */}
-        {wireDrop && (
-          <div style={{
-            ...styles.card,
-            padding: '20px',
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '16px',
-            }}>
-              <h3 style={{
-                fontSize: '18px',
-                fontWeight: 'bold',
-                margin: 0,
-                color: styles.textPrimary.color,
-              }}>
-                Print Label
-              </h3>
-            </div>
-
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '16px',
-            }}>
-              <label style={{
-                color: styles.textPrimary.color,
-                fontSize: '14px',
-                minWidth: '120px'
-              }}>
-                Number of copies:
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="10"
-                value={printCopies}
-                onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: '6px',
-                  border: `1px solid ${styles.card.borderColor}`,
-                  backgroundColor: styles.input.backgroundColor,
-                  color: styles.textPrimary.color,
-                  width: '80px',
-                }}
-              />
-            </div>
-
-            <Button
-              onClick={handlePrintLabel}
-              disabled={!printerConnected || printing}
-              style={{ width: '100%' }}
-            >
-              <Printer size={16} style={{ marginRight: '8px' }} />
-              {printing ? 'Printing...' : `Print Label (${printCopies} ${printCopies === 1 ? 'copy' : 'copies'})`}
-            </Button>
-
-            {!printerConnected && (
-              <div style={{
-                marginTop: '12px',
-                fontSize: '14px',
-                color: '#6B7280',
-              }}>
-                <span style={{ fontStyle: 'italic' }}>Connect printer in </span>
-                <button
-                  onClick={() => navigate('/settings')}
-                  style={{
-                    color: '#3B82F6',
-                    textDecoration: 'underline',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    padding: 0,
-                  }}
-                >
-                  Settings
-                </button>
-                <span style={{ fontStyle: 'italic' }}> to enable printing</span>
-              </div>
-            )}
           </div>
         )}
 
@@ -2192,251 +2040,35 @@ const WireDropDetailEnhanced = () => {
               </div>
             </div>
 
+            {/* Info: Equipment managed in main card above */}
             <div className="rounded-2xl overflow-hidden" style={styles.card}>
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold flex items-center gap-2" style={styles.textPrimary}>
-                    <Monitor size={20} />
-                    Room End Equipment
+              <div className="p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Monitor size={20} style={styles.subtleText} />
+                  <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                    Room Equipment
                   </h3>
-                  <Button
-                    variant="primary"
-                    icon={Save}
-                    size="sm"
-                    onClick={handleSaveRoomEnd}
-                    disabled={savingRoomEquipment || equipmentLoading}
-                  >
-                    {savingRoomEquipment ? 'Saving…' : 'Save Room End'}
-                  </Button>
                 </div>
-
-                {equipmentError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/40 dark:bg-red-900/30 dark:text-red-200">
-                    {equipmentError}
+                <p className="text-sm mb-4" style={styles.textSecondary}>
+                  Room equipment is now managed in the main wire drop card above. You can add, change, or remove equipment there.
+                </p>
+                {primaryRoomEquipment && (
+                  <div className="p-3 rounded-lg border" style={styles.mutedCard}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle size={16} className="text-green-500" />
+                      <span className="text-sm font-medium" style={styles.textPrimary}>Currently Linked</span>
+                    </div>
+                    <p className="text-sm font-semibold" style={styles.textPrimary}>
+                      {primaryRoomEquipment.name}
+                    </p>
+                    {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
+                      <p className="text-xs mt-1" style={styles.subtleText}>
+                        {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
+                          .filter(Boolean)
+                          .join(' • ')}
+                      </p>
+                    )}
                   </div>
-                )}
-
-                {equipmentLoading ? (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading equipment options…</p>
-                ) : (
-                  <>
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        Selected equipment
-                      </h4>
-                      {selectedRoomEquipmentDetails.length === 0 ? (
-                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                          No equipment linked to this wire drop yet.
-                        </p>
-                      ) : (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {selectedRoomEquipmentDetails.map((item) => (
-                            <span
-                              key={item.id}
-                              className="inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs text-green-800 dark:bg-green-900/40 dark:text-green-200"
-                            >
-                              {item.name}
-                              {primaryRoomEquipmentId === item.id && (
-                                <span className="text-[10px] uppercase tracking-wide text-green-700 dark:text-green-300">
-                                  Primary
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  toggleRoomEquipment(item.id);
-                                }}
-                                className="text-green-700 hover:text-green-900 dark:text-green-200 dark:hover:text-green-100"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                          Equipment in {wireDrop.room_name || 'this room'}
-                        </label>
-
-                        {/* Same Room - Unassigned (Primary List) */}
-                        {sortedRoomEquipment.sameRoomUnassigned.length > 0 ? (
-                          <div className="space-y-2 mb-3">
-                            {sortedRoomEquipment.sameRoomUnassigned.map(item => {
-                              const isLinked = roomEquipmentSelection.includes(item.id);
-                              const isPrimary = primaryRoomEquipmentId === item.id;
-                              return (
-                                <button
-                                  key={item.id}
-                                  onClick={() => toggleRoomEquipment(item.id)}
-                                  className={`w-full text-left p-3 rounded-lg transition-all border-2 ${
-                                    isLinked
-                                      ? 'bg-violet-50 border-violet-400 dark:bg-violet-900/20 dark:border-violet-500'
-                                      : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-800'
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="flex-1">
-                                      <div className="font-medium text-gray-900 dark:text-gray-100">
-                                        {item.name}
-                                      </div>
-                                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                                        {item.manufacturer && `${item.manufacturer} `}
-                                        {item.model}
-                                      </div>
-                                      {item.part_number && (
-                                        <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
-                                          P/N: {item.part_number}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2">
-                                      {isLinked && (
-                                        <CheckCircle size={20} className="text-violet-600 dark:text-violet-400" />
-                                      )}
-                                      <Button
-                                        variant={isPrimary ? 'secondary' : 'ghost'}
-                                        size="xs"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleSetPrimaryRoomEquipment(item.id);
-                                        }}
-                                      >
-                                        {isPrimary ? 'Primary' : 'Set Primary'}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-                            No available equipment in this room
-                          </p>
-                        )}
-
-                        {/* Same Room - Assigned (Greyed Out, Bottom of Room List) */}
-                        {sortedRoomEquipment.sameRoomAssigned.length > 0 && (
-                          <div className="space-y-2 mb-3 pb-3 border-b border-dashed" style={{ borderColor: styles.card.borderColor }}>
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 uppercase tracking-wide">
-                              Already Assigned
-                            </p>
-                            {sortedRoomEquipment.sameRoomAssigned.map(item => {
-                              const isPrimary = primaryRoomEquipmentId === item.id;
-                              return (
-                                <button
-                                  key={item.id}
-                                  onClick={() => toggleRoomEquipment(item.id)}
-                                  className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
-                                  style={{ opacity: 0.85 }}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="font-medium text-gray-900 dark:text-gray-100">
-                                        {item.name}
-                                      </div>
-                                      <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                                        {item.manufacturer && `${item.manufacturer} `}
-                                        {item.model}
-                                      </div>
-                                    </div>
-                                    <div className="ml-3 flex-shrink-0 flex flex-col items-end gap-1">
-                                      <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
-                                        Assigned
-                                      </div>
-                                      <Button
-                                        variant={isPrimary ? 'secondary' : 'ghost'}
-                                        size="xs"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleSetPrimaryRoomEquipment(item.id);
-                                        }}
-                                      >
-                                        {isPrimary ? 'Primary' : 'Set Primary'}
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {/* Show More Button */}
-                        {sortedRoomEquipment.hasOtherRooms && (
-                          <div className="mt-3">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setShowAllRooms(!showAllRooms)}
-                              className="w-full"
-                            >
-                              {showAllRooms ? 'Hide Other Rooms' : 'Show Equipment from All Rooms'}
-                            </Button>
-                          </div>
-                        )}
-
-                        {/* Other Rooms (Expanded) */}
-                        {showAllRooms && sortedRoomEquipment.hasOtherRooms && (
-                          <div className="mt-3 pt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
-                            <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
-                              Other Rooms
-                            </p>
-
-                            {sortedRoomEquipment.otherRooms.map(({ roomName, items }) => (
-                              <div key={roomName} className="mb-3">
-                                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{roomName}</p>
-                                <div className="space-y-2">
-                                  {items.map(({ item, isAssigned }) => (
-                                    <button
-                                      key={item.id}
-                                      onClick={() => toggleRoomEquipment(item.id)}
-                                      className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800"
-                                      style={{ opacity: isAssigned ? 0.75 : 1 }}
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                                            {item.name}
-                                          </div>
-                                          <div className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-                                            {item.manufacturer && `${item.manufacturer} `}
-                                            {item.model}
-                                          </div>
-                                        </div>
-                                        <div className="ml-3 flex-shrink-0 flex flex-col items-end gap-1">
-                                          {isAssigned && (
-                                            <div className="px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-700 text-xs font-medium text-gray-600 dark:text-gray-400">
-                                              Assigned
-                                            </div>
-                                          )}
-                                          <Button
-                                            variant={primaryRoomEquipmentId === item.id ? 'secondary' : 'ghost'}
-                                            size="xs"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleSetPrimaryRoomEquipment(item.id);
-                                            }}
-                                          >
-                                            {primaryRoomEquipmentId === item.id ? 'Primary' : 'Set Primary'}
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
                 )}
               </div>
             </div>
@@ -2809,7 +2441,310 @@ const WireDropDetailEnhanced = () => {
           </div>
         )}
 
+        {/* Equipment Dropdown Modal */}
+        {showRoomEquipmentDropdown && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div 
+              className="rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+              style={styles.card}
+            >
+              {/* Header */}
+              <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: styles.card.borderColor }}>
+                <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                  Select Equipment
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowRoomEquipmentDropdown(false);
+                    setRoomEquipmentSearch('');
+                    setShowAllRooms(false);
+                  }}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
+              {/* Search Bar */}
+              <div className="p-4 border-b" style={{ borderColor: styles.card.borderColor }}>
+                <div className="relative">
+                  <SearchIcon 
+                    size={16} 
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search equipment..."
+                    value={roomEquipmentSearch}
+                    onChange={(e) => setRoomEquipmentSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+                    style={styles.input}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Equipment List */}
+              <div className="flex-1 overflow-y-auto">
+                {(() => {
+                  const searchLower = roomEquipmentSearch.toLowerCase().trim();
+                  const filteredSameRoom = sortedRoomEquipment.sameRoomItems.filter(({ item }) => 
+                    !searchLower || 
+                    item.name?.toLowerCase().includes(searchLower) ||
+                    item.manufacturer?.toLowerCase().includes(searchLower) ||
+                    item.model?.toLowerCase().includes(searchLower) ||
+                    item.part_number?.toLowerCase().includes(searchLower)
+                  );
+
+                  return (
+                    <>
+                      {/* Same Room Equipment */}
+                      {filteredSameRoom.length > 0 && (
+                        <div className="p-3">
+                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                            {wireDrop.room_name || 'This Room'}
+                          </div>
+                          {filteredSameRoom.map(({ item, isSelected }) => (
+                            <button
+                              key={item.id}
+                              onClick={async () => {
+                                console.log('[Equipment] Item selected:', item.name, item.id);
+                                
+                                try {
+                                  // Use service method to update equipment (single-select)
+                                  console.log('[Equipment] Using service method to update equipment');
+                                  const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id]);
+                                  
+                                  if (success) {
+                                    console.log('[Equipment] Successfully updated equipment link');
+                                    
+                                    // Update local state
+                                    setRoomEquipmentSelection([item.id]);
+                                    setPrimaryRoomEquipmentId(item.id);
+                                    
+                                    // Reload wire drop data
+                                    await loadWireDrop();
+                                    
+                                    // Close dropdown
+                                    setShowRoomEquipmentDropdown(false);
+                                    setRoomEquipmentSearch('');
+                                    setShowAllRooms(false);
+                                  } else {
+                                    throw new Error('Failed to update equipment links');
+                                  }
+                                } catch (err) {
+                                  console.error('[Equipment] Failed to update equipment:', err);
+                                  alert(`Failed to update equipment: ${err.message || 'Unknown error'}`);
+                                }
+                              }}
+                              className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
+                                isSelected 
+                                  ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400' 
+                                  : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                    {item.name}
+                                  </div>
+                                  {(item.manufacturer || item.model) && (
+                                    <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                      {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                    </div>
+                                  )}
+                                  {item.part_number && (
+                                    <div className="text-[10px] mt-0.5" style={styles.subtleText}>
+                                      P/N: {item.part_number}
+                                    </div>
+                                  )}
+                                </div>
+                                {isSelected && (
+                                  <CheckCircle size={16} className="text-violet-600 dark:text-violet-400 flex-shrink-0" />
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* No results in same room */}
+                      {filteredSameRoom.length === 0 && !showAllRooms && (
+                        <div className="p-6 text-center space-y-3">
+                          <div 
+                            className="mx-auto w-16 h-16 rounded-full flex items-center justify-center"
+                            style={{ 
+                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6' 
+                            }}
+                          >
+                            <Monitor size={24} className="opacity-40" style={styles.subtleText} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium mb-1" style={styles.textPrimary}>
+                              No equipment in "{wireDrop.room_name || 'this room'}"
+                            </p>
+                            <p className="text-xs" style={styles.subtleText}>
+                              {searchLower 
+                                ? 'No matching equipment found in this room' 
+                                : sortedRoomEquipment.hasOtherRooms 
+                                  ? `Equipment exists in other rooms (${sortedRoomEquipment.otherRooms.reduce((acc, r) => acc + r.items.length, 0)} items available)`
+                                  : 'No equipment available in the project'}
+                            </p>
+                          </div>
+                          {sortedRoomEquipment.hasOtherRooms && !searchLower && (
+                            <div className="text-xs" style={styles.subtleText}>
+                              <p>Available in:</p>
+                              <div className="mt-1 flex flex-wrap gap-1 justify-center">
+                                {sortedRoomEquipment.otherRooms.slice(0, 3).map(({ roomName, items }) => (
+                                  <span 
+                                    key={roomName}
+                                    className="inline-block px-2 py-1 rounded-full text-[10px] font-medium"
+                                    style={{ 
+                                      backgroundColor: mode === 'dark' ? '#4B5563' : '#E5E7EB',
+                                      color: mode === 'dark' ? '#D1D5DB' : '#4B5563'
+                                    }}
+                                  >
+                                    {roomName} ({items.length})
+                                  </span>
+                                ))}
+                                {sortedRoomEquipment.otherRooms.length > 3 && (
+                                  <span 
+                                    className="inline-block px-2 py-1 text-[10px]"
+                                    style={styles.subtleText}
+                                  >
+                                    +{sortedRoomEquipment.otherRooms.length - 3} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Show All Rooms Button */}
+                      {sortedRoomEquipment.hasOtherRooms && !showAllRooms && (
+                        <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <button
+                            onClick={() => setShowAllRooms(true)}
+                            className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                            style={{
+                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6',
+                              color: palette.accent
+                            }}
+                          >
+                            <ChevronDown size={16} />
+                            Show Equipment from All Rooms
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Other Rooms (When Expanded) */}
+                      {showAllRooms && sortedRoomEquipment.hasOtherRooms && (
+                        <div className="border-t" style={{ borderColor: styles.card.borderColor }}>
+                          {sortedRoomEquipment.otherRooms.map(({ roomName, items }) => {
+                            const filteredRoomItems = items.filter(({ item }) =>
+                              !searchLower ||
+                              item.name?.toLowerCase().includes(searchLower) ||
+                              item.manufacturer?.toLowerCase().includes(searchLower) ||
+                              item.model?.toLowerCase().includes(searchLower) ||
+                              item.part_number?.toLowerCase().includes(searchLower)
+                            );
+
+                            if (filteredRoomItems.length === 0) return null;
+
+                            return (
+                              <div key={roomName} className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                                  {roomName}
+                                </div>
+                                {filteredRoomItems.map(({ item, isSelected }) => (
+                                  <button
+                                    key={item.id}
+                                    onClick={async () => {
+                                      console.log('[Equipment] Other room item selected:', item.name, item.id);
+                                      
+                                      try {
+                                        // Use service method to update equipment (single-select)
+                                        console.log('[Equipment] Using service method to update equipment');
+                                        const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id]);
+                                        
+                                        if (success) {
+                                          console.log('[Equipment] Successfully updated equipment link');
+                                          
+                                          // Update local state
+                                          setRoomEquipmentSelection([item.id]);
+                                          setPrimaryRoomEquipmentId(item.id);
+                                          
+                                          // Reload wire drop data
+                                          await loadWireDrop();
+                                          
+                                          // Close dropdown
+                                          setShowRoomEquipmentDropdown(false);
+                                          setRoomEquipmentSearch('');
+                                          setShowAllRooms(false);
+                                        } else {
+                                          throw new Error('Failed to update equipment links');
+                                        }
+                                      } catch (err) {
+                                        console.error('[Equipment] Failed to update equipment:', err);
+                                        alert(`Failed to update equipment: ${err.message || 'Unknown error'}`);
+                                      }
+                                    }}
+                                    className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
+                                      isSelected 
+                                        ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400' 
+                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                          {item.name}
+                                        </div>
+                                        {(item.manufacturer || item.model) && (
+                                          <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                            {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                          </div>
+                                        )}
+                                        {item.part_number && (
+                                          <div className="text-[10px] mt-0.5" style={styles.subtleText}>
+                                            P/N: {item.part_number}
+                                          </div>
+                                        )}
+                                      </div>
+                                      {isSelected && (
+                                        <CheckCircle size={16} className="text-violet-600 dark:text-violet-400 flex-shrink-0" />
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                          })}
+                          
+                          {/* Hide Button */}
+                          <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                            <button
+                              onClick={() => setShowAllRooms(false)}
+                              className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                              style={{
+                                backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6',
+                                color: styles.textSecondary.color
+                              }}
+                            >
+                              <ChevronDown size={16} className="rotate-180" />
+                              Hide Other Rooms
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
