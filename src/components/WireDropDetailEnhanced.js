@@ -1406,136 +1406,86 @@ const WireDropDetailEnhanced = () => {
               )}
             </div>
 
-            {/* Equipment Section - Below badges, left column */}
-            {!editing && (
-              <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold uppercase tracking-wide" style={styles.subtleText}>
-                      Linked Equipment
-                    </h4>
-                  </div>
-                  
-                  {primaryRoomEquipment ? (
-                    <div 
-                      className="rounded-xl border p-4 space-y-3"
-                      style={{
-                        ...styles.mutedCard,
-                        borderColor: mode === 'dark' ? '#8B5CF6' : '#A78BFA',
-                        borderWidth: 2
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-semibold text-base mb-1" style={styles.textPrimary}>
-                            {primaryRoomEquipment.name}
-                          </h5>
-                          {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
-                            <p className="text-sm mb-1" style={styles.textSecondary}>
-                              {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
-                                .filter(Boolean)
-                                .join(' • ')}
-                            </p>
-                          )}
-                          {primaryRoomEquipment.part_number && (
-                            <p className="text-xs" style={styles.subtleText}>
-                              Part #: {primaryRoomEquipment.part_number}
-                            </p>
-                          )}
-                          {(primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name) && (
-                            <p className="text-xs mt-1" style={styles.subtleText}>
-                              <span className="inline-flex items-center gap-1">
-                                <Monitor size={12} />
-                                {primaryRoomEquipment.project_rooms?.name || primaryRoomEquipment.location}
-                              </span>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-2 pt-2 border-t" style={{ borderColor: styles.card.borderColor }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon={Edit}
-                          onClick={() => {
-                            console.log('[Equipment] Change button clicked, opening dropdown');
-                            setShowRoomEquipmentDropdown(true);
-                          }}
-                          className="flex-1"
-                        >
-                          Change
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          icon={Trash2}
-                          onClick={async () => {
-                            console.log('[Equipment] Remove button clicked');
-                            console.log('[Equipment] Current room equipment selection:', roomEquipmentSelection);
-                            console.log('[Equipment] Wire drop ID:', id);
-                            
-                            if (!window.confirm('Remove this equipment link from the wire drop?')) {
-                              return;
-                            }
-                            
-                            try {
-                              console.log('[Equipment] Using service method to update equipment');
-                              
-                              // Use the service method with empty array to remove all equipment
-                              const success = await wireDropService.updateEquipmentLinks(id, 'room_end', []);
-                              
-                              if (success) {
-                                console.log('[Equipment] Equipment unlinked successfully');
-                                
-                                // Clear local state
-                                setRoomEquipmentSelection([]);
-                                setPrimaryRoomEquipmentId(null);
-                                
-                                // Reload to confirm changes
-                                await loadWireDrop();
-                              } else {
-                                throw new Error('Failed to update equipment links');
-                              }
-                            } catch (err) {
-                              console.error('[Equipment] Failed to remove equipment link:', err);
-                              alert(`Failed to remove equipment: ${err.message || 'Unknown error'}`);
-                              
-                              // Reload to reset state
-                              await loadWireDrop();
-                            }
-                          }}
-                          className="flex-1"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border-2 border-dashed p-6 text-center" style={{ borderColor: styles.card.borderColor }}>
-                      <Monitor size={32} className="mx-auto mb-2 opacity-40" style={styles.subtleText} />
-                      <p className="text-sm mb-3" style={styles.subtleText}>
-                        No equipment linked
-                      </p>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => {
-                          console.log('[Equipment] Add Equipment button clicked');
-                          console.log('[Equipment] Current showRoomEquipmentDropdown state:', showRoomEquipmentDropdown);
-                          setShowRoomEquipmentDropdown(true);
-                          console.log('[Equipment] Set showRoomEquipmentDropdown to true');
-                        }}
-                        icon={Monitor}
-                      >
-                        Add Equipment
-                      </Button>
-                    </div>
-                  )}
+            {/* Equipment Section - Positioned to align with QR code */}
+            {!editing && showQrCard && (
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                    Linked Equipment
+                  </h4>
                 </div>
                 
-                {/* Spacer for responsive layout */}
-                <div className="hidden lg:block"></div>
+                {primaryRoomEquipment ? (
+                  <div 
+                    className="rounded-xl border p-4"
+                    style={{
+                      ...styles.mutedCard,
+                      borderColor: mode === 'dark' ? '#8B5CF6' : '#A78BFA',
+                      borderWidth: 2
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-semibold text-base mb-1" style={styles.textPrimary}>
+                          {primaryRoomEquipment.name}
+                        </h5>
+                        {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
+                          <p className="text-sm mb-1" style={styles.textSecondary}>
+                            {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </p>
+                        )}
+                        {primaryRoomEquipment.part_number && (
+                          <p className="text-xs" style={styles.subtleText}>
+                            Part #: {primaryRoomEquipment.part_number}
+                          </p>
+                        )}
+                        {(primaryRoomEquipment.location || primaryRoomEquipment.project_rooms?.name) && (
+                          <p className="text-xs mt-1" style={styles.subtleText}>
+                            <span className="inline-flex items-center gap-1">
+                              <Monitor size={12} />
+                              {primaryRoomEquipment.project_rooms?.name || primaryRoomEquipment.location}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="pt-3 mt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={Edit}
+                        onClick={() => {
+                          console.log('[Equipment] Change button clicked, opening dropdown');
+                          setShowRoomEquipmentDropdown(true);
+                        }}
+                        className="w-full"
+                      >
+                        Change Equipment
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border-2 border-dashed p-6 text-center" style={{ borderColor: styles.card.borderColor }}>
+                    <Monitor size={32} className="mx-auto mb-2 opacity-40" style={styles.subtleText} />
+                    <p className="text-sm mb-3" style={styles.subtleText}>
+                      No equipment linked
+                    </p>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        console.log('[Equipment] Add Equipment button clicked');
+                        setShowRoomEquipmentDropdown(true);
+                      }}
+                      icon={Monitor}
+                    >
+                      Add Equipment
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2618,6 +2568,43 @@ const WireDropDetailEnhanced = () => {
                               </div>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Remove Equipment Link Button (only shown if equipment is linked) */}
+                      {primaryRoomEquipment && (
+                        <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Remove this equipment link?')) {
+                                return;
+                              }
+                              
+                              try {
+                                const success = await wireDropService.updateEquipmentLinks(id, 'room_end', []);
+                                
+                                if (success) {
+                                  setRoomEquipmentSelection([]);
+                                  setPrimaryRoomEquipmentId(null);
+                                  await loadWireDrop();
+                                  setShowRoomEquipmentDropdown(false);
+                                  setRoomEquipmentSearch('');
+                                  setShowAllRooms(false);
+                                } else {
+                                  throw new Error('Failed to remove equipment link');
+                                }
+                              } catch (err) {
+                                console.error('[Equipment] Failed to remove equipment:', err);
+                                alert(`Failed to remove equipment: ${err.message || 'Unknown error'}`);
+                                await loadWireDrop();
+                              }
+                            }}
+                            className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10"
+                            style={{ borderColor: styles.card.borderColor }}
+                          >
+                            <Trash2 size={16} />
+                            Remove Equipment Link
+                          </button>
                         </div>
                       )}
 
