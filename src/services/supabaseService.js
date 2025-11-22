@@ -520,8 +520,14 @@ export const projectTodosService = {
       return {
         id: data.id,
         projectId: data.project_id,
+        project_id: data.project_id,
         title: data.title,
+        description: data.description || null,
+        importance: data.importance || 'normal',
         completed: Boolean(data.is_complete),
+        dueBy: data.due_by || null,
+        doBy: data.do_by || null,
+        sortOrder: typeof data.sort_order === 'number' ? data.sort_order : null,
         createdAt: data.created_at
       };
     } catch (error) {
@@ -549,9 +555,12 @@ export const projectTodosService = {
       if (!supabase) throw new Error('Supabase not configured');
       const payload = {};
       if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.description !== undefined) payload.description = updates.description;
       if (updates.sort_order !== undefined) payload.sort_order = updates.sort_order;
       if (updates.due_by !== undefined) payload.due_by = updates.due_by;
       if (updates.do_by !== undefined) payload.do_by = updates.do_by;
+      if (updates.importance !== undefined) payload.importance = updates.importance;
+      if (updates.is_complete !== undefined) payload.is_complete = updates.is_complete;
       if (Object.keys(payload).length === 0) return null;
       const { data, error } = await supabase
         .from('project_todos')

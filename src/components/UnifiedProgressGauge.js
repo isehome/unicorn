@@ -48,13 +48,15 @@ const UnifiedProgressGauge = ({
               {ownerBadge}
             </span>
           )}
-          {itemCount !== undefined && totalItems !== undefined && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-500">
-              ({itemCount}/{totalItems})
-            </span>
-          )}
         </div>
-        <span className="font-semibold text-gray-900 dark:text-gray-100">{safePercentage}%</span>
+        {/* Show "x of y" if counts are provided, otherwise show percentage */}
+        {itemCount !== undefined && totalItems !== undefined ? (
+          <span className="font-semibold text-gray-900 dark:text-gray-100">
+            {itemCount} of {totalItems}
+          </span>
+        ) : (
+          <span className="font-semibold text-gray-900 dark:text-gray-100">{safePercentage}%</span>
+        )}
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
         <div

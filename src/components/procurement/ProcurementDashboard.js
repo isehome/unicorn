@@ -38,7 +38,7 @@ const ProcurementDashboard = () => {
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [projectFilter, setProjectFilter] = useState('all');
   const [projects, setProjects] = useState([]);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [selectedPO, setSelectedPO] = useState(null);
   const [poDetailsLoading, setPoDetailsLoading] = useState(false);
 

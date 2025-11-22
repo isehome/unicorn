@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
@@ -10,6 +10,9 @@ import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
+import InventoryManager from './InventoryManager';
+import ShippingAddressManager from './procurement/ShippingAddressManager';
+import ProcurementProgressGauge from './procurement/ProcurementProgressGauge';
 import {
   Package,
   CheckCircle,
@@ -26,12 +29,13 @@ import {
   Truck,
   Building2,
   Calendar,
-  DollarSign as DollarSignIcon
+  DollarSign as DollarSignIcon,
+  Settings,
+  MapPin
 } from 'lucide-react';
 
 const PMOrderEquipmentPageEnhanced = () => {
   const { projectId } = useParams();
-  const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -43,10 +47,13 @@ const PMOrderEquipmentPageEnhanced = () => {
   const [vendorStats, setVendorStats] = useState({});
 
   // Tab state (removed viewMode - only Create POs view now)
-  const [tab, setTab] = useState('prewire'); // 'prewire', 'trim', 'pos'
+  const [tab, setTab] = useState('prewire'); // 'setup', 'inventory', 'prewire', 'trim', 'pos'
 
   // Active POs state
   const [purchaseOrders, setPurchaseOrders] = useState([]);
+
+  // Project default shipping address
+  const [projectDefaultShippingId, setProjectDefaultShippingId] = useState(null);
 
   // Messages
   const [error, setError] = useState(null);
@@ -72,15 +79,65 @@ const PMOrderEquipmentPageEnhanced = () => {
     return phase === 'prewire' ? 'prewire_prep' : 'trim_prep';
   };
 
+  // Load project default shipping address on mount
+  useEffect(() => {
+    loadProjectDefaultShipping();
+  }, [projectId]);
+
   useEffect(() => {
     if (tab === 'prewire' || tab === 'trim') {
       loadEquipment();
     } else if (tab === 'pos') {
       loadPurchaseOrders();
     }
+    // No data loading needed for 'inventory', 'setup' tabs
   }, [projectId, tab]);
 
   // No longer need to load vendor grouping - checkbox view uses equipment directly
+
+  const loadProjectDefaultShipping = async () => {
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('projects')
+        .select('default_shipping_address_id')
+        .eq('id', projectId)
+        .single();
+
+      if (fetchError) {
+        // If column doesn't exist yet (migration not run), just silently ignore
+        if (fetchError.message?.includes('column') || fetchError.code === '42703') {
+          console.log('Default shipping address column not yet available - migration may need to be run');
+          return;
+        }
+        throw fetchError;
+      }
+      const defaultShippingId = data?.default_shipping_address_id || null;
+      console.log('📦 Loaded project default shipping address:', defaultShippingId);
+      setProjectDefaultShippingId(defaultShippingId);
+    } catch (err) {
+      console.error('Failed to load project default shipping address:', err);
+    }
+  };
+
+  const updateProjectDefaultShipping = async (addressId) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('projects')
+        .update({ default_shipping_address_id: addressId })
+        .eq('id', projectId);
+
+      if (updateError) throw updateError;
+
+      setProjectDefaultShippingId(addressId);
+      console.log('✅ Updated project default shipping address to:', addressId);
+      setSuccessMessage('Default shipping address updated successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to update project default shipping address:', err);
+      setError('Failed to update default shipping address');
+      setTimeout(() => setError(null), 3000);
+    }
+  };
 
   const loadEquipment = async () => {
     try {
@@ -125,15 +182,22 @@ const PMOrderEquipmentPageEnhanced = () => {
         const inDraft = draftPOMap.get(item.id) || 0;
         const inSubmitted = submittedPOMap.get(item.id) || 0;
         const totalInPOs = inDraft + inSubmitted;
-        const remaining = Math.max(0, required - totalInPOs);
+
+        // Get inventory quantity from global_part
+        const onHand = item.global_part?.quantity_on_hand || 0;
+
+        // Calculate quantity needed = required - on_hand - totalInPOs
+        // Only order what we don't have in stock and haven't already ordered
+        const remaining = Math.max(0, required - onHand - totalInPOs);
 
         return {
           ...item,
           quantity_required: required, // Normalize field name
+          quantity_on_hand: onHand, // Add inventory data
           quantity_in_draft_pos: inDraft,
           quantity_ordered: inSubmitted, // This is the "actually ordered" amount
           in_any_po: totalInPOs > 0,
-          quantity_needed: remaining,
+          quantity_needed: remaining, // Now accounts for inventory!
           has_draft_po_only: inDraft > 0 && inSubmitted === 0 // Orange warning flag
         };
       });
@@ -271,13 +335,13 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   // Select all available part numbers
   const handleSelectAllByPartNumber = (groupedEquipment) => {
-    const availableGroups = groupedEquipment.filter(group => group.quantity_remaining > 0);
+    const availableGroups = groupedEquipment.filter(group => group.quantity_needed > 0);
     const newSelection = {};
     availableGroups.forEach(group => {
       const partNumber = group.part_number || 'NO_PART_NUMBER';
       newSelection[partNumber] = {
         selected: true,
-        quantity: group.quantity_remaining,
+        quantity: group.quantity_needed,
         group: group
       };
     });
@@ -444,6 +508,7 @@ const PMOrderEquipmentPageEnhanced = () => {
           }
 
           // Step 4: Create PO record
+          console.log('📦 Creating PO with shipping address:', projectDefaultShippingId);
           const poRecord = {
             project_id: projectId,
             supplier_id: supplier,
@@ -456,6 +521,7 @@ const PMOrderEquipmentPageEnhanced = () => {
             tax_amount: 0,
             shipping_cost: 0,
             total_amount: subtotal,
+            shipping_address_id: projectDefaultShippingId, // Auto-populate default shipping address
             created_by: 'user',
             internal_notes: `PO created from Create POs view`
           };
@@ -675,6 +741,7 @@ const PMOrderEquipmentPageEnhanced = () => {
           unit_cost: item.unit_cost || 0,
           items: [], // Store all individual equipment items
           quantity_required: 0,
+          quantity_on_hand: item.quantity_on_hand || 0, // From global_part (same for all items with this part number)
           quantity_in_draft_pos: 0,
           quantity_ordered: 0,
           quantity_needed: 0,
@@ -855,10 +922,14 @@ const PMOrderEquipmentPageEnhanced = () => {
             </div>
 
             {/* Quantity Info */}
-            <div className="grid grid-cols-4 gap-4 text-sm mb-2">
+            <div className="grid grid-cols-5 gap-4 text-sm mb-2">
               <div>
                 <p className="text-xs text-gray-600 dark:text-gray-400">Required</p>
                 <p className="font-semibold text-gray-900 dark:text-white">{required}</p>
+              </div>
+              <div>
+                <p className="text-xs text-green-600 dark:text-green-400">On Hand</p>
+                <p className="font-semibold text-green-700 dark:text-green-300">{group.quantity_on_hand || 0}</p>
               </div>
               {inDraft > 0 && (
                 <div>
@@ -873,7 +944,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                 </div>
               )}
               <div>
-                <p className="text-xs text-gray-600 dark:text-gray-400">Needed</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">To Order</p>
                 <p className={`font-semibold ${needed > 0 ? 'text-violet-700 dark:text-violet-300' : 'text-gray-500'}`}>
                   {needed}
                 </p>
@@ -1160,9 +1231,31 @@ const PMOrderEquipmentPageEnhanced = () => {
           </div>
         )}
 
-        {/* Tab Selector */}
+        {/* Tab Selector - Ordered by procurement workflow */}
         <div style={sectionStyles.card} className="mb-6">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setTab('setup')}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                tab === 'setup'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Setup
+            </button>
+            <button
+              onClick={() => setTab('inventory')}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                tab === 'inventory'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Package className="w-4 h-4" />
+              Inventory
+            </button>
             <button
               onClick={() => setTab('prewire')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
@@ -1196,46 +1289,47 @@ const PMOrderEquipmentPageEnhanced = () => {
           </div>
         </div>
 
+        {/* Setup Tab Content */}
+        {tab === 'setup' && (
+          <div style={sectionStyles.card} className="p-6">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Procurement Setup</h2>
+
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-2">
+                <MapPin className="w-5 h-5 text-violet-600" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Default Shipping Address</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Select a default shipping address for all purchase orders in this project. This will be automatically selected when creating new POs.
+              </p>
+              <ShippingAddressManager
+                embedded={true}
+                onSelect={(address) => updateProjectDefaultShipping(address.id)}
+                selectedAddressId={projectDefaultShippingId}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Create POs View (for prewire/trim tabs) */}
         {(tab === 'prewire' || tab === 'trim') && (
           <>
-            {/* Cost Summary */}
-            <div style={sectionStyles.card} className="mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Total Cost (Planned)</p>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                    ${totalCost.toFixed(2)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Ordered Cost</p>
-                  <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    ${orderedCost.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-              {totalCost > 0 && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Ordered</span>
-                    <span className="text-gray-600 dark:text-gray-400">
-                      {Math.round((orderedCost / totalCost) * 100)}%
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-600 transition-all"
-                      style={{ width: `${(orderedCost / totalCost) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+            {/* Procurement Progress Gauge */}
+            <div className="mb-6">
+              <ProcurementProgressGauge
+                equipment={equipment}
+                phaseName={tab === 'prewire' ? 'Prewire' : 'Trim'}
+              />
             </div>
 
             {/* Content - Create POs View */}
             {renderVendorView()}
           </>
+        )}
+
+        {/* Inventory Tab Content */}
+        {tab === 'inventory' && (
+          <InventoryManager projectId={projectId} />
         )}
 
         {/* Active POs Tab Content */}
@@ -1394,6 +1488,7 @@ const PMOrderEquipmentPageEnhanced = () => {
           milestoneStage={selectedVendorForPO.milestoneStage}
           equipmentItems={selectedVendorForPO.equipment}
           onSuccess={handlePOSuccess}
+          projectDefaultShippingId={projectDefaultShippingId}
         />
       )}
 

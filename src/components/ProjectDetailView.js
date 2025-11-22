@@ -59,6 +59,25 @@ import ProjectPermits from './ProjectPermits';
 import ProjectLinks from './project-detail/ProjectLinks';
 import IssuesSection from './project-detail/IssuesSection';
 
+const importanceRanking = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3
+};
+
+const importanceColors = {
+  critical: '#ef4444',
+  high: '#f97316',
+  normal: '#3b82f6',
+  low: '#22c55e'
+};
+
+const getImportanceRank = (value) => {
+  const key = typeof value === 'string' ? value.toLowerCase() : '';
+  return importanceRanking[key] ?? importanceRanking.normal;
+};
+
 const formatDate = (value) => {
   if (!value) return '';
   try {
@@ -474,6 +493,10 @@ const ProjectDetailView = () => {
   const visibleTodos = useMemo(() => {
     const list = showCompletedTodos ? todos : todos.filter((t) => !t.completed);
     return [...list].sort((a, b) => {
+      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+      const ai = getImportanceRank(a.importance);
+      const bi = getImportanceRank(b.importance);
+      if (ai !== bi) return ai - bi;
       const ao = (a.sortOrder ?? 0);
       const bo = (b.sortOrder ?? 0);
       if (ao !== bo) return ao - bo;
@@ -1306,12 +1329,21 @@ const ProjectDetailView = () => {
     setShowTodoModal(true);
   };
 
-  const handleSaveTodo = async (updatedData) => {
+  const handleSaveTodo = async (todoId, updatedData = {}) => {
+    const targetId = todoId || selectedTodo?.id;
+    if (!targetId) return;
+
     try {
-      await projectTodosService.update(selectedTodo.id, updatedData);
+      await projectTodosService.update(targetId, updatedData);
       setTodos(prev => prev.map(t => 
-        t.id === selectedTodo.id 
-          ? { ...t, ...updatedData }
+        t.id === targetId 
+          ? { 
+              ...t, 
+              ...updatedData,
+              completed: updatedData.is_complete !== undefined ? updatedData.is_complete : t.completed,
+              dueBy: updatedData.due_by !== undefined ? updatedData.due_by : t.dueBy,
+              doBy: updatedData.do_by !== undefined ? updatedData.do_by : t.doBy
+            }
           : t
       ));
       setShowTodoModal(false);
@@ -1667,22 +1699,22 @@ const ProjectDetailView = () => {
                         {/* Main content */}
                         <div className="flex-1 min-w-0">
                           {/* Primary: Wire Drop Name */}
-                          <div className="flex items-start justify-between mb-1">
-                            <div className="flex-1">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <div className="flex-1 min-w-0">
                               <p className="text-lg font-semibold truncate" style={styles.textPrimary}>
-                                {drop.drop_name && drop.drop_name !== 'IP' && drop.drop_name !== drop.drop_type 
-                                  ? drop.drop_name 
-                                  : dropNumber > 0 
+                                {drop.drop_name && drop.drop_name !== 'IP' && drop.drop_name !== drop.drop_type
+                                  ? drop.drop_name
+                                  : dropNumber > 0
                                     ? `${roomName} ${dropType} ${dropNumber}`
                                     : `${roomName} ${dropType}`}
                               </p>
                               {/* Subtitle with room */}
-                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                                 {drop.project_room?.name || drop.room_name || 'Unassigned Room'}
                               </p>
                             </div>
                             {/* UID badge on the right */}
-                            <span className="text-xs px-2 py-1 rounded font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 ml-2">
+                            <span className="text-xs px-2 py-1 rounded font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 flex-shrink-0 whitespace-nowrap">
                               {drop.uid || 'NO-UID'}
                             </span>
                           </div>
@@ -1936,7 +1968,10 @@ const ProjectDetailView = () => {
                             onChange={(e) => { e.stopPropagation(); handleUpdateTodoImportance(todo.id, e.target.value); }}
                             onClick={(e) => e.stopPropagation()}
                             className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
-                            style={styles.input}
+                            style={{
+                              ...styles.input,
+                              color: importanceColors[(todo.importance || 'normal').toLowerCase()] || styles.input.color
+                            }}
                             title="Importance"
                           >
                             <option value="low">Low</option>

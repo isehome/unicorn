@@ -83,43 +83,91 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Orders percentage
-   * 100% when ALL prewire items have been ordered (ordered_quantity > 0)
+   * NEW METHOD: Counts parts accounted for (on hand + ordered from submitted POs)
+   * 100% when ALL required prewire parts are accounted for
    */
   async calculatePrewireOrdersPercentage(projectId) {
     try {
+      // Load equipment with global_part data
       const { data: equipment, error } = await supabase
         .from('project_equipment')
         .select(`
           id,
+          quantity_required,
           planned_quantity,
-          ordered_quantity,
-          global_part:global_part_id (required_for_prewire)
+          global_part:global_part_id (
+            required_for_prewire,
+            quantity_on_hand
+          )
         `)
         .eq('project_id', projectId)
         .neq('equipment_type', 'Labor'); // Exclude labor items
 
       if (error) throw error;
 
+      // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
+      const { data: pos, error: poError } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          status,
+          items:purchase_order_items(
+            project_equipment_id,
+            quantity_ordered
+          )
+        `)
+        .eq('project_id', projectId);
+
+      if (poError) throw poError;
+
+      // Create map of submitted PO quantities (exclude drafts)
+      const submittedPOMap = new Map();
+      (pos || []).forEach(po => {
+        if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
+          (po.items || []).forEach(item => {
+            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
+            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          });
+        }
+      });
+
       // Filter to prewire items (via global_parts.required_for_prewire)
       const prewireItems = (equipment || []).filter(item =>
-        item.global_part?.required_for_prewire === true &&
-        (item.planned_quantity || 0) > 0
+        item.global_part?.required_for_prewire === true
       );
 
       if (prewireItems.length === 0) {
-        // Return { percentage: 0, itemCount: 0, totalItems: 0, message: 'No prewire items in project' }
-        return { percentage: 0, itemCount: 0, totalItems: 0 };
+        return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
       }
 
-      // Count items with ordered_quantity > 0
-      const itemsOrdered = prewireItems.filter(item => (item.ordered_quantity || 0) > 0).length;
-      const totalItems = prewireItems.length;
-      const percentage = Math.round((itemsOrdered / totalItems) * 100);
+      // Calculate parts accounted for (on hand + ordered from submitted POs)
+      let totalPartsRequired = 0;
+      let partsAccountedFor = 0;
 
-      return { percentage, itemCount: itemsOrdered, totalItems };
+      prewireItems.forEach(item => {
+        const required = item.quantity_required || item.planned_quantity || 0;
+        const onHand = item.global_part?.quantity_on_hand || 0;
+        const ordered = submittedPOMap.get(item.id) || 0;
+
+        totalPartsRequired += required;
+        // Count parts we have OR have ordered (but don't double count)
+        partsAccountedFor += Math.min(required, onHand + ordered);
+      });
+
+      const percentage = totalPartsRequired > 0
+        ? Math.round((partsAccountedFor / totalPartsRequired) * 100)
+        : 0;
+
+      return {
+        percentage,
+        itemCount: prewireItems.length,
+        totalItems: prewireItems.length,
+        partsAccountedFor, // NEW: actual parts count
+        totalParts: totalPartsRequired // NEW: total parts required
+      };
     } catch (error) {
       console.error('Error calculating prewire orders percentage:', error);
-      return { percentage: 0, itemCount: 0, totalItems: 0 };
+      return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
     }
   }
 
@@ -226,42 +274,91 @@ class MilestoneService {
 
   /**
    * Calculate Trim Orders percentage
-   * 100% when ALL trim items have been ordered (ordered_quantity > 0)
+   * NEW METHOD: Counts parts accounted for (on hand + ordered from submitted POs)
+   * 100% when ALL required trim parts are accounted for
    */
   async calculateTrimOrdersPercentage(projectId) {
     try {
+      // Load equipment with global_part data
       const { data: equipment, error } = await supabase
         .from('project_equipment')
         .select(`
           id,
+          quantity_required,
           planned_quantity,
-          ordered_quantity,
-          global_part:global_part_id (required_for_prewire)
+          global_part:global_part_id (
+            required_for_prewire,
+            quantity_on_hand
+          )
         `)
         .eq('project_id', projectId)
         .neq('equipment_type', 'Labor'); // Exclude labor items
 
       if (error) throw error;
 
+      // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
+      const { data: pos, error: poError } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          status,
+          items:purchase_order_items(
+            project_equipment_id,
+            quantity_ordered
+          )
+        `)
+        .eq('project_id', projectId);
+
+      if (poError) throw poError;
+
+      // Create map of submitted PO quantities (exclude drafts)
+      const submittedPOMap = new Map();
+      (pos || []).forEach(po => {
+        if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
+          (po.items || []).forEach(item => {
+            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
+            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          });
+        }
+      });
+
       // Filter to trim items (NOT required for prewire via global_parts)
       const trimItems = (equipment || []).filter(item =>
-        item.global_part?.required_for_prewire !== true &&
-        (item.planned_quantity || 0) > 0
+        item.global_part?.required_for_prewire !== true
       );
 
       if (trimItems.length === 0) {
-        return { percentage: 0, itemCount: 0, totalItems: 0 };
+        return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
       }
 
-      // Count items with ordered_quantity > 0
-      const itemsOrdered = trimItems.filter(item => (item.ordered_quantity || 0) > 0).length;
-      const totalItems = trimItems.length;
-      const percentage = Math.round((itemsOrdered / totalItems) * 100);
+      // Calculate parts accounted for (on hand + ordered from submitted POs)
+      let totalPartsRequired = 0;
+      let partsAccountedFor = 0;
 
-      return { percentage, itemCount: itemsOrdered, totalItems };
+      trimItems.forEach(item => {
+        const required = item.quantity_required || item.planned_quantity || 0;
+        const onHand = item.global_part?.quantity_on_hand || 0;
+        const ordered = submittedPOMap.get(item.id) || 0;
+
+        totalPartsRequired += required;
+        // Count parts we have OR have ordered (but don't double count)
+        partsAccountedFor += Math.min(required, onHand + ordered);
+      });
+
+      const percentage = totalPartsRequired > 0
+        ? Math.round((partsAccountedFor / totalPartsRequired) * 100)
+        : 0;
+
+      return {
+        percentage,
+        itemCount: trimItems.length,
+        totalItems: trimItems.length,
+        partsAccountedFor, // NEW: actual parts count
+        totalParts: totalPartsRequired // NEW: total parts required
+      };
     } catch (error) {
       console.error('Error calculating trim orders percentage:', error);
-      return { percentage: 0, itemCount: 0, totalItems: 0 };
+      return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
     }
   }
 
@@ -520,8 +617,10 @@ class MilestoneService {
         planning_design: data.planning_design_percentage,
         prewire_orders: {
           percentage: data.prewire_orders_percentage,
-          itemCount: data.prewire_orders_count,
-          totalItems: data.prewire_orders_total
+          itemCount: data.prewire_orders_count, // Legacy
+          totalItems: data.prewire_orders_total, // Legacy
+          partsAccountedFor: data.prewire_orders_count, // NEW: parts count
+          totalParts: data.prewire_orders_total // NEW: total parts
         },
         prewire_receiving: {
           percentage: data.prewire_receiving_percentage,
@@ -534,7 +633,9 @@ class MilestoneService {
           orders: {
             percentage: data.prewire_orders_percentage,
             itemCount: data.prewire_orders_count,
-            totalItems: data.prewire_orders_total
+            totalItems: data.prewire_orders_total,
+            partsAccountedFor: data.prewire_orders_count,
+            totalParts: data.prewire_orders_total
           },
           receiving: {
             percentage: data.prewire_receiving_percentage,
@@ -545,8 +646,10 @@ class MilestoneService {
         },
         trim_orders: {
           percentage: data.trim_orders_percentage,
-          itemCount: data.trim_orders_count,
-          totalItems: data.trim_orders_total
+          itemCount: data.trim_orders_count, // Legacy
+          totalItems: data.trim_orders_total, // Legacy
+          partsAccountedFor: data.trim_orders_count, // NEW: parts count
+          totalParts: data.trim_orders_total // NEW: total parts
         },
         trim_receiving: {
           percentage: data.trim_receiving_percentage,
@@ -559,7 +662,9 @@ class MilestoneService {
           orders: {
             percentage: data.trim_orders_percentage,
             itemCount: data.trim_orders_count,
-            totalItems: data.trim_orders_total
+            totalItems: data.trim_orders_total,
+            partsAccountedFor: data.trim_orders_count,
+            totalParts: data.trim_orders_total
           },
           receiving: {
             percentage: data.trim_receiving_percentage,
@@ -568,7 +673,11 @@ class MilestoneService {
           },
           stages: data.trim_stages_percentage
         },
-        commissioning: data.commissioning_percentage,
+        commissioning: {
+          percentage: data.commissioning_percentage,
+          itemCount: data.commissioning_count,
+          totalItems: data.commissioning_total
+        },
         // Legacy compatibility
         prewire_prep: Math.round((data.prewire_orders_percentage + data.prewire_receiving_percentage) / 2),
         trim_prep: Math.round((data.trim_orders_percentage + data.trim_receiving_percentage) / 2),
@@ -659,8 +768,10 @@ class MilestoneService {
           planning_design: row.planning_design_percentage,
           prewire_orders: {
             percentage: row.prewire_orders_percentage,
-            itemCount: row.prewire_orders_count,
-            totalItems: row.prewire_orders_total
+            itemCount: row.prewire_orders_count, // Legacy
+            totalItems: row.prewire_orders_total, // Legacy
+            partsAccountedFor: row.prewire_orders_count, // NEW: parts count
+            totalParts: row.prewire_orders_total // NEW: total parts
           },
           prewire_receiving: {
             percentage: row.prewire_receiving_percentage,
@@ -673,7 +784,9 @@ class MilestoneService {
             orders: {
               percentage: row.prewire_orders_percentage,
               itemCount: row.prewire_orders_count,
-              totalItems: row.prewire_orders_total
+              totalItems: row.prewire_orders_total,
+              partsAccountedFor: row.prewire_orders_count,
+              totalParts: row.prewire_orders_total
             },
             receiving: {
               percentage: row.prewire_receiving_percentage,
@@ -684,8 +797,10 @@ class MilestoneService {
           },
           trim_orders: {
             percentage: row.trim_orders_percentage,
-            itemCount: row.trim_orders_count,
-            totalItems: row.trim_orders_total
+            itemCount: row.trim_orders_count, // Legacy
+            totalItems: row.trim_orders_total, // Legacy
+            partsAccountedFor: row.trim_orders_count, // NEW: parts count
+            totalParts: row.trim_orders_total // NEW: total parts
           },
           trim_receiving: {
             percentage: row.trim_receiving_percentage,
@@ -698,7 +813,9 @@ class MilestoneService {
             orders: {
               percentage: row.trim_orders_percentage,
               itemCount: row.trim_orders_count,
-              totalItems: row.trim_orders_total
+              totalItems: row.trim_orders_total,
+              partsAccountedFor: row.trim_orders_count,
+              totalParts: row.trim_orders_total
             },
             receiving: {
               percentage: row.trim_receiving_percentage,
@@ -707,7 +824,11 @@ class MilestoneService {
             },
             stages: row.trim_stages_percentage
           },
-          commissioning: row.commissioning_percentage,
+          commissioning: {
+            percentage: row.commissioning_percentage,
+            itemCount: row.commissioning_count,
+            totalItems: row.commissioning_total
+          },
           prewire_prep: Math.round((row.prewire_orders_percentage + row.prewire_receiving_percentage) / 2),
           trim_prep: Math.round((row.trim_orders_percentage + row.trim_receiving_percentage) / 2),
           _cachedAt: row.last_calculated_at,

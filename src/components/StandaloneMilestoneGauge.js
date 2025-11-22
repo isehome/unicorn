@@ -11,10 +11,16 @@ import CircularProgressGauge from './CircularProgressGauge';
 const StandaloneMilestoneGauge = ({
   title,
   percentage = 0,
+  itemCount,
+  totalItems,
   ownerBadge
 }) => {
   // Force percentage to be a valid number (0-100), never hide the gauge
   const safePercentage = Math.min(100, Math.max(0, Math.round(Number(percentage) || 0)));
+
+  // Determine what text to show below gauge
+  const showCounts = itemCount !== undefined && totalItems !== undefined;
+  const displayText = showCounts ? `${itemCount} of ${totalItems}` : `${safePercentage}%`;
 
   // Responsive sizing: 90px on mobile, 140px on desktop
   const circularSizeMobile = 90;
@@ -35,6 +41,10 @@ const StandaloneMilestoneGauge = ({
             size={circularSizeMobile}
             showLabel={false}
           />
+          {/* Display count below gauge */}
+          <div className="mt-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+            {displayText}
+          </div>
         </div>
         <div className="flex-1 pt-2"></div>
       </div>
@@ -52,6 +62,10 @@ const StandaloneMilestoneGauge = ({
             size={circularSizeDesktop}
             showLabel={false}
           />
+          {/* Display count below gauge */}
+          <div className="mt-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+            {displayText}
+          </div>
         </div>
         <div className="flex-1 pt-2"></div>
       </div>

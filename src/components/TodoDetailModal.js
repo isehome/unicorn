@@ -210,7 +210,10 @@ const TodoDetailModal = ({
                 value={importance}
                 onChange={(e) => setImportance(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                style={styles.input}
+                style={{
+                  ...styles.input,
+                  color: importanceColors[importance]?.text || styles.input.color
+                }}
                 disabled={saving}
               >
                 <option value="low">Low</option>

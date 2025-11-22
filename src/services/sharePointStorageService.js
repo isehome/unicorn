@@ -128,6 +128,57 @@ class SharePointStorageService {
   }
 
   /**
+   * Upload HomeKit QR code photo to SharePoint
+   * @param {string} projectId - Project UUID
+   * @param {string} equipmentId - Equipment UUID
+   * @param {File} file - Image file
+   * @returns {Promise<{url: string, driveId: string, itemId: string, name: string, webUrl: string, size: number}>} SharePoint metadata
+   */
+  async uploadHomeKitQRPhoto(projectId, equipmentId, file) {
+    try {
+      // Get project SharePoint folder context
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
+
+      // Get equipment details for naming
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('project_equipment')
+        .select('name, manufacturer, model')
+        .eq('id', equipmentId)
+        .single();
+
+      if (equipmentError) throw equipmentError;
+      if (!equipment) throw new Error('Equipment not found');
+
+      const equipmentName = equipment.name || equipment.model || 'Unknown';
+
+      // Create folder structure: homekit_codes/{Equipment Name}/
+      const folderName = this.sanitizeForFileName(equipmentName);
+      const subPath = `${photosSubPath}homekit_codes/${folderName}`;
+
+      // Create consistent filename WITHOUT timestamp so it replaces the existing file
+      const extension = this.getFileExtension(file.name);
+      const filename = `HOMEKIT_QR_${this.sanitizeForFileName(equipmentName)}.${extension}`;
+
+      // Debug logging
+      console.log('HomeKit QR Upload Debug:', {
+        rootUrl: uploadRoot,
+        subPath,
+        filename,
+        folderName,
+        sanitizedName: this.sanitizeForFileName(equipmentName)
+      });
+
+      // Upload to SharePoint - returns metadata object
+      const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
+
+      return metadata;
+    } catch (error) {
+      console.error('Failed to upload HomeKit QR photo:', error);
+      throw new Error(`HomeKit QR photo upload failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Upload floor plan to SharePoint
    * @param {string} projectId - Project UUID
    * @param {string} pageId - Lucid page ID

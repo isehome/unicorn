@@ -108,14 +108,14 @@ const MilestoneGaugesDisplay = ({
               {/* Mobile: 90px, Desktop: 140px */}
               <div className="block md:hidden">
                 <CircularProgressGauge
-                  percentage={milestonePercentages.commissioning || 0}
+                  percentage={milestonePercentages.commissioning?.percentage || 0}
                   size={circularSizeMobile}
                   showLabel={false}
                 />
               </div>
               <div className="hidden md:block">
                 <CircularProgressGauge
-                  percentage={milestonePercentages.commissioning || 0}
+                  percentage={milestonePercentages.commissioning?.percentage || 0}
                   size={circularSizeDesktop}
                   showLabel={false}
                 />
@@ -148,8 +148,8 @@ const MilestoneGaugesDisplay = ({
           <UnifiedProgressGauge
             label="Prewire Orders"
             percentage={milestonePercentages.prewire_orders?.percentage || 0}
-            itemCount={milestonePercentages.prewire_orders?.itemCount}
-            totalItems={milestonePercentages.prewire_orders?.totalItems}
+            itemCount={milestonePercentages.prewire_orders?.partsAccountedFor}
+            totalItems={milestonePercentages.prewire_orders?.totalParts}
             ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
@@ -174,8 +174,8 @@ const MilestoneGaugesDisplay = ({
           <UnifiedProgressGauge
             label="Trim Orders"
             percentage={milestonePercentages.trim_orders?.percentage || 0}
-            itemCount={milestonePercentages.trim_orders?.itemCount}
-            totalItems={milestonePercentages.trim_orders?.totalItems}
+            itemCount={milestonePercentages.trim_orders?.partsAccountedFor}
+            totalItems={milestonePercentages.trim_orders?.totalParts}
             ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
@@ -195,7 +195,9 @@ const MilestoneGaugesDisplay = ({
         {/* Commissioning - Standalone Circular Gauge (always show, even if 0%) */}
         <StandaloneMilestoneGauge
           title="Commissioning"
-          percentage={milestonePercentages.commissioning || 0}
+          percentage={milestonePercentages.commissioning?.percentage || 0}
+          itemCount={milestonePercentages.commissioning?.itemCount}
+          totalItems={milestonePercentages.commissioning?.totalItems}
         />
       </div>
     </div>

@@ -38,10 +38,14 @@ const InventoryManager = ({ projectId }) => {
             warehouse
           ),
           global_part:global_part_id(
+            id,
             part_number,
             name,
             manufacturer,
-            model
+            model,
+            quantity_on_hand,
+            reorder_point,
+            warehouse_location
           )
         `)
         .eq('project_id', projectId)
@@ -84,16 +88,28 @@ const InventoryManager = ({ projectId }) => {
     try {
       const updates = Array.from(pendingChanges.entries()).map(([equipmentId, change]) => {
         const item = equipment.find((e) => e.id === equipmentId);
-        const needsOrder = change.quantity_on_hand < (item?.planned_quantity || 0);
 
-        return supabase
-          .from('project_equipment_inventory')
-          .update({
-            quantity_on_hand: change.quantity_on_hand,
-            needs_order: needsOrder,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', change.inventoryId);
+        // NEW inventory method: Update global_parts table (global inventory)
+        if (item?.global_part_id) {
+          return supabase
+            .from('global_parts')
+            .update({
+              quantity_on_hand: change.quantity_on_hand,
+              last_inventory_check: new Date().toISOString()
+            })
+            .eq('id', item.global_part_id);
+        } else {
+          // Fallback to OLD method for backward compatibility
+          const needsOrder = change.quantity_on_hand < (item?.planned_quantity || 0);
+          return supabase
+            .from('project_equipment_inventory')
+            .update({
+              quantity_on_hand: change.quantity_on_hand,
+              needs_order: needsOrder,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', change.inventoryId);
+        }
       });
 
       await Promise.all(updates);
@@ -114,10 +130,12 @@ const InventoryManager = ({ projectId }) => {
 
   const getInventoryStatus = (item) => {
     const pendingChange = pendingChanges.get(item.id);
+    // Use NEW inventory method: global_part.quantity_on_hand (global inventory)
+    // Fallback to OLD method: project_equipment_inventory for backward compatibility
     const onHand = pendingChange
       ? pendingChange.quantity_on_hand
-      : item.project_equipment_inventory?.[0]?.quantity_on_hand || 0;
-    const needed = item.planned_quantity || 0;
+      : item.global_part?.quantity_on_hand ?? item.project_equipment_inventory?.[0]?.quantity_on_hand ?? 0;
+    const needed = item.quantity_required || item.planned_quantity || 0;
     const shortage = Math.max(0, needed - onHand);
 
     return {

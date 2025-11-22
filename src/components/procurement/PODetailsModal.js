@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
+import { supabase } from '../../lib/supabase';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
 import { trackingService } from '../../services/trackingService';
 import Button from '../ui/Button';
+import ShippingAddressManager from './ShippingAddressManager';
 import {
   X,
   Trash2,
@@ -21,7 +23,8 @@ import {
   AlertCircle,
   CheckCircle,
   Upload,
-  Truck
+  Truck,
+  MapPin
 } from 'lucide-react';
 
 /**
@@ -47,6 +50,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [po, setPO] = useState(null);
+  const [shippingAddress, setShippingAddress] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [tracking, setTracking] = useState([]);
   const [trackingData, setTrackingData] = useState({
@@ -58,6 +62,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const [editingTrackingId, setEditingTrackingId] = useState(null);
   const [editingTrackingData, setEditingTrackingData] = useState(null);
   const [showTrackingForm, setShowTrackingForm] = useState(false);
+  const [showAddressSelector, setShowAddressSelector] = useState(false);
 
   // Edit state
   const [editData, setEditData] = useState({});
@@ -80,8 +85,27 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         tax_amount: data.tax_amount || 0,
         shipping_cost: data.shipping_cost || 0,
         internal_notes: data.internal_notes || '',
-        supplier_notes: data.supplier_notes || ''
+        supplier_notes: data.supplier_notes || '',
+        shipping_address_id: data.shipping_address_id || null
       });
+
+      // Load shipping address if exists
+      if (data.shipping_address_id) {
+        const { data: addressData, error: addressError } = await supabase
+          .from('shipping_addresses')
+          .select('*')
+          .eq('id', data.shipping_address_id)
+          .single();
+
+        if (!addressError && addressData) {
+          setShippingAddress(addressData);
+        } else {
+          console.warn('Failed to load shipping address:', addressError);
+          setShippingAddress(null);
+        }
+      } else {
+        setShippingAddress(null);
+      }
 
       // Load tracking data
       const trackingData = await trackingService.getPOTracking(poId);
@@ -95,8 +119,18 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   };
 
   const handleSave = async () => {
+    if (!po) {
+      setError('Purchase order not loaded');
+      return;
+    }
+
     if (po.status !== 'draft') {
       setError('Only draft POs can be edited');
+      return;
+    }
+
+    if (!editData.shipping_address_id) {
+      setError('Shipping address is required');
       return;
     }
 
@@ -427,6 +461,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
   const handleClose = () => {
     setPO(null);
+    setShippingAddress(null);
     setEditData({});
     setIsEditing(false);
     setError(null);
@@ -553,6 +588,107 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* Shipping Address */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Ship To Address {isEditing && <span className="text-red-500">*</span>}
+                </label>
+                {isEditing && (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowAddressSelector(!showAddressSelector)}
+                  >
+                    {showAddressSelector ? 'Hide Addresses' : editData.shipping_address_id ? 'Change Address' : 'Select Address'}
+                  </Button>
+                )}
+              </div>
+
+              {isEditing ? (
+                <>
+                  {showAddressSelector ? (
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
+                      <ShippingAddressManager
+                        embedded={true}
+                        onSelect={(address) => {
+                          setEditData({ ...editData, shipping_address_id: address.id });
+                          setShowAddressSelector(false);
+                        }}
+                        selectedAddressId={editData.shipping_address_id}
+                      />
+                    </div>
+                  ) : editData.shipping_address_id ? (
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                        <MapPin className="w-4 h-4" />
+                        <span className="font-medium">Shipping address selected</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                        <p className="text-sm text-orange-700 dark:text-orange-300 font-medium">
+                          Please select a shipping address
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {shippingAddress ? (
+                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-gray-900 dark:text-white">
+                            {shippingAddress.name}
+                          </p>
+                          {shippingAddress.attention_to && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              Attn: {shippingAddress.attention_to}
+                            </p>
+                          )}
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            {shippingAddress.address_line1}
+                          </p>
+                          {shippingAddress.address_line2 && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {shippingAddress.address_line2}
+                            </p>
+                          )}
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {shippingAddress.city}, {shippingAddress.state} {shippingAddress.postal_code}
+                          </p>
+                          {shippingAddress.country && shippingAddress.country !== 'USA' && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {shippingAddress.country}
+                            </p>
+                          )}
+                          {shippingAddress.phone && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              Phone: {shippingAddress.phone}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : po?.shipping_address_id ? (
+                    <p className="text-gray-600 dark:text-gray-400 italic">
+                      Loading address...
+                    </p>
+                  ) : (
+                    <p className="text-gray-600 dark:text-gray-400 italic">
+                      No shipping address
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Line Items */}

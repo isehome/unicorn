@@ -20,6 +20,8 @@ const GlobalPartsManager = () => {
   const [selectedPart, setSelectedPart] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
   const [filter, setFilter] = useState('all'); // 'all', 'prewire', 'trim'
+  const [editingInventory, setEditingInventory] = useState(null); // { partId, quantity }
+  const [savingInventory, setSavingInventory] = useState(null); // partId being saved
 
   useEffect(() => {
     loadParts();
@@ -69,7 +71,10 @@ const GlobalPartsManager = () => {
           required_for_prewire,
           schematic_url,
           install_manual_urls,
-          technical_manual_urls
+          technical_manual_urls,
+          quantity_on_hand,
+          reorder_point,
+          warehouse_location
         `)
         .order('part_number', { ascending: true });
 
@@ -136,6 +141,38 @@ const GlobalPartsManager = () => {
     } catch (err) {
       console.error('Failed to update prewire status:', err);
       alert('Failed to update prewire status: ' + err.message);
+    }
+  };
+
+  const handleUpdateInventory = async (partId, newQuantity) => {
+    try {
+      setSavingInventory(partId);
+
+      const qty = Math.max(0, parseInt(newQuantity) || 0);
+
+      const { error } = await supabase
+        .from('global_parts')
+        .update({
+          quantity_on_hand: qty,
+          last_inventory_check: new Date().toISOString()
+        })
+        .eq('id', partId);
+
+      if (error) throw error;
+
+      // Update local state
+      setParts(prev =>
+        prev.map(p =>
+          p.id === partId ? { ...p, quantity_on_hand: qty } : p
+        )
+      );
+
+      setEditingInventory(null);
+    } catch (err) {
+      console.error('Failed to update inventory:', err);
+      alert('Failed to update inventory: ' + err.message);
+    } finally {
+      setSavingInventory(null);
     }
   };
 
@@ -284,6 +321,62 @@ const GlobalPartsManager = () => {
                     }`}
                   />
                 </button>
+              </div>
+
+              {/* Inventory Information - Editable */}
+              <div className="flex items-center justify-between border-t border-gray-200 pt-3 dark:border-gray-700">
+                <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <Package className="h-3.5 w-3.5" />
+                  <span>Stock on Hand:</span>
+                </div>
+                {editingInventory?.partId === part.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      value={editingInventory.quantity}
+                      onChange={(e) => setEditingInventory({ partId: part.id, quantity: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleUpdateInventory(part.id, editingInventory.quantity);
+                        } else if (e.key === 'Escape') {
+                          setEditingInventory(null);
+                        }
+                      }}
+                      disabled={savingInventory === part.id}
+                      className="w-20 px-2 py-1 text-sm border border-violet-300 dark:border-violet-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleUpdateInventory(part.id, editingInventory.quantity)}
+                      disabled={savingInventory === part.id}
+                      className="px-2 py-1 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {savingInventory === part.id ? '...' : '✓'}
+                    </button>
+                    <button
+                      onClick={() => setEditingInventory(null)}
+                      disabled={savingInventory === part.id}
+                      className="px-2 py-1 text-xs font-medium rounded bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-400 dark:hover:bg-gray-600 disabled:opacity-50"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setEditingInventory({ partId: part.id, quantity: part.quantity_on_hand || 0 })}
+                    className="group flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded transition-colors"
+                  >
+                    <span className={`text-sm font-semibold ${
+                      (part.quantity_on_hand || 0) > 0
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {part.quantity_on_hand || 0}
+                    </span>
+                    <Edit2 className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                )}
               </div>
 
               {/* Documentation Status */}

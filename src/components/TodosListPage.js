@@ -8,6 +8,25 @@ import { supabase } from '../lib/supabase';
 import TodoDetailModal from './TodoDetailModal';
 import Button from './ui/Button';
 
+const importanceRanking = {
+  critical: 0,
+  high: 1,
+  normal: 2,
+  low: 3
+};
+
+const importanceColors = {
+  critical: '#ef4444',
+  high: '#f97316',
+  normal: '#3b82f6',
+  low: '#22c55e'
+};
+
+const getImportanceRank = (value) => {
+  const key = typeof value === 'string' ? value.toLowerCase() : '';
+  return importanceRanking[key] ?? importanceRanking.normal;
+};
+
 const TodosListPage = () => {
   const { user } = useAuth();
   const { theme, mode } = useTheme();
@@ -142,8 +161,12 @@ const TodosListPage = () => {
   const visible = useMemo(() => {
     let list = todos.filter(t => (showCompleted ? true : !t.completed));
     if (projectFilter !== 'all') list = list.filter(t => t.project_id === projectFilter);
-    // Sort to reflect priority (sort_order) then created_at
+    // Sort open items first, then by importance, manual sort order, created time
     return [...list].sort((a, b) => {
+      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+      const ai = getImportanceRank(a.importance);
+      const bi = getImportanceRank(b.importance);
+      if (ai !== bi) return ai - bi;
       const ao = a.sortOrder ?? 0;
       const bo = b.sortOrder ?? 0;
       if (ao !== bo) return ao - bo;
@@ -468,7 +491,10 @@ const TodosListPage = () => {
                       onChange={(e) => { e.stopPropagation(); handleUpdateTodoImportance(todo.id, e.target.value); }}
                       onClick={(e) => e.stopPropagation()}
                       className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
-                      style={styles.input}
+                      style={{
+                        ...styles.input,
+                        color: importanceColors[(todo.importance || 'normal').toLowerCase()] || styles.input.color
+                      }}
                       title="Importance"
                     >
                       <option value="low">Low</option>

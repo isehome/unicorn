@@ -107,8 +107,24 @@ module.exports = async (req, res) => {
     const token = await getAppToken()
 
     // Resolve the root folder URL to drive/item
+    console.log(`Attempting to resolve SharePoint URL: ${rootFolderUrl}`)
+
+    // Validate URL format
+    if (!rootFolderUrl.includes('sharepoint.com')) {
+      throw new Error('Invalid SharePoint URL - must be a sharepoint.com URL')
+    }
+
     const encoded = 'u!' + b64Url(rootFolderUrl)
-    const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`)
+    console.log(`Encoded share token: ${encoded}`)
+
+    let driveItem
+    try {
+      driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`)
+    } catch (graphError) {
+      console.error('Graph API error:', graphError.message)
+      throw new Error(`Failed to resolve SharePoint folder. Please check the URL format. Error: ${graphError.message}`)
+    }
+
     const driveId = driveItem.parentReference.driveId
     const rootFolderId = driveItem.id
 

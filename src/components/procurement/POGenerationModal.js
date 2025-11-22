@@ -8,6 +8,7 @@ import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
 import Button from '../ui/Button';
+import ShippingAddressManager from './ShippingAddressManager';
 import {
   X,
   DollarSign,
@@ -17,11 +18,12 @@ import {
   Package,
   Building2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  MapPin
 } from 'lucide-react';
 
 /**
- * PO Generation Modal
+ * PO Generation Modal v2.1
  *
  * Allows PM to review and edit PO details before creating it
  * - Auto-generates PO number
@@ -29,6 +31,7 @@ import {
  * - Calculates totals (subtotal + tax + shipping)
  * - Creates purchase_order and purchase_order_items records
  * - Marks equipment as "ordered"
+ * - Auto-populates default shipping address from project settings
  */
 const POGenerationModal = ({
   isOpen,
@@ -38,10 +41,14 @@ const POGenerationModal = ({
   supplierName,
   milestoneStage,
   equipmentItems = [],
-  onSuccess
+  onSuccess,
+  projectDefaultShippingId = null
 }) => {
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+
+  // Version log to verify new code is loading
+  console.log('🔄 POGenerationModal v2.1 loaded - cache should be clear if you see this');
 
   // Form state
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
@@ -50,6 +57,7 @@ const POGenerationModal = ({
   const [shippingCost, setShippingCost] = useState(0);
   const [internalNotes, setInternalNotes] = useState('');
   const [supplierNotes, setSupplierNotes] = useState('');
+  const [shippingAddressId, setShippingAddressId] = useState(null);
 
   // PO number preview
   const [poNumberPreview, setPoNumberPreview] = useState('');
@@ -57,6 +65,7 @@ const POGenerationModal = ({
   // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showAddressSelector, setShowAddressSelector] = useState(false);
 
   // Group equipment items by part number
   const groupEquipmentByPartNumber = () => {
@@ -97,13 +106,44 @@ const POGenerationModal = ({
   const subtotal = calculateSubtotal();
   const total = subtotal + parseFloat(taxAmount || 0) + parseFloat(shippingCost || 0);
 
-  // Load PO number preview on mount
+  // Debug: Log when shippingAddressId changes
   useEffect(() => {
+    console.log('🎯 Shipping address state changed to:', shippingAddressId);
+  }, [shippingAddressId]);
+
+  // Load PO number preview on mount and set default shipping address
+  useEffect(() => {
+    console.log('📋 POGenerationModal useEffect triggered:', {
+      isOpen,
+      supplierId,
+      projectDefaultShippingId,
+      currentShippingAddressId: shippingAddressId
+    });
+
     if (isOpen && supplierId) {
+      console.log('🚀 POGenerationModal opened - initializing...');
+
       loadPONumberPreview();
       calculateDefaultDeliveryDate();
+
+      // Auto-populate shipping address with project default
+      if (projectDefaultShippingId) {
+        console.log('✅ Auto-populating shipping address with project default:', projectDefaultShippingId);
+        setShippingAddressId(projectDefaultShippingId);
+      } else {
+        console.log('⚠️ No project default shipping address set - user will need to select manually');
+        setShippingAddressId(null);
+      }
+    } else if (!isOpen) {
+      // Reset shipping address when modal closes
+      console.log('🔄 Modal closed - resetting form state');
+      setShippingAddressId(null);
+      setShowAddressSelector(false);
+      setError(null);
+    } else {
+      console.log('⏸️ Modal conditions not met (isOpen:', isOpen, 'supplierId:', supplierId, ')');
     }
-  }, [isOpen, supplierId]);
+  }, [isOpen, supplierId, projectDefaultShippingId]);
 
   const loadPONumberPreview = async () => {
     try {
@@ -128,6 +168,12 @@ const POGenerationModal = ({
     // Validation
     if (!orderDate) {
       setError('Order date is required');
+      return;
+    }
+
+    if (!shippingAddressId) {
+      setError('Shipping address is required. Please select a shipping address.');
+      setShowAddressSelector(true);
       return;
     }
 
@@ -162,6 +208,7 @@ const POGenerationModal = ({
         shipping_cost: parseFloat(shippingCost || 0),
         internal_notes: internalNotes || null,
         supplier_notes: supplierNotes || null,
+        shipping_address_id: shippingAddressId || null,
         total_amount: total
       });
 
@@ -252,9 +299,14 @@ const POGenerationModal = ({
         {/* Header */}
         <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              Generate Purchase Order
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Generate Purchase Order
+              </h2>
+              <span className="px-2 py-0.5 text-xs font-mono bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 rounded">
+                v2.1
+              </span>
+            </div>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
               {supplierName} • {milestoneStage.replace('_', ' ')}
             </p>
@@ -326,6 +378,57 @@ const POGenerationModal = ({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Shipping Address - REQUIRED */}
+            <div className="bg-violet-50 dark:bg-violet-900/10 border-2 border-violet-200 dark:border-violet-800 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium text-gray-900 dark:text-white">
+                  Ship To Address <span className="text-red-500">*</span>
+                </label>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowAddressSelector(!showAddressSelector)}
+                >
+                  {showAddressSelector ? 'Hide Addresses' : shippingAddressId ? 'Change Address' : 'Select Address'}
+                </Button>
+              </div>
+
+              {showAddressSelector ? (
+                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800">
+                  <ShippingAddressManager
+                    embedded={true}
+                    onSelect={(address) => {
+                      setShippingAddressId(address.id);
+                      setShowAddressSelector(false);
+                      setError(null); // Clear any validation errors
+                    }}
+                    selectedAddressId={shippingAddressId}
+                  />
+                </div>
+              ) : shippingAddressId ? (
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="font-medium">
+                      {projectDefaultShippingId === shippingAddressId
+                        ? '✓ Default shipping address auto-selected'
+                        : '✓ Shipping address selected'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-300 dark:border-orange-700 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                    <p className="text-sm text-orange-700 dark:text-orange-300 font-medium">
+                      Please select a shipping address to continue
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Equipment Items Preview */}

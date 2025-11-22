@@ -66,8 +66,6 @@ class SharePointFolderService {
 
       console.log(`Root folder: ${normalizedRootUrl}`);
 
-      const graphSafeRootUrl = encodeURI(normalizedRootUrl);
-
       // Validate root URL
       if (!normalizedRootUrl || !this.isValidSharePointUrl(normalizedRootUrl)) {
         throw new Error('Invalid SharePoint URL. Please provide a valid Document Library URL.');
@@ -78,14 +76,28 @@ class SharePointFolderService {
         throw new Error('Cannot use a Site Pages URL. Please provide a Document Library URL (e.g., Shared Documents).');
       }
 
+      // Check if it's a sharing link - provide helpful instructions
+      if (normalizedRootUrl.includes('/:f:/') || normalizedRootUrl.includes('/:b:/') || normalizedRootUrl.includes('?e=')) {
+        throw new Error(`You've entered a sharing link. To get the correct URL:
+
+1. Click your sharing link to open the folder in SharePoint
+2. Once the folder opens, look at the address bar at the top of your browser
+3. Copy the URL from the address bar (it will be different from the sharing link)
+4. Paste that URL here instead
+
+The URL should look like:
+https://isehome.sharepoint.com/sites/Unicorn/Shared Documents/YourFolderName`);
+      }
+
       // Call backend API to verify/create subfolders
+      // Don't encode the URL here - the API will handle encoding
       const response = await fetch('/api/sharepoint-init-folders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          rootFolderUrl: graphSafeRootUrl,
+          rootFolderUrl: normalizedRootUrl,
           subfolders: Object.values(STANDARD_SUBFOLDERS)
         })
       });

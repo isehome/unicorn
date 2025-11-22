@@ -343,10 +343,8 @@ const PMProjectViewEnhanced = () => {
   const [batchCreating, setBatchCreating] = useState(false);
   const [showLucidSection, setShowLucidSection] = useState(false);
   const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(true);
-  const [equipmentCollapsed, setEquipmentCollapsed] = useState(true);
   const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
   const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
-  const [permitsCollapsed, setPermitsCollapsed] = useState(false);
   const [folderInitializing, setFolderInitializing] = useState(false);
   const [folderInitSuccess, setFolderInitSuccess] = useState(null);
   const [projectOwners, setProjectOwners] = useState({ pm: null, technician: null });
@@ -380,7 +378,10 @@ const PMProjectViewEnhanced = () => {
     projectInfo: true,
     linkedResources: true,
     roomMatching: true,
-    timeTracking: true
+    timeTracking: true,
+    lucidData: true,
+    procurement: true,
+    permits: true
   });
 
   const toggleSection = (section) => {
@@ -3126,111 +3127,69 @@ const PMProjectViewEnhanced = () => {
           </div>
         </div>
 
-        {/* Step 1: Portal CSV Upload - GREEN */}
-        {/* Equipment Badge */}
-        <div className="mb-3">
-          <div className="inline-block p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 mb-1">
-              <Package className="w-4 h-4 text-green-600 dark:text-green-400" />
-              <span className="text-xs font-medium text-green-900 dark:text-green-200">Equipment</span>
-            </div>
-            <p className="text-2xl font-bold text-green-900 dark:text-green-100">{totalEquipmentPieces}</p>
-            <p className="text-xs text-green-700 dark:text-green-300">
-              {orderedPieces} ordered, {receivedPieces} received
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={() => setEquipmentCollapsed((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-left shadow-sm transition hover:bg-green-100 dark:hover:bg-green-900/30"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500 dark:bg-green-600">
-                <span className="text-sm font-bold text-white">1</span>
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-green-900 dark:text-green-100">Upload Portal CSV</p>
-                <p className="text-xs text-green-700 dark:text-green-300">
-                  {totalEquipmentPieces > 0 
-                    ? `✓ Imported: ${projectRooms.length} rooms, ${totalEquipmentPieces} items, ${laborSummary.totalHours.toFixed(0)}h labor`
-                    : 'Import proposal CSV to populate equipment and labor budgets'}
-                </p>
-              </div>
-            </div>
-            <ChevronDown
-              className={`w-5 h-5 text-green-600 dark:text-green-400 transition-transform ${
-                equipmentCollapsed ? '' : 'rotate-180'
-              }`}
-            />
-          </button>
-
-          {!equipmentCollapsed && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <ProjectEquipmentManager
-                projectId={projectId}
-                embedded
-                onEquipmentChange={handleEquipmentChange}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Step 2: Lucid Wire Drops Import - PURPLE */}
+        {/* Step 1: Lucid Wire Drops Import - GREEN */}
         {formData.wiring_diagram_url && (
-          <div className="mb-6">
-            {/* Wire Drops Badge */}
-            <div className="mb-3">
-              <div className="inline-block p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
-                <div className="flex items-center gap-2 mb-1">
-                  <Link className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <span className="text-xs font-medium text-purple-900 dark:text-purple-200">Wire Drops</span>
-                </div>
-                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">{existingWireDrops.length}</p>
-                <p className="text-xs text-purple-700 dark:text-purple-300">
-                  {linkedDropCount} linked to Lucid
-                </p>
+          <div className="mb-6 flex gap-3">
+            {/* Step Number Badge */}
+            <div className="flex-shrink-0">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500 dark:bg-green-600 shadow-sm">
+                <span className="text-lg font-bold text-white">1</span>
               </div>
             </div>
 
-            <div className="flex w-full items-center justify-between rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-3 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-500 dark:bg-purple-600">
-                  <span className="text-sm font-bold text-white">2</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">Import Lucid Wire Drops</p>
-                  <p className="text-xs text-purple-700 dark:text-purple-300">
-                    {droppableShapes.length > 0
-                      ? `✓ Found ${droppableShapes.length} wire drops from ${new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size} rooms`
-                      : 'Fetch shape data from Lucid diagram'}
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={lucidLoading ? Loader : RefreshCw}
-                onClick={handleFetchLucidData}
-                disabled={lucidLoading}
+            {/* Section Content */}
+            <div className="flex-1">
+              <button
+                onClick={() => toggleSection('lucidData')}
+                className="flex w-full items-center justify-between rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-4 shadow-sm hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
               >
-                {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
-              </Button>
-            </div>
-
-            {lucidError && (
-              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                  <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                <div className="flex-1 text-left">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Link className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    <p className="text-sm font-semibold text-green-900 dark:text-green-100">Import Lucid Wire Drops</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-green-700 dark:text-green-300">
+                    <span className="font-medium">{existingWireDrops.length} wire drops</span>
+                    <span>•</span>
+                    <span>{linkedDropCount} linked to Lucid</span>
+                    <span>•</span>
+                    <span>{droppableShapes.length > 0
+                      ? `${droppableShapes.length} shapes found`
+                      : 'No shapes fetched yet'}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+                {sectionsCollapsed.lucidData ? (
+                  <ChevronDown className="w-5 h-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <ChevronUp className="w-5 h-5 text-green-600 dark:text-green-400" />
+                )}
+              </button>
 
-            {showLucidSection && droppableShapes.length > 0 && (
-              <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              {!sectionsCollapsed.lucidData && (
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between items-center mb-3">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={lucidLoading ? Loader : RefreshCw}
+                      onClick={handleFetchLucidData}
+                      disabled={lucidLoading}
+                    >
+                      {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
+                    </Button>
+                  </div>
+
+                  {lucidError && (
+                    <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {droppableShapes.length > 0 && (
+                    <div>
                 <div className="flex justify-between items-center mb-3">
                   <div className="flex gap-2">
                     <Button
@@ -3314,65 +3273,107 @@ const PMProjectViewEnhanced = () => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Step 3: Room Alignment - BLUE (Rooms) - Collapsible */}
-        <div className="mb-6">
-          {/* Rooms Badge */}
-          <div className="mb-3">
-            <div className="inline-block p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-              <div className="flex items-center gap-2 mb-1">
-                <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <span className="text-xs font-medium text-blue-900 dark:text-blue-200">Rooms</span>
-              </div>
-              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
-              <p className="text-xs text-blue-700 dark:text-blue-300">
-                {unmatchedRoomEntries.length > 0 ? `${unmatchedRoomEntries.length} need alignment` : 'All aligned ✓'}
-              </p>
+        {/* Step 2: Portal CSV Upload (Procurement) - PURPLE */}
+        <div className="mb-6 flex gap-3">
+          {/* Step Number Badge */}
+          <div className="flex-shrink-0">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500 dark:bg-purple-600 shadow-sm">
+              <span className="text-lg font-bold text-white">2</span>
             </div>
           </div>
 
-          <button
-            onClick={() => toggleSection('roomMatching')}
-            className="w-full flex items-center justify-between rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-3 shadow-sm 
-                     hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600">
-                <span className="text-sm font-bold text-white">3</span>
+          {/* Section Content */}
+          <div className="flex-1">
+            <button
+              onClick={() => toggleSection('procurement')}
+              className="flex w-full items-center justify-between rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-4 shadow-sm hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+            >
+              <div className="flex-1 text-left">
+                <div className="flex items-center gap-2 mb-1">
+                  <Package className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">Upload Portal CSV</p>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-purple-700 dark:text-purple-300">
+                  <span className="font-medium">{totalEquipmentPieces} items</span>
+                  <span>•</span>
+                  <span>{orderedPieces} ordered</span>
+                  <span>•</span>
+                  <span>{receivedPieces} received</span>
+                </div>
               </div>
-              <div className="text-left">
-                <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Room Alignment: Match Lucid ↔ Portal CSV</p>
-                <p className="text-xs text-blue-700 dark:text-blue-300">
-                  {unmatchedRoomEntries.length > 0 
-                    ? `⚠️ ${unmatchedRoomEntries.length} Lucid room${unmatchedRoomEntries.length !== 1 ? 's' : ''} need${unmatchedRoomEntries.length === 1 ? 's' : ''} alignment`
-                    : droppableShapes.length > 0 ? '✓ All rooms aligned' : 'Fetch Lucid data to begin alignment'}
-                </p>
-              </div>
-            </div>
-            {sectionsCollapsed.roomMatching ? (
-              <ChevronDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            ) : (
-              <ChevronUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            )}
-          </button>
+              {sectionsCollapsed.procurement ? (
+                <ChevronDown className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              ) : (
+                <ChevronUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              )}
+            </button>
 
-          {!sectionsCollapsed.roomMatching && (
-            <div className="mt-3 p-4 border-2 border-blue-200 dark:border-blue-800 rounded-lg bg-white dark:bg-gray-800">
-              <div className="mb-4">
+            {!sectionsCollapsed.procurement && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <ProjectEquipmentManager
+                  projectId={projectId}
+                  embedded
+                  onEquipmentChange={handleEquipmentChange}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Step 3: Room Alignment - BLUE */}
+        <div className="mb-6 flex gap-3">
+          {/* Step Number Badge */}
+          <div className="flex-shrink-0">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600 shadow-sm">
+              <span className="text-lg font-bold text-white">3</span>
+            </div>
+          </div>
+
+          {/* Section Content */}
+          <div className="flex-1">
+            <button
+              onClick={() => toggleSection('roomMatching')}
+              className="flex w-full items-center justify-between rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-4 shadow-sm hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              <div className="flex-1 text-left">
+                <div className="flex items-center gap-2 mb-1">
+                  <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Room Alignment: Match Lucid ↔ Portal CSV</p>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-blue-700 dark:text-blue-300">
+                  <span className="font-medium">{projectRooms.length} rooms</span>
+                  <span>•</span>
+                  <span>{unmatchedRoomEntries.length > 0
+                    ? `${unmatchedRoomEntries.length} need alignment`
+                    : droppableShapes.length > 0 ? 'All aligned ✓' : 'Fetch Lucid data first'}</span>
+                </div>
+              </div>
+              {sectionsCollapsed.roomMatching ? (
+                <ChevronDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              ) : (
+                <ChevronUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              )}
+            </button>
+
+            {!sectionsCollapsed.roomMatching && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
                 <h3 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-2">
                   Room Alignment Tool
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Match room names from your Lucid diagram with rooms from the Portal CSV import. 
+                  Match room names from your Lucid diagram with rooms from the Portal CSV import.
                   This ensures wire drops and equipment are correctly organized by room.
                 </p>
-              </div>
 
-              {unmatchedRoomEntries.length > 0 ? (
+                {unmatchedRoomEntries.length > 0 ? (
                 <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
                   <div className="flex items-start gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
@@ -3749,39 +3750,48 @@ const PMProjectViewEnhanced = () => {
                   </div>
                 )}
               </div>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Step 4: Project Permits - ORANGE */}
-        <div className="mb-6">
-          <button
-            onClick={() => setPermitsCollapsed(!permitsCollapsed)}
-            className="flex w-full items-center justify-between rounded-lg border-2 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 px-4 py-3 shadow-sm transition-colors hover:bg-orange-100 dark:hover:bg-orange-900/30"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-orange-500 dark:bg-orange-600">
-                <span className="text-sm font-bold text-white">4</span>
-              </div>
+        <div className="mb-6 flex gap-3">
+          {/* Step Number Badge */}
+          <div className="flex-shrink-0">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 dark:bg-orange-600 shadow-sm">
+              <span className="text-lg font-bold text-white">4</span>
+            </div>
+          </div>
+
+          {/* Section Content */}
+          <div className="flex-1">
+            <button
+              onClick={() => toggleSection('permits')}
+              className="flex w-full items-center justify-between rounded-lg border-2 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 px-4 py-4 shadow-sm hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+            >
               <div className="flex-1 text-left">
-                <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">Project Permits</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                  <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">Project Permits</p>
+                </div>
                 <p className="text-xs text-orange-700 dark:text-orange-300">
                   Manage building permits and inspections
                 </p>
               </div>
-            </div>
-            <ChevronDown
-              className={`w-5 h-5 text-orange-600 dark:text-orange-400 transition-transform ${
-                permitsCollapsed ? '' : 'rotate-180'
-              }`}
-            />
-          </button>
+              {sectionsCollapsed.permits ? (
+                <ChevronDown className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              ) : (
+                <ChevronUp className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              )}
+            </button>
 
-          {!permitsCollapsed && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <ProjectPermits projectId={projectId} />
-            </div>
-          )}
+            {!sectionsCollapsed.permits && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+                <ProjectPermits projectId={projectId} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -3798,13 +3808,6 @@ const PMProjectViewEnhanced = () => {
           onClick={() => navigate('/wire-drops')}
         >
           View Wire Drops
-        </Button>
-        <Button
-          variant="secondary"
-          icon={Package}
-          onClick={() => navigate(`/projects/${projectId}/inventory`)}
-        >
-          Manage Inventory
         </Button>
       </div>
       

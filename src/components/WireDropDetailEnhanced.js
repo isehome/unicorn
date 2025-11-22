@@ -97,7 +97,17 @@ const WireDropDetailEnhanced = () => {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  
+
+  // QR section collapsible state
+  const [qrSectionCollapsed, setQrSectionCollapsed] = useState(true);
+
+  // HomeKit QR modal state
+  const [showHomeKitQRModal, setShowHomeKitQRModal] = useState(false);
+  const [uploadingHomeKitQR, setUploadingHomeKitQR] = useState(false);
+
+  // UniFi client selector state
+  const [showUniFiSelector, setShowUniFiSelector] = useState(false);
+
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
   const [tempNotes, setTempNotes] = useState('');
@@ -268,6 +278,13 @@ const WireDropDetailEnhanced = () => {
     },
     []
   );
+
+  // Alias for loadEquipment used in HomeKit QR handlers
+  const loadEquipment = useCallback(async () => {
+    if (wireDrop?.project_id) {
+      await loadProjectEquipmentOptions(wireDrop.project_id);
+    }
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions]);
 
   const loadProjectRooms = useCallback(
     async (projectId) => {
@@ -583,6 +600,70 @@ const WireDropDetailEnhanced = () => {
     };
 
     input.click();
+  };
+
+  const handleHomeKitQRUpload = async () => {
+    if (!primaryRoomEquipment?.id) {
+      alert('No equipment linked to upload HomeKit QR code');
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      try {
+        setUploadingHomeKitQR(true);
+
+        // Compress the image first
+        const compressedFile = await compressImage(file);
+
+        // Upload to SharePoint and update equipment
+        await projectEquipmentService.uploadHomeKitQRPhoto(primaryRoomEquipment.id, compressedFile);
+
+        // Reload equipment data
+        await loadEquipment();
+
+        alert('HomeKit QR code uploaded successfully!');
+        setShowHomeKitQRModal(false);
+      } catch (err) {
+        console.error('Error uploading HomeKit QR:', err);
+        alert(err.message || 'Failed to upload HomeKit QR code');
+      } finally {
+        setUploadingHomeKitQR(false);
+      }
+    };
+
+    input.click();
+  };
+
+  const handleHomeKitQRRemove = async () => {
+    if (!primaryRoomEquipment?.id) return;
+
+    const confirmed = window.confirm('Remove this HomeKit QR code photo?');
+    if (!confirmed) return;
+
+    try {
+      setUploadingHomeKitQR(true);
+
+      await projectEquipmentService.removeHomeKitQRPhoto(primaryRoomEquipment.id);
+
+      // Reload equipment data
+      await loadEquipment();
+
+      alert('HomeKit QR code removed successfully');
+      setShowHomeKitQRModal(false);
+    } catch (err) {
+      console.error('Error removing HomeKit QR:', err);
+      alert(err.message || 'Failed to remove HomeKit QR code');
+    } finally {
+      setUploadingHomeKitQR(false);
+    }
   };
 
   const handleDeleteWireDrop = async () => {
@@ -1119,8 +1200,8 @@ const WireDropDetailEnhanced = () => {
         {/* Main Info Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>
           <div className="p-6 space-y-4">
-            <div className="flex items-start gap-6">
-              <div className="flex-1 min-w-0 flex flex-col gap-6">
+            <div className="flex flex-col lg:flex-row items-start gap-6">
+              <div className="flex-1 min-w-0 flex flex-col gap-6 w-full lg:w-auto">
                 {editing ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between mb-3">
@@ -1328,7 +1409,7 @@ const WireDropDetailEnhanced = () => {
 
                 {/* Equipment Section - Left column, aligns bottom with QR */}
                 {!editing && showQrCard && (
-                  <div className="mt-auto">
+                  <div className="mt-4 lg:mt-auto">
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="text-sm font-semibold uppercase tracking-wide" style={styles.subtleText}>
                         Linked Equipment
@@ -1369,10 +1450,72 @@ const WireDropDetailEnhanced = () => {
                                 </span>
                               </p>
                             )}
+
+                            {/* UniFi Connection Info */}
+                            <div className="mt-2 pt-2 border-t" style={{ borderColor: styles.card.borderColor }}>
+                              <div className="flex items-center gap-1 mb-1">
+                                <Network size={12} style={styles.subtleText} />
+                                <span className="text-xs font-medium" style={styles.subtleText}>Network Connection</span>
+                              </div>
+                              {primaryRoomEquipment.unifi_client_mac ? (
+                                <div className="space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs" style={styles.subtleText}>IP Address:</span>
+                                    <span className="text-xs font-mono" style={styles.textPrimary}>
+                                      {primaryRoomEquipment.unifi_last_ip || 'N/A'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs" style={styles.subtleText}>MAC Address:</span>
+                                    <span className="text-xs font-mono" style={styles.textPrimary}>
+                                      {primaryRoomEquipment.unifi_client_mac}
+                                    </span>
+                                  </div>
+                                  {primaryRoomEquipment.unifi_data?.hostname && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs" style={styles.subtleText}>Hostname:</span>
+                                      <span className="text-xs font-mono" style={styles.textPrimary}>
+                                        {primaryRoomEquipment.unifi_data.hostname}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-xs italic" style={styles.subtleText}>
+                                  Not connected
+                                </div>
+                              )}
+                            </div>
                           </div>
+
+                          {/* HomeKit QR Thumbnail */}
+                          <button
+                            onClick={() => setShowHomeKitQRModal(true)}
+                            className="flex-shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all hover:scale-105 hover:shadow-lg"
+                            style={{
+                              borderColor: primaryRoomEquipment.homekit_qr_url ? '#8B5CF6' : '#D1D5DB',
+                              backgroundColor: primaryRoomEquipment.homekit_qr_url ? 'transparent' : mode === 'dark' ? '#374151' : '#F3F4F6'
+                            }}
+                            title={primaryRoomEquipment.homekit_qr_url ? 'View HomeKit QR Code' : 'Add HomeKit QR Code'}
+                          >
+                            {primaryRoomEquipment.homekit_qr_url ? (
+                              <CachedSharePointImage
+                                sharePointUrl={primaryRoomEquipment.homekit_qr_url}
+                                sharePointDriveId={primaryRoomEquipment.homekit_qr_sharepoint_drive_id}
+                                sharePointItemId={primaryRoomEquipment.homekit_qr_sharepoint_item_id}
+                                displayType="thumbnail"
+                                size="small"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Camera size={24} style={styles.subtleText} />
+                              </div>
+                            )}
+                          </button>
                         </div>
                         
-                        <div className="pt-3 mt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                        <div className="pt-3 mt-3 border-t space-y-2" style={{ borderColor: styles.card.borderColor }}>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1385,7 +1528,31 @@ const WireDropDetailEnhanced = () => {
                           >
                             Change Equipment
                           </Button>
+                          <Button
+                            variant={primaryRoomEquipment.unifi_client_mac ? "secondary" : "primary"}
+                            size="sm"
+                            icon={Network}
+                            onClick={() => setShowUniFiSelector(!showUniFiSelector)}
+                            className="w-full"
+                          >
+                            {primaryRoomEquipment.unifi_client_mac ? 'Change Network Connection' : 'Connect Network'}
+                          </Button>
                         </div>
+
+                        {/* UniFi Client Selector */}
+                        {showUniFiSelector && wireDrop?.project_id && (
+                          <div className="pt-3 mt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                            <UniFiClientSelector
+                              projectId={wireDrop.project_id}
+                              equipmentId={primaryRoomEquipment.id}
+                              wireDropId={wireDrop.id}
+                              onAssign={async () => {
+                                await loadEquipment();
+                                setShowUniFiSelector(false);
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="rounded-xl border-2 border-dashed p-6 text-center" style={{ borderColor: styles.card.borderColor }}>
@@ -1412,12 +1579,25 @@ const WireDropDetailEnhanced = () => {
 
               {showQrCard && !editing && (
                 <div
-                  className="rounded-xl border p-4 text-center flex-shrink-0"
-                  style={{ ...styles.mutedCard, minWidth: '16rem', maxWidth: '16rem' }}
+                  className="rounded-xl border flex-shrink-0 w-full lg:w-auto"
+                  style={{ ...styles.mutedCard, maxWidth: '100%', lgMaxWidth: '16rem' }}
                 >
-                  <h4 className="text-sm font-semibold mb-2" style={styles.textPrimary}>
-                    Wire Drop QR
-                  </h4>
+                  <button
+                    onClick={() => setQrSectionCollapsed(!qrSectionCollapsed)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-t-xl"
+                  >
+                    <h4 className="text-sm font-semibold" style={styles.textPrimary}>
+                      Wire Drop QR
+                    </h4>
+                    <ChevronDown
+                      size={20}
+                      className={`transform transition-transform ${qrSectionCollapsed ? '' : 'rotate-180'}`}
+                      style={styles.textSecondary}
+                    />
+                  </button>
+
+                  {!qrSectionCollapsed && (
+                    <div className="p-4 pt-0 text-center">
                   {qrCodeSrc ? (
                     <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
                       <img
@@ -1485,6 +1665,8 @@ const WireDropDetailEnhanced = () => {
                       </p>
                     )}
                   </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1985,39 +2167,6 @@ const WireDropDetailEnhanced = () => {
                     >
                       Take/Upload Photo
                     </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Info: Equipment managed in main card above */}
-            <div className="rounded-2xl overflow-hidden" style={styles.card}>
-              <div className="p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Monitor size={20} style={styles.subtleText} />
-                  <h3 className="text-lg font-semibold" style={styles.textPrimary}>
-                    Room Equipment
-                  </h3>
-                </div>
-                <p className="text-sm mb-4" style={styles.textSecondary}>
-                  Room equipment is now managed in the main wire drop card above. You can add, change, or remove equipment there.
-                </p>
-                {primaryRoomEquipment && (
-                  <div className="p-3 rounded-lg border" style={styles.mutedCard}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle size={16} className="text-green-500" />
-                      <span className="text-sm font-medium" style={styles.textPrimary}>Currently Linked</span>
-                    </div>
-                    <p className="text-sm font-semibold" style={styles.textPrimary}>
-                      {primaryRoomEquipment.name}
-                    </p>
-                    {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
-                      <p className="text-xs mt-1" style={styles.subtleText}>
-                        {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
-                          .filter(Boolean)
-                          .join(' • ')}
-                      </p>
-                    )}
                   </div>
                 )}
               </div>
@@ -2728,6 +2877,98 @@ const WireDropDetailEnhanced = () => {
                     </>
                   );
                 })()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HomeKit QR Modal */}
+        {showHomeKitQRModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-0 sm:p-4">
+            <div className="w-full h-full sm:h-auto sm:max-h-[90vh] max-w-4xl flex flex-col rounded-none sm:rounded-2xl overflow-hidden" style={styles.card}>
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: styles.card.borderColor }}>
+                <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                  HomeKit QR Code
+                </h3>
+                <button
+                  onClick={() => setShowHomeKitQRModal(false)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <X size={24} style={styles.textPrimary} />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 flex items-center justify-center p-6 overflow-auto">
+                {primaryRoomEquipment?.homekit_qr_url ? (
+                  <div className="w-full max-w-2xl">
+                    <CachedSharePointImage
+                      sharePointUrl={primaryRoomEquipment.homekit_qr_url}
+                      sharePointDriveId={primaryRoomEquipment.homekit_qr_sharepoint_drive_id}
+                      sharePointItemId={primaryRoomEquipment.homekit_qr_sharepoint_item_id}
+                      displayType="full"
+                      size="large"
+                      className="w-full h-auto rounded-lg"
+                    />
+                  </div>
+                ) : (
+                  <div className="text-center">
+                    <Camera size={64} className="mx-auto mb-4 opacity-40" style={styles.subtleText} />
+                    <p className="text-lg mb-2" style={styles.textPrimary}>
+                      No HomeKit QR Code
+                    </p>
+                    <p className="text-sm mb-6" style={styles.subtleText}>
+                      Add a photo of the HomeKit QR code for this equipment
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="p-4 border-t flex gap-3" style={{ borderColor: styles.card.borderColor }}>
+                {primaryRoomEquipment?.homekit_qr_url ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      icon={Camera}
+                      onClick={handleHomeKitQRUpload}
+                      disabled={uploadingHomeKitQR}
+                      loading={uploadingHomeKitQR}
+                      className="flex-1"
+                    >
+                      Replace Photo
+                    </Button>
+                    <Button
+                      variant="danger"
+                      icon={Trash2}
+                      onClick={handleHomeKitQRRemove}
+                      disabled={uploadingHomeKitQR}
+                      className="flex-1"
+                    >
+                      Remove
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="primary"
+                    icon={Camera}
+                    onClick={handleHomeKitQRUpload}
+                    disabled={uploadingHomeKitQR}
+                    loading={uploadingHomeKitQR}
+                    className="flex-1"
+                  >
+                    Add Photo
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowHomeKitQRModal(false)}
+                  disabled={uploadingHomeKitQR}
+                  className="flex-1"
+                >
+                  Close
+                </Button>
               </div>
             </div>
           </div>

@@ -1027,6 +1027,13 @@ export const projectEquipmentService = {
         created_at,
         created_by,
         updated_at,
+        homekit_qr_url,
+        homekit_qr_sharepoint_drive_id,
+        homekit_qr_sharepoint_item_id,
+        unifi_client_mac,
+        unifi_last_ip,
+        unifi_last_seen,
+        unifi_data,
         project_rooms(name, is_headend),
         global_part:global_part_id (
           id,
@@ -1036,7 +1043,10 @@ export const projectEquipmentService = {
           model,
           is_wire_drop_visible,
           is_inventory_item,
-          required_for_prewire
+          required_for_prewire,
+          quantity_on_hand,
+          reorder_point,
+          warehouse_location
         )
       `)
       .eq('project_id', projectId)
@@ -1089,7 +1099,10 @@ export const projectEquipmentService = {
           model,
           is_wire_drop_visible,
           is_inventory_item,
-          required_for_prewire
+          required_for_prewire,
+          quantity_on_hand,
+          reorder_point,
+          warehouse_location
         )
       `)
       .eq('project_id', projectId)
@@ -1337,5 +1350,89 @@ export const projectEquipmentService = {
       updated: data?.length || 0,
       message: `Successfully received ${data?.length || 0} items for ${phase} phase`
     };
+  },
+
+  /**
+   * Upload HomeKit QR code photo for equipment
+   * @param {string} equipmentId - Equipment UUID
+   * @param {File} file - Image file
+   * @returns {Promise<object>} Updated equipment record
+   */
+  async uploadHomeKitQRPhoto(equipmentId, file) {
+    try {
+      // Get equipment to determine project ID
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('project_equipment')
+        .select('project_id')
+        .eq('id', equipmentId)
+        .single();
+
+      if (equipmentError) throw equipmentError;
+      if (!equipment || !equipment.project_id) {
+        throw new Error('Equipment not found or project ID missing');
+      }
+
+      // Import SharePoint storage service dynamically
+      const { sharePointStorageService } = await import('./sharePointStorageService');
+
+      // Upload to SharePoint
+      const uploadResult = await sharePointStorageService.uploadHomeKitQRPhoto(
+        equipment.project_id,
+        equipmentId,
+        file
+      );
+
+      console.log('HomeKit QR uploaded successfully to SharePoint:', uploadResult.url);
+      console.log('SharePoint metadata:', {
+        driveId: uploadResult.driveId,
+        itemId: uploadResult.itemId
+      });
+
+      // Update equipment with HomeKit QR URL and metadata
+      const { data, error } = await supabase
+        .from('project_equipment')
+        .update({
+          homekit_qr_url: uploadResult.url,
+          homekit_qr_sharepoint_drive_id: uploadResult.driveId,
+          homekit_qr_sharepoint_item_id: uploadResult.itemId
+        })
+        .eq('id', equipmentId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return data;
+    } catch (error) {
+      console.error('Failed to upload HomeKit QR photo:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Remove HomeKit QR code photo from equipment
+   * @param {string} equipmentId - Equipment UUID
+   * @returns {Promise<object>} Updated equipment record
+   */
+  async removeHomeKitQRPhoto(equipmentId) {
+    try {
+      const { data, error } = await supabase
+        .from('project_equipment')
+        .update({
+          homekit_qr_url: null,
+          homekit_qr_sharepoint_drive_id: null,
+          homekit_qr_sharepoint_item_id: null
+        })
+        .eq('id', equipmentId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      return data;
+    } catch (error) {
+      console.error('Failed to remove HomeKit QR photo:', error);
+      throw error;
+    }
   }
 };
