@@ -2937,6 +2937,101 @@ const PMProjectViewEnhanced = () => {
         />
       )}
 
+      {/* Phase Milestones */}
+      <div style={sectionStyles.card} className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
+          <Calendar className="w-5 h-5" />
+          Phase Milestones
+        </h2>
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-gray-700">
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Phase</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Target Date</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Actual Date</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { type: 'planning_design', label: 'Planning & Design', color: '#8b5cf6' },
+                { type: 'prewire_prep', label: 'Prewire Prep', color: '#06b6d4' },
+                { type: 'prewire', label: 'Prewire', color: '#8b5cf6' },
+                { type: 'trim_prep', label: 'Trim Prep', color: '#f59e0b' },
+                { type: 'trim', label: 'Trim', color: '#f59e0b' },
+                { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
+                { type: 'handoff_training', label: 'Handoff / Training', color: '#10b981' }
+              ].map(({ type, label, color }) => {
+                const milestone = milestoneDates.find(m => m.milestone_type === type);
+                return (
+                  <tr key={type} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-sm text-gray-900 dark:text-white">{label}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-4">
+                      {editMode ? (
+                        <input
+                          type="date"
+                          value={milestone?.target_date || ''}
+                          onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                      ) : milestone?.target_date ? (
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(milestone.target_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {editMode ? (
+                        <input
+                          type="date"
+                          value={milestone?.actual_date || ''}
+                          onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        />
+                      ) : milestone?.actual_date ? (
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(milestone.actual_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4">
+                      {editMode ? (
+                        <select
+                          value={milestone?.completed_manually ? 'completed' : 'not_set'}
+                          onChange={(e) => handleMilestoneUpdate(type, 'completed_manually', e.target.value === 'completed')}
+                          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                        >
+                          <option value="not_set">Not set</option>
+                          <option value="completed">Completed</option>
+                        </select>
+                      ) : milestone?.completed_manually ? (
+                        <span className="text-sm text-green-600 dark:text-green-400">Completed</span>
+                      ) : (
+                        <span className="text-sm text-gray-400 dark:text-gray-500">Not set</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Project Progress - Unified Gauge System */}
       <div style={sectionStyles.card} className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
