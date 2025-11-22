@@ -2272,12 +2272,12 @@ const PMProjectViewEnhanced = () => {
         {/* Quick Actions */}
         <div className="flex flex-wrap gap-3">
           <Button
-            onClick={() => navigate(`/projects/${projectId}/order-equipment`)}
+            onClick={() => navigate(`/projects/${projectId}/procurement`)}
             variant="primary"
             icon={ShoppingCart}
             size="md"
           >
-            Order Equipment
+            Procurement
           </Button>
         </div>
 

@@ -48,7 +48,7 @@ const AppHeader = () => {
     if (p === '/wire-drops-list') return 'Wire Drops List';
     if (p.startsWith('/wire-drops')) return 'Wire Drops';
     if (p.includes('/equipment')) return 'Equipment List';
-    if (p.includes('/order-equipment')) return 'Order Equipment';
+    if (p.includes('/procurement')) return 'Procurement';
     if (p.includes('/receiving')) return 'Parts Receiving';
     if (p.includes('/secure-data')) return 'Secure Data';
     if (p.startsWith('/unifi-test')) return 'UniFi API Test';

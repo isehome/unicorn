@@ -44,7 +44,7 @@ const PartDetailPage = lazy(() => import('./components/PartDetailPage'));
 const GlobalPartsManager = lazy(() => import('./components/GlobalPartsManager'));
 const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPageNew'));
-const PMOrderEquipmentPage = lazy(() => import('./components/PMOrderEquipmentPageEnhanced'));
+const PMProcurementPage = lazy(() => import('./components/PMOrderEquipmentPageEnhanced'));
 const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 
 const AppRoutes = () => {
@@ -244,10 +244,10 @@ const AppRoutes = () => {
             }
           />
           <Route
-            path="/projects/:projectId/order-equipment"
+            path="/projects/:projectId/procurement"
             element={
               <ProtectedRoute>
-                <PMOrderEquipmentPage />
+                <PMProcurementPage />
               </ProtectedRoute>
             }
           />
