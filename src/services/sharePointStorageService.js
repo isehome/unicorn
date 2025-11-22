@@ -338,15 +338,41 @@ class SharePointStorageService {
   }
 
   /**
-   * Clean SharePoint URL by removing query parameters
+   * Clean SharePoint URL by removing query parameters while preserving path segments
+   * Handles SharePoint sharing links like: https://domain/:f:/path?e=code/SubFolder
    * @param {string} url - SharePoint URL
    * @returns {string} Cleaned URL
    */
   cleanSharePointUrl(url) {
     try {
-      // Remove query parameters (everything after ?)
-      const cleanUrl = url.split('?')[0];
-      console.log('Cleaned SharePoint URL:', { original: url, cleaned: cleanUrl });
+      if (!url) return url;
+
+      // Check if URL has query parameters
+      const questionMarkIndex = url.indexOf('?');
+      if (questionMarkIndex === -1) {
+        console.log('Cleaned SharePoint URL (no query params):', { original: url, cleaned: url });
+        return url;
+      }
+
+      // Split into base URL and query string
+      const baseUrl = url.substring(0, questionMarkIndex);
+      const queryAndPath = url.substring(questionMarkIndex + 1);
+
+      // Check if there are path segments after the query parameter
+      // SharePoint sharing links can have format: ?e=code/SubFolder/MorePath
+      const pathAfterQuery = queryAndPath.split('/').slice(1).join('/');
+
+      let cleanUrl = baseUrl;
+      if (pathAfterQuery) {
+        cleanUrl = `${baseUrl}/${pathAfterQuery}`;
+      }
+
+      console.log('Cleaned SharePoint URL:', {
+        original: url,
+        cleaned: cleanUrl,
+        preservedPath: pathAfterQuery || '(none)'
+      });
+
       return cleanUrl;
     } catch (error) {
       console.warn('Failed to clean SharePoint URL:', error);
