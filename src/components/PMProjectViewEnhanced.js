@@ -3034,6 +3034,15 @@ const PMProjectViewEnhanced = () => {
         </div>
       </div>
 
+      {/* Project Permits Section */}
+      <div style={sectionStyles.card} className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
+          <FileText className="w-5 h-5" />
+          Building Permits
+        </h2>
+        <ProjectPermits projectId={projectId} />
+      </div>
+
       {/* Project Progress - Unified Gauge System */}
       <div style={sectionStyles.card} className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
@@ -3932,45 +3941,6 @@ const PMProjectViewEnhanced = () => {
                   </div>
                 )}
               </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Step 4: Project Permits - ORANGE */}
-        <div className="mb-6 flex gap-3">
-          {/* Step Number Badge */}
-          <div className="flex-shrink-0">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500 dark:bg-orange-600 shadow-sm">
-              <span className="text-lg font-bold text-white">4</span>
-            </div>
-          </div>
-
-          {/* Section Content */}
-          <div className="flex-1">
-            <button
-              onClick={() => toggleSection('permits')}
-              className="flex w-full items-center justify-between rounded-lg border-2 border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 px-4 py-4 shadow-sm hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
-            >
-              <div className="flex-1 text-left">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                  <p className="text-sm font-semibold text-orange-900 dark:text-orange-100">Project Permits</p>
-                </div>
-                <p className="text-xs text-orange-700 dark:text-orange-300">
-                  Manage building permits and inspections
-                </p>
-              </div>
-              {sectionsCollapsed.permits ? (
-                <ChevronDown className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-              ) : (
-                <ChevronUp className="w-5 h-5 text-orange-600 dark:text-orange-400" />
-              )}
-            </button>
-
-            {!sectionsCollapsed.permits && (
-              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                <ProjectPermits projectId={projectId} />
               </div>
             )}
           </div>
