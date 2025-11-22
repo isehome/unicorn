@@ -300,45 +300,63 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     try {
       setUploading(true);
       setError(null);
+      setSuccess(null);
 
+      console.log('[SharePoint Upload] Starting upload for PO:', po.po_number);
+
+      // Export PO data
       const exportData = await purchaseOrderService.exportPOData(poId);
+      console.log('[SharePoint Upload] PO data exported');
 
       // Get project procurement SharePoint URL
       const projectUrl = await sharePointStorageService.getProjectProcurementUrl(po.project_id);
+      console.log('[SharePoint Upload] Project URL:', projectUrl);
 
       if (!projectUrl) {
-        throw new Error('No SharePoint URL configured for this project');
+        throw new Error('No SharePoint URL configured for this project. Please add a SharePoint root folder URL in project settings.');
       }
 
       // Generate PDF and CSV
+      console.log('[SharePoint Upload] Generating PDF and CSV...');
       const pdfDoc = pdfExportService.generatePOPDF(exportData);
       const pdfBlob = pdfDoc.output('blob');
       const csv = csvExportService.generatePOCSV(exportData);
       const csvBlob = new Blob([csv], { type: 'text/csv' });
+      console.log('[SharePoint Upload] Files generated:', {
+        pdfSize: pdfBlob.size,
+        csvSize: csvBlob.size
+      });
 
       const vendorName = po.supplier?.name || 'Unknown Vendor';
       const vendorFolder = sharePointStorageService.sanitizeForFileName(vendorName);
+      console.log('[SharePoint Upload] Vendor folder:', vendorFolder);
 
-      // Upload both files to SharePoint
+      // Upload PDF to SharePoint
+      console.log('[SharePoint Upload] Uploading PDF...');
       await sharePointStorageService.uploadToSharePoint(
         projectUrl,
         vendorFolder,
         `${po.po_number}.pdf`,
         pdfBlob
       );
+      console.log('[SharePoint Upload] PDF uploaded successfully');
 
+      // Upload CSV to SharePoint
+      console.log('[SharePoint Upload] Uploading CSV...');
       await sharePointStorageService.uploadToSharePoint(
         projectUrl,
         vendorFolder,
         `${po.po_number}.csv`,
         csvBlob
       );
+      console.log('[SharePoint Upload] CSV uploaded successfully');
 
-      setSuccess('Files uploaded to SharePoint successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      setSuccess(`Files uploaded to SharePoint: Procurement/${vendorFolder}/${po.po_number}.pdf & .csv`);
+      setTimeout(() => setSuccess(null), 5000);
     } catch (err) {
-      console.error('Failed to upload to SharePoint:', err);
-      setError('Failed to upload to SharePoint: ' + err.message);
+      console.error('[SharePoint Upload] Failed:', err);
+      const errorMessage = err.message || 'Unknown error occurred';
+      setError(`SharePoint upload failed: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
