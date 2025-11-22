@@ -300,10 +300,11 @@ class SharePointStorageService {
       const rootUrl = await this.getProjectRootFolder(projectId);
       const procurementUrl = `${rootUrl}/Procurement`;
 
-      console.debug?.('[SharePointStorage] Resolved Procurement folder', {
+      console.log('[SharePointStorage] Resolved Procurement folder:', {
         projectId,
         rootUrl,
-        procurementUrl
+        procurementUrl,
+        message: 'Files should upload to: procurementUrl/Vendor/'
       });
 
       return procurementUrl;
