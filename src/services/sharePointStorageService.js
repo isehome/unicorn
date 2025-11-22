@@ -391,9 +391,18 @@ class SharePointStorageService {
   async uploadToSharePoint(rootUrl, subPath, filename, file) {
     let lastError;
 
-    // Clean the root URL to remove query parameters and encode spaces for Graph
+    // Clean the root URL to remove query parameters
     const cleanedRootUrl = this.cleanSharePointUrl(rootUrl);
-    const graphSafeRootUrl = encodeURI(cleanedRootUrl);
+
+    // Decode first to handle already-encoded URLs, then encode to prevent double-encoding
+    // This handles cases where user enters URL with %20 or actual spaces
+    try {
+      const decodedUrl = decodeURIComponent(cleanedRootUrl);
+      var graphSafeRootUrl = encodeURI(decodedUrl);
+    } catch (e) {
+      // If decoding fails, just encode as-is
+      var graphSafeRootUrl = encodeURI(cleanedRootUrl);
+    }
     
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
