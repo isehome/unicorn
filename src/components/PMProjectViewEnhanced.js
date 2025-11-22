@@ -2959,8 +2959,10 @@ const PMProjectViewEnhanced = () => {
                 { type: 'planning_design', label: 'Planning & Design', color: '#8b5cf6' },
                 { type: 'prewire_prep', label: 'Prewire Prep', color: '#06b6d4' },
                 { type: 'prewire', label: 'Prewire', color: '#8b5cf6' },
+                { type: 'rough_in_inspection', label: 'Rough-In Inspection', color: '#ec4899' },
                 { type: 'trim_prep', label: 'Trim Prep', color: '#f59e0b' },
                 { type: 'trim', label: 'Trim', color: '#f59e0b' },
+                { type: 'final_inspection', label: 'Final Inspection', color: '#ec4899' },
                 { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
                 { type: 'handoff_training', label: 'Handoff / Training', color: '#10b981' }
               ].map(({ type, label, color }) => {

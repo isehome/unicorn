@@ -254,8 +254,10 @@ const MilestoneGaugesDisplay = ({
               { type: 'planning_design', label: 'Planning & Design' },
               { type: 'prewire_prep', label: 'Prewire Prep' },
               { type: 'prewire', label: 'Prewire' },
+              { type: 'rough_in_inspection', label: 'Rough-In Inspection' },
               { type: 'trim_prep', label: 'Trim Prep' },
               { type: 'trim', label: 'Trim' },
+              { type: 'final_inspection', label: 'Final Inspection' },
               { type: 'commissioning', label: 'Commissioning' },
               { type: 'handoff_training', label: 'Handoff / Training' }
             ].map(({ type, label }) => {
