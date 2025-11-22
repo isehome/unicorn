@@ -88,6 +88,26 @@ function ProjectPermits({ projectId }) {
     }
   };
 
+  const handleRoughInTargetDateChange = async (permitId, targetDate) => {
+    try {
+      await permitService.updateRoughInTargetDate(permitId, targetDate || null);
+      await loadPermits();
+    } catch (err) {
+      console.error('Error updating rough-in target date:', err);
+      setError('Failed to update rough-in target date. Please try again.');
+    }
+  };
+
+  const handleFinalInspectionTargetDateChange = async (permitId, targetDate) => {
+    try {
+      await permitService.updateFinalInspectionTargetDate(permitId, targetDate || null);
+      await loadPermits();
+    } catch (err) {
+      console.error('Error updating final inspection target date:', err);
+      setError('Failed to update final inspection target date. Please try again.');
+    }
+  };
+
   const handleRoughInToggle = async (permit) => {
     if (permit.rough_in_completed) {
       // Uncheck - remove completion
@@ -307,9 +327,27 @@ function ProjectPermits({ projectId }) {
               </div>
 
               {/* Inspections */}
-              <div className="space-y-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+              <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-3">
                 {/* Rough-In Inspection */}
-                <div>
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    Rough-In Inspection
+                  </span>
+
+                  {/* Target Date */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 dark:text-gray-400 w-20">
+                      Target Date:
+                    </label>
+                    <input
+                      type="date"
+                      value={permit.rough_in_target_date || ''}
+                      onChange={(e) => handleRoughInTargetDateChange(permit.id, e.target.value)}
+                      className="flex-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                  </div>
+
+                  {/* Completion Checkbox */}
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -318,8 +356,8 @@ function ProjectPermits({ projectId }) {
                       className="mt-1 w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        Rough-In Inspection
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        Inspection Complete
                       </span>
                       {permit.rough_in_completed && (
                         <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
@@ -332,7 +370,25 @@ function ProjectPermits({ projectId }) {
                 </div>
 
                 {/* Final Inspection */}
-                <div>
+                <div className="space-y-2">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    Final Inspection
+                  </span>
+
+                  {/* Target Date */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-600 dark:text-gray-400 w-20">
+                      Target Date:
+                    </label>
+                    <input
+                      type="date"
+                      value={permit.final_inspection_target_date || ''}
+                      onChange={(e) => handleFinalInspectionTargetDateChange(permit.id, e.target.value)}
+                      className="flex-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                    />
+                  </div>
+
+                  {/* Completion Checkbox */}
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input
                       type="checkbox"
@@ -341,8 +397,8 @@ function ProjectPermits({ projectId }) {
                       className="mt-1 w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
                     />
                     <div className="flex-1">
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">
-                        Final Inspection
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        Inspection Complete
                       </span>
                       {permit.final_inspection_completed && (
                         <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">

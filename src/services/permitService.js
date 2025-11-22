@@ -331,6 +331,62 @@ class PermitService {
   }
 
   /**
+   * Update rough-in inspection target date
+   * @param {string} permitId - The permit ID
+   * @param {string} targetDate - The target date (YYYY-MM-DD format)
+   * @returns {Promise<Object>} Updated permit record
+   */
+  async updateRoughInTargetDate(permitId, targetDate) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { data, error } = await supabase
+        .from('project_permits')
+        .update({
+          rough_in_target_date: targetDate,
+          updated_by: user?.id
+        })
+        .eq('id', permitId)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating rough-in target date:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update final inspection target date
+   * @param {string} permitId - The permit ID
+   * @param {string} targetDate - The target date (YYYY-MM-DD format)
+   * @returns {Promise<Object>} Updated permit record
+   */
+  async updateFinalInspectionTargetDate(permitId, targetDate) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      const { data, error } = await supabase
+        .from('project_permits')
+        .update({
+          final_inspection_target_date: targetDate,
+          updated_by: user?.id
+        })
+        .eq('id', permitId)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error updating final inspection target date:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Upload a permit document to SharePoint
    * Uses the same pattern as wire drop photo uploads
    * @param {string} projectId - The project ID
