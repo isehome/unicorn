@@ -372,6 +372,8 @@ const PMProjectViewEnhanced = () => {
   const [roomAssignments, setRoomAssignments] = useState({});
   const [roomAliasSaving, setRoomAliasSaving] = useState(null);
   const [showUnifiApiKey, setShowUnifiApiKey] = useState(false);
+  const [projectStatusHistory, setProjectStatusHistory] = useState([]);
+  const [milestoneDates, setMilestoneDates] = useState([]);
 
   // Collapsible sections state - all default to collapsed (true)
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
@@ -381,7 +383,8 @@ const PMProjectViewEnhanced = () => {
     timeTracking: true,
     lucidData: true,
     procurement: true,
-    permits: true
+    permits: true,
+    projectStatus: true
   });
 
   const toggleSection = (section) => {
@@ -749,19 +752,36 @@ const PMProjectViewEnhanced = () => {
         .select('*')
         .eq('active', true)
         .order('sort_order');
-      
+
       if (!phasesError) setPhases(phasesData || []);
-      
+
       // Load statuses
       const { data: statusesData, error: statusesError } = await supabase
         .from('project_statuses')
         .select('*')
         .eq('active', true)
         .order('sort_order');
-      
+
       if (!statusesError) setStatuses(statusesData || []);
     } catch (error) {
       console.error('Failed to load phases/statuses:', error);
+    }
+  };
+
+  const loadMilestoneDates = async () => {
+    if (!projectId) return;
+    try {
+      const { data, error } = await supabase
+        .from('project_milestones')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('milestone_type');
+
+      if (!error && data) {
+        setMilestoneDates(data);
+      }
+    } catch (error) {
+      console.error('Failed to load milestone dates:', error);
     }
   };
 
@@ -1334,7 +1354,8 @@ const PMProjectViewEnhanced = () => {
     loadContacts();
     loadProgress();
     loadProjectOwners();
-    
+    loadMilestoneDates();
+
     // Always attempt to load milestones - ensure section stays visible even on errors
     loadProjectMilestones().catch(error => {
       console.error('Failed to load milestones on mount:', error);
@@ -2120,7 +2141,7 @@ const PMProjectViewEnhanced = () => {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {project.name}
+              {project?.name || 'Untitled Project'}
             </h1>
             {formData.project_number && (
               <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-sm font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-200">
@@ -2849,11 +2870,80 @@ const PMProjectViewEnhanced = () => {
 
       {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
       {formData.wiring_diagram_url && (
-        <LucidChartCarousel 
+        <LucidChartCarousel
           documentUrl={formData.wiring_diagram_url}
-          projectName={project.name}
+          projectName={project?.name || 'Project'}
         />
       )}
+
+      {/* Project Status Section - Collapsible */}
+      <div style={sectionStyles.card} className="p-6">
+        <button
+          onClick={() => toggleSection('projectStatus')}
+          className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+        >
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            Project Status
+          </h2>
+          {sectionsCollapsed.projectStatus ? (
+            <ChevronDown className="w-5 h-5 text-gray-500" />
+          ) : (
+            <ChevronUp className="w-5 h-5 text-gray-500" />
+          )}
+        </button>
+
+        {!sectionsCollapsed.projectStatus && (
+          <div className="space-y-4">
+            {/* Current Status */}
+            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Current Status</p>
+                <p className="text-lg font-semibold text-gray-900 dark:text-white mt-1">
+                  {formData.status || 'No status set'}
+                </p>
+              </div>
+              {editMode && statuses.length > 0 && (
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="">Select status</option>
+                  {statuses.map((status) => (
+                    <option key={status.id} value={status.name}>
+                      {status.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Available Statuses */}
+            {statuses.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Available Statuses
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {statuses.map((status) => (
+                    <span
+                      key={status.id}
+                      className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
+                      style={{
+                        backgroundColor: `${status.color}20`,
+                        color: status.color
+                      }}
+                    >
+                      {status.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Project Progress - Unified Gauge System */}
       <div style={sectionStyles.card} className="p-6">
@@ -2866,6 +2956,7 @@ const PMProjectViewEnhanced = () => {
           milestonePercentages={milestonePercentages}
           projectOwners={projectOwners}
           startCollapsed={false}
+          milestoneDates={milestoneDates}
         />
       </div>
 

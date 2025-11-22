@@ -17,11 +17,13 @@ import CircularProgressGauge from './CircularProgressGauge';
  * @param {Object} milestonePercentages - Object containing all milestone percentages from milestoneService.getAllPercentagesOptimized()
  * @param {Object} projectOwners - Object with { pm: string, technician: string } names from stakeholders
  * @param {boolean} startCollapsed - Whether to start in collapsed view (dashboard list) or expanded view (detail pages)
+ * @param {Array} milestoneDates - Array of milestone date records from project_milestones table
  */
 const MilestoneGaugesDisplay = ({
   milestonePercentages = {},
   projectOwners = { pm: null, technician: null },
-  startCollapsed = true
+  startCollapsed = true,
+  milestoneDates = []
 }) => {
   // State to track if view is expanded
   const [isExpanded, setIsExpanded] = useState(!startCollapsed);
@@ -29,6 +31,41 @@ const MilestoneGaugesDisplay = ({
   // Responsive sizing: 90px on mobile, 140px on desktop
   const circularSizeMobile = 90;
   const circularSizeDesktop = 140;
+
+  // Helper function to get milestone dates by type
+  const getMilestoneDate = (milestoneType) => {
+    return milestoneDates.find(m => m.milestone_type === milestoneType);
+  };
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Helper to render milestone dates
+  const renderMilestoneDates = (milestoneType, label) => {
+    const milestone = getMilestoneDate(milestoneType);
+    if (!milestone || (!milestone.target_date && !milestone.actual_date)) return null;
+
+    return (
+      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 space-y-1">
+        {milestone.target_date && (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">Target:</span>
+            <span>{formatDate(milestone.target_date)}</span>
+          </div>
+        )}
+        {milestone.actual_date && (
+          <div className="flex items-center gap-2">
+            <span className="font-medium">Actual:</span>
+            <span className="text-green-600 dark:text-green-400">{formatDate(milestone.actual_date)}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // COLLAPSED VIEW: Horizontal layout with 3 gauges side-by-side
   if (!isExpanded) {
@@ -69,6 +106,7 @@ const MilestoneGaugesDisplay = ({
                 />
               </div>
             </div>
+            {renderMilestoneDates('prewire', 'Prewire')}
           </div>
 
           {/* Trim Phase */}
@@ -95,6 +133,7 @@ const MilestoneGaugesDisplay = ({
                 />
               </div>
             </div>
+            {renderMilestoneDates('trim', 'Trim')}
           </div>
 
           {/* Commissioning */}
@@ -121,6 +160,7 @@ const MilestoneGaugesDisplay = ({
                 />
               </div>
             </div>
+            {renderMilestoneDates('commissioning', 'Commissioning')}
           </div>
         </div>
       </div>
@@ -199,6 +239,52 @@ const MilestoneGaugesDisplay = ({
           itemCount={milestonePercentages.commissioning?.itemCount}
           totalItems={milestonePercentages.commissioning?.totalItems}
         />
+
+        {/* Milestone Dates Section */}
+        {milestoneDates.length > 0 && (
+          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">
+              Milestone Timeline
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[
+                { type: 'planning_design', label: 'Planning & Design' },
+                { type: 'prewire_prep', label: 'Prewire Prep' },
+                { type: 'prewire', label: 'Prewire' },
+                { type: 'trim_prep', label: 'Trim Prep' },
+                { type: 'trim', label: 'Trim' },
+                { type: 'commissioning', label: 'Commissioning' },
+                { type: 'handoff_training', label: 'Handoff / Training' }
+              ].map(({ type, label }) => {
+                const milestone = getMilestoneDate(type);
+                if (!milestone || (!milestone.target_date && !milestone.actual_date)) return null;
+
+                return (
+                  <div
+                    key={type}
+                    className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
+                      {label}
+                    </div>
+                    {milestone.target_date && (
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">Target: </span>
+                        {formatDate(milestone.target_date)}
+                      </div>
+                    )}
+                    {milestone.actual_date && (
+                      <div className="text-xs text-green-600 dark:text-green-400 mt-1">
+                        <span className="font-medium">Actual: </span>
+                        {formatDate(milestone.actual_date)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
