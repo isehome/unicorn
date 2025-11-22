@@ -57,7 +57,8 @@ export async function enqueueUpload({ type, projectId, file, metadata }) {
       description: metadata.description || '',
       fileName: file.name,
       contentType: file.type,
-      size: file.size
+      size: file.size,
+      uploadedBy: metadata.uploadedBy || null
     },
     timestamp: Date.now(),
     retryCount: 0,
@@ -219,4 +220,3 @@ export async function clearCompleted() {
     tx.onerror = () => reject(tx.error)
   })
 }
-

@@ -15,6 +15,7 @@ import { OfflineGuard } from './components/OfflineGuard';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
+import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
 import './index.css';
 
 // Lazy load all route components
@@ -341,9 +342,11 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <PrinterProvider>
-            <Router>
-              <AppRoutes />
-            </Router>
+            <PhotoViewerProvider>
+              <Router>
+                <AppRoutes />
+              </Router>
+            </PhotoViewerProvider>
           </PrinterProvider>
         </AuthProvider>
       </ThemeProvider>

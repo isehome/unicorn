@@ -454,6 +454,32 @@ class SharePointStorageService {
   }
 
   /**
+   * Delete a file from SharePoint via Graph API
+   * @param {string} driveId
+   * @param {string} itemId
+   * @returns {Promise<boolean>}
+   */
+  async deleteFile(driveId, itemId) {
+    if (!driveId || !itemId) {
+      console.warn('deleteFile skipped - missing drive/item ID');
+      return false;
+    }
+
+    const response = await fetch('/api/graph-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', driveId, itemId })
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || `Failed to delete SharePoint file (${response.status})`);
+    }
+
+    return true;
+  }
+
+  /**
    * Get thumbnail URL for SharePoint file
    * @param {string} sharePointUrl - SharePoint file URL
    * @param {string} size - Thumbnail size ('small', 'medium', 'large')

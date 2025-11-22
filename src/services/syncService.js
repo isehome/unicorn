@@ -186,7 +186,8 @@ class SyncService {
         sharepoint_item_id: metadata.itemId,
         file_name: metadata.name,
         content_type: upload.metadata.contentType,
-        size_bytes: metadata.size
+        size_bytes: metadata.size,
+        uploaded_by: upload.metadata.uploadedBy || 'Offline upload'
       }])
       .select()
       .single();
@@ -209,22 +210,26 @@ class SyncService {
     console.log('[Sync Service] Uploading wire drop photo:', upload.id);
 
     // Upload to SharePoint
-    const url = await sharePointStorageService.uploadWireDropPhoto(
+    const metadata = await sharePointStorageService.uploadWireDropPhoto(
       upload.projectId,
       upload.wireDropId,
       upload.stage,
       upload.file
     );
 
-    console.log('[Sync Service] SharePoint upload complete:', url);
+    console.log('[Sync Service] SharePoint upload complete:', metadata?.url);
 
     // Update wire drop stage in Supabase
     const { data, error } = await supabase
       .from('wire_drop_stages')
       .update({
-        photo_url: url,
+        photo_url: metadata.url,
+        sharepoint_drive_id: metadata.driveId,
+        sharepoint_item_id: metadata.itemId,
         status: 'completed',
-        completed_at: new Date().toISOString()
+        completed: true,
+        completed_at: new Date().toISOString(),
+        completed_by: upload.metadata?.uploadedBy || 'Offline upload'
       })
       .eq('wire_drop_id', upload.wireDropId)
       .eq('stage_type', upload.stage)

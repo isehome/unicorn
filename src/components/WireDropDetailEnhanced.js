@@ -10,6 +10,7 @@ import { projectRoomsService } from '../services/projectRoomsService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import CachedSharePointImage from './CachedSharePointImage';
+import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
 import UniFiClientSelectorEnhanced from './UniFiClientSelectorEnhanced';
@@ -55,6 +56,7 @@ const WireDropDetailEnhanced = () => {
   const navigate = useNavigate();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
+  const { openPhotoViewer, closePhotoViewer, updatePhotoViewerOptions, photo: activeViewerPhoto } = usePhotoViewer();
   
   const [wireDrop, setWireDrop] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -89,6 +91,10 @@ const WireDropDetailEnhanced = () => {
   
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
+  const [stageViewerLoading, setStageViewerLoading] = useState(null);
+  const [activeStageViewer, setActiveStageViewer] = useState(null);
+  const [homeKitViewerActive, setHomeKitViewerActive] = useState(false);
+  const [homeKitViewerLoading, setHomeKitViewerLoading] = useState(false);
   const [completingCommission, setCompletingCommission] = useState(false);
   const [commissionNotes, setCommissionNotes] = useState('');
   const [savingRoomEquipment, setSavingRoomEquipment] = useState(false);
@@ -104,6 +110,14 @@ const WireDropDetailEnhanced = () => {
   // HomeKit QR modal state
   const [showHomeKitQRModal, setShowHomeKitQRModal] = useState(false);
   const [uploadingHomeKitQR, setUploadingHomeKitQR] = useState(false);
+  const getCurrentUserName = useCallback(() => (
+    user?.user_metadata?.full_name ||
+    user?.full_name ||
+    user?.displayName ||
+    user?.email ||
+    user?.account?.username ||
+    'Unknown User'
+  ), [user]);
 
   // UniFi client selector state
   const [showUniFiSelector, setShowUniFiSelector] = useState(false);
@@ -416,6 +430,29 @@ const WireDropDetailEnhanced = () => {
       loadAvailableIssues();
     }
   }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms]);
+
+  useEffect(() => {
+    if (!activeViewerPhoto) {
+      setActiveStageViewer(null);
+      setStageViewerLoading(null);
+      setHomeKitViewerActive(false);
+      setHomeKitViewerLoading(false);
+    }
+  }, [activeViewerPhoto]);
+
+  useEffect(() => {
+    if (activeStageViewer) {
+      const loadingState =
+        stageViewerLoading === activeStageViewer || uploadingStage === activeStageViewer;
+      updatePhotoViewerOptions({ loading: loadingState });
+    }
+  }, [activeStageViewer, stageViewerLoading, uploadingStage, updatePhotoViewerOptions]);
+
+  useEffect(() => {
+    if (homeKitViewerActive) {
+      updatePhotoViewerOptions({ loading: homeKitViewerLoading || uploadingHomeKitQR });
+    }
+  }, [homeKitViewerActive, homeKitViewerLoading, uploadingHomeKitQR, updatePhotoViewerOptions]);
   
   const loadAssociatedIssues = async () => {
     try {
@@ -532,75 +569,158 @@ const WireDropDetailEnhanced = () => {
     setEditing(false);
   };
 
-  const handlePhotoUpload = async (stageType, isReUpload = false) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment';
+  const processStagePhotoUpload = useCallback(async (stageType, file, isReUpload = false) => {
+    if (!file) return null;
+    let updatedData = null;
+    try {
+      setUploadingStage(stageType);
+      const compressedFile = await compressImage(file);
+      const currentUserName = getCurrentUserName();
 
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+      if (!navigator.onLine) {
+        console.log('[WireDropDetail] Offline - queueing photo upload');
+        const queueId = await enqueueUpload({
+          type: 'wire_drop_photo',
+          projectId: wireDrop.project_id,
+          file: compressedFile,
+          metadata: {
+            wireDropId: id,
+          stage: stageType,
+            uploadedBy: currentUserName
+          }
+        });
 
-      try {
-        setUploadingStage(stageType);
-
-        // Compress the image first
-        const compressedFile = await compressImage(file);
-
-        // Check if online
-        if (!navigator.onLine) {
-          console.log('[WireDropDetail] Offline - queueing photo upload');
-
-          // Queue for later upload
-          const queueId = await enqueueUpload({
-            type: 'wire_drop_photo',
-            projectId: wireDrop.project_id,
-            file: compressedFile,
-            metadata: {
-              wireDropId: id,
-              stage: stageType
-            }
-          });
-
-          // Update local state optimistically
-          setWireDrop(prev => ({
+        setWireDrop(prev => {
+          const stages = prev?.wire_drop_stages || [];
+          return {
             ...prev,
-            wire_drop_stages: prev.wire_drop_stages.map(stage =>
+            wire_drop_stages: stages.map(stage =>
               stage.stage_type === stageType
                 ? {
                     ...stage,
                     photo_url: URL.createObjectURL(compressedFile),
-                    isPending: true, // Flag for UI
+                    isPending: true,
                     status: 'pending'
                   }
                 : stage
             )
-          }));
+          };
+        });
 
-          alert('Photo queued for upload when online');
-          return;
-        }
-
-        // Online: upload immediately
-        // Get user display name from AuthContext
-        const currentUserName = user?.displayName || user?.email || user?.account?.username || 'Unknown User';
-
-        await wireDropService.uploadStagePhoto(id, stageType, compressedFile, currentUserName);
-        await loadWireDrop(); // Reload to get updated stages
-        if (isReUpload) {
-          alert('Photo updated successfully!');
-        }
-      } catch (err) {
-        console.error('Error uploading photo:', err);
-        alert(err.message || 'Failed to upload photo');
-      } finally {
-        setUploadingStage(null);
+        alert('Photo queued for upload when online');
+        return null;
       }
-    };
 
+      await wireDropService.uploadStagePhoto(id, stageType, compressedFile, currentUserName);
+      updatedData = await loadWireDrop();
+      if (isReUpload) {
+        alert('Photo updated successfully!');
+      }
+      return updatedData;
+    } catch (err) {
+      console.error('Error uploading photo:', err);
+      alert(err.message || 'Failed to upload photo');
+      throw err;
+    } finally {
+      setUploadingStage(null);
+    }
+  }, [getCurrentUserName, id, loadWireDrop, wireDrop?.project_id]);
+
+  const promptStagePhotoUpload = (stageType, isReUpload = false) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        await processStagePhotoUpload(stageType, file, isReUpload);
+      } catch (_) {}
+    };
     input.click();
   };
+
+  const getStageByType = (stageType) =>
+    (wireDrop?.wire_drop_stages || []).find(stage => stage.stage_type === stageType);
+
+  const buildStagePhotoPayload = (stageType, stage) => ({
+    id: stage.id || `${stageType}-${wireDrop?.id}`,
+    url: stage.photo_url,
+    sharepoint_drive_id: stage.sharepoint_drive_id,
+    sharepoint_item_id: stage.sharepoint_item_id,
+    file_name:
+      stageType === 'prewire'
+        ? 'Prewire Photo'
+        : stageType === 'trim_out'
+          ? 'Trim Out Photo'
+          : 'Stage Photo',
+    uploaded_by: stage.completed_by,
+    created_at: stage.completed_at,
+    updated_at: stage.updated_at,
+    updated_by: stage.updated_by
+  });
+
+  const openStagePhotoViewer = (stageType, stageOverride = null) => {
+    const stage = stageOverride || getStageByType(stageType);
+    if (!stage || stage.isPending || !stage.photo_url) return;
+    setActiveStageViewer(stageType);
+    openPhotoViewer(buildStagePhotoPayload(stageType, stage), {
+      canEdit: true,
+      replaceMode: 'file',
+      loading: stageViewerLoading === stageType || uploadingStage === stageType,
+      onReplace: (file) => handleStageViewerReplace(stageType, file),
+      onDelete: () => handleDeleteStagePhoto(stageType)
+    });
+  };
+
+  async function handleStageViewerReplace(stageType, file) {
+    if (!file) return;
+    try {
+      setStageViewerLoading(stageType);
+      updatePhotoViewerOptions({ loading: true });
+      const updated = await processStagePhotoUpload(stageType, file, true);
+      if (!updated) {
+        setActiveStageViewer(null);
+        closePhotoViewer();
+        return;
+      }
+      const refreshedStage = (updated.wire_drop_stages || []).find(stage => stage.stage_type === stageType);
+      if (refreshedStage) {
+        openStagePhotoViewer(stageType, refreshedStage);
+      } else {
+        setActiveStageViewer(null);
+        closePhotoViewer();
+      }
+    } catch (err) {
+      console.error('Failed to replace stage photo:', err);
+      alert(err.message || 'Failed to replace stage photo');
+    } finally {
+      setStageViewerLoading(null);
+      updatePhotoViewerOptions({ loading: false });
+    }
+  }
+
+  async function handleDeleteStagePhoto(stageType) {
+    const stage = getStageByType(stageType);
+    if (!stage || stage.isPending) return;
+    const confirmed = window.confirm('Remove this photo from the stage? This will mark the stage as incomplete.');
+    if (!confirmed) return;
+    try {
+      setStageViewerLoading(stageType);
+      updatePhotoViewerOptions({ loading: true });
+      await wireDropService.removeStagePhoto(id, stageType);
+      await loadWireDrop();
+      setActiveStageViewer(null);
+      closePhotoViewer();
+    } catch (err) {
+      console.error('Failed to remove stage photo:', err);
+      alert(err.message || 'Failed to remove stage photo');
+    } finally {
+      setStageViewerLoading(null);
+      updatePhotoViewerOptions({ loading: false });
+    }
+  }
 
   const handleHomeKitQRUpload = async () => {
     if (!primaryRoomEquipment?.id) {
@@ -631,6 +751,9 @@ const WireDropDetailEnhanced = () => {
 
         alert('HomeKit QR code uploaded successfully!');
         setShowHomeKitQRModal(false);
+        if (homeKitViewerActive) {
+          openHomeKitPhotoViewer();
+        }
       } catch (err) {
         console.error('Error uploading HomeKit QR:', err);
         alert(err.message || 'Failed to upload HomeKit QR code');
@@ -642,11 +765,13 @@ const WireDropDetailEnhanced = () => {
     input.click();
   };
 
-  const handleHomeKitQRRemove = async () => {
-    if (!primaryRoomEquipment?.id) return;
+  const handleHomeKitQRRemove = async (skipConfirm = false) => {
+    if (!primaryRoomEquipment?.id) return false;
 
-    const confirmed = window.confirm('Remove this HomeKit QR code photo?');
-    if (!confirmed) return;
+    if (!skipConfirm) {
+      const confirmed = window.confirm('Remove this HomeKit QR code photo?');
+      if (!confirmed) return false;
+    }
 
     try {
       setUploadingHomeKitQR(true);
@@ -658,11 +783,54 @@ const WireDropDetailEnhanced = () => {
 
       alert('HomeKit QR code removed successfully');
       setShowHomeKitQRModal(false);
+      if (homeKitViewerActive) {
+        setHomeKitViewerActive(false);
+        closePhotoViewer();
+      }
+      return true;
     } catch (err) {
       console.error('Error removing HomeKit QR:', err);
       alert(err.message || 'Failed to remove HomeKit QR code');
+      return false;
     } finally {
       setUploadingHomeKitQR(false);
+    }
+  };
+
+  const openHomeKitPhotoViewer = () => {
+    if (!primaryRoomEquipment?.homekit_qr_url) return;
+    setHomeKitViewerActive(true);
+    openPhotoViewer({
+      id: primaryRoomEquipment.id,
+      url: primaryRoomEquipment.homekit_qr_url,
+      sharepoint_drive_id: primaryRoomEquipment.homekit_qr_sharepoint_drive_id,
+      sharepoint_item_id: primaryRoomEquipment.homekit_qr_sharepoint_item_id,
+      file_name: `${primaryRoomEquipment.name || 'Equipment'} HomeKit QR`,
+      uploaded_by: primaryRoomEquipment.homekit_qr_uploaded_by || null,
+      created_at: primaryRoomEquipment.homekit_qr_uploaded_at || null,
+      updated_at: primaryRoomEquipment.homekit_qr_updated_at || null,
+      updated_by: primaryRoomEquipment.homekit_qr_updated_by || null
+    }, {
+      canEdit: true,
+      replaceMode: 'action',
+      loading: homeKitViewerLoading || uploadingHomeKitQR,
+      onReplace: () => handleHomeKitQRUpload(),
+      onDelete: () => handleHomeKitViewerDelete()
+    });
+  };
+
+  const handleHomeKitViewerDelete = async () => {
+    try {
+      setHomeKitViewerLoading(true);
+      updatePhotoViewerOptions({ loading: true });
+      const removed = await handleHomeKitQRRemove(true);
+      if (removed) {
+        setHomeKitViewerActive(false);
+        closePhotoViewer();
+      }
+    } finally {
+      setHomeKitViewerLoading(false);
+      updatePhotoViewerOptions({ loading: false });
     }
   };
 
@@ -1490,7 +1658,13 @@ const WireDropDetailEnhanced = () => {
 
                           {/* HomeKit QR Thumbnail */}
                           <button
-                            onClick={() => setShowHomeKitQRModal(true)}
+                            onClick={() => {
+                              if (primaryRoomEquipment.homekit_qr_url) {
+                                openHomeKitPhotoViewer();
+                              } else {
+                                setShowHomeKitQRModal(true);
+                              }
+                            }}
                             className="flex-shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all hover:scale-105 hover:shadow-lg"
                             style={{
                               borderColor: primaryRoomEquipment.homekit_qr_url ? '#8B5CF6' : '#D1D5DB',
@@ -1968,7 +2142,7 @@ const WireDropDetailEnhanced = () => {
                           variant="danger" 
                           icon={RefreshCw} 
                           size="sm"
-                          onClick={() => handlePhotoUpload('prewire', true)}
+                          onClick={() => promptStagePhotoUpload('prewire', true)}
                           loading={uploadingStage === 'prewire'}
                           disabled={uploadingStage === 'prewire'}
                         >
@@ -2000,14 +2174,15 @@ const WireDropDetailEnhanced = () => {
                               size="medium"
                               alt="Prewire"
                               className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                              showFullOnClick={true}
+                              showFullOnClick={false}
+                              onClick={() => openStagePhotoViewer('prewire')}
                             />
                           )}
                           <Button
                             variant="secondary"
                             icon={RefreshCw}
                             size="sm"
-                            onClick={() => handlePhotoUpload('prewire', true)}
+                            onClick={() => promptStagePhotoUpload('prewire', true)}
                             loading={uploadingStage === 'prewire'}
                             disabled={uploadingStage === 'prewire'}
                             className="w-full"
@@ -2043,7 +2218,7 @@ const WireDropDetailEnhanced = () => {
                       variant="primary" 
                       icon={Camera} 
                       size="sm"
-                      onClick={() => handlePhotoUpload('prewire')}
+                      onClick={() => promptStagePhotoUpload('prewire')}
                       loading={uploadingStage === 'prewire'}
                       disabled={uploadingStage === 'prewire'}
                     >
@@ -2086,7 +2261,7 @@ const WireDropDetailEnhanced = () => {
                           variant="danger" 
                           icon={RefreshCw} 
                           size="sm"
-                          onClick={() => handlePhotoUpload('trim_out', true)}
+                          onClick={() => promptStagePhotoUpload('trim_out', true)}
                           loading={uploadingStage === 'trim_out'}
                           disabled={uploadingStage === 'trim_out'}
                         >
@@ -2118,14 +2293,15 @@ const WireDropDetailEnhanced = () => {
                               size="medium"
                               alt="Trim Out"
                               className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                              showFullOnClick={true}
+                              showFullOnClick={false}
+                              onClick={() => openStagePhotoViewer('trim_out')}
                             />
                           )}
                           <Button
                             variant="secondary"
                             icon={RefreshCw}
                             size="sm"
-                            onClick={() => handlePhotoUpload('trim_out', true)}
+                            onClick={() => promptStagePhotoUpload('trim_out', true)}
                             loading={uploadingStage === 'trim_out'}
                             disabled={uploadingStage === 'trim_out'}
                             className="w-full"
@@ -2161,7 +2337,7 @@ const WireDropDetailEnhanced = () => {
                       variant="primary" 
                       icon={Camera} 
                       size="sm"
-                      onClick={() => handlePhotoUpload('trim_out')}
+                      onClick={() => promptStagePhotoUpload('trim_out')}
                       loading={uploadingStage === 'trim_out'}
                       disabled={uploadingStage === 'trim_out'}
                     >

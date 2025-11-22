@@ -1363,7 +1363,7 @@ export const projectEquipmentService = {
       // Get equipment to determine project ID
       const { data: equipment, error: equipmentError } = await supabase
         .from('project_equipment')
-        .select('project_id')
+        .select('project_id, homekit_qr_sharepoint_drive_id, homekit_qr_sharepoint_item_id')
         .eq('id', equipmentId)
         .single();
 
@@ -1372,8 +1372,18 @@ export const projectEquipmentService = {
         throw new Error('Equipment not found or project ID missing');
       }
 
-      // Import SharePoint storage service dynamically
       const { sharePointStorageService } = await import('./sharePointStorageService');
+
+      if (equipment.homekit_qr_sharepoint_drive_id && equipment.homekit_qr_sharepoint_item_id) {
+        try {
+          await sharePointStorageService.deleteFile(
+            equipment.homekit_qr_sharepoint_drive_id,
+            equipment.homekit_qr_sharepoint_item_id
+          );
+        } catch (deleteError) {
+          console.warn('Failed to delete existing HomeKit QR photo:', deleteError);
+        }
+      }
 
       // Upload to SharePoint
       const uploadResult = await sharePointStorageService.uploadHomeKitQRPhoto(
@@ -1416,6 +1426,26 @@ export const projectEquipmentService = {
    */
   async removeHomeKitQRPhoto(equipmentId) {
     try {
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('project_equipment')
+        .select('homekit_qr_sharepoint_drive_id, homekit_qr_sharepoint_item_id')
+        .eq('id', equipmentId)
+        .single();
+
+      if (equipmentError) throw equipmentError;
+
+      if (equipment?.homekit_qr_sharepoint_drive_id && equipment?.homekit_qr_sharepoint_item_id) {
+        try {
+          const { sharePointStorageService } = await import('./sharePointStorageService');
+          await sharePointStorageService.deleteFile(
+            equipment.homekit_qr_sharepoint_drive_id,
+            equipment.homekit_qr_sharepoint_item_id
+          );
+        } catch (deleteError) {
+          console.warn('Failed to delete HomeKit QR photo from SharePoint:', deleteError);
+        }
+      }
+
       const { data, error } = await supabase
         .from('project_equipment')
         .update({

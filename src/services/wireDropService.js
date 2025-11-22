@@ -485,6 +485,41 @@ class WireDropService {
     }
   }
 
+  async removeStagePhoto(wireDropId, stageType) {
+    try {
+      const { data: stage, error } = await supabase
+        .from('wire_drop_stages')
+        .select('id, sharepoint_drive_id, sharepoint_item_id')
+        .eq('wire_drop_id', wireDropId)
+        .eq('stage_type', stageType)
+        .single();
+
+      if (error) throw error;
+      if (!stage) {
+        throw new Error('Stage not found');
+      }
+
+      if (stage.sharepoint_drive_id && stage.sharepoint_item_id) {
+        try {
+          const { sharePointStorageService } = await import('./sharePointStorageService');
+          await sharePointStorageService.deleteFile(stage.sharepoint_drive_id, stage.sharepoint_item_id);
+        } catch (deleteError) {
+          console.warn('Failed to delete SharePoint stage photo:', deleteError);
+        }
+      }
+
+      return await this.updateStage(wireDropId, stageType, {
+        photo_url: null,
+        sharepoint_drive_id: null,
+        sharepoint_item_id: null,
+        completed: false
+      });
+    } catch (error) {
+      console.error('Failed to remove stage photo:', error);
+      throw error;
+    }
+  }
+
   /**
    * Complete commission stage (no photo required)
    */

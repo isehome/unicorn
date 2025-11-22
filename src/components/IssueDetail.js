@@ -15,6 +15,7 @@ import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
 import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
+import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
 import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff } from 'lucide-react';
@@ -80,6 +81,15 @@ const IssueDetail = () => {
   const [draftIssue, setDraftIssue] = useState(null);
   const authorProfileIdRef = useRef(undefined);
   const draftIssuePromiseRef = useRef(null);
+  const [photoActionLoading, setPhotoActionLoading] = useState(false);
+  const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
+  const currentUserDisplay = useMemo(() => (
+    user?.user_metadata?.full_name ||
+    user?.full_name ||
+    user?.name ||
+    user?.email ||
+    'Unknown user'
+  ), [user]);
 
   const isNew = issueId === 'new';
   const resolvedIssue = issue || draftIssue || null;
@@ -650,6 +660,7 @@ const IssueDetail = () => {
 
       // Compress the image first
       const compressedFile = await compressImage(file);
+      const uploaderLabel = currentUserDisplay;
 
       // Check if online
       if (!navigator.onLine) {
@@ -662,7 +673,8 @@ const IssueDetail = () => {
           file: compressedFile,
           metadata: {
             issueId: issueIdToUse,
-            description: ''
+            description: '',
+            uploadedBy: uploaderLabel
           }
         });
 
@@ -674,7 +686,9 @@ const IssueDetail = () => {
           file_name: file.name,
           content_type: file.type,
           size_bytes: compressedFile.size,
-          isPending: true // Flag for UI
+          isPending: true, // Flag for UI
+          uploaded_by: uploaderLabel,
+          created_at: new Date().toISOString()
         };
 
         setPhotos(prev => [...prev, optimisticPhoto]);
@@ -702,7 +716,8 @@ const IssueDetail = () => {
           sharepoint_item_id: metadata.itemId,
           file_name: metadata.name || file.name,
           content_type: file.type,
-          size_bytes: metadata.size || compressedFile.size
+          size_bytes: metadata.size || compressedFile.size,
+          uploaded_by: uploaderLabel
         }])
         .select()
         .single();
@@ -717,6 +732,109 @@ const IssueDetail = () => {
       evt.target.value = '';
     }
   };
+
+  const syncViewerLoading = useCallback((value) => {
+    setPhotoActionLoading(value);
+    updatePhotoViewerOptions({ loading: value });
+  }, [updatePhotoViewerOptions]);
+
+  const handleDeletePhoto = useCallback(async (targetPhoto) => {
+    if (!targetPhoto) return;
+    const confirmed = window.confirm('Delete this photo? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      syncViewerLoading(true);
+      if (targetPhoto.sharepoint_drive_id && targetPhoto.sharepoint_item_id) {
+        try {
+          await sharePointStorageService.deleteFile(targetPhoto.sharepoint_drive_id, targetPhoto.sharepoint_item_id);
+        } catch (fileErr) {
+          console.warn('SharePoint delete failed:', fileErr);
+        }
+      }
+
+      const { error: deleteError } = await supabase
+        .from('issue_photos')
+        .delete()
+        .eq('id', targetPhoto.id);
+
+      if (deleteError) throw deleteError;
+      setPhotos((prev) => prev.filter((p) => p.id !== targetPhoto.id));
+      closePhotoViewer();
+    } catch (err) {
+      console.error('Failed to delete photo:', err);
+      setError(err.message || 'Failed to delete photo');
+    } finally {
+      syncViewerLoading(false);
+    }
+  }, [closePhotoViewer, syncViewerLoading]);
+
+  const handleReplacePhoto = useCallback(async (targetPhoto, file) => {
+    if (!targetPhoto) return;
+    try {
+      syncViewerLoading(true);
+      const compressedFile = await compressImage(file);
+      const metadata = await sharePointStorageService.uploadIssuePhoto(
+        projectId,
+        targetPhoto.issue_id,
+        compressedFile,
+        'replacement'
+      );
+
+      const payload = {
+        url: metadata.url,
+        sharepoint_drive_id: metadata.driveId,
+        sharepoint_item_id: metadata.itemId,
+        file_name: metadata.name || file.name,
+        content_type: file.type,
+        size_bytes: metadata.size || compressedFile.size,
+        updated_at: new Date().toISOString(),
+        updated_by: currentUserDisplay
+      };
+
+      const { data, error } = await supabase
+        .from('issue_photos')
+        .update(payload)
+        .eq('id', targetPhoto.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (targetPhoto.sharepoint_drive_id && targetPhoto.sharepoint_item_id) {
+        try {
+          await sharePointStorageService.deleteFile(targetPhoto.sharepoint_drive_id, targetPhoto.sharepoint_item_id);
+        } catch (fileErr) {
+          console.warn('Failed to delete previous SharePoint file:', fileErr);
+        }
+      }
+
+      setPhotos((prev) => prev.map((p) => (p.id === targetPhoto.id ? data : p)));
+      openPhotoViewer(data, {
+        canEdit: canUploadPhotos,
+        replaceMode: 'file',
+        loading: false,
+        onReplace: (nextFile) => handleReplacePhoto(data, nextFile),
+        onDelete: () => handleDeletePhoto(data)
+      });
+    } catch (err) {
+      console.error('Failed to replace photo:', err);
+      setError(err.message || 'Failed to replace photo');
+    } finally {
+      syncViewerLoading(false);
+    }
+  }, [canUploadPhotos, currentUserDisplay, handleDeletePhoto, openPhotoViewer, projectId, syncViewerLoading]);
+
+  const handleOpenPhotoViewer = useCallback((photo) => {
+    if (!photo || photo.isPending) return;
+    openPhotoViewer(photo, {
+      canEdit: canUploadPhotos,
+      replaceMode: 'file',
+      loading: photoActionLoading,
+      onReplace: (file) => handleReplacePhoto(photo, file),
+      onDelete: () => handleDeletePhoto(photo)
+    });
+  }, [canUploadPhotos, handleDeletePhoto, handleReplacePhoto, openPhotoViewer, photoActionLoading]);
 
   const handleTagStakeholder = async (assignmentId) => {
     if (!assignmentId) return;
@@ -1026,7 +1144,15 @@ const IssueDetail = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {photos.map((p) => (
-              <div key={p.id} className="relative block rounded-xl overflow-hidden border hover:border-violet-500 transition-colors">
+              <div
+                key={p.id}
+                className={`relative block rounded-xl overflow-hidden border transition-colors ${p.isPending ? 'opacity-80 cursor-not-allowed' : 'hover:border-violet-500 cursor-pointer'}`}
+                onClick={() => {
+                  if (!p.isPending) {
+                    handleOpenPhotoViewer(p);
+                  }
+                }}
+              >
                 {p.isPending ? (
                   <>
                     <img
@@ -1048,9 +1174,9 @@ const IssueDetail = () => {
                     displayType="thumbnail"
                     size="medium"
                     alt={p.file_name || 'Issue photo'}
-                    className="w-full h-28 cursor-pointer"
+                    className="w-full h-28"
                     style={{ minHeight: '7rem' }}
-                    showFullOnClick={true}
+                    showFullOnClick={false}
                   />
                 )}
               </div>
