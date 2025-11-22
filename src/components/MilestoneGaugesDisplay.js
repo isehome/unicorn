@@ -18,12 +18,16 @@ import CircularProgressGauge from './CircularProgressGauge';
  * @param {Object} projectOwners - Object with { pm: string, technician: string } names from stakeholders
  * @param {boolean} startCollapsed - Whether to start in collapsed view (dashboard list) or expanded view (detail pages)
  * @param {Array} milestoneDates - Array of milestone date records from project_milestones table
+ * @param {boolean} editMode - Whether the parent is in edit mode
+ * @param {Function} onMilestoneUpdate - Callback function to update milestone dates
  */
 const MilestoneGaugesDisplay = ({
   milestonePercentages = {},
   projectOwners = { pm: null, technician: null },
   startCollapsed = true,
-  milestoneDates = []
+  milestoneDates = [],
+  editMode = false,
+  onMilestoneUpdate = () => {}
 }) => {
   // State to track if view is expanded
   const [isExpanded, setIsExpanded] = useState(!startCollapsed);
@@ -241,50 +245,78 @@ const MilestoneGaugesDisplay = ({
         />
 
         {/* Milestone Dates Section */}
-        {milestoneDates.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">
-              Milestone Timeline
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[
-                { type: 'planning_design', label: 'Planning & Design' },
-                { type: 'prewire_prep', label: 'Prewire Prep' },
-                { type: 'prewire', label: 'Prewire' },
-                { type: 'trim_prep', label: 'Trim Prep' },
-                { type: 'trim', label: 'Trim' },
-                { type: 'commissioning', label: 'Commissioning' },
-                { type: 'handoff_training', label: 'Handoff / Training' }
-              ].map(({ type, label }) => {
-                const milestone = getMilestoneDate(type);
-                if (!milestone || (!milestone.target_date && !milestone.actual_date)) return null;
+        <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4">
+            Milestone Timeline {editMode && <span className="text-xs font-normal text-gray-500">(Click dates to edit)</span>}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { type: 'planning_design', label: 'Planning & Design' },
+              { type: 'prewire_prep', label: 'Prewire Prep' },
+              { type: 'prewire', label: 'Prewire' },
+              { type: 'trim_prep', label: 'Trim Prep' },
+              { type: 'trim', label: 'Trim' },
+              { type: 'commissioning', label: 'Commissioning' },
+              { type: 'handoff_training', label: 'Handoff / Training' }
+            ].map(({ type, label }) => {
+              const milestone = getMilestoneDate(type);
 
-                return (
-                  <div
-                    key={type}
-                    className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
-                  >
-                    <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
-                      {label}
-                    </div>
-                    {milestone.target_date && (
+              // In edit mode, always show the card even if no dates are set
+              if (!editMode && (!milestone || (!milestone.target_date && !milestone.actual_date))) {
+                return null;
+              }
+
+              return (
+                <div
+                  key={type}
+                  className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700"
+                >
+                  <div className="text-xs font-semibold text-gray-900 dark:text-white mb-2">
+                    {label}
+                  </div>
+
+                  {/* Target Date */}
+                  <div className="mb-2">
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Target: </span>
+                    {editMode ? (
+                      <input
+                        type="date"
+                        value={milestone?.target_date || ''}
+                        onChange={(e) => onMilestoneUpdate(type, 'target_date', e.target.value || null)}
+                        className="text-xs w-full mt-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                    ) : milestone?.target_date ? (
                       <div className="text-xs text-gray-600 dark:text-gray-400">
-                        <span className="font-medium">Target: </span>
                         {formatDate(milestone.target_date)}
                       </div>
-                    )}
-                    {milestone.actual_date && (
-                      <div className="text-xs text-green-600 dark:text-green-400 mt-1">
-                        <span className="font-medium">Actual: </span>
-                        {formatDate(milestone.actual_date)}
-                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-400 dark:text-gray-500">Not set</div>
                     )}
                   </div>
-                );
-              })}
-            </div>
+
+                  {/* Actual Date */}
+                  <div>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Actual: </span>
+                    {editMode ? (
+                      <input
+                        type="date"
+                        value={milestone?.actual_date || ''}
+                        onChange={(e) => onMilestoneUpdate(type, 'actual_date', e.target.value || null)}
+                        className="text-xs w-full mt-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                      />
+                    ) : milestone?.actual_date ? (
+                      <div className="text-xs text-green-600 dark:text-green-400">
+                        {formatDate(milestone.actual_date)}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-gray-400 dark:text-gray-500">Not set</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

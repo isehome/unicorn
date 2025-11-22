@@ -383,8 +383,7 @@ const PMProjectViewEnhanced = () => {
     timeTracking: true,
     lucidData: true,
     procurement: true,
-    permits: true,
-    projectStatus: true
+    permits: true
   });
 
   const toggleSection = (section) => {
@@ -1153,6 +1152,50 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
+  const handleMilestoneUpdate = async (milestoneType, field, value) => {
+    try {
+      // Find existing milestone or create new one
+      const existingMilestone = milestoneDates.find(m => m.milestone_type === milestoneType);
+
+      if (existingMilestone) {
+        // Update existing milestone
+        const { error } = await supabase
+          .from('project_milestones')
+          .update({ [field]: value, updated_at: new Date().toISOString() })
+          .eq('id', existingMilestone.id);
+
+        if (error) throw error;
+
+        // Update local state
+        setMilestoneDates(prev =>
+          prev.map(m =>
+            m.milestone_type === milestoneType
+              ? { ...m, [field]: value }
+              : m
+          )
+        );
+      } else {
+        // Create new milestone
+        const { data, error } = await supabase
+          .from('project_milestones')
+          .insert([{
+            project_id: projectId,
+            milestone_type: milestoneType,
+            [field]: value
+          }])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Add to local state
+        setMilestoneDates(prev => [...prev, data]);
+      }
+    } catch (error) {
+      console.error('Failed to update milestone:', error);
+    }
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -1685,10 +1728,10 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
-  const handleMilestoneUpdate = async (phaseId, field, value) => {
+  const handlePhaseMilestoneUpdate = async (phaseId, field, value) => {
     try {
       const existingMilestone = milestones.find(m => m.phase_id === phaseId);
-      
+
       if (existingMilestone) {
         // Update existing milestone
         const { data, error } = await supabase
@@ -1697,13 +1740,13 @@ const PMProjectViewEnhanced = () => {
           .eq('id', existingMilestone.id)
           .select()
           .single();
-        
+
         if (error) {
           throw error;
         }
-        
-        setMilestones(milestones.map(m => 
-          m.id === existingMilestone.id 
+
+        setMilestones(milestones.map(m =>
+          m.id === existingMilestone.id
             ? { ...m, [field]: value || null }
             : m
         ));
@@ -2182,10 +2225,28 @@ const PMProjectViewEnhanced = () => {
               <Target className="h-3 w-3" />
               {formData.phase || 'Phase not set'}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-              <CheckCircle className="h-3 w-3" />
-              {formData.status || 'Status not set'}
-            </span>
+            {editMode && statuses.length > 0 ? (
+              <div className="inline-flex items-center gap-1">
+                <CheckCircle className="h-3 w-3 text-gray-700 dark:text-gray-200" />
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                >
+                  <option value="">Select status</option>
+                  {statuses.map((status) => (
+                    <option key={status.id} value={status.name}>
+                      {status.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <CheckCircle className="h-3 w-3" />
+                {formData.status || 'Status not set'}
+              </span>
+            )}
           </div>
           {(formData.address || formData.start_date || formData.end_date) && (
             <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
@@ -2876,75 +2937,6 @@ const PMProjectViewEnhanced = () => {
         />
       )}
 
-      {/* Project Status Section - Collapsible */}
-      <div style={sectionStyles.card} className="p-6">
-        <button
-          onClick={() => toggleSection('projectStatus')}
-          className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
-        >
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <CheckCircle className="w-5 h-5" />
-            Project Status
-          </h2>
-          {sectionsCollapsed.projectStatus ? (
-            <ChevronDown className="w-5 h-5 text-gray-500" />
-          ) : (
-            <ChevronUp className="w-5 h-5 text-gray-500" />
-          )}
-        </button>
-
-        {!sectionsCollapsed.projectStatus && (
-          <div className="space-y-4">
-            {/* Current Status */}
-            <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-              <div>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Current Status</p>
-                <p className="text-lg font-semibold text-gray-900 dark:text-white mt-1">
-                  {formData.status || 'No status set'}
-                </p>
-              </div>
-              {editMode && statuses.length > 0 && (
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                >
-                  <option value="">Select status</option>
-                  {statuses.map((status) => (
-                    <option key={status.id} value={status.name}>
-                      {status.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Available Statuses */}
-            {statuses.length > 0 && (
-              <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Available Statuses
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {statuses.map((status) => (
-                    <span
-                      key={status.id}
-                      className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
-                      style={{
-                        backgroundColor: `${status.color}20`,
-                        color: status.color
-                      }}
-                    >
-                      {status.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Project Progress - Unified Gauge System */}
       <div style={sectionStyles.card} className="p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-6">
@@ -2957,6 +2949,8 @@ const PMProjectViewEnhanced = () => {
           projectOwners={projectOwners}
           startCollapsed={false}
           milestoneDates={milestoneDates}
+          editMode={editMode}
+          onMilestoneUpdate={handleMilestoneUpdate}
         />
       </div>
 
