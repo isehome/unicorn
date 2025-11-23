@@ -769,7 +769,23 @@ export const projectEquipmentService = {
       } else {
         const { data: existingEquipment, error: existingError } = await supabase
           .from('project_equipment')
-          .select('id, part_number, room_id, install_side, project_id, name')
+          .select(`
+            id,
+            part_number,
+            room_id,
+            install_side,
+            project_id,
+            name,
+            ordered_quantity,
+            received_quantity,
+            received_date,
+            ordered_confirmed,
+            ordered_confirmed_at,
+            ordered_confirmed_by,
+            onsite_confirmed,
+            onsite_confirmed_at,
+            onsite_confirmed_by
+          `)
           .eq('project_id', projectId);
 
         if (existingError) throw existingError;
@@ -786,9 +802,23 @@ export const projectEquipmentService = {
           const key = equipmentKey(record);
           const existing = equipmentMap.get(key);
           if (existing) {
+            // Preserve PO-related fields that should NOT be overwritten during import
+            const preservedFields = {
+              ordered_quantity: existing.ordered_quantity,
+              received_quantity: existing.received_quantity,
+              received_date: existing.received_date,
+              ordered_confirmed: existing.ordered_confirmed,
+              ordered_confirmed_at: existing.ordered_confirmed_at,
+              ordered_confirmed_by: existing.ordered_confirmed_by,
+              onsite_confirmed: existing.onsite_confirmed,
+              onsite_confirmed_at: existing.onsite_confirmed_at,
+              onsite_confirmed_by: existing.onsite_confirmed_by
+            };
+
             updatePayload.push({
               ...existing,
               ...record,
+              ...preservedFields,  // Override with preserved values
               id: existing.id,
               csv_batch_id: batchId
             });
