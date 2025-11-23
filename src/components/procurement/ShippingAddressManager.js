@@ -11,7 +11,8 @@ import {
   Star,
   X,
   Save,
-  AlertCircle
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 
 /**
@@ -35,6 +36,7 @@ const ShippingAddressManager = ({
   const [addresses, setAddresses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [editingAddress, setEditingAddress] = useState(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -92,6 +94,7 @@ const ShippingAddressManager = ({
 
     try {
       setError(null);
+      setSuccess(null);
 
       if (editingAddress) {
         // Update existing address
@@ -101,6 +104,7 @@ const ShippingAddressManager = ({
           .eq('id', editingAddress.id);
 
         if (updateError) throw updateError;
+        setSuccess('Address updated successfully');
       } else {
         // Create new address
         const { error: insertError } = await supabase
@@ -108,13 +112,15 @@ const ShippingAddressManager = ({
           .insert([formData]);
 
         if (insertError) throw insertError;
+        setSuccess('Address added successfully');
       }
 
       // Reload addresses
       await loadAddresses();
 
-      // Reset form
+      // Reset form and hide success after 3 seconds
       handleCancel();
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error('Failed to save address:', err);
       setError(err.message);
@@ -145,6 +151,7 @@ const ShippingAddressManager = ({
 
     try {
       setError(null);
+      setSuccess(null);
 
       const { error: deleteError } = await supabase
         .from('shipping_addresses')
@@ -154,6 +161,8 @@ const ShippingAddressManager = ({
       if (deleteError) throw deleteError;
 
       await loadAddresses();
+      setSuccess('Address deleted successfully');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error('Failed to delete address:', err);
       setError(err.message);
@@ -163,6 +172,7 @@ const ShippingAddressManager = ({
   const handleSetDefault = async (addressId) => {
     try {
       setError(null);
+      setSuccess(null);
 
       const { error: updateError } = await supabase
         .from('shipping_addresses')
@@ -172,6 +182,8 @@ const ShippingAddressManager = ({
       if (updateError) throw updateError;
 
       await loadAddresses();
+      setSuccess('Default address updated');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error('Failed to set default address:', err);
       setError(err.message);
@@ -252,6 +264,16 @@ const ShippingAddressManager = ({
           <div className="flex items-center gap-2">
             <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
             <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {success && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <p className="text-sm text-green-800 dark:text-green-200">{success}</p>
           </div>
         </div>
       )}
