@@ -790,7 +790,25 @@ class PurchaseOrderService {
 
       if (equipError) throw equipError;
 
-      console.log('[generateInventoryPO] Fetched', equipment?.length || 0, 'equipment items with global parts');
+      console.log('[generateInventoryPO] === Equipment Fetch Results ===');
+      console.log('[generateInventoryPO] Total equipment items with global_part_id:', equipment?.length || 0);
+
+      if (!equipment || equipment.length === 0) {
+        console.log('[generateInventoryPO] ⚠️  NO EQUIPMENT WITH GLOBAL PARTS FOUND');
+        console.log('[generateInventoryPO] This means no equipment items are linked to global_parts.');
+        console.log('[generateInventoryPO] Check that equipment has global_part_id set in the database.');
+        return null;
+      }
+
+      // Log sample of equipment for debugging
+      const sample = equipment.slice(0, 5);
+      console.log('[generateInventoryPO] First 5 equipment items:');
+      sample.forEach(item => {
+        console.log(`  - ${item.part_number || item.name}:`,
+          `global_part_id=${item.global_part?.id || 'NULL'},`,
+          `qty_on_hand=${item.global_part?.quantity_on_hand || 0},`,
+          `planned=${item.planned_quantity || 0}`);
+      });
 
       // Calculate submitted PO quantities (only submitted/confirmed/received POs)
       const { data: pos } = await supabase
@@ -818,7 +836,7 @@ class PurchaseOrderService {
 
       // Calculate items available from inventory with detailed logging
       console.log('[generateInventoryPO] === Inventory Calculation Details ===');
-      const inventoryItems = (equipment || [])
+      const allCalculations = (equipment || [])
         .map(item => {
           const plannedQty = item.planned_quantity || 0;
           const orderedQty = submittedPOMap.get(item.id) || 0;
@@ -828,25 +846,39 @@ class PurchaseOrderService {
           // Calculate inventory allocation: min(planned - ordered, on_hand)
           const inventoryQty = Math.min(needed, onHand);
 
-          // Log calculation for items with inventory
-          if (inventoryQty > 0) {
-            console.log(`[generateInventoryPO] ${item.part_number || item.name}:`,
-              `planned=${plannedQty}, ordered=${orderedQty}, on_hand=${onHand},`,
-              `needed=${needed}, allocated=${inventoryQty}`);
-          }
-
           return {
             ...item,
             inventoryQty,
             orderedQty,
             onHand,
-            needed
+            needed,
+            plannedQty
           };
-        })
-        .filter(item => item.inventoryQty > 0);
+        });
+
+      // Log ALL items with their calculations
+      console.log('[generateInventoryPO] Calculations for ALL equipment items:');
+      allCalculations.forEach(item => {
+        const status = item.inventoryQty > 0 ? '✅ ALLOCATE' : '❌ SKIP';
+        const reason = item.inventoryQty === 0
+          ? (item.onHand === 0 ? '(no stock)' : item.needed === 0 ? '(already ordered)' : '(unknown)')
+          : '';
+        console.log(`  ${status} ${item.part_number || item.name}:`,
+          `planned=${item.plannedQty}, ordered=${item.orderedQty},`,
+          `on_hand=${item.onHand}, needed=${item.needed},`,
+          `allocated=${item.inventoryQty} ${reason}`);
+      });
+
+      const inventoryItems = allCalculations.filter(item => item.inventoryQty > 0);
 
       if (inventoryItems.length === 0) {
-        console.log('[generateInventoryPO] No items available from inventory (all needed items either already ordered or no stock)');
+        console.log('[generateInventoryPO] ===================================');
+        console.log('[generateInventoryPO] ⚠️  NO ITEMS TO ALLOCATE FROM INVENTORY');
+        console.log('[generateInventoryPO] Reasons:');
+        const noStock = allCalculations.filter(i => i.onHand === 0).length;
+        const alreadyOrdered = allCalculations.filter(i => i.onHand > 0 && i.needed === 0).length;
+        console.log(`  - ${noStock} items have no stock (quantity_on_hand = 0)`);
+        console.log(`  - ${alreadyOrdered} items are already fully ordered`);
         return null;
       }
 
