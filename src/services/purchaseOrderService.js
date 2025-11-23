@@ -896,6 +896,12 @@ class PurchaseOrderService {
       console.log('[generateInventoryPO] Summary: Found', inventoryItems.length, 'items available from inventory');
       console.log('[generateInventoryPO] Total units to allocate:', inventoryItems.reduce((sum, item) => sum + item.inventoryQty, 0));
 
+      // Determine milestone_stage based on items (prewire vs trim)
+      const prewireCount = inventoryItems.filter(item => item.global_part?.required_for_prewire === true).length;
+      const trimCount = inventoryItems.length - prewireCount;
+      const milestoneStage = prewireCount >= trimCount ? 'prewire' : 'trim';
+      console.log('[generateInventoryPO] Milestone determination:', { prewireCount, trimCount, milestoneStage });
+
       // Ensure inventory supplier exists
       const inventorySupplier = await this.ensureInventorySupplier();
 
@@ -903,7 +909,7 @@ class PurchaseOrderService {
       const poData = {
         project_id: projectId,
         supplier_id: inventorySupplier.id,
-        milestone_stage: null,
+        milestone_stage: milestoneStage,
         status: 'draft',
         order_date: new Date().toISOString().split('T')[0],
         ship_to_address: null,
