@@ -49,7 +49,17 @@ class PurchaseOrderService {
         .select()
         .single();
 
-      if (poError) throw poError;
+      if (poError) {
+        console.error('❌ Error creating PO:', {
+          code: poError.code,
+          message: poError.message,
+          details: poError.details,
+          hint: poError.hint,
+          poData,
+          poNumber
+        });
+        throw poError;
+      }
 
       // Add line items
       if (lineItems && lineItems.length > 0) {
