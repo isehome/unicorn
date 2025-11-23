@@ -99,13 +99,31 @@ class PurchaseOrderService {
               description
             )
           ),
-          tracking:shipment_tracking(*),
-          submitter:profiles!submitted_by(id, full_name, email)
+          tracking:shipment_tracking(*)
         `)
         .eq('id', poId)
         .single();
 
       if (error) throw error;
+
+      // Fetch submitter profile separately if submitted_by exists
+      if (data && data.submitted_by) {
+        try {
+          const { data: submitterData } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .eq('id', data.submitted_by)
+            .single();
+
+          if (submitterData) {
+            data.submitter = submitterData;
+          }
+        } catch (submitterError) {
+          // If submitter fetch fails, just continue without it
+          console.warn('Could not fetch submitter profile:', submitterError);
+        }
+      }
+
       return data;
     } catch (error) {
       console.error('Error fetching purchase order:', error);
