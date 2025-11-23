@@ -1349,144 +1349,262 @@ const PMOrderEquipmentPageEnhanced = () => {
         {/* Active POs Tab Content */}
         {tab === 'pos' && (
           <div>
-            <div style={sectionStyles.card} className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Purchase Orders ({purchaseOrders.length})
-                </h2>
+            {purchaseOrders.length === 0 ? (
+              <div style={sectionStyles.card} className="text-center py-12">
+                <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                <p className="text-gray-500 dark:text-gray-400">
+                  No purchase orders yet. Create one from the Prewire or Trim tabs.
+                </p>
               </div>
-
-              {purchaseOrders.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-gray-500 dark:text-gray-400">
-                    No purchase orders yet. Create one from the Prewire or Trim tabs.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {purchaseOrders.map((po) => {
-                    const isDraft = po.status === 'draft';
-                    return (
-                      <div
-                        key={po.id}
-                        style={sectionStyles.card}
-                        className={`border-l-4 ${
-                          isDraft
-                            ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
-                            : 'border-violet-500'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              {isDraft && (
-                                <span className="text-orange-600 dark:text-orange-400 text-base font-bold">⚠️</span>
-                              )}
-                              <h3 className="font-semibold text-gray-900 dark:text-white">
-                                {po.po_number}
-                              </h3>
-                              <span className={`px-2 py-1 text-xs font-medium rounded ${
-                                po.status === 'draft' ? 'bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300' :
-                                po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                                po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                                'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                              }`}>
-                                {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
-                              </span>
-                              <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
-                                {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
-                              </span>
-                            </div>
-
-                            {isDraft && (
-                              <div className="mb-3 p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-xs text-orange-800 dark:text-orange-200 font-medium">
-                                ⚠️ Draft PO - Not yet submitted to supplier. Click to review and submit.
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                            <div>
-                              <p className="text-gray-600 dark:text-gray-400 text-xs">Supplier</p>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {po.supplier?.name || 'Unknown'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600 dark:text-gray-400 text-xs">Items</p>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                {po.itemCount || 0}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-600 dark:text-gray-400 text-xs">Total</p>
-                              <p className="font-medium text-gray-900 dark:text-white">
-                                ${(po.total_amount || 0).toFixed(2)}
-                              </p>
-                            </div>
-                          </div>
-
-                          {po.internal_notes && (
-                            <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
-                              <p className="text-gray-600 dark:text-gray-400">
-                                <strong>Notes:</strong> {po.internal_notes}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Tracking Info */}
-                          {po.tracking && po.tracking.length > 0 && (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {po.tracking.map((t) => (
-                                <button
-                                  key={t.id}
-                                  onClick={() => {
-                                    // Copy to clipboard
-                                    navigator.clipboard.writeText(t.tracking_number);
-                                    // Open Google search in new tab
-                                    window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
-                                  }}
-                                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
-                                  title="Click to copy and search tracking number"
-                                >
-                                  <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                  <span className="font-mono text-xs font-semibold text-blue-900 dark:text-blue-100">
-                                    {t.tracking_number}
-                                  </span>
-                                  <span className="text-xs text-blue-700 dark:text-blue-300">
-                                    ({t.carrier})
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          </div>
-
-                          <div className="flex flex-col gap-2 ml-4">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedPOId(po.id);
-                                setPoDetailsModalOpen(true);
-                              }}
-                            >
-                              View Details
-                            </Button>
-                          </div>
-                        </div>
+            ) : (
+              <>
+                {/* PENDING POs Section (Drafts) */}
+                {(() => {
+                  const pendingPOs = purchaseOrders.filter(po => po.status === 'draft');
+                  return pendingPOs.length > 0 && (
+                    <div style={sectionStyles.card} className="mb-6">
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="text-orange-600 dark:text-orange-400 text-lg font-bold">⚠️</div>
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Pending POs ({pendingPOs.length})
+                        </h2>
+                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                          - Draft orders not yet submitted
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+
+                      <div className="space-y-3">
+                        {pendingPOs.map((po) => (
+                          <div
+                            key={po.id}
+                            style={sectionStyles.card}
+                            className="border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-900/20"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                                    {po.po_number}
+                                  </h3>
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300">
+                                    Draft
+                                  </span>
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
+                                    {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
+                                  </span>
+                                </div>
+
+                                <div className="mb-3 p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-xs text-orange-800 dark:text-orange-200 font-medium">
+                                  ⚠️ Draft PO - Not yet submitted to supplier. Click to review and submit.
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Supplier</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.supplier?.name || 'Unknown'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Items</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.itemCount || 0}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Total</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      ${(po.total_amount || 0).toFixed(2)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {po.internal_notes && (
+                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
+                                    <p className="text-gray-600 dark:text-gray-400">
+                                      <strong>Notes:</strong> {po.internal_notes}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-2 ml-4">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPOId(po.id);
+                                    setPoDetailsModalOpen(true);
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* SUBMITTED POs Section */}
+                {(() => {
+                  const submittedPOs = purchaseOrders.filter(po => po.status !== 'draft');
+                  return submittedPOs.length > 0 && (
+                    <div style={sectionStyles.card} className="mb-6">
+                      <div className="flex items-center gap-2 mb-4">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                          Submitted POs ({submittedPOs.length})
+                        </h2>
+                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                          - Orders sent to suppliers
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {submittedPOs.map((po) => (
+                          <div
+                            key={po.id}
+                            style={sectionStyles.card}
+                            className="border-l-4 border-violet-500"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <h3 className="font-semibold text-gray-900 dark:text-white">
+                                    {po.po_number}
+                                  </h3>
+                                  <span className={`px-2 py-1 text-xs font-medium rounded ${
+                                    po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                                    po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                                    po.status === 'confirmed' ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300' :
+                                    'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                  }`}>
+                                    {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
+                                  </span>
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
+                                    {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Supplier</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.supplier?.name || 'Unknown'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Items</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      {po.itemCount || 0}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-600 dark:text-gray-400 text-xs">Total</p>
+                                    <p className="font-medium text-gray-900 dark:text-white">
+                                      ${(po.total_amount || 0).toFixed(2)}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {po.internal_notes && (
+                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
+                                    <p className="text-gray-600 dark:text-gray-400">
+                                      <strong>Notes:</strong> {po.internal_notes}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Tracking Info */}
+                                {po.tracking && po.tracking.length > 0 && (
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {po.tracking.map((t) => (
+                                      <button
+                                        key={t.id}
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(t.tracking_number);
+                                          window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
+                                        }}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors cursor-pointer"
+                                        title="Click to copy and search tracking number"
+                                      >
+                                        <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                        <span className="font-mono text-xs font-semibold text-blue-900 dark:text-blue-100">
+                                          {t.tracking_number}
+                                        </span>
+                                        <span className="text-xs text-blue-700 dark:text-blue-300">
+                                          ({t.carrier})
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-2 ml-4">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPOId(po.id);
+                                    setPoDetailsModalOpen(true);
+                                  }}
+                                >
+                                  View Details
+                                </Button>
+
+                                {/* Undo Submit Button - EMERGENCY USE ONLY */}
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={async () => {
+                                    if (!window.confirm(
+                                      `⚠️ EMERGENCY UNDO ⚠️\n\n` +
+                                      `This will revert PO ${po.po_number} back to DRAFT status and:\n` +
+                                      `• Reverse ordered quantities on equipment\n` +
+                                      `• Restore allocated inventory\n` +
+                                      `• Clear submission tracking\n\n` +
+                                      `This should only be used in emergencies. Are you sure?`
+                                    )) {
+                                      return;
+                                    }
+
+                                    try {
+                                      await purchaseOrderService.undoSubmitPurchaseOrder(po.id);
+                                      await loadPurchaseOrders();
+                                      alert('✓ PO submission has been undone. The PO is now back in draft status.');
+                                    } catch (err) {
+                                      console.error('Failed to undo PO submission:', err);
+                                      alert(`Failed to undo PO submission: ${err.message}`);
+                                    }
+                                  }}
+                                >
+                                  Undo Submit
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
         )}
       </div>
