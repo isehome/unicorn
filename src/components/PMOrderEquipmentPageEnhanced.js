@@ -592,6 +592,25 @@ const PMOrderEquipmentPageEnhanced = () => {
         setTimeout(() => setError(null), 5000);
       }
 
+      // Auto-generate inventory PO if items available from warehouse
+      if (createdPOs.length > 0) {
+        try {
+          console.log('[PMOrderEquipment] Checking for inventory items to create PO...');
+          const inventoryPO = await purchaseOrderService.generateInventoryPO(projectId, null);
+          if (inventoryPO) {
+            console.log('[PMOrderEquipment] ✅ Auto-generated inventory PO:', inventoryPO.po_number);
+            setSuccessMessage(prev =>
+              prev + ` Plus 1 inventory PO (${inventoryPO.po_number}) for items from warehouse.`
+            );
+          } else {
+            console.log('[PMOrderEquipment] No inventory items available for PO generation');
+          }
+        } catch (invErr) {
+          console.error('[PMOrderEquipment] Failed to generate inventory PO:', invErr);
+          // Don't fail the whole operation if inventory PO generation fails
+        }
+      }
+
       // Clear selections and reload
       setSelectedItems({});
       await loadEquipment();
