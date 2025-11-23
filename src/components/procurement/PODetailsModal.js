@@ -250,6 +250,20 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         console.log('[PODetailsModal] Invalidated milestone cache after submit');
       }
 
+      // Auto-generate inventory PO if items available from warehouse
+      try {
+        console.log('[PODetailsModal] Checking for inventory items to create PO...');
+        const inventoryPO = await purchaseOrderService.generateInventoryPO(po.project_id, user?.id);
+        if (inventoryPO) {
+          console.log('[PODetailsModal] ✅ Auto-generated inventory PO:', inventoryPO.po_number);
+        } else {
+          console.log('[PODetailsModal] No inventory items available');
+        }
+      } catch (invErr) {
+        console.error('[PODetailsModal] Failed to generate inventory PO:', invErr);
+        // Don't fail the submission if inventory PO generation fails
+      }
+
       // Auto-upload SUBMITTED CSV to SharePoint
       try {
         console.log('[PODetailsModal] Starting auto-upload of SUBMITTED CSV...');

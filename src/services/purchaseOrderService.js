@@ -680,6 +680,176 @@ class PurchaseOrderService {
       throw error;
     }
   }
+
+  /**
+   * Ensure "Inventory" supplier exists, create if not
+   * Returns the inventory supplier record
+   */
+  async ensureInventorySupplier() {
+    try {
+      // Check if inventory supplier already exists
+      const { data: existing, error: searchError } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('name', 'Internal Inventory')
+        .maybeSingle();
+
+      if (searchError && searchError.code !== 'PGRST116') {
+        throw searchError;
+      }
+
+      if (existing) {
+        return existing;
+      }
+
+      // Create inventory supplier
+      const { data: newSupplier, error: createError } = await supabase
+        .from('suppliers')
+        .insert([{
+          name: 'Internal Inventory',
+          short_code: 'INV',
+          contact_name: 'Warehouse',
+          email: 'inventory@internal',
+          phone: null,
+          address: null,
+          city: null,
+          state: null,
+          zip: null,
+          country: 'USA',
+          payment_terms: 'Internal',
+          is_active: true,
+          notes: 'System-generated supplier for internal inventory pulls'
+        }])
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      return newSupplier;
+    } catch (error) {
+      console.error('Error ensuring inventory supplier:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate inventory PO for items available from warehouse
+   * Automatically creates and submits a PO to "Inventory" supplier for items
+   * that can be sourced from existing inventory
+   */
+  async generateInventoryPO(projectId, userId = null) {
+    try {
+      console.log('[generateInventoryPO] Starting inventory PO generation for project:', projectId);
+
+      // Get all equipment for this project
+      const { data: equipment, error: equipError } = await supabase
+        .from('project_equipment')
+        .select(`
+          id,
+          name,
+          part_number,
+          planned_quantity,
+          unit_cost,
+          global_part:global_part_id(
+            id,
+            quantity_on_hand,
+            required_for_prewire
+          )
+        `)
+        .eq('project_id', projectId)
+        .not('global_part_id', 'is', null);
+
+      if (equipError) throw equipError;
+
+      // Calculate submitted PO quantities (only submitted/confirmed/received POs)
+      const { data: pos } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          status,
+          items:purchase_order_items(
+            project_equipment_id,
+            quantity_ordered
+          )
+        `)
+        .eq('project_id', projectId);
+
+      // Map of equipment_id -> total ordered from submitted POs
+      const submittedPOMap = new Map();
+      (pos || []).forEach(po => {
+        if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
+          (po.items || []).forEach(item => {
+            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
+            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          });
+        }
+      });
+
+      // Calculate items available from inventory
+      const inventoryItems = (equipment || [])
+        .map(item => {
+          const plannedQty = item.planned_quantity || 0;
+          const orderedQty = submittedPOMap.get(item.id) || 0;
+          const onHand = item.global_part?.quantity_on_hand || 0;
+
+          // Calculate inventory allocation: min(planned - ordered, on_hand)
+          const inventoryQty = Math.min(
+            Math.max(0, plannedQty - orderedQty),
+            onHand
+          );
+
+          return {
+            ...item,
+            inventoryQty,
+            orderedQty
+          };
+        })
+        .filter(item => item.inventoryQty > 0);
+
+      if (inventoryItems.length === 0) {
+        console.log('[generateInventoryPO] No items available from inventory');
+        return null;
+      }
+
+      console.log('[generateInventoryPO] Found', inventoryItems.length, 'items available from inventory');
+
+      // Ensure inventory supplier exists
+      const inventorySupplier = await this.ensureInventorySupplier();
+
+      // Create inventory PO
+      const poData = {
+        project_id: projectId,
+        supplier_id: inventorySupplier.id,
+        milestone_stage: null,
+        status: 'draft',
+        order_date: new Date().toISOString().split('T')[0],
+        ship_to_address: null,
+        ship_to_contact: null,
+        ship_to_phone: null,
+        internal_notes: 'Auto-generated inventory pull from warehouse',
+        supplier_notes: 'Items to be pulled from internal inventory'
+      };
+
+      const lineItems = inventoryItems.map(item => ({
+        project_equipment_id: item.id,
+        quantity_ordered: item.inventoryQty,
+        unit_cost: item.unit_cost || 0,
+        notes: `From warehouse inventory (${item.inventoryQty} available)`
+      }));
+
+      // Create the PO
+      const po = await this.createPurchaseOrder(poData, lineItems);
+      console.log('[generateInventoryPO] Created inventory PO:', po.po_number);
+
+      // Auto-submit the inventory PO
+      await this.submitPurchaseOrder(po.id, userId);
+      console.log('[generateInventoryPO] Auto-submitted inventory PO:', po.po_number);
+
+      return po;
+    } catch (error) {
+      console.error('Error generating inventory PO:', error);
+      throw error;
+    }
+  }
 }
 
 export const purchaseOrderService = new PurchaseOrderService();
