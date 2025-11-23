@@ -202,7 +202,7 @@ const POGenerationModal = ({
         'user' // TODO: Replace with actual user identifier from auth context
       );
 
-      // Update the PO with user-edited values and submission tracking
+      // Update the PO with user-edited values (PO remains as 'draft' until officially submitted)
       await purchaseOrderService.updatePurchaseOrder(result.po.id, {
         order_date: orderDate,
         requested_delivery_date: requestedDeliveryDate || null,
@@ -211,9 +211,7 @@ const POGenerationModal = ({
         internal_notes: internalNotes || null,
         supplier_notes: supplierNotes || null,
         shipping_address_id: shippingAddressId || null,
-        total_amount: total,
-        submitted_by: user?.id || null,
-        submitted_at: new Date().toISOString()
+        total_amount: total
       });
 
       // DON'T update ordered_quantity here - only update when PO is submitted

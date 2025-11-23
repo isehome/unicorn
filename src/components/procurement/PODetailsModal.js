@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { supabase } from '../../lib/supabase';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
@@ -40,6 +41,7 @@ import {
  */
 const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const { mode } = useTheme();
+  const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // State
@@ -180,11 +182,11 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setSaving(true);
       setError(null);
 
-      // Update PO status to 'submitted'
+      // Update PO status to 'submitted' and capture who submitted it
       await purchaseOrderService.updatePurchaseOrder(poId, {
         status: 'submitted',
         submitted_at: new Date().toISOString(),
-        submitted_by: 'user' // TODO: Get actual user from auth context
+        submitted_by: user?.id || null
       });
 
       // Update ordered_quantity for all equipment in this PO
