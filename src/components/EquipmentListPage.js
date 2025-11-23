@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable } from 'lucide-react';
+import CachedSharePointImage from './CachedSharePointImage';
+import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
@@ -14,6 +16,12 @@ const mapEquipmentRecord = (item) => {
   const model = item.model || item.global_part?.model || null;
   const roomName = item.project_rooms?.name || 'Unassigned';
   const installSide = item.install_side || (item.project_rooms?.is_headend ? 'head_end' : 'room_end');
+  const homekitQRUrl = item.homekit_qr_url || null;
+
+  // Calculate "ordered" status from procurement system (auto-synced with PO submissions)
+  // quantity_ordered is automatically calculated from submitted POs
+  const quantityOrdered = item.quantity_ordered || 0;
+  const isOrdered = quantityOrdered > 0;
 
   return {
     id: item.id,
@@ -25,17 +33,22 @@ const mapEquipmentRecord = (item) => {
     isHeadend: installSide === 'head_end' || Boolean(item.project_rooms?.is_headend),
     installSide,
     plannedQuantity: item.planned_quantity || 0,
-    ordered: Boolean(item.ordered_confirmed),
-    orderedAt: item.ordered_confirmed_at || null,
-    onsite: Boolean(item.onsite_confirmed),
+    ordered: isOrdered, // AUTO-SYNCED: True when item has been ordered via PO submission
+    orderedAt: isOrdered ? (item.ordered_confirmed_at || null) : null,
+    quantityOrdered, // Track actual quantity ordered
+    onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by receive items section
     onsiteAt: item.onsite_confirmed_at || null,
     notes: item.notes || '',
+    homekitQRUrl,
+    homekitQRDriveId: item.homekit_qr_sharepoint_drive_id || null,
+    homekitQRItemId: item.homekit_qr_sharepoint_item_id || null,
     searchIndex: [
       name,
       partNumber,
       manufacturer,
       model,
       roomName,
+      homekitQRUrl ? 'homekit qr' : null,
       installSide === 'head_end' ? 'head-end' : 'room-end'
     ]
       .filter(Boolean)
@@ -57,6 +70,7 @@ const EquipmentListPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { theme, mode } = useTheme();
+  const { openPhotoViewer } = usePhotoViewer();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -110,6 +124,36 @@ const EquipmentListPage = () => {
       setError('');
       const data = await projectEquipmentService.fetchProjectEquipment(projectId);
 
+      // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
+      const { data: pos } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          status,
+          items:purchase_order_items(
+            project_equipment_id,
+            quantity_ordered
+          )
+        `)
+        .eq('project_id', projectId);
+
+      // Create map of submitted PO quantities (exclude drafts)
+      const submittedPOMap = new Map();
+      (pos || []).forEach(po => {
+        if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
+          (po.items || []).forEach(item => {
+            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
+            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
+          });
+        }
+      });
+
+      // Enrich equipment data with calculated quantity_ordered
+      const enrichedData = (data || []).map(item => ({
+        ...item,
+        quantity_ordered: submittedPOMap.get(item.id) || 0
+      }));
+
       // Fetch wire drop links for all equipment
       const equipmentIds = data.map(eq => eq.id);
       const { data: wireDropLinks, error: linksError } = await supabase
@@ -145,7 +189,7 @@ const EquipmentListPage = () => {
       });
 
       // Add wire drops to mapped equipment
-      const mapped = (data || []).map(item => ({
+      const mapped = enrichedData.map(item => ({
         ...mapEquipmentRecord(item),
         wireDrops: wireDropsByEquipment[item.id] || []
       }));
@@ -220,19 +264,18 @@ const EquipmentListPage = () => {
 
   const toggleStatus = async (equipmentId, field, value) => {
     try {
+      // "Ordered" status is now read-only and auto-synced with PO system
+      if (field === 'ordered') {
+        alert('The "Ordered" status is automatically updated when purchase orders are submitted. Use the Order Equipment section to create and submit POs.');
+        return;
+      }
+
       setStatusUpdating(equipmentId);
       const payload = { userId: null };
 
-      if (field === 'ordered') {
-        payload.ordered = value;
-        if (!value) {
-          payload.onsite = false;
-        }
-      } else if (field === 'onsite') {
+      if (field === 'onsite') {
         payload.onsite = value;
-        if (value) {
-          payload.ordered = true;
-        }
+        // Note: We don't auto-set ordered=true anymore since it's calculated from POs
       }
 
       const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
@@ -247,6 +290,17 @@ const EquipmentListPage = () => {
     }
   };
 
+  const openHomeKitViewer = useCallback((item) => {
+    if (!item.homekitQRUrl) return;
+    openPhotoViewer({
+      id: item.id,
+      url: item.homekitQRUrl,
+      sharepoint_drive_id: item.homekitQRDriveId,
+      sharepoint_item_id: item.homekitQRItemId,
+      file_name: `${item.name} HomeKit QR`
+    }, { canEdit: false });
+  }, [openPhotoViewer]);
+
   const renderEquipmentRow = (item) => (
     <div
       key={item.id}
@@ -258,25 +312,46 @@ const EquipmentListPage = () => {
     >
       <div className="flex flex-col gap-2">
         <div className="flex items-start justify-between gap-3">
-          <div>
+          <div className="flex-1">
             <p className="font-semibold text-gray-900 dark:text-gray-100">{item.name}</p>
             {item.partNumber && (
               <p className="text-xs text-gray-500 dark:text-gray-400">Part #{item.partNumber}</p>
             )}
           </div>
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-            style={{
-              backgroundColor: withAlpha(
-                item.isHeadend ? palette.accent : palette.info,
-                mode === 'dark' ? 0.18 : 0.12
-              ),
-              color: item.isHeadend ? palette.accent : palette.info
-            }}
-          >
-            <Box className="h-3 w-3" />
-            {item.isHeadend ? 'Head-End' : 'Room End'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{
+                backgroundColor: withAlpha(
+                  item.isHeadend ? palette.accent : palette.info,
+                  mode === 'dark' ? 0.18 : 0.12
+                ),
+                color: item.isHeadend ? palette.accent : palette.info
+              }}
+            >
+              <Box className="h-3 w-3" />
+              {item.isHeadend ? 'Head-End' : 'Room End'}
+            </span>
+            {item.homekitQRUrl && (
+              <div
+                className="w-12 h-12 rounded-lg border overflow-hidden cursor-pointer hover:scale-105 transition"
+                onClick={() => openHomeKitViewer(item)}
+                title="View HomeKit QR"
+                style={{ borderColor: mode === 'dark' ? '#4C1D95' : '#C4B5FD' }}
+              >
+                <CachedSharePointImage
+                  sharePointUrl={item.homekitQRUrl}
+                  sharePointDriveId={item.homekitQRDriveId}
+                  sharePointItemId={item.homekitQRItemId}
+                  displayType="thumbnail"
+                  size="small"
+                  className="w-full h-full"
+                  showFullOnClick={false}
+                  objectFit="contain"
+                />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 text-xs text-gray-600 dark:text-gray-400">
@@ -286,15 +361,20 @@ const EquipmentListPage = () => {
         </div>
 
         <div className="flex flex-wrap gap-4 text-xs">
-          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300">
+          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300" title="Auto-synced with procurement system - updates when PM submits POs">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 opacity-75 cursor-not-allowed"
               checked={item.ordered}
-              onChange={(e) => toggleStatus(item.id, 'ordered', e.target.checked)}
-              disabled={statusUpdating === item.id}
+              readOnly
+              disabled
             />
             <span className="font-medium">Ordered</span>
+            {item.ordered && item.quantityOrdered && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
+                Qty: {item.quantityOrdered}
+              </span>
+            )}
             {item.orderedAt && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
                 {new Date(item.orderedAt).toLocaleDateString()}

@@ -14,22 +14,31 @@ const ProcurementProgressGauge = ({ equipment = [], phaseName = null }) => {
     let totalRequired = 0;
     let accountedFor = 0;
 
+    console.log(`[ProcurementProgressGauge${phaseName ? ` - ${phaseName}` : ''}] Calculating progress for ${equipment.length} items`);
+
     equipment.forEach(item => {
       const required = item.quantity_required || item.planned_quantity || 0;
       const onHand = item.quantity_on_hand || 0;
       const ordered = item.quantity_ordered || 0; // Only submitted POs
+
+      console.log(`[ProcurementProgressGauge${phaseName ? ` - ${phaseName}` : ''}] ${item.name || item.part_number}:`,
+        `required=${required}, onHand=${onHand}, ordered=${ordered}`);
 
       totalRequired += required;
       // Count parts we have OR have ordered (but don't double count)
       accountedFor += Math.min(required, onHand + ordered);
     });
 
-    return {
+    const result = {
       total: totalRequired,
       accountedFor: accountedFor,
       remaining: Math.max(0, totalRequired - accountedFor),
       percentage: totalRequired > 0 ? (accountedFor / totalRequired) * 100 : 0
     };
+
+    console.log(`[ProcurementProgressGauge${phaseName ? ` - ${phaseName}` : ''}] Progress result:`, result);
+
+    return result;
   };
 
   const progress = calculateProgress();

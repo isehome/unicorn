@@ -31,7 +31,8 @@ const CachedSharePointImage = ({
   className = '',
   onClick = null,
   style = {},
-  showFullOnClick = true // Enable full resolution view on click
+  showFullOnClick = true, // Enable full resolution view on click
+  objectFit = null
 }) => {
   const [imageSrc, setImageSrc] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -247,12 +248,13 @@ const CachedSharePointImage = ({
         <img
           src={imageSrc}
           alt={alt}
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
+          className={`w-full h-full transition-opacity duration-300 ${
             loading ? 'opacity-0' : 'opacity-100'
           }`}
           onLoad={handleImageLoad}
           onError={handleImageError}
           loading="lazy"
+          style={{ objectFit: objectFit || (displayType === 'full' ? 'contain' : 'cover') }}
         />
       )}
 

@@ -190,7 +190,9 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setSaving(true);
       setError(null);
 
+      console.log('[PODetailsModal] Starting undo submit for PO:', poId);
       await purchaseOrderService.undoSubmitPurchaseOrder(poId);
+      console.log('[PODetailsModal] Undo submit completed successfully');
 
       // Invalidate milestone cache so main gauges refresh
       if (po.project_id) {
@@ -202,10 +204,13 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setTimeout(() => setSuccess(null), 3000);
 
       // Reload PO details
+      console.log('[PODetailsModal] Reloading PO details...');
       await loadPODetails();
+      console.log('[PODetailsModal] PO details reloaded');
 
       // Notify parent to refresh
       if (onUpdate) {
+        console.log('[PODetailsModal] Calling onUpdate to refresh parent component');
         onUpdate();
       }
     } catch (err) {
@@ -231,25 +236,13 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setError(null);
 
       // Update PO status to 'submitted' and capture who submitted it
-      await purchaseOrderService.updatePurchaseOrder(poId, {
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-        submitted_by: user?.id || null
-      });
+      await purchaseOrderService.submitPurchaseOrder(poId);
 
-      // Update ordered_quantity for all equipment in this PO
-      const { projectEquipmentService } = await import('../../services/projectEquipmentService');
-
-      await Promise.all(
-        (po.items || []).map(item =>
-          projectEquipmentService.updateProcurementQuantities(item.project_equipment_id, {
-            orderedQty: item.quantity_ordered
-          })
-        )
-      );
-
-      // Note: Materialized view auto-refreshes via database triggers
-      // No manual refresh needed - triggers fire when equipment quantities or PO status changes
+      // Note: submitPurchaseOrder handles:
+      // 1. Status update to 'submitted'
+      // 2. Submission tracking (submitted_by, submitted_at)
+      // 3. Inventory allocation
+      // 4. Materialized view auto-refreshes via database triggers
 
       // Invalidate milestone cache so main gauges refresh
       if (po.project_id) {
@@ -259,26 +252,41 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
       // Auto-upload SUBMITTED CSV to SharePoint
       try {
+        console.log('[PODetailsModal] Starting auto-upload of SUBMITTED CSV...');
         const exportData = await purchaseOrderService.exportPOData(poId);
-        const projectUrl = await sharePointStorageService.getProjectProcurementUrl(po.project_id);
+        console.log('[PODetailsModal] Export data retrieved');
 
-        if (projectUrl) {
+        const projectUrl = await sharePointStorageService.getProjectProcurementUrl(po.project_id);
+        console.log('[PODetailsModal] Project URL:', projectUrl);
+
+        if (!projectUrl) {
+          console.warn('[PODetailsModal] No SharePoint URL configured for this project - skipping auto-upload');
+        } else {
           const csv = csvExportService.generatePOCSV(exportData);
           const csvBlob = new Blob([csv], { type: 'text/csv' });
-          const vendorFolder = sharePointStorageService.sanitizeForFileName(po.supplier?.name || 'Vendor');
+          const vendorFolder = sharePointStorageService.sanitizeForFileName(po.supplier?.name || 'Unknown_Vendor');
+          const fileName = `${po.po_number}_SUBMITTED.csv`;
+
+          console.log('[PODetailsModal] Uploading CSV:', {
+            folder: vendorFolder,
+            fileName: fileName,
+            size: csvBlob.size
+          });
 
           // Upload with _SUBMITTED suffix
           await sharePointStorageService.uploadToSharePoint(
             projectUrl,
             vendorFolder,
-            `${po.po_number}_SUBMITTED.csv`,
+            fileName,
             csvBlob
           );
-          console.log('Submitted CSV uploaded to SharePoint successfully');
+          console.log('[PODetailsModal] ✅ SUBMITTED CSV uploaded to SharePoint successfully');
         }
       } catch (uploadErr) {
-        console.warn('Failed to upload submitted CSV to SharePoint:', uploadErr);
+        console.error('[PODetailsModal] ❌ Failed to upload SUBMITTED CSV to SharePoint:', uploadErr);
         // Don't fail the submission if SharePoint upload fails
+        // Show a warning to the user but don't block the submission
+        setError(`PO submitted successfully, but failed to auto-upload CSV to SharePoint: ${uploadErr.message}`);
       }
 
       setSuccess('Purchase order submitted successfully');

@@ -241,12 +241,17 @@ class PurchaseOrderService {
   /**
    * Undo submission of a purchase order (EMERGENCY USE ONLY)
    * Reverts PO back to draft status and reverses all side effects:
-   * - Decrements ordered_quantity on equipment items
    * - Restores allocated inventory to global stock
-   * - Clears submission tracking
+   * - Clears submission tracking (submitted_by, submitted_at)
+   * - Changes PO status back to 'draft'
+   *
+   * Note: ordered_quantity is automatically recalculated from PO items
+   * based on status (only submitted/confirmed/received POs count as "ordered")
    */
   async undoSubmitPurchaseOrder(poId) {
     try {
+      console.log('[undoSubmitPurchaseOrder] Starting undo for PO:', poId);
+
       // Get PO with full details including equipment and global parts info
       const { data: po, error: poError } = await supabase
         .from('purchase_orders')
@@ -269,6 +274,9 @@ class PurchaseOrderService {
 
       if (poError) throw poError;
 
+      console.log('[undoSubmitPurchaseOrder] PO data:', po);
+      console.log('[undoSubmitPurchaseOrder] Processing', po.items?.length || 0, 'line items');
+
       // Only allow undoing submitted POs
       if (po.status === 'draft') {
         throw new Error('PO is already in draft status');
@@ -283,22 +291,21 @@ class PurchaseOrderService {
         for (const item of po.items) {
           const equipment = item.equipment;
 
-          // 1. Decrement ordered_quantity on project_equipment
-          const newOrderedQty = Math.max(0, (equipment.ordered_quantity || 0) - (item.quantity_ordered || 0));
+          console.log('[undoSubmitPurchaseOrder] Processing item:', {
+            project_equipment_id: item.project_equipment_id,
+            po_quantity_ordered: item.quantity_ordered,
+            planned_quantity: equipment.planned_quantity,
+            global_part_id: equipment.global_part_id
+          });
 
-          const { error: equipmentError } = await supabase
-            .from('project_equipment')
-            .update({ ordered_quantity: newOrderedQty })
-            .eq('id', equipment.id);
-
-          if (equipmentError) throw equipmentError;
-
-          // 2. Restore inventory to global_parts
+          // Restore inventory to global_parts
           // Add back up to the quantity ordered, but no more than what's needed
           const inventoryToRestore = Math.min(
             item.quantity_ordered,
             Math.max(0, equipment.planned_quantity || 0)
           );
+
+          console.log('[undoSubmitPurchaseOrder] Restoring inventory:', inventoryToRestore, 'units');
 
           if (inventoryToRestore > 0 && equipment.global_part_id) {
             const { error: inventoryError } = await supabase.rpc('increment_global_inventory', {
@@ -309,12 +316,15 @@ class PurchaseOrderService {
             if (inventoryError) {
               console.warn('Could not restore inventory (may need manual adjustment):', inventoryError);
               // Don't fail the entire undo if inventory restore fails
+            } else {
+              console.log('[undoSubmitPurchaseOrder] Successfully restored', inventoryToRestore, 'units to global inventory');
             }
           }
         }
       }
 
       // 3. Revert PO status to draft and clear submission tracking
+      console.log('[undoSubmitPurchaseOrder] Reverting PO status to draft');
       const { data: updatedPO, error: updateError } = await supabase
         .from('purchase_orders')
         .update({
@@ -327,6 +337,8 @@ class PurchaseOrderService {
         .single();
 
       if (updateError) throw updateError;
+
+      console.log('[undoSubmitPurchaseOrder] Successfully undone PO submission');
 
       // Note: Materialized view will auto-refresh via database triggers
 

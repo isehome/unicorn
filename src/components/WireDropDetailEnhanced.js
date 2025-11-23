@@ -409,6 +409,8 @@ const WireDropDetailEnhanced = () => {
 
       setRoomEquipmentSelection(Array.from(new Set(roomLinks)));
       setHeadEquipmentSelection(Array.from(new Set(headLinks)));
+
+      return data;
     } catch (err) {
       console.error('Failed to load wire drop:', err);
       setError(err.message || 'Failed to load wire drop details');
@@ -685,7 +687,7 @@ const WireDropDetailEnhanced = () => {
         closePhotoViewer();
         return;
       }
-      const refreshedStage = (updated.wire_drop_stages || []).find(stage => stage.stage_type === stageType);
+      const refreshedStage = updated?.wire_drop_stages?.find(stage => stage.stage_type === stageType);
       if (refreshedStage) {
         openStagePhotoViewer(stageType, refreshedStage);
       } else {
@@ -1680,6 +1682,7 @@ const WireDropDetailEnhanced = () => {
                                 displayType="thumbnail"
                                 size="small"
                                 className="w-full h-full object-cover"
+                                objectFit="contain"
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">

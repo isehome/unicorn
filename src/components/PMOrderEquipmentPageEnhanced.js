@@ -205,7 +205,17 @@ const PMOrderEquipmentPageEnhanced = () => {
       });
 
       // Debug logging
-      console.log('Loaded equipment data with PO status:', enriched);
+      console.log('[PMOrderEquipmentPage] Loaded equipment data with PO status:', enriched);
+      console.log('[PMOrderEquipmentPage] Equipment quantities summary:',
+        enriched.map(e => ({
+          name: e.name,
+          part_number: e.part_number,
+          quantity_required: e.quantity_required,
+          quantity_on_hand: e.quantity_on_hand,
+          quantity_ordered: e.quantity_ordered,
+          quantity_needed: e.quantity_needed
+        }))
+      );
 
       // Sort: prioritize items needing attention
       // 1. Items with draft POs only (orange - need submission)
@@ -1605,6 +1615,7 @@ const PMOrderEquipmentPageEnhanced = () => {
         }}
         poId={selectedPOId}
         onUpdate={() => {
+          console.log('[PMOrderEquipmentPage] onUpdate callback triggered - reloading POs and equipment');
           loadPurchaseOrders();
           // Always reload equipment to update gauges, regardless of current tab
           loadEquipment();
