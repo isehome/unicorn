@@ -203,6 +203,30 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       // Note: Materialized view auto-refreshes via database triggers
       // No manual refresh needed - triggers fire when equipment quantities or PO status changes
 
+      // Auto-upload SUBMITTED CSV to SharePoint
+      try {
+        const exportData = await purchaseOrderService.exportPOData(poId);
+        const projectUrl = await sharePointStorageService.getProjectProcurementUrl(po.project_id);
+
+        if (projectUrl) {
+          const csv = csvExportService.generatePOCSV(exportData);
+          const csvBlob = new Blob([csv], { type: 'text/csv' });
+          const vendorFolder = sharePointStorageService.sanitizeForFileName(po.supplier?.name || 'Vendor');
+
+          // Upload with _SUBMITTED suffix
+          await sharePointStorageService.uploadToSharePoint(
+            projectUrl,
+            vendorFolder,
+            `${po.po_number}_SUBMITTED.csv`,
+            csvBlob
+          );
+          console.log('Submitted CSV uploaded to SharePoint successfully');
+        }
+      } catch (uploadErr) {
+        console.warn('Failed to upload submitted CSV to SharePoint:', uploadErr);
+        // Don't fail the submission if SharePoint upload fails
+      }
+
       setSuccess('Purchase order submitted successfully');
       setTimeout(() => setSuccess(null), 3000);
 
