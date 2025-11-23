@@ -23,6 +23,13 @@ const mapEquipmentRecord = (item) => {
   const quantityOrdered = item.quantity_ordered || 0;
   const isOrdered = quantityOrdered > 0;
 
+  // Calculate "received" status from Parts Receiving system (auto-synced)
+  // received_quantity is updated when technicians receive items (POs or inventory)
+  const quantityReceived = item.received_quantity || 0;
+  const quantityPlanned = item.planned_quantity || 0;
+  const isReceived = quantityReceived > 0;
+  const isFullyReceived = quantityPlanned > 0 && quantityReceived >= quantityPlanned;
+
   return {
     id: item.id,
     name,
@@ -32,11 +39,15 @@ const mapEquipmentRecord = (item) => {
     room: roomName,
     isHeadend: installSide === 'head_end' || Boolean(item.project_rooms?.is_headend),
     installSide,
-    plannedQuantity: item.planned_quantity || 0,
+    plannedQuantity: quantityPlanned,
     ordered: isOrdered, // AUTO-SYNCED: True when item has been ordered via PO submission
     orderedAt: isOrdered ? (item.ordered_confirmed_at || null) : null,
     quantityOrdered, // Track actual quantity ordered
-    onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by receive items section
+    received: isReceived, // AUTO-SYNCED: True when items received via Parts Receiving
+    receivedAt: item.received_date || null,
+    quantityReceived, // Track actual quantity received
+    fullyReceived: isFullyReceived,
+    onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by onsite checkbox
     onsiteAt: item.onsite_confirmed_at || null,
     notes: item.notes || '',
     homekitQRUrl,
@@ -264,9 +275,15 @@ const EquipmentListPage = () => {
 
   const toggleStatus = async (equipmentId, field, value) => {
     try {
-      // "Ordered" status is now read-only and auto-synced with PO system
+      // "Ordered" status is read-only and auto-synced with PO system
       if (field === 'ordered') {
         alert('The "Ordered" status is automatically updated when purchase orders are submitted. Use the Order Equipment section to create and submit POs.');
+        return;
+      }
+
+      // "Received" status is read-only and auto-synced with Parts Receiving system
+      if (field === 'received') {
+        alert('The "Received" status is automatically updated from the Parts Receiving page. Go to Parts Receiving to mark items as received.');
         return;
       }
 
@@ -275,7 +292,6 @@ const EquipmentListPage = () => {
 
       if (field === 'onsite') {
         payload.onsite = value;
-        // Note: We don't auto-set ordered=true anymore since it's calculated from POs
       }
 
       const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
@@ -378,6 +394,27 @@ const EquipmentListPage = () => {
             {item.orderedAt && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
                 {new Date(item.orderedAt).toLocaleDateString()}
+              </span>
+            )}
+          </label>
+
+          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300" title="Auto-synced with Parts Receiving - updates when technicians receive items">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
+              checked={item.received}
+              readOnly
+              disabled
+            />
+            <span className="font-medium">Received</span>
+            {item.received && item.quantityReceived && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">
+                {item.fullyReceived ? '✓ ' : ''}{item.quantityReceived}/{item.plannedQuantity}
+              </span>
+            )}
+            {item.receivedAt && (
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {new Date(item.receivedAt).toLocaleDateString()}
               </span>
             )}
           </label>
