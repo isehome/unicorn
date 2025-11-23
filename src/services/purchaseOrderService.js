@@ -100,7 +100,7 @@ class PurchaseOrderService {
             )
           ),
           tracking:shipment_tracking(*),
-          submitter:submitted_by(id, full_name, email)
+          submitter:profiles!submitted_by(id, full_name, email)
         `)
         .eq('id', poId)
         .single();
