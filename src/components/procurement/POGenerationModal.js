@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { poGeneratorService } from '../../services/poGeneratorService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
@@ -45,6 +46,7 @@ const POGenerationModal = ({
   projectDefaultShippingId = null
 }) => {
   const { mode } = useTheme();
+  const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // Version log to verify new code is loading
@@ -200,7 +202,7 @@ const POGenerationModal = ({
         'user' // TODO: Replace with actual user identifier from auth context
       );
 
-      // Update the PO with user-edited values
+      // Update the PO with user-edited values and submission tracking
       await purchaseOrderService.updatePurchaseOrder(result.po.id, {
         order_date: orderDate,
         requested_delivery_date: requestedDeliveryDate || null,
@@ -209,7 +211,9 @@ const POGenerationModal = ({
         internal_notes: internalNotes || null,
         supplier_notes: supplierNotes || null,
         shipping_address_id: shippingAddressId || null,
-        total_amount: total
+        total_amount: total,
+        submitted_by: user?.id || null,
+        submitted_at: new Date().toISOString()
       });
 
       // DON'T update ordered_quantity here - only update when PO is submitted

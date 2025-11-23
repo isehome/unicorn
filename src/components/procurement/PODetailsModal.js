@@ -608,6 +608,28 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               </div>
             </div>
 
+            {/* Submission Tracking - Display only, never editable */}
+            {po.submitted_at && (
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Submitted By
+                  </label>
+                  <p className="text-gray-900 dark:text-white">
+                    {po.submitter?.full_name || po.submitter?.email || 'Unknown User'}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Submitted At
+                  </label>
+                  <p className="text-gray-900 dark:text-white">
+                    {new Date(po.submitted_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Shipping Address */}
             <div>
               <div className="flex items-center justify-between mb-2">
