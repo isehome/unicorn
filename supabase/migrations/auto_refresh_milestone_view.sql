@@ -65,7 +65,7 @@ CREATE TRIGGER trigger_equipment_qty_refresh_milestones
 -- Trigger on wire_drop_stages when stages are updated
 DROP TRIGGER IF EXISTS trigger_wire_drop_stages_refresh_milestones ON wire_drop_stages;
 CREATE TRIGGER trigger_wire_drop_stages_refresh_milestones
-  AFTER INSERT OR UPDATE OF photo_url, completed, equipment_attached ON wire_drop_stages
+  AFTER INSERT OR UPDATE OF photo_url, completed ON wire_drop_stages
   FOR EACH ROW
   EXECUTE FUNCTION trigger_refresh_milestone_percentages();
 
