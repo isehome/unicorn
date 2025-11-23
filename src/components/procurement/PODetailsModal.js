@@ -8,6 +8,7 @@ import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
 import { trackingService } from '../../services/trackingService';
+import { milestoneCacheService } from '../../services/milestoneCacheService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
 import {
@@ -191,6 +192,12 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
       await purchaseOrderService.undoSubmitPurchaseOrder(poId);
 
+      // Invalidate milestone cache so main gauges refresh
+      if (po.project_id) {
+        milestoneCacheService.invalidate(po.project_id);
+        console.log('[PODetailsModal] Invalidated milestone cache after undo submit');
+      }
+
       setSuccess('PO submission has been undone. The PO is now back in draft status.');
       setTimeout(() => setSuccess(null), 3000);
 
@@ -243,6 +250,12 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
       // Note: Materialized view auto-refreshes via database triggers
       // No manual refresh needed - triggers fire when equipment quantities or PO status changes
+
+      // Invalidate milestone cache so main gauges refresh
+      if (po.project_id) {
+        milestoneCacheService.invalidate(po.project_id);
+        console.log('[PODetailsModal] Invalidated milestone cache after submit');
+      }
 
       // Auto-upload SUBMITTED CSV to SharePoint
       try {
