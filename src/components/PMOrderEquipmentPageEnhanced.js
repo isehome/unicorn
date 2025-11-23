@@ -1567,35 +1567,6 @@ const PMOrderEquipmentPageEnhanced = () => {
                                 >
                                   View Details
                                 </Button>
-
-                                {/* Undo Submit Button - EMERGENCY USE ONLY */}
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={async () => {
-                                    if (!window.confirm(
-                                      `⚠️ EMERGENCY UNDO ⚠️\n\n` +
-                                      `This will revert PO ${po.po_number} back to DRAFT status and:\n` +
-                                      `• Reverse ordered quantities on equipment\n` +
-                                      `• Restore allocated inventory\n` +
-                                      `• Clear submission tracking\n\n` +
-                                      `This should only be used in emergencies. Are you sure?`
-                                    )) {
-                                      return;
-                                    }
-
-                                    try {
-                                      await purchaseOrderService.undoSubmitPurchaseOrder(po.id);
-                                      await loadPurchaseOrders();
-                                      alert('✓ PO submission has been undone. The PO is now back in draft status.');
-                                    } catch (err) {
-                                      console.error('Failed to undo PO submission:', err);
-                                      alert(`Failed to undo PO submission: ${err.message}`);
-                                    }
-                                  }}
-                                >
-                                  Undo Submit
-                                </Button>
                               </div>
                             </div>
                           </div>

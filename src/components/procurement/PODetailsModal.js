@@ -168,6 +168,47 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     }
   };
 
+  const handleUndoSubmit = async () => {
+    if (po.status === 'draft') {
+      setError('PO is already in draft status');
+      return;
+    }
+
+    if (!window.confirm(
+      `⚠️ EMERGENCY UNDO ⚠️\n\n` +
+      `This will revert PO ${po.po_number} back to DRAFT status and:\n` +
+      `• Reverse ordered quantities on equipment\n` +
+      `• Restore allocated inventory\n` +
+      `• Clear submission tracking\n\n` +
+      `This should only be used in emergencies. Are you sure?`
+    )) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      await purchaseOrderService.undoSubmitPurchaseOrder(poId);
+
+      setSuccess('PO submission has been undone. The PO is now back in draft status.');
+      setTimeout(() => setSuccess(null), 3000);
+
+      // Reload PO details
+      await loadPODetails();
+
+      // Notify parent to refresh
+      if (onUpdate) {
+        onUpdate();
+      }
+    } catch (err) {
+      console.error('Failed to undo PO submission:', err);
+      setError('Failed to undo PO submission: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSubmitPO = async () => {
     if (po.status !== 'draft') {
       setError('Only draft POs can be submitted');
@@ -1158,7 +1199,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
           {/* Mobile: Stack vertically, Desktop: Two columns */}
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-            {/* Left side: Edit/Delete buttons */}
+            {/* Left side: Edit/Delete buttons (drafts) or Undo Submit (submitted) */}
             <div className="flex flex-wrap gap-2">
               {po && po.status === 'draft' && (
                 <>
@@ -1207,6 +1248,19 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                     Delete
                   </Button>
                 </>
+              )}
+
+              {/* Undo Submit button - only show for submitted/confirmed/received POs */}
+              {po && po.status !== 'draft' && po.status !== 'cancelled' && (
+                <Button
+                  variant="destructive"
+                  icon={AlertCircle}
+                  onClick={handleUndoSubmit}
+                  disabled={saving}
+                  className="font-semibold"
+                >
+                  {saving ? 'Undoing...' : 'Undo Submit'}
+                </Button>
               )}
             </div>
 
