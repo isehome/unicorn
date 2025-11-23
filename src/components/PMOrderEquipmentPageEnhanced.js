@@ -189,18 +189,23 @@ const PMOrderEquipmentPageEnhanced = () => {
         // Get inventory quantity from global_part
         const onHand = item.global_part?.quantity_on_hand || 0;
 
-        // Calculate quantity needed = required - on_hand - totalInPOs
-        // Only order what we don't have in stock and haven't already ordered
-        const remaining = Math.max(0, required - onHand - totalInPOs);
+        // Calculate how much can come from inventory
+        // This is what's still needed AFTER subtracting POs, limited by what's on hand
+        const stillNeeded = Math.max(0, required - totalInPOs);
+        const quantityFromInventory = Math.min(stillNeeded, onHand);
+
+        // Calculate quantity needed from suppliers = what's left after inventory
+        const remaining = Math.max(0, stillNeeded - quantityFromInventory);
 
         return {
           ...item,
           quantity_required: required, // Normalize field name
           quantity_on_hand: onHand, // Add inventory data
+          quantity_from_inventory: quantityFromInventory, // NEW: Track what comes from inventory
           quantity_in_draft_pos: inDraft,
           quantity_ordered: inSubmitted, // This is the "actually ordered" amount
           in_any_po: totalInPOs > 0,
-          quantity_needed: remaining, // Now accounts for inventory!
+          quantity_needed: remaining, // What still needs to be ordered from suppliers
           has_draft_po_only: inDraft > 0 && inSubmitted === 0 // Orange warning flag
         };
       });
@@ -439,9 +444,16 @@ const PMOrderEquipmentPageEnhanced = () => {
         return;
       }
 
-      // Group by supplier
+      // Separate inventory items from supplier items
+      const inventoryItems = expandedEquipment.filter(item => item.isInventory === true || item.supplier === 'Internal Inventory');
+      const supplierItems = expandedEquipment.filter(item => item.isInventory !== true && item.supplier !== 'Internal Inventory');
+
+      console.log('🔍 Inventory items:', inventoryItems);
+      console.log('🔍 Supplier items:', supplierItems);
+
+      // Group supplier items by supplier
       const groupedBySupplier = {};
-      expandedEquipment.forEach(item => {
+      supplierItems.forEach(item => {
         const supplierName = item.supplier || 'Unassigned';
         if (!groupedBySupplier[supplierName]) {
           groupedBySupplier[supplierName] = [];
@@ -464,23 +476,38 @@ const PMOrderEquipmentPageEnhanced = () => {
         return hasValidSupplier;
       });
 
-      // Show preview confirmation
-      const confirmMessage = `This will create ${validSuppliers.length} PO(s):\n\n` +
-        validSuppliers.map(name => {
-          const items = groupedBySupplier[name];
-          const total = items.reduce((sum, item) => sum + (item.quantity_to_order * (item.unit_cost || 0)), 0);
-          return `• ${name}: ${items.length} line items ($${total.toFixed(2)})`;
-        }).join('\n') +
-        (validSuppliers.length === 0 ? '\n⚠️ WARNING: No valid suppliers found. Items may be missing supplier_id.' : '') +
-        `\n\nContinue?`;
+      // Build confirmation message
+      let confirmMessage = '';
+      const poCount = validSuppliers.length + (inventoryItems.length > 0 ? 1 : 0);
+
+      confirmMessage += `This will create ${poCount} PO(s):\n\n`;
+
+      // List supplier POs
+      validSuppliers.forEach(name => {
+        const items = groupedBySupplier[name];
+        const total = items.reduce((sum, item) => sum + (item.quantity_to_order * (item.unit_cost || 0)), 0);
+        confirmMessage += `• ${name}: ${items.length} line items ($${total.toFixed(2)})\n`;
+      });
+
+      // List inventory PO
+      if (inventoryItems.length > 0) {
+        const total = inventoryItems.reduce((sum, item) => sum + (item.quantity_to_order * (item.unit_cost || 0)), 0);
+        confirmMessage += `• Internal Inventory: ${inventoryItems.length} line items ($${total.toFixed(2)})\n`;
+      }
+
+      if (validSuppliers.length === 0 && inventoryItems.length === 0) {
+        confirmMessage += '\n⚠️ WARNING: No valid items found to order.';
+      }
+
+      confirmMessage += '\n\nContinue?';
 
       if (!window.confirm(confirmMessage)) {
         setSaving(false);
         return;
       }
 
-      if (validSuppliers.length === 0) {
-        setError('Cannot create POs: Selected items are missing supplier_id. Please ensure equipment is linked to suppliers in the database.');
+      if (validSuppliers.length === 0 && inventoryItems.length === 0) {
+        setError('Cannot create POs: No valid items selected. Please ensure equipment is linked to suppliers or has inventory available.');
         setSaving(false);
         return;
       }
@@ -761,9 +788,11 @@ const PMOrderEquipmentPageEnhanced = () => {
   // Render functions
 
   const renderVendorView = () => {
-    // Group equipment by part_number
+    // Group equipment by part_number AND source (supplier vs inventory)
     const groupedByPartNumber = equipment.reduce((acc, item) => {
       const partNumber = item.part_number || 'NO_PART_NUMBER';
+
+      // Create supplier group
       if (!acc[partNumber]) {
         acc[partNumber] = {
           part_number: item.part_number,
@@ -774,6 +803,7 @@ const PMOrderEquipmentPageEnhanced = () => {
           items: [], // Store all individual equipment items
           quantity_required: 0,
           quantity_on_hand: item.quantity_on_hand || 0, // From global_part (same for all items with this part number)
+          quantity_from_inventory: 0, // NEW: Track inventory allocation
           quantity_in_draft_pos: 0,
           quantity_ordered: 0,
           quantity_needed: 0,
@@ -784,6 +814,7 @@ const PMOrderEquipmentPageEnhanced = () => {
       // Aggregate quantities
       acc[partNumber].items.push(item);
       acc[partNumber].quantity_required += (item.quantity_required || 0);
+      acc[partNumber].quantity_from_inventory += (item.quantity_from_inventory || 0);
       acc[partNumber].quantity_in_draft_pos += (item.quantity_in_draft_pos || 0);
       acc[partNumber].quantity_ordered += (item.quantity_ordered || 0);
       acc[partNumber].quantity_needed += (item.quantity_needed || 0);
@@ -797,7 +828,21 @@ const PMOrderEquipmentPageEnhanced = () => {
     }, {});
 
     const groupedEquipment = Object.values(groupedByPartNumber);
-    const availableGroups = groupedEquipment.filter(group => group.quantity_needed > 0);
+
+    // Split into supplier items and inventory items
+    const supplierGroups = groupedEquipment.filter(group => group.quantity_needed > 0);
+    const inventoryGroups = groupedEquipment
+      .filter(group => group.quantity_from_inventory > 0)
+      .map(group => ({
+        ...group,
+        supplier: 'Internal Inventory',
+        supplier_id: 'inventory', // Special marker for inventory
+        isInventory: true,
+        quantity_needed: group.quantity_from_inventory // For inventory, "needed" = what comes from inventory
+      }));
+
+    // Combine both for display
+    const availableGroups = [...supplierGroups, ...inventoryGroups];
 
     const selectedCount = Object.keys(selectedItems).length;
     const selectedTotal = Object.keys(selectedItems).reduce((sum, partNumber) => {
