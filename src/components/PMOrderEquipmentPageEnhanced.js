@@ -1606,9 +1606,8 @@ const PMOrderEquipmentPageEnhanced = () => {
         poId={selectedPOId}
         onUpdate={() => {
           loadPurchaseOrders();
-          if (tab !== 'pos') {
-            loadEquipment();
-          }
+          // Always reload equipment to update gauges, regardless of current tab
+          loadEquipment();
         }}
         onDelete={(deletedPOId) => {
           setPurchaseOrders(prev => prev.filter(p => p.id !== deletedPOId));
@@ -1616,10 +1615,8 @@ const PMOrderEquipmentPageEnhanced = () => {
           setSelectedPOId(null);
           setSuccessMessage('Purchase order deleted successfully');
           setTimeout(() => setSuccessMessage(null), 3000);
-          // Reload equipment to update ordered quantities
-          if (tab !== 'pos') {
-            loadEquipment();
-          }
+          // Always reload equipment to update ordered quantities and gauges
+          loadEquipment();
         }}
       />
     </div>
