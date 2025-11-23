@@ -735,12 +735,41 @@ class PurchaseOrderService {
    * Generate inventory PO for items available from warehouse
    * Automatically creates and submits a PO to "Inventory" supplier for items
    * that can be sourced from existing inventory
+   *
+   * IMPORTANT: This method always fetches fresh data from the database at the moment
+   * it's called, ensuring it accounts for any last-minute inventory updates to
+   * global_parts.quantity_on_hand before the PO is placed.
    */
   async generateInventoryPO(projectId, userId = null) {
     try {
-      console.log('[generateInventoryPO] Starting inventory PO generation for project:', projectId);
+      const timestamp = new Date().toISOString();
+      console.log('[generateInventoryPO]', timestamp, 'Starting inventory PO generation for project:', projectId);
 
-      // Get all equipment for this project
+      // Check if an inventory PO already exists for this project
+      const inventorySupplierCheck = await this.ensureInventorySupplier();
+      const { data: existingInventoryPOs } = await supabase
+        .from('purchase_orders')
+        .select('id, po_number, status')
+        .eq('project_id', projectId)
+        .eq('supplier_id', inventorySupplierCheck.id)
+        .in('status', ['draft', 'submitted', 'confirmed']);
+
+      if (existingInventoryPOs && existingInventoryPOs.length > 0) {
+        const submitted = existingInventoryPOs.filter(po => po.status !== 'draft');
+        if (submitted.length > 0) {
+          console.log('[generateInventoryPO] Inventory PO already exists and is submitted:', submitted[0].po_number);
+          return null;
+        }
+        // If there's a draft inventory PO, we'll delete it and regenerate with fresh data
+        for (const po of existingInventoryPOs) {
+          console.log('[generateInventoryPO] Deleting existing draft inventory PO:', po.po_number);
+          await this.deletePurchaseOrder(po.id);
+        }
+      }
+
+      // FRESH DATA FETCH: Get all equipment with current inventory levels
+      // This query executes at this exact moment, capturing any inventory updates
+      // that happened right before PO submission
       const { data: equipment, error: equipError } = await supabase
         .from('project_equipment')
         .select(`
@@ -756,9 +785,12 @@ class PurchaseOrderService {
           )
         `)
         .eq('project_id', projectId)
-        .not('global_part_id', 'is', null);
+        .not('global_part_id', 'is', null)
+        .order('part_number', { ascending: true });
 
       if (equipError) throw equipError;
+
+      console.log('[generateInventoryPO] Fetched', equipment?.length || 0, 'equipment items with global parts');
 
       // Calculate submitted PO quantities (only submitted/confirmed/received POs)
       const { data: pos } = await supabase
@@ -784,33 +816,43 @@ class PurchaseOrderService {
         }
       });
 
-      // Calculate items available from inventory
+      // Calculate items available from inventory with detailed logging
+      console.log('[generateInventoryPO] === Inventory Calculation Details ===');
       const inventoryItems = (equipment || [])
         .map(item => {
           const plannedQty = item.planned_quantity || 0;
           const orderedQty = submittedPOMap.get(item.id) || 0;
           const onHand = item.global_part?.quantity_on_hand || 0;
+          const needed = Math.max(0, plannedQty - orderedQty);
 
           // Calculate inventory allocation: min(planned - ordered, on_hand)
-          const inventoryQty = Math.min(
-            Math.max(0, plannedQty - orderedQty),
-            onHand
-          );
+          const inventoryQty = Math.min(needed, onHand);
+
+          // Log calculation for items with inventory
+          if (inventoryQty > 0) {
+            console.log(`[generateInventoryPO] ${item.part_number || item.name}:`,
+              `planned=${plannedQty}, ordered=${orderedQty}, on_hand=${onHand},`,
+              `needed=${needed}, allocated=${inventoryQty}`);
+          }
 
           return {
             ...item,
             inventoryQty,
-            orderedQty
+            orderedQty,
+            onHand,
+            needed
           };
         })
         .filter(item => item.inventoryQty > 0);
 
       if (inventoryItems.length === 0) {
-        console.log('[generateInventoryPO] No items available from inventory');
+        console.log('[generateInventoryPO] No items available from inventory (all needed items either already ordered or no stock)');
         return null;
       }
 
-      console.log('[generateInventoryPO] Found', inventoryItems.length, 'items available from inventory');
+      console.log('[generateInventoryPO] ===================================');
+      console.log('[generateInventoryPO] Summary: Found', inventoryItems.length, 'items available from inventory');
+      console.log('[generateInventoryPO] Total units to allocate:', inventoryItems.reduce((sum, item) => sum + item.inventoryQty, 0));
 
       // Ensure inventory supplier exists
       const inventorySupplier = await this.ensureInventorySupplier();
@@ -833,7 +875,7 @@ class PurchaseOrderService {
         project_equipment_id: item.id,
         quantity_ordered: item.inventoryQty,
         unit_cost: item.unit_cost || 0,
-        notes: `From warehouse inventory (${item.inventoryQty} available)`
+        notes: `From warehouse inventory: ${item.inventoryQty} units allocated (${item.onHand} available, ${item.needed} needed)`
       }));
 
       // Create the PO
