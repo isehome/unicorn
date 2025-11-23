@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
+import { purchaseOrderService } from '../services/purchaseOrderService';
 import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
 import POGenerationModal from './procurement/POGenerationModal';
