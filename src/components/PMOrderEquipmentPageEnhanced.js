@@ -15,7 +15,6 @@ import InventoryManager from './InventoryManager';
 import ShippingAddressManager from './procurement/ShippingAddressManager';
 import ProcurementProgressGauge from './procurement/ProcurementProgressGauge';
 import SupplierManager from './procurement/SupplierManager';
-import CompanySettingsManager from './procurement/CompanySettingsManager';
 import {
   Package,
   CheckCircle,
@@ -1375,18 +1374,6 @@ const PMOrderEquipmentPageEnhanced = () => {
         {tab === 'setup' && (
           <div className="space-y-6">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Procurement Setup</h2>
-
-            {/* Company Information Section */}
-            <div style={sectionStyles.card} className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Building2 className="w-5 h-5 text-violet-600" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company Information</h3>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Configure your company details for purchase order generation. This information will appear on all POs.
-              </p>
-              <CompanySettingsManager />
-            </div>
 
             {/* Shipping Address Section */}
             <div style={sectionStyles.card} className="p-6">
