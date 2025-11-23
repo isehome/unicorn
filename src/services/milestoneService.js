@@ -41,11 +41,11 @@ class MilestoneService {
   MILESTONE_HELPERS = {
     planning_design: 'Complete when Lucid diagram and Portal proposal URLs exist',
     prewire_orders: 'Count of items with ordered_quantity > 0',
-    prewire_receiving: 'Count of items fully received (received >= ordered)',
+    prewire_receiving: 'Count of items fully received (received >= planned) - includes PO and inventory items',
     prewire: '% = (Wire drops with prewire photo) / (Total wire drops)',
     prewire_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     trim_orders: 'Count of items with ordered_quantity > 0',
-    trim_receiving: 'Count of items fully received (received >= ordered)',
+    trim_receiving: 'Count of items fully received (received >= planned) - includes PO and inventory items',
     trim: '% = (Wire drops with trim photo & equipment attached) / (Total wire drops)',
     trim_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     commissioning: 'Complete when equipment is attached in head end field',
@@ -173,7 +173,8 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Receiving percentage
-   * 100% when ALL prewire items are fully received (received_quantity >= ordered_quantity)
+   * 100% when ALL prewire items are fully received (received_quantity >= planned_quantity)
+   * Includes items from both POs and inventory
    */
   async calculatePrewireReceivingPercentage(projectId) {
     try {
@@ -191,19 +192,21 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Filter to prewire items that have been ordered
+      // Filter to prewire items that have planned quantities
+      // This includes items from POs AND inventory
       const prewireItems = (equipment || []).filter(item =>
         item.global_part?.required_for_prewire === true &&
-        (item.ordered_quantity || 0) > 0
+        (item.planned_quantity || 0) > 0
       );
 
       if (prewireItems.length === 0) {
         return { percentage: 0, itemCount: 0, totalItems: 0 };
       }
 
-      // Count items where received >= ordered (fully received)
+      // Count items where received >= planned (fully received)
+      // This works for both PO items and inventory items
       const itemsReceived = prewireItems.filter(item =>
-        (item.received_quantity || 0) >= (item.ordered_quantity || 0)
+        (item.received_quantity || 0) >= (item.planned_quantity || 0)
       ).length;
       const totalItems = prewireItems.length;
       const percentage = Math.round((itemsReceived / totalItems) * 100);
@@ -364,7 +367,8 @@ class MilestoneService {
 
   /**
    * Calculate Trim Receiving percentage
-   * 100% when ALL trim items are fully received (received_quantity >= ordered_quantity)
+   * 100% when ALL trim items are fully received (received_quantity >= planned_quantity)
+   * Includes items from both POs and inventory
    */
   async calculateTrimReceivingPercentage(projectId) {
     try {
@@ -382,19 +386,21 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Filter to trim items that have been ordered
+      // Filter to trim items that have planned quantities
+      // This includes items from POs AND inventory
       const trimItems = (equipment || []).filter(item =>
         item.global_part?.required_for_prewire !== true &&
-        (item.ordered_quantity || 0) > 0
+        (item.planned_quantity || 0) > 0
       );
 
       if (trimItems.length === 0) {
         return { percentage: 0, itemCount: 0, totalItems: 0 };
       }
 
-      // Count items where received >= ordered (fully received)
+      // Count items where received >= planned (fully received)
+      // This works for both PO items and inventory items
       const itemsReceived = trimItems.filter(item =>
-        (item.received_quantity || 0) >= (item.ordered_quantity || 0)
+        (item.received_quantity || 0) >= (item.planned_quantity || 0)
       ).length;
       const totalItems = trimItems.length;
       const percentage = Math.round((itemsReceived / totalItems) * 100);
