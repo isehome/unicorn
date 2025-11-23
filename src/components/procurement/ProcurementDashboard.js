@@ -6,6 +6,7 @@ import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
 import { SupplierEditModal } from './SupplierEditModal';
+import CompanySettingsManager from './CompanySettingsManager';
 import {
   Package,
   Building2,
@@ -18,7 +19,8 @@ import {
   ArrowLeft,
   ChevronDown,
   Edit3,
-  Trash2
+  Trash2,
+  Settings
 } from 'lucide-react';
 
 const ProcurementDashboard = () => {
@@ -33,7 +35,7 @@ const ProcurementDashboard = () => {
   });
   const [allPOs, setAllPOs] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [showView, setShowView] = useState('overview'); // 'overview', 'suppliers', 'pos'
+  const [showView, setShowView] = useState('overview'); // 'overview', 'suppliers', 'pos', 'settings'
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [creatingSupplier, setCreatingSupplier] = useState(false);
   const [projectFilter, setProjectFilter] = useState('all');
@@ -201,7 +203,7 @@ const ProcurementDashboard = () => {
       {/* Overview Stats Grid */}
       {showView === 'overview' && (
         <>
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-6">
+          <div className="grid grid-cols-4 gap-3 sm:gap-4 mb-6">
             {/* Suppliers Card - CLICKABLE */}
             <div
               onClick={() => setShowView('suppliers')}
@@ -252,6 +254,25 @@ const ProcurementDashboard = () => {
               </div>
               <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                 Active PO value
+              </div>
+            </div>
+
+            {/* Settings Card - CLICKABLE */}
+            <div
+              onClick={() => setShowView('settings')}
+              className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-700/50
+                        rounded-lg p-4 border border-gray-200 dark:border-gray-600
+                        cursor-pointer hover:shadow-lg transition-all transform hover:scale-105"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <Settings className="w-6 h-6 text-gray-600 dark:text-gray-400" />
+                <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">SETTINGS</span>
+              </div>
+              <div className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+                Company
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                Logo & contacts
               </div>
             </div>
           </div>
@@ -423,6 +444,28 @@ const ProcurementDashboard = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Company Settings View */}
+      {showView === 'settings' && (
+        <div>
+          <div className="flex items-center gap-3 mb-6">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={ArrowLeft}
+              onClick={() => setShowView('overview')}
+            >
+              Back
+            </Button>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <Settings className="w-5 h-5 text-violet-600" />
+              Company Settings
+            </h3>
+          </div>
+
+          <CompanySettingsManager />
         </div>
       )}
 
