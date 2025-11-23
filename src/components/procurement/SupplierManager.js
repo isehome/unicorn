@@ -12,7 +12,9 @@ import {
   ChevronRight,
   Mail,
   Phone,
-  MapPin
+  MapPin,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 
 /**
@@ -73,6 +75,35 @@ const SupplierManager = () => {
     }));
   };
 
+  // Determine supplier status based on completeness
+  const getSupplierStatus = (supplier) => {
+    // Must have email to be considered complete/ready
+    if (supplier.email) {
+      return 'complete';
+    }
+    return 'needs_setup';
+  };
+
+  const getStatusBadge = (supplier) => {
+    const status = getSupplierStatus(supplier);
+
+    if (status === 'complete') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-medium rounded">
+          <CheckCircle className="w-3 h-3" />
+          Ready
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs font-medium rounded">
+        <AlertCircle className="w-3 h-3" />
+        Needs Setup
+      </span>
+    );
+  };
+
   if (loading) {
     return (
       <div className="p-4 text-sm text-gray-600 dark:text-gray-400">
@@ -80,6 +111,10 @@ const SupplierManager = () => {
       </div>
     );
   }
+
+  // Calculate stats
+  const completeSuppliers = suppliers.filter(s => s.email);
+  const incompleteSuppliers = suppliers.filter(s => !s.email);
 
   return (
     <div className="space-y-4">
@@ -92,15 +127,15 @@ const SupplierManager = () => {
           </p>
         </div>
         <div>
-          <p className="text-xs text-gray-600 dark:text-gray-400">With Contact Info</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400">Ready (Complete)</p>
           <p className="text-xl font-bold text-green-600 dark:text-green-400">
-            {suppliers.filter(s => s.email || s.phone).length}
+            {completeSuppliers.length}
           </p>
         </div>
         <div>
-          <p className="text-xs text-gray-600 dark:text-gray-400">With Addresses</p>
-          <p className="text-xl font-bold text-blue-600 dark:text-blue-400">
-            {suppliers.filter(s => s.address).length}
+          <p className="text-xs text-gray-600 dark:text-gray-400">Needs Setup</p>
+          <p className="text-xl font-bold text-orange-600 dark:text-orange-400">
+            {incompleteSuppliers.length}
           </p>
         </div>
       </div>
@@ -132,12 +167,18 @@ const SupplierManager = () => {
         <div className="space-y-3">
           {suppliers.map((supplier) => {
             const isExpanded = expandedSuppliers[supplier.id];
+            const status = getSupplierStatus(supplier);
+            const needsSetup = status === 'needs_setup';
 
             return (
               <div
                 key={supplier.id}
                 style={sectionStyles.card}
-                className="border-l-4 border-violet-500"
+                className={`border-l-4 ${
+                  needsSetup
+                    ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/20'
+                    : 'border-green-500'
+                }`}
               >
                 {/* Supplier Header */}
                 <div className="flex items-center justify-between">
@@ -145,8 +186,16 @@ const SupplierManager = () => {
                     className="flex items-center gap-3 flex-1 cursor-pointer"
                     onClick={() => toggleExpansion(supplier.id)}
                   >
-                    <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30">
-                      <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                    <div className={`p-2 rounded-lg ${
+                      needsSetup
+                        ? 'bg-orange-100 dark:bg-orange-900/30'
+                        : 'bg-green-100 dark:bg-green-900/30'
+                    }`}>
+                      <Building2 className={`w-5 h-5 ${
+                        needsSetup
+                          ? 'text-orange-600 dark:text-orange-400'
+                          : 'text-green-600 dark:text-green-400'
+                      }`} />
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -158,6 +207,7 @@ const SupplierManager = () => {
                             {supplier.short_code}
                           </span>
                         )}
+                        {getStatusBadge(supplier)}
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mt-1">
                         {supplier.contact_name && (
