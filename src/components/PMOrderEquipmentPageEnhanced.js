@@ -13,6 +13,7 @@ import PODetailsModal from './procurement/PODetailsModal';
 import InventoryManager from './InventoryManager';
 import ShippingAddressManager from './procurement/ShippingAddressManager';
 import ProcurementProgressGauge from './procurement/ProcurementProgressGauge';
+import VendorManagement from './VendorManagement';
 import {
   Package,
   CheckCircle,
@@ -1294,7 +1295,8 @@ const PMOrderEquipmentPageEnhanced = () => {
           <div style={sectionStyles.card} className="p-6">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Procurement Setup</h2>
 
-            <div className="mb-6">
+            {/* Shipping Address Section */}
+            <div className="mb-8">
               <div className="flex items-center gap-2 mb-2">
                 <MapPin className="w-5 h-5 text-violet-600" />
                 <h3 className="font-semibold text-gray-900 dark:text-white">Default Shipping Address</h3>
@@ -1307,6 +1309,18 @@ const PMOrderEquipmentPageEnhanced = () => {
                 onSelect={(address) => updateProjectDefaultShipping(address.id)}
                 selectedAddressId={projectDefaultShippingId}
               />
+            </div>
+
+            {/* Vendor Management Section */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="w-5 h-5 text-violet-600" />
+                <h3 className="font-semibold text-gray-900 dark:text-white">Vendor Management</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Manage vendors and suppliers for purchase orders. Add new vendors or edit existing vendor information.
+              </p>
+              <VendorManagement />
             </div>
           </div>
         )}

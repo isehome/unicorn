@@ -19,7 +19,6 @@ import LucidChartCarousel from './LucidChartCarousel';
 import ProjectEquipmentManager from './ProjectEquipmentManager';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
-import VendorManagement from './VendorManagement';
 import {
   Save,
   ExternalLink,
@@ -388,8 +387,7 @@ const PMProjectViewEnhanced = () => {
     procurement: true,
     permits: true,
     phaseMilestones: false, // Start expanded for easy access
-    buildingPermits: false,  // Start expanded for easy access
-    vendorManagement: false  // Start expanded for easy access
+    buildingPermits: false  // Start expanded for easy access
   });
 
   const toggleSection = (section) => {
@@ -3086,25 +3084,6 @@ const PMProjectViewEnhanced = () => {
         </button>
         {!sectionsCollapsed.buildingPermits && (
           <ProjectPermits projectId={projectId} />
-        )}
-      </div>
-
-      {/* Vendor Management Section */}
-      <div style={sectionStyles.card} className="p-6">
-        <button
-          onClick={() => toggleSection('vendorManagement')}
-          className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors mb-4"
-        >
-          {sectionsCollapsed.vendorManagement ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronDown className="w-5 h-5" />
-          )}
-          <ShoppingCart className="w-5 h-5" />
-          <span>Vendor Management</span>
-        </button>
-        {!sectionsCollapsed.vendorManagement && (
-          <VendorManagement />
         )}
       </div>
 
