@@ -200,14 +200,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         )
       );
 
-      // Refresh materialized view to update main dashboard progress
-      try {
-        await supabase.rpc('refresh_milestone_percentages');
-        console.log('Milestone percentages refreshed after PO submission');
-      } catch (refreshError) {
-        console.warn('Failed to refresh milestone percentages:', refreshError);
-        // Don't fail the whole operation if refresh fails
-      }
+      // Note: Materialized view auto-refreshes via database triggers
+      // No manual refresh needed - triggers fire when equipment quantities or PO status changes
 
       setSuccess('Purchase order submitted successfully');
       setTimeout(() => setSuccess(null), 3000);
