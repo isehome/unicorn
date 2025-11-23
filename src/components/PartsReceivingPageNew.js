@@ -42,6 +42,7 @@ const PartsReceivingPageNew = () => {
       setError(null);
 
       // Get all POs for this project with tracking info
+      // Only show POs that have been submitted (exclude draft and cancelled)
       const { data: pos, error: poError } = await supabase
         .from('purchase_orders')
         .select(`
@@ -69,6 +70,7 @@ const PartsReceivingPageNew = () => {
           )
         `)
         .eq('project_id', projectId)
+        .in('status', ['submitted', 'confirmed', 'partially_received', 'received'])
         .order('order_date', { ascending: false });
 
       if (poError) throw poError;
@@ -508,6 +510,12 @@ const LineItem = ({ item, onUpdate, saving }) => {
     setIsEditing(true);
   };
 
+  const handleStartReceive = () => {
+    // Pre-fill with ordered quantity for easy receiving
+    setQuantity(ordered);
+    setIsEditing(true);
+  };
+
   const handleCancel = () => {
     setQuantity(received);
     setIsEditing(false);
@@ -527,6 +535,20 @@ const LineItem = ({ item, onUpdate, saving }) => {
         }
       }
 
+      // Warn if mismatch with ordered quantity
+      if (quantity !== ordered && quantity > 0) {
+        const confirmed = window.confirm(
+          `⚠️ QUANTITY MISMATCH DETECTED\n\n` +
+          `Ordered: ${ordered}\n` +
+          `Receiving: ${quantity}\n\n` +
+          `This discrepancy will be flagged. Continue with receiving ${quantity} units?`
+        );
+        if (!confirmed) {
+          handleCancel();
+          return;
+        }
+      }
+
       await onUpdate(item.id, item.project_equipment_id, quantity);
     }
     setIsEditing(false);
@@ -534,19 +556,26 @@ const LineItem = ({ item, onUpdate, saving }) => {
 
   const isFullyReceived = received >= ordered;
   const hasBeenReceived = received > 0;
+  const hasMismatch = hasBeenReceived && received !== ordered;
+  const needsToReceive = !hasBeenReceived;
 
   return (
     <div className={`border rounded-lg p-3 ${
-      isFullyReceived
+      isFullyReceived && !hasMismatch
         ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
+        : hasMismatch
+        ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
     }`}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">
           <h4 className="font-medium text-gray-900 dark:text-white text-sm">
             {equipment.part_number || 'N/A'}
-            {isFullyReceived && (
+            {isFullyReceived && !hasMismatch && (
               <span className="ml-2 text-green-600 dark:text-green-400">✓</span>
+            )}
+            {hasMismatch && (
+              <span className="ml-2 text-yellow-600 dark:text-yellow-400" title="Quantity mismatch">⚠️</span>
             )}
           </h4>
           <p className="text-xs text-gray-600 dark:text-gray-400">
@@ -557,6 +586,12 @@ const LineItem = ({ item, onUpdate, saving }) => {
           {phase}
         </span>
       </div>
+
+      {hasMismatch && (
+        <div className="mb-2 p-2 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded text-xs text-yellow-800 dark:text-yellow-200">
+          ⚠️ Mismatch: Ordered {ordered}, Received {received}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
@@ -570,7 +605,7 @@ const LineItem = ({ item, onUpdate, saving }) => {
 
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-            Received
+            Receiving
           </label>
           {isEditing ? (
             <div className="flex gap-1">
@@ -611,15 +646,26 @@ const LineItem = ({ item, onUpdate, saving }) => {
         </div>
       </div>
 
-      {/* Adjust Button */}
-      {!isEditing && hasBeenReceived && (
+      {/* Action Buttons */}
+      {!isEditing && (
         <div className="flex gap-2">
-          <button
-            onClick={handleStartEdit}
-            className="flex-1 px-3 py-2 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors"
-          >
-            Adjust Quantity
-          </button>
+          {needsToReceive ? (
+            <button
+              onClick={handleStartReceive}
+              disabled={saving}
+              className="flex-1 px-3 py-2 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50"
+            >
+              Receive Line Item
+            </button>
+          ) : (
+            <button
+              onClick={handleStartEdit}
+              disabled={saving}
+              className="flex-1 px-3 py-2 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors disabled:opacity-50"
+            >
+              Adjust Quantity
+            </button>
+          )}
         </div>
       )}
     </div>

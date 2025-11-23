@@ -897,9 +897,10 @@ class PurchaseOrderService {
       console.log('[generateInventoryPO] Total units to allocate:', inventoryItems.reduce((sum, item) => sum + item.inventoryQty, 0));
 
       // Determine milestone_stage based on items (prewire vs trim)
+      // Note: Database constraint requires 'prewire_prep' or 'trim_prep'
       const prewireCount = inventoryItems.filter(item => item.global_part?.required_for_prewire === true).length;
       const trimCount = inventoryItems.length - prewireCount;
-      const milestoneStage = prewireCount >= trimCount ? 'prewire' : 'trim';
+      const milestoneStage = prewireCount >= trimCount ? 'prewire_prep' : 'trim_prep';
       console.log('[generateInventoryPO] Milestone determination:', { prewireCount, trimCount, milestoneStage });
 
       // Ensure inventory supplier exists

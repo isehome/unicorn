@@ -445,8 +445,13 @@ const PMOrderEquipmentPageEnhanced = () => {
       }
 
       // Separate inventory items from supplier items
-      const inventoryItems = expandedEquipment.filter(item => item.isInventory === true || item.supplier === 'Internal Inventory');
-      const supplierItems = expandedEquipment.filter(item => item.isInventory !== true && item.supplier !== 'Internal Inventory');
+      // Note: Check quantity_from_inventory since isInventory flag only exists on grouped items, not expanded items
+      const inventoryItems = expandedEquipment.filter(item =>
+        (item.quantity_from_inventory > 0) || item.supplier === 'Internal Inventory'
+      );
+      const supplierItems = expandedEquipment.filter(item =>
+        !(item.quantity_from_inventory > 0) && item.supplier !== 'Internal Inventory'
+      );
 
       console.log('🔍 Inventory items:', inventoryItems);
       console.log('🔍 Supplier items:', supplierItems);
