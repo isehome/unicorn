@@ -1,9 +1,11 @@
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from './sharePointStorageService';
+import { milestoneService } from './milestoneService';
 
 /**
  * Service for managing project permits, inspections, and permit documents
  * Documents are stored in SharePoint using the same pattern as wire drop photos
+ * Integrates with project milestones to auto-update actual dates when inspections are completed
  */
 class PermitService {
   /**
@@ -212,13 +214,21 @@ class PermitService {
 
   /**
    * Mark rough-in inspection as completed
+   * Also updates BOTH the rough_in_inspection AND prewire milestones
    * @param {string} permitId - The permit ID
    * @param {string} inspectionDate - The inspection date
+   * @param {string} projectId - The project ID (optional, will fetch if not provided)
    * @returns {Promise<Object>} Updated permit record
    */
-  async completeRoughInInspection(permitId, inspectionDate) {
+  async completeRoughInInspection(permitId, inspectionDate, projectId = null) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Get project_id if not provided
+      if (!projectId) {
+        const permit = await this.getPermit(permitId);
+        projectId = permit.project_id;
+      }
 
       const { data, error } = await supabase
         .from('project_permits')
@@ -234,6 +244,52 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Update BOTH rough_in_inspection AND prewire milestones
+      try {
+        // 1. Update rough_in_inspection milestone (single atomic operation)
+        const updateData1 = {
+          project_id: projectId,
+          milestone_type: 'rough_in_inspection',
+          actual_date: inspectionDate,
+          completed_manually: true,
+          percent_complete: 100,
+          updated_by: user?.id,
+          updated_at: new Date().toISOString()
+        };
+
+        // Add target date if available from permit
+        if (data.rough_in_target_date) {
+          updateData1.target_date = data.rough_in_target_date;
+        }
+
+        await supabase
+          .from('project_milestones')
+          .upsert(updateData1, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+
+        // 2. Update prewire milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'prewire',
+            actual_date: inspectionDate,
+            completed_manually: true,
+            percent_complete: 100,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+      } catch (milestoneError) {
+        console.error('Error updating milestones:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error completing rough-in inspection:', error);
@@ -243,13 +299,21 @@ class PermitService {
 
   /**
    * Mark final inspection as completed
+   * Also updates BOTH the final_inspection AND trim milestones
    * @param {string} permitId - The permit ID
    * @param {string} inspectionDate - The inspection date
+   * @param {string} projectId - The project ID (optional, will fetch if not provided)
    * @returns {Promise<Object>} Updated permit record
    */
-  async completeFinalInspection(permitId, inspectionDate) {
+  async completeFinalInspection(permitId, inspectionDate, projectId = null) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Get project_id if not provided
+      if (!projectId) {
+        const permit = await this.getPermit(permitId);
+        projectId = permit.project_id;
+      }
 
       const { data, error } = await supabase
         .from('project_permits')
@@ -265,6 +329,52 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Update BOTH final_inspection AND trim milestones
+      try {
+        // 1. Update final_inspection milestone (single atomic operation)
+        const updateData1 = {
+          project_id: projectId,
+          milestone_type: 'final_inspection',
+          actual_date: inspectionDate,
+          completed_manually: true,
+          percent_complete: 100,
+          updated_by: user?.id,
+          updated_at: new Date().toISOString()
+        };
+
+        // Add target date if available from permit
+        if (data.final_inspection_target_date) {
+          updateData1.target_date = data.final_inspection_target_date;
+        }
+
+        await supabase
+          .from('project_milestones')
+          .upsert(updateData1, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+
+        // 2. Update trim milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'trim',
+            actual_date: inspectionDate,
+            completed_manually: true,
+            percent_complete: 100,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+      } catch (milestoneError) {
+        console.error('Error updating milestones:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error completing final inspection:', error);
@@ -274,12 +384,20 @@ class PermitService {
 
   /**
    * Unmark rough-in inspection
+   * Also clears BOTH rough_in_inspection AND prewire milestones
    * @param {string} permitId - The permit ID
+   * @param {string} projectId - The project ID (optional, will fetch if not provided)
    * @returns {Promise<Object>} Updated permit record
    */
-  async uncompleteRoughInInspection(permitId) {
+  async uncompleteRoughInInspection(permitId, projectId = null) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Get project_id if not provided
+      if (!projectId) {
+        const permit = await this.getPermit(permitId);
+        projectId = permit.project_id;
+      }
 
       const { data, error } = await supabase
         .from('project_permits')
@@ -294,6 +412,45 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Clear BOTH rough_in_inspection AND prewire milestones
+      try {
+        // 1. Clear rough_in_inspection milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'rough_in_inspection',
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: 0,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+
+        // 2. Clear prewire milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'prewire',
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: 0,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+      } catch (milestoneError) {
+        console.error('Error clearing milestones:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error uncompleting rough-in inspection:', error);
@@ -303,12 +460,20 @@ class PermitService {
 
   /**
    * Unmark final inspection
+   * Also clears BOTH final_inspection AND trim milestones
    * @param {string} permitId - The permit ID
+   * @param {string} projectId - The project ID (optional, will fetch if not provided)
    * @returns {Promise<Object>} Updated permit record
    */
-  async uncompleteFinalInspection(permitId) {
+  async uncompleteFinalInspection(permitId, projectId = null) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
+
+      // Get project_id if not provided
+      if (!projectId) {
+        const permit = await this.getPermit(permitId);
+        projectId = permit.project_id;
+      }
 
       const { data, error } = await supabase
         .from('project_permits')
@@ -323,6 +488,45 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Clear BOTH final_inspection AND trim milestones
+      try {
+        // 1. Clear final_inspection milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'final_inspection',
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: 0,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+
+        // 2. Clear trim milestone (single atomic operation)
+        await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'trim',
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: 0,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          });
+      } catch (milestoneError) {
+        console.error('Error clearing milestones:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error uncompleting final inspection:', error);
@@ -332,6 +536,7 @@ class PermitService {
 
   /**
    * Update rough-in inspection target date
+   * Also syncs the target date to the rough_in_inspection milestone
    * @param {string} permitId - The permit ID
    * @param {string} targetDate - The target date (YYYY-MM-DD format)
    * @returns {Promise<Object>} Updated permit record
@@ -351,6 +556,20 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Sync target date to rough_in_inspection milestone
+      try {
+        await milestoneService.updateMilestoneDate(
+          data.project_id,
+          'rough_in_inspection',
+          targetDate, // Update target_date
+          undefined // Don't update actual_date
+        );
+      } catch (milestoneError) {
+        console.error('Error syncing target date to milestone:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error updating rough-in target date:', error);
@@ -360,6 +579,7 @@ class PermitService {
 
   /**
    * Update final inspection target date
+   * Also syncs the target date to the final_inspection milestone
    * @param {string} permitId - The permit ID
    * @param {string} targetDate - The target date (YYYY-MM-DD format)
    * @returns {Promise<Object>} Updated permit record
@@ -379,6 +599,20 @@ class PermitService {
         .single();
 
       if (error) throw error;
+
+      // Sync target date to final_inspection milestone
+      try {
+        await milestoneService.updateMilestoneDate(
+          data.project_id,
+          'final_inspection',
+          targetDate, // Update target_date
+          undefined // Don't update actual_date
+        );
+      } catch (milestoneError) {
+        console.error('Error syncing target date to milestone:', milestoneError);
+        // Don't throw - permit update succeeded
+      }
+
       return data;
     } catch (error) {
       console.error('Error updating final inspection target date:', error);

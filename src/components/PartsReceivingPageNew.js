@@ -1,11 +1,31 @@
+/**
+ * PartsReceivingPageNew.js
+ *
+ * ACTIVE COMPONENT - Currently loaded by route: /projects/:projectId/receiving
+ * Route location: src/App.js
+ *
+ * Purpose: Manage receiving of parts/equipment from purchase orders
+ * - Displays outstanding and completed purchase orders
+ * - Allows receiving individual line items or full POs
+ * - Auto-completes prep milestones (prewire_prep/trim_prep) when all items are ordered & received
+ * - Filters by phase (prewire/trim/all)
+ *
+ * Related files:
+ * - PartsReceivingPage.js (DEPRECATED - DO NOT USE)
+ *
+ * Last updated: 2025-01-24
+ */
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { purchaseOrderService } from '../services/purchaseOrderService';
+import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
 import {
   CheckCircle,
   ArrowLeft,
@@ -107,6 +127,8 @@ const PartsReceivingPageNew = () => {
   };
 
   const handleUpdateReceived = async (lineItemId, projectEquipmentId, newQuantity) => {
+    console.log('🚨 [PartsReceiving] handleUpdateReceived CALLED:', { lineItemId, projectEquipmentId, newQuantity, projectId });
+
     try {
       setSaving(true);
       setError(null);
@@ -133,6 +155,8 @@ const PartsReceivingPageNew = () => {
         0
       );
 
+      console.log('[PartsReceiving] Calculated total received for equipment:', { projectEquipmentId, totalReceived });
+
       // Update project_equipment.received_quantity
       const { error: equipError } = await supabase
         .from('project_equipment')
@@ -144,31 +168,49 @@ const PartsReceivingPageNew = () => {
 
       if (equipError) throw equipError;
 
+      console.log('[PartsReceiving] ✅ Equipment receiving updated, now reloading POs...');
+
       // Reload data
       await loadPurchaseOrders();
 
       // Invalidate milestone cache to trigger recalculation
       milestoneCacheService.invalidate(projectId);
+      console.log('[PartsReceiving] Invalidated milestone cache');
+
+      // Check and auto-complete prep milestones if all items are received
+      console.log('🚨 [PartsReceiving] About to call autoCompletePrepMilestones for project:', projectId);
+      try {
+        const result = await milestoneService.autoCompletePrepMilestones(projectId);
+        console.log('🚨 [PartsReceiving] ✅ autoCompletePrepMilestones completed successfully:', result);
+      } catch (milestoneErr) {
+        console.error('🚨 [PartsReceiving] ❌ Failed to auto-complete prep milestones:', milestoneErr);
+        console.error('🚨 [PartsReceiving] Error stack:', milestoneErr.stack);
+        // Don't throw - receiving succeeded
+      }
 
       setSuccessMessage('Received quantity updated');
       setTimeout(() => setSuccessMessage(null), 2000);
 
     } catch (err) {
-      console.error('Failed to update received quantity:', err);
+      console.error('🚨 [PartsReceiving] ❌ Failed to update received quantity:', err);
       setError(err.message || 'Failed to update quantity');
     } finally {
       setSaving(false);
+      console.log('[PartsReceiving] handleUpdateReceived FINISHED');
     }
   };
 
   const handleReceiveAllPO = async (po) => {
     if (!window.confirm(`Mark all items in PO ${po.po_number} as fully received?`)) return;
 
+    console.log('🚨 [PartsReceiving] handleReceiveAllPO CALLED:', { poNumber: po.po_number, itemCount: po.items?.length, projectId });
+
     try {
       setSaving(true);
       setError(null);
 
       // Update all line items in this PO
+      console.log('[PartsReceiving] Processing all items in PO...');
       for (const item of po.items) {
         await handleUpdateReceived(
           item.id,
@@ -177,14 +219,28 @@ const PartsReceivingPageNew = () => {
         );
       }
 
+      console.log('[PartsReceiving] All PO items processed');
+
+      // Check and auto-complete prep milestones if all items are received
+      console.log('🚨 [PartsReceiving] About to call autoCompletePrepMilestones for full PO receive, project:', projectId);
+      try {
+        const result = await milestoneService.autoCompletePrepMilestones(projectId);
+        console.log('🚨 [PartsReceiving] ✅ autoCompletePrepMilestones for full PO completed successfully:', result);
+      } catch (milestoneErr) {
+        console.error('🚨 [PartsReceiving] ❌ Failed to auto-complete prep milestones for full PO:', milestoneErr);
+        console.error('🚨 [PartsReceiving] Error stack:', milestoneErr.stack);
+        // Don't throw - receiving succeeded
+      }
+
       setSuccessMessage(`PO ${po.po_number} fully received`);
       setTimeout(() => setSuccessMessage(null), 3000);
 
     } catch (err) {
-      console.error('Failed to receive all PO items:', err);
+      console.error('🚨 [PartsReceiving] ❌ Failed to receive all PO items:', err);
       setError(err.message || 'Failed to receive all items');
     } finally {
       setSaving(false);
+      console.log('[PartsReceiving] handleReceiveAllPO FINISHED');
     }
   };
 
@@ -319,7 +375,7 @@ const PartsReceivingPageNew = () => {
                           </span>
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                          {po.supplier?.name} • Ordered: {new Date(po.order_date).toLocaleDateString()}
+                          {po.supplier?.name} • Ordered: <DateField date={po.order_date} variant="inline" />
                         </p>
                         {/* Tracking Info */}
                         {po.tracking && po.tracking.length > 0 && (

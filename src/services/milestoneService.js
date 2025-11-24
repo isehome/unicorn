@@ -93,7 +93,6 @@ class MilestoneService {
         .from('project_equipment')
         .select(`
           id,
-          quantity_required,
           planned_quantity,
           global_part:global_part_id (
             required_for_prewire,
@@ -145,7 +144,7 @@ class MilestoneService {
       let partsAccountedFor = 0;
 
       prewireItems.forEach(item => {
-        const required = item.quantity_required || item.planned_quantity || 0;
+        const required = item.planned_quantity || 0;
         const onHand = item.global_part?.quantity_on_hand || 0;
         const ordered = submittedPOMap.get(item.id) || 0;
 
@@ -287,7 +286,6 @@ class MilestoneService {
         .from('project_equipment')
         .select(`
           id,
-          quantity_required,
           planned_quantity,
           global_part:global_part_id (
             required_for_prewire,
@@ -339,7 +337,7 @@ class MilestoneService {
       let partsAccountedFor = 0;
 
       trimItems.forEach(item => {
-        const required = item.quantity_required || item.planned_quantity || 0;
+        const required = item.planned_quantity || 0;
         const onHand = item.global_part?.quantity_on_hand || 0;
         const ordered = submittedPOMap.get(item.id) || 0;
 
@@ -1007,8 +1005,11 @@ class MilestoneService {
    */
   async updateMilestone(projectId, milestoneType, updates) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Don't allow updating auto-calculated dates unless explicitly overriding
-      if (updates.target_date && 
+      if (updates.target_date &&
           (milestoneType === 'prewire_prep' || milestoneType === 'trim_prep') &&
           !updates.override_auto_calculate) {
         delete updates.target_date;
@@ -1020,6 +1021,7 @@ class MilestoneService {
           project_id: projectId,
           milestone_type: milestoneType,
           ...updates,
+          updated_by: user?.id,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'project_id,milestone_type',
@@ -1091,18 +1093,21 @@ class MilestoneService {
    */
   async updateMilestoneDate(projectId, milestoneType, targetDate = undefined, actualDate = undefined) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       const updates = {};
-      
+
       // Only update target_date if explicitly provided
       if (targetDate !== undefined) {
         updates.target_date = targetDate || null;
       }
-      
+
       // Only update actual_date if explicitly provided
       if (actualDate !== undefined) {
         updates.actual_date = actualDate || null;
       }
-      
+
       // If no updates, return early
       if (Object.keys(updates).length === 0) {
         console.warn('No date updates provided');
@@ -1125,6 +1130,7 @@ class MilestoneService {
           .from('project_milestones')
           .update({
             ...updates,
+            updated_by: user?.id,
             updated_at: new Date().toISOString()
           })
           .eq('project_id', projectId)
@@ -1140,7 +1146,8 @@ class MilestoneService {
             milestone_type: milestoneType,
             ...updates,
             percent_complete: 0,
-            auto_calculated: milestoneType === 'prewire_prep' || milestoneType === 'trim_prep'
+            auto_calculated: milestoneType === 'prewire_prep' || milestoneType === 'trim_prep',
+            updated_by: user?.id
           })
           .select()
           .single());
@@ -1160,6 +1167,7 @@ class MilestoneService {
               milestone_type: 'prewire_prep',
               target_date: prepTargetDate,
               auto_calculated: true,
+              updated_by: user?.id,
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'project_id,milestone_type',
@@ -1177,6 +1185,7 @@ class MilestoneService {
               milestone_type: 'trim_prep',
               target_date: prepTargetDate,
               auto_calculated: true,
+              updated_by: user?.id,
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'project_id,milestone_type',
@@ -1197,9 +1206,13 @@ class MilestoneService {
    */
   async toggleManualCompletion(projectId, milestoneType, isComplete) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       const updates = {
         completed_manually: isComplete,
-        percent_complete: isComplete ? 100 : 0
+        percent_complete: isComplete ? 100 : 0,
+        updated_by: user?.id
       };
 
       if (isComplete && !updates.actual_date) {
@@ -1220,6 +1233,126 @@ class MilestoneService {
       return data;
     } catch (error) {
       console.error('Error toggling manual completion:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Auto-complete prep milestones when all items are ordered and received
+   * Call this after PO updates to check if prep milestones should be marked complete
+   * - Prewire Prep: completes when all prewire items are ORDERED (100%) AND RECEIVED (100%)
+   * - Trim Prep: completes when all trim items are ORDERED (100%) AND RECEIVED (100%)
+   */
+  async autoCompletePrepMilestones(projectId) {
+    console.log('🚨 [Milestone] autoCompletePrepMilestones CALLED for project:', projectId);
+    try {
+      const completionDate = new Date().toISOString().split('T')[0];
+      let prewireCompleted = false;
+      let trimCompleted = false;
+
+      console.log('[Milestone] Fetching prewire orders and receiving percentages...');
+
+      // Check PREWIRE: orders AND receiving must BOTH be 100%
+      const [prewireOrders, prewireReceiving] = await Promise.all([
+        this.calculatePrewireOrdersPercentage(projectId),
+        this.calculatePrewireReceivingPercentage(projectId)
+      ]);
+
+      console.log('[Milestone] Prewire status:', {
+        orders: prewireOrders.percentage,
+        receiving: prewireReceiving.percentage
+      });
+
+      // If BOTH are 100%, auto-complete prewire_prep
+      if (prewireOrders.percentage === 100 && prewireReceiving.percentage === 100) {
+        console.log('[Milestone] ✓ Prewire prep conditions met - auto-completing...');
+
+        // Get current authenticated user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // Single atomic update to mark milestone complete
+        const { data, error } = await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'prewire_prep',
+            actual_date: completionDate,
+            completed_manually: true,
+            percent_complete: 100,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[Milestone] ❌ Failed to auto-complete prewire_prep:', error);
+        } else {
+          console.log('[Milestone] ✅ Auto-completed prewire_prep milestone');
+          prewireCompleted = true;
+        }
+      }
+
+      // Check TRIM: orders AND receiving must BOTH be 100%
+      const [trimOrders, trimReceiving] = await Promise.all([
+        this.calculateTrimOrdersPercentage(projectId),
+        this.calculateTrimReceivingPercentage(projectId)
+      ]);
+
+      console.log('[Milestone] Trim status:', {
+        orders: trimOrders.percentage,
+        receiving: trimReceiving.percentage
+      });
+
+      // If BOTH are 100%, auto-complete trim_prep
+      if (trimOrders.percentage === 100 && trimReceiving.percentage === 100) {
+        console.log('[Milestone] ✓ Trim prep conditions met - auto-completing...');
+
+        // Get current authenticated user
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // Single atomic update to mark milestone complete
+        const { data, error } = await supabase
+          .from('project_milestones')
+          .upsert({
+            project_id: projectId,
+            milestone_type: 'trim_prep',
+            actual_date: completionDate,
+            completed_manually: true,
+            percent_complete: 100,
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'project_id,milestone_type',
+            ignoreDuplicates: false
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[Milestone] ❌ Failed to auto-complete trim_prep:', error);
+        } else {
+          console.log('[Milestone] ✅ Auto-completed trim_prep milestone');
+          trimCompleted = true;
+        }
+      }
+
+      console.log('[Milestone] ✅ autoCompletePrepMilestones completed successfully');
+      return {
+        prewirePrep: prewireCompleted,
+        trimPrep: trimCompleted
+      };
+    } catch (error) {
+      console.error('🚨 [Milestone] ERROR in autoCompletePrepMilestones:', error);
+      console.error('🚨 [Milestone] Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
   }

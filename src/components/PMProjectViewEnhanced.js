@@ -19,6 +19,8 @@ import LucidChartCarousel from './LucidChartCarousel';
 import ProjectEquipmentManager from './ProjectEquipmentManager';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProjectPermits from './ProjectPermits';
+import DateField from './ui/DateField';
+import DateInput from './ui/DateInput';
 import {
   Save,
   ExternalLink,
@@ -771,7 +773,7 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
-  const loadMilestoneDates = async () => {
+  const loadMilestoneDates = useCallback(async () => {
     if (!projectId) return;
     try {
       const { data, error } = await supabase
@@ -786,7 +788,7 @@ const PMProjectViewEnhanced = () => {
     } catch (error) {
       console.error('Failed to load milestone dates:', error);
     }
-  };
+  }, [projectId]);
 
   const loadProjectData = async () => {
     try {
@@ -1419,10 +1421,32 @@ const PMProjectViewEnhanced = () => {
       });
     });
 
+    // Subscribe to milestone changes for realtime updates
+    const milestoneSubscription = supabase
+      .channel(`project-milestones-${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_milestones',
+          filter: `project_id=eq.${projectId}`
+        },
+        (payload) => {
+          console.log('[PMProjectView] Milestone change detected:', payload);
+          // Reload milestone dates to reflect changes
+          loadMilestoneDates();
+        }
+      )
+      .subscribe();
+
     const interval = setInterval(loadTimeData, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      milestoneSubscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, loadMilestoneDates]);
 
   useEffect(() => {
     loadProjectRooms();
@@ -3013,34 +3037,38 @@ const PMProjectViewEnhanced = () => {
                       </td>
                       <td className="py-3 px-4">
                         {phaseMilestonesEditMode ? (
-                          <input
-                            type="date"
+                          <DateInput
                             value={milestone?.target_date || ''}
                             onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
-                            className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                            className="text-sm"
                           />
-                        ) : milestone?.target_date ? (
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {new Date(milestone.target_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
-                          </span>
                         ) : (
-                          <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+                          <DateField
+                            date={milestone?.target_date}
+                            isCompleted={!!milestone?.actual_date}
+                            showIcon={false}
+                            showBadge={!milestone?.actual_date}
+                            showDescription={false}
+                            variant="inline"
+                          />
                         )}
                       </td>
                       <td className="py-3 px-4">
                         {phaseMilestonesEditMode ? (
-                          <input
-                            type="date"
+                          <DateInput
                             value={milestone?.actual_date || ''}
                             onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
-                            className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                            className="text-sm"
                           />
-                        ) : milestone?.actual_date ? (
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {new Date(milestone.actual_date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}
-                          </span>
                         ) : (
-                          <span className="text-sm text-gray-400 dark:text-gray-500">-</span>
+                          <DateField
+                            date={milestone?.actual_date}
+                            isCompleted={!!milestone?.completed_manually}
+                            showIcon={false}
+                            showBadge={false}
+                            showDescription={false}
+                            variant="inline"
+                          />
                         )}
                       </td>
                       <td className="py-3 px-4">
