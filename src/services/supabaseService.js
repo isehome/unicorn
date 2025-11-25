@@ -112,54 +112,89 @@ const ensureProjectStakeholderAssignment = async (projectId, contactId, roleId) 
   if (!supabase || !projectId || !contactId || !roleId) return;
 
   try {
-    const { data: existing } = await supabase
-      .from('project_stakeholders')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('contact_id', contactId)
-      .eq('stakeholder_role_id', roleId)
-      .maybeSingle();
-
-    if (existing?.id) {
-      return;
-    }
-
+    // Use upsert with the unified project_stakeholders table
+    // Constraint: unique (project_id, contact_id, stakeholder_role_id)
     const { error } = await supabase
       .from('project_stakeholders')
-      .insert([{
-        project_id: projectId,
-        contact_id: contactId,
-        stakeholder_role_id: roleId,
-        is_primary: false
-      }]);
+      .upsert(
+        [{
+          project_id: projectId,
+          contact_id: contactId,
+          stakeholder_role_id: roleId,
+          is_primary: false
+        }],
+        {
+          onConflict: 'project_id,contact_id,stakeholder_role_id',
+          ignoreDuplicates: true
+        }
+      );
 
+    // Only throw error if it's not a duplicate constraint violation
     if (error && error.code !== '23505') {
+      console.error('Failed to ensure project stakeholder assignment:', error);
       throw error;
     }
   } catch (error) {
-    console.error('Failed to ensure project stakeholder assignment:', error);
+    // Silently handle duplicate key errors, log others
+    if (error.code !== '23505') {
+      console.error('Failed to ensure project stakeholder assignment:', error);
+    }
   }
 };
 
 const ensureDefaultInternalStakeholders = async (projectId) => {
-  if (!projectId || ensuredDefaultStakeholderProjects.has(projectId)) {
+  if (!projectId) {
     return;
   }
 
-  let allEnsured = true;
-
-  for (const spec of DEFAULT_INTERNAL_STAKEHOLDERS) {
-    const roleId = await ensureStakeholderRole(spec.roleName, `${spec.displayName} automated stakeholder`);
-    const contactId = await ensureInternalContact(spec);
-    if (contactId && roleId) {
-      await ensureProjectStakeholderAssignment(projectId, contactId, roleId);
-    } else {
-      allEnsured = false;
-    }
+  // Use in-memory cache for performance, but don't rely on it for correctness
+  if (ensuredDefaultStakeholderProjects.has(projectId)) {
+    return;
   }
 
-  if (allEnsured) {
-    ensuredDefaultStakeholderProjects.add(projectId);
+  try {
+    // Check if default stakeholders already exist in the database
+    // Using unified project_stakeholders table
+    const expectedRoleNames = DEFAULT_INTERNAL_STAKEHOLDERS.map(s => s.roleName);
+
+    const { data: existingStakeholders } = await supabase
+      .from('project_stakeholders')
+      .select(`
+        id,
+        stakeholder_role_id,
+        stakeholder_roles!inner(name)
+      `)
+      .eq('project_id', projectId)
+      .in('stakeholder_roles.name', expectedRoleNames);
+
+    const existingRoleNames = new Set(
+      (existingStakeholders || []).map(s => s.stakeholder_roles?.name).filter(Boolean)
+    );
+
+    // Only add stakeholders that don't exist yet
+    let allEnsured = true;
+    for (const spec of DEFAULT_INTERNAL_STAKEHOLDERS) {
+      if (existingRoleNames.has(spec.roleName)) {
+        continue; // Skip if already exists
+      }
+
+      const roleId = await ensureStakeholderRole(spec.roleName, `${spec.displayName} automated stakeholder`);
+      const contactId = await ensureInternalContact(spec);
+
+      if (contactId && roleId) {
+        await ensureProjectStakeholderAssignment(projectId, contactId, roleId);
+      } else {
+        allEnsured = false;
+        console.warn(`Failed to ensure stakeholder ${spec.roleName} for project ${projectId}`);
+      }
+    }
+
+    // Add to cache only after successful completion
+    if (allEnsured) {
+      ensuredDefaultStakeholderProjects.add(projectId);
+    }
+  } catch (error) {
+    console.error('Failed to ensure default internal stakeholders:', error);
   }
 };
 
