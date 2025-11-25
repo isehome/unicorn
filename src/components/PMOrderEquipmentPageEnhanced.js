@@ -9,6 +9,7 @@ import { poGeneratorService } from '../services/poGeneratorService';
 import { purchaseOrderService } from '../services/purchaseOrderService';
 import { trackingService } from '../services/trackingService';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
 import InventoryManager from './InventoryManager';
@@ -1488,7 +1489,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <div>
                                     <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
                                     <p className="font-medium text-gray-900 dark:text-white">
-                                      {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                                      {po.order_date ? <DateField date={po.order_date} variant="inline" /> : 'N/A'}
                                     </p>
                                   </div>
                                   <div>
@@ -1584,7 +1585,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <div>
                                     <p className="text-gray-600 dark:text-gray-400 text-xs">Order Date</p>
                                     <p className="font-medium text-gray-900 dark:text-white">
-                                      {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
+                                      {po.order_date ? <DateField date={po.order_date} variant="inline" /> : 'N/A'}
                                     </p>
                                   </div>
                                   <div>

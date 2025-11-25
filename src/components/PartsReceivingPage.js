@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
+import { milestoneService } from '../services/milestoneService';
 import Button from './ui/Button';
 import {
   Package,
@@ -67,6 +68,15 @@ const PartsReceivingPage = () => {
       setSuccessMessage(result.message);
       setTimeout(() => setSuccessMessage(null), 3000);
 
+      // Check and auto-complete prep milestones if all items are received
+      console.log('🎯 [PartsReceiving] Calling autoCompletePrepMilestones after receiveAll');
+      try {
+        await milestoneService.autoCompletePrepMilestones(projectId);
+      } catch (milestoneErr) {
+        console.error('Failed to auto-complete prep milestones:', milestoneErr);
+        // Don't throw - receiving succeeded
+      }
+
       // Invalidate cache and reload
       milestoneCacheService.invalidate(projectId);
       await loadEquipment();
@@ -117,6 +127,17 @@ const PartsReceivingPage = () => {
       setEditingId(null);
       setTempValue('');
 
+      // Check and auto-complete prep milestones if all items are received
+      if (field === 'received_quantity') {
+        console.log('🎯 [PartsReceiving] Calling autoCompletePrepMilestones after quantity update');
+        try {
+          await milestoneService.autoCompletePrepMilestones(projectId);
+        } catch (milestoneErr) {
+          console.error('Failed to auto-complete prep milestones:', milestoneErr);
+          // Don't throw - update succeeded
+        }
+      }
+
       // Invalidate milestone cache
       milestoneCacheService.invalidate(projectId);
     } catch (err) {
@@ -142,6 +163,15 @@ const PartsReceivingPage = () => {
           ? { ...eq, received_quantity: eq.ordered_quantity || eq.planned_quantity || 0 }
           : eq
       ));
+
+      // Check and auto-complete prep milestones if all items are received
+      console.log('🎯 [PartsReceiving] Calling autoCompletePrepMilestones after quick receive');
+      try {
+        await milestoneService.autoCompletePrepMilestones(projectId);
+      } catch (milestoneErr) {
+        console.error('Failed to auto-complete prep milestones:', milestoneErr);
+        // Don't throw - receive succeeded
+      }
 
       // Invalidate milestone cache
       milestoneCacheService.invalidate(projectId);

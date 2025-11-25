@@ -22,6 +22,9 @@ class PurchaseOrderService {
    */
   async createPurchaseOrder(poData, lineItems) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Generate PO number
       const poNumber = await this.generatePONumber(poData.supplier_id);
 
@@ -44,7 +47,9 @@ class PurchaseOrderService {
           ship_to_contact: poData.ship_to_contact,
           ship_to_phone: poData.ship_to_phone,
           internal_notes: poData.internal_notes,
-          supplier_notes: poData.supplier_notes
+          supplier_notes: poData.supplier_notes,
+          created_by: user?.id,
+          updated_by: user?.id
         }])
         .select()
         .single();
@@ -209,9 +214,15 @@ class PurchaseOrderService {
    */
   async updatePurchaseOrder(poId, updates) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('purchase_orders')
-        .update(updates)
+        .update({
+          ...updates,
+          updated_by: user?.id
+        })
         .eq('id', poId)
         .select()
         .single();
@@ -364,11 +375,17 @@ class PurchaseOrderService {
    */
   async cancelPurchaseOrder(poId, reason) {
     try {
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('purchase_orders')
         .update({
           status: 'cancelled',
-          internal_notes: reason
+          internal_notes: reason,
+          cancelled_by: user?.id,
+          cancelled_at: new Date().toISOString(),
+          updated_by: user?.id
         })
         .eq('id', poId)
         .select()

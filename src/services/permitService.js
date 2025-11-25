@@ -23,39 +23,8 @@ class PermitService {
 
       if (error) throw error;
 
-      // Fetch user profiles separately if needed
-      const permits = data || [];
-      if (permits.length > 0) {
-        const userIds = new Set();
-        permits.forEach(permit => {
-          if (permit.created_by) userIds.add(permit.created_by);
-          if (permit.updated_by) userIds.add(permit.updated_by);
-          if (permit.rough_in_completed_by) userIds.add(permit.rough_in_completed_by);
-          if (permit.final_inspection_completed_by) userIds.add(permit.final_inspection_completed_by);
-        });
-
-        if (userIds.size > 0) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, email, full_name')
-            .in('id', Array.from(userIds));
-
-          const profileMap = {};
-          (profiles || []).forEach(profile => {
-            profileMap[profile.id] = profile;
-          });
-
-          // Attach user info to permits
-          permits.forEach(permit => {
-            permit.created_by_user = profileMap[permit.created_by] || null;
-            permit.updated_by_user = profileMap[permit.updated_by] || null;
-            permit.rough_in_user = profileMap[permit.rough_in_completed_by] || null;
-            permit.final_inspection_user = profileMap[permit.final_inspection_completed_by] || null;
-          });
-        }
-      }
-
-      return permits;
+      // User info is stored directly in permit records (no profiles table needed)
+      return data || [];
     } catch (error) {
       console.error('Error fetching project permits:', error);
       throw error;
@@ -214,16 +183,15 @@ class PermitService {
 
   /**
    * Mark rough-in inspection as completed
-   * Also updates BOTH the rough_in_inspection AND prewire milestones
+   * Only updates the rough_in_inspection milestone (NOT prewire)
    * @param {string} permitId - The permit ID
    * @param {string} inspectionDate - The inspection date
    * @param {string} projectId - The project ID (optional, will fetch if not provided)
+   * @param {Object} userInfo - User info object with {id, name, email} from Azure AD
    * @returns {Promise<Object>} Updated permit record
    */
-  async completeRoughInInspection(permitId, inspectionDate, projectId = null) {
+  async completeRoughInInspection(permitId, inspectionDate, projectId = null, userInfo = null) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       // Get project_id if not provided
       if (!projectId) {
         const permit = await this.getPermit(permitId);
@@ -235,9 +203,13 @@ class PermitService {
         .update({
           rough_in_completed: true,
           rough_in_date: inspectionDate,
-          rough_in_completed_by: user?.id,
+          rough_in_completed_by: userInfo?.id,
+          rough_in_completed_by_name: userInfo?.name,
+          rough_in_completed_by_email: userInfo?.email,
           rough_in_completed_at: new Date().toISOString(),
-          updated_by: user?.id
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email
         })
         .eq('id', permitId)
         .select('*')
@@ -245,48 +217,33 @@ class PermitService {
 
       if (error) throw error;
 
-      // Update BOTH rough_in_inspection AND prewire milestones
+      // Update rough_in_inspection milestone only
       try {
-        // 1. Update rough_in_inspection milestone (single atomic operation)
-        const updateData1 = {
+        const updateData = {
           project_id: projectId,
           milestone_type: 'rough_in_inspection',
           actual_date: inspectionDate,
           completed_manually: true,
           percent_complete: 100,
-          updated_by: user?.id,
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email,
           updated_at: new Date().toISOString()
         };
 
         // Add target date if available from permit
         if (data.rough_in_target_date) {
-          updateData1.target_date = data.rough_in_target_date;
+          updateData.target_date = data.rough_in_target_date;
         }
 
         await supabase
           .from('project_milestones')
-          .upsert(updateData1, {
-            onConflict: 'project_id,milestone_type',
-            ignoreDuplicates: false
-          });
-
-        // 2. Update prewire milestone (single atomic operation)
-        await supabase
-          .from('project_milestones')
-          .upsert({
-            project_id: projectId,
-            milestone_type: 'prewire',
-            actual_date: inspectionDate,
-            completed_manually: true,
-            percent_complete: 100,
-            updated_by: user?.id,
-            updated_at: new Date().toISOString()
-          }, {
+          .upsert(updateData, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
           });
       } catch (milestoneError) {
-        console.error('Error updating milestones:', milestoneError);
+        console.error('Error updating milestone:', milestoneError);
         // Don't throw - permit update succeeded
       }
 
@@ -299,16 +256,15 @@ class PermitService {
 
   /**
    * Mark final inspection as completed
-   * Also updates BOTH the final_inspection AND trim milestones
+   * Only updates the final_inspection milestone (NOT trim)
    * @param {string} permitId - The permit ID
    * @param {string} inspectionDate - The inspection date
    * @param {string} projectId - The project ID (optional, will fetch if not provided)
+   * @param {Object} userInfo - User info object with {id, name, email} from Azure AD
    * @returns {Promise<Object>} Updated permit record
    */
-  async completeFinalInspection(permitId, inspectionDate, projectId = null) {
+  async completeFinalInspection(permitId, inspectionDate, projectId = null, userInfo = null) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       // Get project_id if not provided
       if (!projectId) {
         const permit = await this.getPermit(permitId);
@@ -320,9 +276,13 @@ class PermitService {
         .update({
           final_inspection_completed: true,
           final_inspection_date: inspectionDate,
-          final_inspection_completed_by: user?.id,
+          final_inspection_completed_by: userInfo?.id,
+          final_inspection_completed_by_name: userInfo?.name,
+          final_inspection_completed_by_email: userInfo?.email,
           final_inspection_completed_at: new Date().toISOString(),
-          updated_by: user?.id
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email
         })
         .eq('id', permitId)
         .select('*')
@@ -330,48 +290,33 @@ class PermitService {
 
       if (error) throw error;
 
-      // Update BOTH final_inspection AND trim milestones
+      // Update final_inspection milestone only
       try {
-        // 1. Update final_inspection milestone (single atomic operation)
-        const updateData1 = {
+        const updateData = {
           project_id: projectId,
           milestone_type: 'final_inspection',
           actual_date: inspectionDate,
           completed_manually: true,
           percent_complete: 100,
-          updated_by: user?.id,
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email,
           updated_at: new Date().toISOString()
         };
 
         // Add target date if available from permit
         if (data.final_inspection_target_date) {
-          updateData1.target_date = data.final_inspection_target_date;
+          updateData.target_date = data.final_inspection_target_date;
         }
 
         await supabase
           .from('project_milestones')
-          .upsert(updateData1, {
-            onConflict: 'project_id,milestone_type',
-            ignoreDuplicates: false
-          });
-
-        // 2. Update trim milestone (single atomic operation)
-        await supabase
-          .from('project_milestones')
-          .upsert({
-            project_id: projectId,
-            milestone_type: 'trim',
-            actual_date: inspectionDate,
-            completed_manually: true,
-            percent_complete: 100,
-            updated_by: user?.id,
-            updated_at: new Date().toISOString()
-          }, {
+          .upsert(updateData, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
           });
       } catch (milestoneError) {
-        console.error('Error updating milestones:', milestoneError);
+        console.error('Error updating milestone:', milestoneError);
         // Don't throw - permit update succeeded
       }
 
@@ -384,15 +329,14 @@ class PermitService {
 
   /**
    * Unmark rough-in inspection
-   * Also clears BOTH rough_in_inspection AND prewire milestones
+   * Only clears the rough_in_inspection milestone (NOT prewire)
    * @param {string} permitId - The permit ID
    * @param {string} projectId - The project ID (optional, will fetch if not provided)
+   * @param {Object} userInfo - User info object with {id, name, email} from Azure AD
    * @returns {Promise<Object>} Updated permit record
    */
-  async uncompleteRoughInInspection(permitId, projectId = null) {
+  async uncompleteRoughInInspection(permitId, projectId = null, userInfo = null) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       // Get project_id if not provided
       if (!projectId) {
         const permit = await this.getPermit(permitId);
@@ -404,8 +348,12 @@ class PermitService {
         .update({
           rough_in_completed: false,
           rough_in_completed_by: null,
+          rough_in_completed_by_name: null,
+          rough_in_completed_by_email: null,
           rough_in_completed_at: null,
-          updated_by: user?.id
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email
         })
         .eq('id', permitId)
         .select()
@@ -413,9 +361,8 @@ class PermitService {
 
       if (error) throw error;
 
-      // Clear BOTH rough_in_inspection AND prewire milestones
+      // Clear rough_in_inspection milestone only
       try {
-        // 1. Clear rough_in_inspection milestone (single atomic operation)
         await supabase
           .from('project_milestones')
           .upsert({
@@ -424,30 +371,16 @@ class PermitService {
             actual_date: null,
             completed_manually: false,
             percent_complete: 0,
-            updated_by: user?.id,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'project_id,milestone_type',
-            ignoreDuplicates: false
-          });
-
-        // 2. Clear prewire milestone (single atomic operation)
-        await supabase
-          .from('project_milestones')
-          .upsert({
-            project_id: projectId,
-            milestone_type: 'prewire',
-            actual_date: null,
-            completed_manually: false,
-            percent_complete: 0,
-            updated_by: user?.id,
+            updated_by: userInfo?.id,
+            updated_by_name: userInfo?.name,
+            updated_by_email: userInfo?.email,
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
           });
       } catch (milestoneError) {
-        console.error('Error clearing milestones:', milestoneError);
+        console.error('Error clearing milestone:', milestoneError);
         // Don't throw - permit update succeeded
       }
 
@@ -460,15 +393,14 @@ class PermitService {
 
   /**
    * Unmark final inspection
-   * Also clears BOTH final_inspection AND trim milestones
+   * Only clears the final_inspection milestone (NOT trim)
    * @param {string} permitId - The permit ID
    * @param {string} projectId - The project ID (optional, will fetch if not provided)
+   * @param {Object} userInfo - User info object with {id, name, email} from Azure AD
    * @returns {Promise<Object>} Updated permit record
    */
-  async uncompleteFinalInspection(permitId, projectId = null) {
+  async uncompleteFinalInspection(permitId, projectId = null, userInfo = null) {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-
       // Get project_id if not provided
       if (!projectId) {
         const permit = await this.getPermit(permitId);
@@ -480,8 +412,12 @@ class PermitService {
         .update({
           final_inspection_completed: false,
           final_inspection_completed_by: null,
+          final_inspection_completed_by_name: null,
+          final_inspection_completed_by_email: null,
           final_inspection_completed_at: null,
-          updated_by: user?.id
+          updated_by: userInfo?.id,
+          updated_by_name: userInfo?.name,
+          updated_by_email: userInfo?.email
         })
         .eq('id', permitId)
         .select()
@@ -489,9 +425,8 @@ class PermitService {
 
       if (error) throw error;
 
-      // Clear BOTH final_inspection AND trim milestones
+      // Clear final_inspection milestone only
       try {
-        // 1. Clear final_inspection milestone (single atomic operation)
         await supabase
           .from('project_milestones')
           .upsert({
@@ -500,30 +435,16 @@ class PermitService {
             actual_date: null,
             completed_manually: false,
             percent_complete: 0,
-            updated_by: user?.id,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'project_id,milestone_type',
-            ignoreDuplicates: false
-          });
-
-        // 2. Clear trim milestone (single atomic operation)
-        await supabase
-          .from('project_milestones')
-          .upsert({
-            project_id: projectId,
-            milestone_type: 'trim',
-            actual_date: null,
-            completed_manually: false,
-            percent_complete: 0,
-            updated_by: user?.id,
+            updated_by: userInfo?.id,
+            updated_by_name: userInfo?.name,
+            updated_by_email: userInfo?.email,
             updated_at: new Date().toISOString()
           }, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
           });
       } catch (milestoneError) {
-        console.error('Error clearing milestones:', milestoneError);
+        console.error('Error clearing milestone:', milestoneError);
         // Don't throw - permit update succeeded
       }
 
@@ -715,6 +636,68 @@ class PermitService {
     } catch (error) {
       console.error('Error getting document URL:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Sync milestone target date changes BACK to permit (reverse direction)
+   * Called when inspection milestone target_date is updated in Phase Milestones section
+   * @param {string} projectId - The project ID
+   * @param {string} milestoneType - 'rough_in_inspection' or 'final_inspection'
+   * @param {string} targetDate - The new target date (YYYY-MM-DD format)
+   * @returns {Promise<void>}
+   */
+  async syncMilestoneTargetDateToPermit(projectId, milestoneType, targetDate) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Get the permit for this project
+      const { data: permits, error: fetchError } = await supabase
+        .from('project_permits')
+        .select('*')
+        .eq('project_id', projectId);
+
+      if (fetchError) throw fetchError;
+
+      // If no permit exists yet, create one
+      if (!permits || permits.length === 0) {
+        console.log('[PermitService] No permit found, creating new permit record for milestone sync');
+
+        const { error: insertError } = await supabase
+          .from('project_permits')
+          .insert({
+            project_id: projectId,
+            [milestoneType === 'rough_in_inspection' ? 'rough_in_target_date' : 'final_inspection_target_date']: targetDate,
+            updated_by: user?.id
+          });
+
+        if (insertError) throw insertError;
+        console.log('[PermitService] ✅ Created permit with milestone target date');
+        return;
+      }
+
+      const permit = permits[0];
+
+      // Update the appropriate target date field
+      const fieldName = milestoneType === 'rough_in_inspection'
+        ? 'rough_in_target_date'
+        : 'final_inspection_target_date';
+
+      const { error: updateError } = await supabase
+        .from('project_permits')
+        .update({
+          [fieldName]: targetDate,
+          updated_by: user?.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', permit.id);
+
+      if (updateError) throw updateError;
+
+      console.log(`[PermitService] ✅ Synced ${milestoneType} target date to permit:`, targetDate);
+    } catch (error) {
+      console.error('Error syncing milestone target date to permit:', error);
+      // Don't throw - milestone update already succeeded
     }
   }
 }

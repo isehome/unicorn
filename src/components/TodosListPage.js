@@ -7,6 +7,7 @@ import { CheckSquare, Square, Trash2, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import TodoDetailModal from './TodoDetailModal';
 import Button from './ui/Button';
+import DateInput from './ui/DateInput';
 
 const importanceRanking = {
   critical: 0,
@@ -456,34 +457,22 @@ const TodosListPage = () => {
                   <div className="flex items-center gap-2 text-xs">
                     <label className="flex items-center gap-1" title="Due Date">
                       <span style={styles.subtleText}>Due:</span>
-                      <input
-                        type="date"
+                      <DateInput
                         value={todo.dueBy ? String(todo.dueBy).substring(0,10) : ''}
                         onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'due_by', e.target.value); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
-                        style={{
-                          ...styles.input,
-                          minWidth: '100px',
-                          opacity: todo.dueBy ? 1 : 0.4,
-                          color: todo.dueBy ? styles.input.color : styles.subtleText.color
-                        }}
+                        className="text-xs"
+                        style={{ minWidth: '100px' }}
                       />
                     </label>
                     <label className="flex items-center gap-1" title="Do Date">
                       <span style={styles.subtleText}>Do:</span>
-                      <input
-                        type="date"
+                      <DateInput
                         value={todo.doBy ? String(todo.doBy).substring(0,10) : ''}
                         onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'do_by', e.target.value); }}
                         onClick={(e) => e.stopPropagation()}
-                        className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
-                        style={{
-                          ...styles.input,
-                          minWidth: '100px',
-                          opacity: todo.doBy ? 1 : 0.4,
-                          color: todo.doBy ? styles.input.color : styles.subtleText.color
-                        }}
+                        className="text-xs"
+                        style={{ minWidth: '100px' }}
                       />
                     </label>
                     <select

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
 import {
   Shield,
   Plus,
@@ -666,7 +667,7 @@ const SecureDataManager = ({ projectId, onClose }) => {
                   {item.last_accessed && (
                     <div className="flex items-center gap-1 mt-2 text-xs" style={styles.subtleText}>
                       <Clock size={12} />
-                      Last accessed: {new Date(item.last_accessed).toLocaleString()}
+                      Last accessed: <DateField date={item.last_accessed} variant="inline" showTime={true} />
                     </div>
                   )}
                 </div>

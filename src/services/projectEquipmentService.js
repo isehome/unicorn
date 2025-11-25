@@ -52,6 +52,9 @@ const parseCsvFile = (file) =>
   });
 
 const ensureRooms = async (projectId, rows) => {
+  // Get current authenticated user
+  const { data: { user } } = await supabase.auth.getUser();
+
   const { data: existingRooms, error } = await supabase
     .from('project_rooms')
     .select('*')
@@ -76,7 +79,7 @@ const ensureRooms = async (projectId, rows) => {
       project_id: projectId,
       name: roomName,
       is_headend: detectHeadend(roomName),
-      created_by: null
+      created_by: user?.id
     };
 
     inserts.push(newRoom);
@@ -140,7 +143,7 @@ const ensureRooms = async (projectId, rows) => {
   return { roomMap, insertedCount: insertedRooms.length || 0 };
 };
 
-const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
+const buildEquipmentRecords = (rows, roomMap, projectId, batchId, userId) => {
   const equipmentRecords = [];
   const laborMap = new Map();
 
@@ -197,7 +200,7 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
         planned_hours: 0,
         hourly_rate: toNumber(row.SellPrice),
         csv_batch_id: batchId,
-        created_by: null,
+        created_by: userId,
         supplier: supplier || null  // STORE SUPPLIER for vendor matching
       };
 
@@ -264,7 +267,7 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId) => {
         metadata: {},  // Empty JSONB for flexible data
         notes: null,
         is_active: true,
-        created_by: null
+        created_by: userId
       });
     }
   });
@@ -671,6 +674,9 @@ export const projectEquipmentService = {
   async importCsv(projectId, file, options = {}) {
     if (!projectId || !file) throw new Error('Project and file are required');
 
+    // Get current authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+
     const parsedRows = await parseCsvFile(file);
     if (!Array.isArray(parsedRows) || parsedRows.length === 0) {
       throw new Error('CSV file did not contain any rows');
@@ -688,7 +694,7 @@ export const projectEquipmentService = {
         processed_rows: 0,
         status: 'pending',
         raw_payload: null,
-        created_by: options.userId || null
+        created_by: user?.id
       })
       .select()
       .single();
@@ -711,7 +717,8 @@ export const projectEquipmentService = {
       parsedRows,
       roomMap,
       projectId,
-      batchId
+      batchId,
+      user?.id
     );
 
     let insertedEquipment = [];
@@ -1221,22 +1228,25 @@ export const projectEquipmentService = {
     return data || [];
   },
 
-  async updateProcurementStatus(equipmentId, { ordered, onsite, userId } = {}) {
+  async updateProcurementStatus(equipmentId, { ordered, onsite } = {}) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!equipmentId) throw new Error('Equipment ID is required');
+
+    // Get current authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
 
     const updates = {};
 
     if (typeof ordered === 'boolean') {
       updates.ordered_confirmed = ordered;
       updates.ordered_confirmed_at = ordered ? new Date().toISOString() : null;
-      updates.ordered_confirmed_by = ordered ? userId || null : null;
+      updates.ordered_confirmed_by = ordered ? user?.id : null;
     }
 
     if (typeof onsite === 'boolean') {
       updates.onsite_confirmed = onsite;
       updates.onsite_confirmed_at = onsite ? new Date().toISOString() : null;
-      updates.onsite_confirmed_by = onsite ? userId || null : null;
+      updates.onsite_confirmed_by = onsite ? user?.id : null;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -1265,11 +1275,14 @@ export const projectEquipmentService = {
   /**
    * Update ordered or received quantities for equipment
    * @param {string} equipmentId - The equipment item ID
-   * @param {object} options - { orderedQty, receivedQty, userId }
+   * @param {object} options - { orderedQty, receivedQty }
    */
-  async updateProcurementQuantities(equipmentId, { orderedQty, receivedQty, userId } = {}) {
+  async updateProcurementQuantities(equipmentId, { orderedQty, receivedQty } = {}) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!equipmentId) throw new Error('Equipment ID is required');
+
+    // Get current authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
 
     // First, get current equipment to validate
     const { data: current, error: fetchError } = await supabase
@@ -1286,7 +1299,7 @@ export const projectEquipmentService = {
     // Update ordered quantity
     if (typeof orderedQty === 'number' && orderedQty >= 0) {
       updates.ordered_quantity = orderedQty;
-      updates.ordered_confirmed_by = userId || null;
+      updates.ordered_confirmed_by = user?.id;
       updates.ordered_confirmed_at = orderedQty > 0 ? new Date().toISOString() : null;
     }
 
@@ -1305,7 +1318,7 @@ export const projectEquipmentService = {
       }
 
       updates.received_quantity = receivedQty;
-      updates.onsite_confirmed_by = userId || null;
+      updates.onsite_confirmed_by = user?.id;
       updates.onsite_confirmed_at = receivedQty > 0 ? new Date().toISOString() : null;
     }
 
@@ -1365,11 +1378,15 @@ export const projectEquipmentService = {
       return { updated: 0, message: 'No items to receive' };
     }
 
+    // Get current authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+
     // Update all items to received_quantity = ordered_quantity
     const updates = itemsToReceive.map(item => ({
       id: item.id,
       received_quantity: item.ordered_quantity,
-      onsite_confirmed_at: new Date().toISOString()
+      onsite_confirmed_at: new Date().toISOString(),
+      onsite_confirmed_by: user?.id
     }));
 
     const { data, error } = await supabase

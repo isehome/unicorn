@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
 import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
@@ -393,7 +394,7 @@ const EquipmentListPage = () => {
             )}
             {item.orderedAt && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {new Date(item.orderedAt).toLocaleDateString()}
+                <DateField date={item.orderedAt} variant="inline" />
               </span>
             )}
           </label>
@@ -414,7 +415,7 @@ const EquipmentListPage = () => {
             )}
             {item.receivedAt && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {new Date(item.receivedAt).toLocaleDateString()}
+                <DateField date={item.receivedAt} variant="inline" />
               </span>
             )}
           </label>
@@ -430,7 +431,7 @@ const EquipmentListPage = () => {
             <span className="font-medium">Onsite</span>
             {item.onsiteAt && (
               <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                {new Date(item.onsiteAt).toLocaleDateString()}
+                <DateField date={item.onsiteAt} variant="inline" />
               </span>
             )}
           </label>

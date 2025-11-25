@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { permitService } from '../services/permitService';
+import { milestoneService } from '../services/milestoneService';
 import PermitForm from './PermitForm';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
+import DateInput from './ui/DateInput';
+import DateField from './ui/DateField';
 import {
   Plus,
   Edit,
@@ -17,9 +21,13 @@ import {
 /**
  * ProjectPermits Component
  * Displays and manages project permits with inspection tracking
+ * Auto-populates inspection target dates from project milestones
+ * Auto-updates milestone actual dates when inspections are completed
  */
-function ProjectPermits({ projectId }) {
+function ProjectPermits({ projectId, onMilestoneChange }) {
+  const { user } = useAuth();
   const [permits, setPermits] = useState([]);
+  const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -33,21 +41,77 @@ function ProjectPermits({ projectId }) {
 
   useEffect(() => {
     if (projectId) {
-      loadPermits();
+      loadPermitsAndMilestones();
     }
   }, [projectId]);
 
-  const loadPermits = async () => {
+  const loadPermitsAndMilestones = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await permitService.getProjectPermits(projectId);
-      setPermits(data);
+
+      // Load permits and milestones in parallel
+      const [permitsData, milestonesData] = await Promise.all([
+        permitService.getProjectPermits(projectId),
+        milestoneService.getProjectMilestones(projectId)
+      ]);
+
+      setPermits(permitsData);
+      setMilestones(milestonesData);
+
+      // Auto-populate permit target dates from milestones if not set
+      await autoPopulateTargetDates(permitsData, milestonesData);
     } catch (err) {
-      console.error('Error loading permits:', err);
+      console.error('Error loading permits and milestones:', err);
       setError('Failed to load permits. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPermits = async () => {
+    // Keep this method for compatibility with existing handlers
+    await loadPermitsAndMilestones();
+  };
+
+  /**
+   * Auto-populate permit target dates from milestone target dates
+   * - Rough-in target from prewire milestone target
+   * - Final inspection target from trim milestone target
+   */
+  const autoPopulateTargetDates = async (permitsData, milestonesData) => {
+    try {
+      const prewireMilestone = milestonesData.find(m => m.milestone_type === 'prewire');
+      const trimMilestone = milestonesData.find(m => m.milestone_type === 'trim');
+
+      const updates = [];
+
+      for (const permit of permitsData) {
+        // Auto-populate rough-in target date from prewire milestone
+        if (!permit.rough_in_target_date && prewireMilestone?.target_date) {
+          updates.push(
+            permitService.updateRoughInTargetDate(permit.id, prewireMilestone.target_date)
+          );
+        }
+
+        // Auto-populate final inspection target date from trim milestone
+        if (!permit.final_inspection_target_date && trimMilestone?.target_date) {
+          updates.push(
+            permitService.updateFinalInspectionTargetDate(permit.id, trimMilestone.target_date)
+          );
+        }
+      }
+
+      // Execute all updates if any
+      if (updates.length > 0) {
+        await Promise.all(updates);
+        // Reload permits to show updated dates
+        const freshPermits = await permitService.getProjectPermits(projectId);
+        setPermits(freshPermits);
+      }
+    } catch (err) {
+      console.error('Error auto-populating target dates:', err);
+      // Don't throw - this is a best-effort enhancement
     }
   };
 
@@ -110,10 +174,19 @@ function ProjectPermits({ projectId }) {
 
   const handleRoughInToggle = async (permit) => {
     if (permit.rough_in_completed) {
-      // Uncheck - remove completion
+      // Uncheck - remove completion (also clears prewire milestone)
       try {
-        await permitService.uncompleteRoughInInspection(permit.id);
+        await permitService.uncompleteRoughInInspection(permit.id, projectId, {
+          id: user?.id,
+          name: user?.displayName,
+          email: user?.email
+        });
         await loadPermits();
+
+        // Notify parent to reload milestones
+        if (onMilestoneChange) {
+          onMilestoneChange();
+        }
       } catch (err) {
         console.error('Error updating rough-in inspection:', err);
         setError('Failed to update rough-in inspection. Please try again.');
@@ -133,10 +206,19 @@ function ProjectPermits({ projectId }) {
 
   const handleFinalInspectionToggle = async (permit) => {
     if (permit.final_inspection_completed) {
-      // Uncheck - remove completion
+      // Uncheck - remove completion (also clears trim milestone)
       try {
-        await permitService.uncompleteFinalInspection(permit.id);
+        await permitService.uncompleteFinalInspection(permit.id, projectId, {
+          id: user?.id,
+          name: user?.displayName,
+          email: user?.email
+        });
         await loadPermits();
+
+        // Notify parent to reload milestones
+        if (onMilestoneChange) {
+          onMilestoneChange();
+        }
       } catch (err) {
         console.error('Error updating final inspection:', err);
         setError('Failed to update final inspection. Please try again.');
@@ -157,8 +239,19 @@ function ProjectPermits({ projectId }) {
   const handleRoughInDateConfirm = async () => {
     try {
       const { permitId, date } = inspectionDateDialogs.roughIn;
-      await permitService.completeRoughInInspection(permitId, date);
+      // Complete inspection and auto-update prewire milestone
+      await permitService.completeRoughInInspection(permitId, date, projectId, {
+        id: user?.id,
+        name: user?.displayName,
+        email: user?.email
+      });
       await loadPermits();
+
+      // Notify parent to reload milestones
+      if (onMilestoneChange) {
+        onMilestoneChange();
+      }
+
       setInspectionDateDialogs({
         ...inspectionDateDialogs,
         roughIn: { open: false, permitId: null, date: '' }
@@ -172,8 +265,19 @@ function ProjectPermits({ projectId }) {
   const handleFinalInspectionDateConfirm = async () => {
     try {
       const { permitId, date } = inspectionDateDialogs.final;
-      await permitService.completeFinalInspection(permitId, date);
+      // Complete inspection and auto-update trim milestone
+      await permitService.completeFinalInspection(permitId, date, projectId, {
+        id: user?.id,
+        name: user?.displayName,
+        email: user?.email
+      });
       await loadPermits();
+
+      // Notify parent to reload milestones
+      if (onMilestoneChange) {
+        onMilestoneChange();
+      }
+
       setInspectionDateDialogs({
         ...inspectionDateDialogs,
         final: { open: false, permitId: null, date: '' }
@@ -222,11 +326,11 @@ function ProjectPermits({ projectId }) {
     });
   };
 
-  const formatUserInfo = (user, timestamp) => {
-    if (!user) return 'N/A';
-    const name = user.full_name || user.email || 'Unknown User';
+  const formatUserInfo = (name, email, timestamp) => {
+    if (!name && !email) return 'N/A';
+    const displayName = name || email || 'Unknown User';
     const dateStr = timestamp ? ` on ${formatDateTime(timestamp)}` : '';
-    return `${name}${dateStr}`;
+    return `${displayName}${dateStr}`;
   };
 
   if (loading) {
@@ -336,15 +440,16 @@ function ProjectPermits({ projectId }) {
 
                   {/* Target Date */}
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-600 dark:text-gray-400 w-20">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 w-20">
                       Target Date:
                     </label>
-                    <input
-                      type="date"
-                      value={permit.rough_in_target_date || ''}
-                      onChange={(e) => handleRoughInTargetDateChange(permit.id, e.target.value)}
-                      className="flex-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
+                    <div className="flex-1">
+                      <DateInput
+                        value={permit.rough_in_target_date || ''}
+                        onChange={(e) => handleRoughInTargetDateChange(permit.id, e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
                   </div>
 
                   {/* Completion Checkbox */}
@@ -360,9 +465,19 @@ function ProjectPermits({ projectId }) {
                         Inspection Complete
                       </span>
                       {permit.rough_in_completed && (
-                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
-                          <div>Date: {formatDate(permit.rough_in_date)}</div>
-                          <div>Completed by: {formatUserInfo(permit.rough_in_user, permit.rough_in_completed_at)}</div>
+                        <div className="mt-1 text-xs space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600 dark:text-gray-400">Date:</span>
+                            <DateField
+                              date={permit.rough_in_date}
+                              isCompleted={true}
+                              variant="inline"
+                              showIcon={false}
+                            />
+                          </div>
+                          <div className="text-gray-600 dark:text-gray-400">
+                            Completed by: {formatUserInfo(permit.rough_in_completed_by_name, permit.rough_in_completed_by_email, permit.rough_in_completed_at)}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -377,15 +492,16 @@ function ProjectPermits({ projectId }) {
 
                   {/* Target Date */}
                   <div className="flex items-center gap-2">
-                    <label className="text-xs text-gray-600 dark:text-gray-400 w-20">
+                    <label className="text-xs font-medium text-gray-700 dark:text-gray-300 w-20">
                       Target Date:
                     </label>
-                    <input
-                      type="date"
-                      value={permit.final_inspection_target_date || ''}
-                      onChange={(e) => handleFinalInspectionTargetDateChange(permit.id, e.target.value)}
-                      className="flex-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                    />
+                    <div className="flex-1">
+                      <DateInput
+                        value={permit.final_inspection_target_date || ''}
+                        onChange={(e) => handleFinalInspectionTargetDateChange(permit.id, e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
                   </div>
 
                   {/* Completion Checkbox */}
@@ -401,9 +517,19 @@ function ProjectPermits({ projectId }) {
                         Inspection Complete
                       </span>
                       {permit.final_inspection_completed && (
-                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
-                          <div>Date: {formatDate(permit.final_inspection_date)}</div>
-                          <div>Completed by: {formatUserInfo(permit.final_inspection_user, permit.final_inspection_completed_at)}</div>
+                        <div className="mt-1 text-xs space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600 dark:text-gray-400">Date:</span>
+                            <DateField
+                              date={permit.final_inspection_date}
+                              isCompleted={true}
+                              variant="inline"
+                              showIcon={false}
+                            />
+                          </div>
+                          <div className="text-gray-600 dark:text-gray-400">
+                            Completed by: {formatUserInfo(permit.final_inspection_completed_by_name, permit.final_inspection_completed_by_email, permit.final_inspection_completed_at)}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -413,9 +539,9 @@ function ProjectPermits({ projectId }) {
 
               {/* Audit Trail */}
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-                <div>Created by: {formatUserInfo(permit.created_by_user, permit.created_at)}</div>
+                <div>Created by: {formatUserInfo(permit.created_by_name, permit.created_by_email, permit.created_at)}</div>
                 {permit.updated_at !== permit.created_at && (
-                  <div>Last updated by: {formatUserInfo(permit.updated_by_user, permit.updated_at)}</div>
+                  <div>Last updated by: {formatUserInfo(permit.updated_by_name, permit.updated_by_email, permit.updated_at)}</div>
                 )}
               </div>
             </div>
@@ -481,14 +607,12 @@ function ProjectPermits({ projectId }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Inspection Date
             </label>
-            <input
-              type="date"
+            <DateInput
               value={inspectionDateDialogs.roughIn.date}
               onChange={(e) => setInspectionDateDialogs({
                 ...inspectionDateDialogs,
                 roughIn: { ...inspectionDateDialogs.roughIn, date: e.target.value }
               })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             />
           </div>
           <div className="flex gap-3 justify-end">
@@ -526,14 +650,12 @@ function ProjectPermits({ projectId }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Inspection Date
             </label>
-            <input
-              type="date"
+            <DateInput
               value={inspectionDateDialogs.final.date}
               onChange={(e) => setInspectionDateDialogs({
                 ...inspectionDateDialogs,
                 final: { ...inspectionDateDialogs.final, date: e.target.value }
               })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             />
           </div>
           <div className="flex gap-3 justify-end">

@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
 import { SupplierEditModal } from './SupplierEditModal';
 import CompanySettingsManager from './CompanySettingsManager';
+import DateField from '../ui/DateField';
 import {
   Package,
   Building2,
@@ -321,9 +322,14 @@ const ProcurementDashboard = () => {
                         <div className="font-semibold text-gray-900 dark:text-white text-lg">
                           {formatCurrency(po.total_amount)}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(po.order_date).toLocaleDateString()}
-                        </div>
+                        <DateField
+                          date={po.order_date}
+                          isCompleted={po.status === 'received'}
+                          showIcon={false}
+                          showBadge={false}
+                          showDescription={false}
+                          variant="inline"
+                        />
                       </div>
                       <ChevronRight className="w-5 h-5 text-gray-400 ml-2" />
                     </div>
@@ -565,8 +571,15 @@ const ProcurementDashboard = () => {
                       <div className="font-semibold text-gray-900 dark:text-white text-lg">
                         {formatCurrency(po.total_amount)}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {new Date(po.order_date).toLocaleDateString()}
+                      <div className="text-xs">
+                        <DateField
+                          date={po.order_date}
+                          isCompleted={po.status === 'received'}
+                          showIcon={false}
+                          showBadge={false}
+                          showDescription={false}
+                          variant="inline"
+                        />
                       </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-gray-400 ml-2" />
@@ -641,20 +654,30 @@ const ProcurementDashboard = () => {
               {/* PO Details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Order Date
                   </label>
-                  <p className="text-gray-900 dark:text-white">
-                    {selectedPO.order_date ? new Date(selectedPO.order_date).toLocaleDateString() : 'N/A'}
-                  </p>
+                  <DateField
+                    date={selectedPO.order_date}
+                    isCompleted={selectedPO.status === 'received'}
+                    showIcon={true}
+                    showBadge={false}
+                    showDescription={false}
+                    variant="compact"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Requested Delivery
                   </label>
-                  <p className="text-gray-900 dark:text-white">
-                    {selectedPO.requested_delivery_date ? new Date(selectedPO.requested_delivery_date).toLocaleDateString() : 'N/A'}
-                  </p>
+                  <DateField
+                    date={selectedPO.requested_delivery_date}
+                    isCompleted={selectedPO.status === 'received'}
+                    showIcon={true}
+                    showBadge={true}
+                    showDescription={true}
+                    variant="compact"
+                  />
                 </div>
               </div>
 

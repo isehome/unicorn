@@ -7,6 +7,7 @@ import { projectsService, timeLogsService, projectProgressService } from '../ser
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
+import { permitService } from '../services/permitService';
 import { fetchDocumentContents, extractShapes, extractDocumentIdFromUrl } from '../services/lucidApi';
 import { wireDropService } from '../services/wireDropService';
 import { projectRoomsService } from '../services/projectRoomsService';
@@ -783,7 +784,33 @@ const PMProjectViewEnhanced = () => {
         .order('milestone_type');
 
       if (!error && data) {
-        setMilestoneDates(data);
+        // Fetch user profiles for updated_by fields
+        const milestones = data || [];
+        if (milestones.length > 0) {
+          const userIds = new Set();
+          milestones.forEach(milestone => {
+            if (milestone.updated_by) userIds.add(milestone.updated_by);
+          });
+
+          if (userIds.size > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('id, email, full_name')
+              .in('id', Array.from(userIds));
+
+            const profileMap = {};
+            (profiles || []).forEach(profile => {
+              profileMap[profile.id] = profile;
+            });
+
+            // Attach user info to milestones
+            milestones.forEach(milestone => {
+              milestone.updated_by_user = profileMap[milestone.updated_by] || null;
+            });
+          }
+        }
+
+        setMilestoneDates(milestones);
       }
     } catch (error) {
       console.error('Failed to load milestone dates:', error);
@@ -1158,16 +1185,61 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
+  // Format user info for display (consistent with rest of app)
+  const formatMilestoneUserInfo = (user, timestamp) => {
+    if (!user) return 'N/A';
+    const name = user.full_name || user.email || 'Unknown User';
+    if (timestamp) {
+      const date = new Date(timestamp);
+      const dateStr = date.toLocaleString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      return `${name} on ${dateStr}`;
+    }
+    return name;
+  };
+
   const handleMilestoneUpdate = async (milestoneType, field, value) => {
     try {
+      console.log('[Milestone Update] Called:', { milestoneType, field, value });
+
+      // Get current user for tracking
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Find existing milestone or create new one
       const existingMilestone = milestoneDates.find(m => m.milestone_type === milestoneType);
+
+      // Prepare update data with user tracking
+      const updateData = {
+        [field]: value,
+        updated_by: user?.id,
+        updated_at: new Date().toISOString()
+      };
+
+      // If marking as completed, also set actual_date if not already set
+      if (field === 'completed_manually' && value === true) {
+        const currentActualDate = existingMilestone?.actual_date;
+        if (!currentActualDate) {
+          updateData.actual_date = new Date().toISOString().split('T')[0];
+          console.log('[Milestone Update] Auto-setting actual_date:', updateData.actual_date);
+        }
+        updateData.percent_complete = 100;
+      } else if (field === 'completed_manually' && value === false) {
+        // If uncompleting, clear actual_date and reset percent_complete
+        updateData.actual_date = null;
+        updateData.percent_complete = 0;
+      }
 
       if (existingMilestone) {
         // Update existing milestone
         const { error } = await supabase
           .from('project_milestones')
-          .update({ [field]: value, updated_at: new Date().toISOString() })
+          .update(updateData)
           .eq('id', existingMilestone.id);
 
         if (error) throw error;
@@ -1176,7 +1248,7 @@ const PMProjectViewEnhanced = () => {
         setMilestoneDates(prev =>
           prev.map(m =>
             m.milestone_type === milestoneType
-              ? { ...m, [field]: value }
+              ? { ...m, ...updateData }
               : m
           )
         );
@@ -1187,7 +1259,8 @@ const PMProjectViewEnhanced = () => {
           .insert([{
             project_id: projectId,
             milestone_type: milestoneType,
-            [field]: value
+            ...updateData,
+            percent_complete: field === 'completed_manually' && value ? 100 : 0
           }])
           .select()
           .single();
@@ -1197,6 +1270,23 @@ const PMProjectViewEnhanced = () => {
         // Add to local state
         setMilestoneDates(prev => [...prev, data]);
       }
+
+      // BIDIRECTIONAL SYNC: If updating inspection milestone target_date, sync to permit
+      if (
+        (milestoneType === 'rough_in_inspection' || milestoneType === 'final_inspection') &&
+        field === 'target_date'
+      ) {
+        console.log('[Milestone Update] Syncing target_date to permit...');
+        try {
+          await permitService.syncMilestoneTargetDateToPermit(projectId, milestoneType, value);
+          console.log('[Milestone Update] ✅ Target date synced to permit');
+        } catch (syncError) {
+          console.error('[Milestone Update] ❌ Failed to sync to permit:', syncError);
+          // Don't throw - milestone update already succeeded
+        }
+      }
+
+      console.log('[Milestone Update] ✅ Milestone updated successfully');
     } catch (error) {
       console.error('Failed to update milestone:', error);
     }
@@ -1463,6 +1553,135 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     loadWireDrops();
   }, [loadWireDrops]);
+
+  // INITIAL SYNC: Sync existing permit dates to milestones on page load
+  useEffect(() => {
+    const syncPermitDatesToMilestones = async () => {
+      if (!projectId || !milestoneDates || milestoneDates.length === 0) return;
+
+      try {
+        console.log('[Initial Sync] Checking for existing permit dates to sync...');
+
+        // Fetch permit data
+        const { data: permits, error } = await supabase
+          .from('project_permits')
+          .select('*')
+          .eq('project_id', projectId);
+
+        if (error) {
+          console.error('[Initial Sync] Error fetching permits:', error);
+          return;
+        }
+
+        if (!permits || permits.length === 0) {
+          console.log('[Initial Sync] No permits found for project');
+          return;
+        }
+
+        const permit = permits[0];
+        console.log('[Initial Sync] Found permit:', permit);
+
+        // Get current user for tracking
+        const { data: { user } } = await supabase.auth.getUser();
+
+        // Check rough_in_inspection milestone
+        const roughInMilestone = milestoneDates.find(m => m.milestone_type === 'rough_in_inspection');
+        if (permit.rough_in_target_date && (!roughInMilestone || !roughInMilestone.target_date)) {
+          console.log('[Initial Sync] Syncing rough_in_target_date to milestone:', permit.rough_in_target_date);
+
+          if (roughInMilestone) {
+            // Update existing milestone
+            const { error: updateError } = await supabase
+              .from('project_milestones')
+              .update({
+                target_date: permit.rough_in_target_date,
+                updated_by: user?.id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', roughInMilestone.id);
+
+            if (!updateError) {
+              setMilestoneDates(prev =>
+                prev.map(m =>
+                  m.milestone_type === 'rough_in_inspection'
+                    ? { ...m, target_date: permit.rough_in_target_date }
+                    : m
+                )
+              );
+            }
+          } else {
+            // Create new milestone
+            const { data: newMilestone, error: insertError } = await supabase
+              .from('project_milestones')
+              .insert({
+                project_id: projectId,
+                milestone_type: 'rough_in_inspection',
+                target_date: permit.rough_in_target_date,
+                updated_by: user?.id,
+                percent_complete: 0
+              })
+              .select()
+              .single();
+
+            if (!insertError && newMilestone) {
+              setMilestoneDates(prev => [...prev, newMilestone]);
+            }
+          }
+        }
+
+        // Check final_inspection milestone
+        const finalMilestone = milestoneDates.find(m => m.milestone_type === 'final_inspection');
+        if (permit.final_inspection_target_date && (!finalMilestone || !finalMilestone.target_date)) {
+          console.log('[Initial Sync] Syncing final_inspection_target_date to milestone:', permit.final_inspection_target_date);
+
+          if (finalMilestone) {
+            // Update existing milestone
+            const { error: updateError } = await supabase
+              .from('project_milestones')
+              .update({
+                target_date: permit.final_inspection_target_date,
+                updated_by: user?.id,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', finalMilestone.id);
+
+            if (!updateError) {
+              setMilestoneDates(prev =>
+                prev.map(m =>
+                  m.milestone_type === 'final_inspection'
+                    ? { ...m, target_date: permit.final_inspection_target_date }
+                    : m
+                )
+              );
+            }
+          } else {
+            // Create new milestone
+            const { data: newMilestone, error: insertError } = await supabase
+              .from('project_milestones')
+              .insert({
+                project_id: projectId,
+                milestone_type: 'final_inspection',
+                target_date: permit.final_inspection_target_date,
+                updated_by: user?.id,
+                percent_complete: 0
+              })
+              .select()
+              .single();
+
+            if (!insertError && newMilestone) {
+              setMilestoneDates(prev => [...prev, newMilestone]);
+            }
+          }
+        }
+
+        console.log('[Initial Sync] ✅ Initial sync complete');
+      } catch (error) {
+        console.error('[Initial Sync] Error syncing permit dates:', error);
+      }
+    };
+
+    syncPermitDatesToMilestones();
+  }, [projectId, milestoneDates]);
 
   const updateClientStakeholder = async (contact) => {
     try {
@@ -2331,24 +2550,22 @@ const PMProjectViewEnhanced = () => {
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
               <button
                 onClick={() => toggleSection('projectInfo')}
-                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-900/50 
+                className="w-full px-5 py-3 flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50
                          hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                    Project Info
-                  </h2>
-                  {editMode && (
-                    <span className="text-xs font-medium text-violet-600 dark:text-violet-400 ml-2">
-                      Editing
-                    </span>
-                  )}
-                </div>
                 {sectionsCollapsed.projectInfo ? (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 ) : (
-                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                )}
+                <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                  Project Info
+                </h2>
+                {editMode && (
+                  <span className="text-xs font-medium text-violet-600 dark:text-violet-400 ml-2">
+                    Editing
+                  </span>
                 )}
               </button>
               
@@ -2708,20 +2925,18 @@ const PMProjectViewEnhanced = () => {
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
               <button
                 onClick={() => toggleSection('linkedResources')}
-                className="w-full px-5 py-3 flex items-center justify-between bg-gray-50 dark:bg-gray-800 
+                className="w-full px-5 py-3 flex items-center gap-2 bg-gray-50 dark:bg-gray-800
                          hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                  <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                    Linked Resources
-                  </h2>
-                </div>
                 {sectionsCollapsed.linkedResources ? (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 ) : (
-                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
                 )}
+                <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
+                  Linked Resources
+                </h2>
               </button>
               
               {!sectionsCollapsed.linkedResources && (
@@ -3009,6 +3224,7 @@ const PMProjectViewEnhanced = () => {
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Target Date</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Actual Date</th>
                   <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Completed By</th>
                 </tr>
               </thead>
               <tbody>
@@ -3087,6 +3303,13 @@ const PMProjectViewEnhanced = () => {
                           <span className="text-sm text-gray-400 dark:text-gray-500">Not set</span>
                         )}
                       </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                          {milestone?.completed_manually && milestone?.updated_by_user
+                            ? formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)
+                            : '—'}
+                        </span>
+                      </td>
                     </tr>
                   );
                 })}
@@ -3111,7 +3334,10 @@ const PMProjectViewEnhanced = () => {
           <span>Building Permits</span>
         </button>
         {!sectionsCollapsed.buildingPermits && (
-          <ProjectPermits projectId={projectId} />
+          <ProjectPermits
+            projectId={projectId}
+            onMilestoneChange={loadMilestoneDates}
+          />
         )}
       </div>
 
@@ -3136,17 +3362,15 @@ const PMProjectViewEnhanced = () => {
       <div style={sectionStyles.card} className="p-6">
         <button
           onClick={() => toggleSection('timeTracking')}
-          className="w-full flex items-center justify-between mb-4 hover:opacity-80 transition-opacity"
+          className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors mb-4"
         >
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Time Tracking & Progress
-          </h2>
           {sectionsCollapsed.timeTracking ? (
-            <ChevronDown className="w-5 h-5 text-gray-500" />
+            <ChevronRight className="w-5 h-5" />
           ) : (
-            <ChevronUp className="w-5 h-5 text-gray-500" />
+            <ChevronDown className="w-5 h-5" />
           )}
+          <Clock className="w-5 h-5" />
+          <span>Time Tracking & Progress</span>
         </button>
 
         {!sectionsCollapsed.timeTracking && (
@@ -3404,8 +3628,13 @@ const PMProjectViewEnhanced = () => {
             <div className="flex-1">
               <button
                 onClick={() => toggleSection('lucidData')}
-                className="flex w-full items-center justify-between rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-4 shadow-sm hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-4 shadow-sm hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
               >
+                {sectionsCollapsed.lucidData ? (
+                  <ChevronRight className="w-5 h-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-green-600 dark:text-green-400" />
+                )}
                 <div className="flex-1 text-left">
                   <div className="flex items-center gap-2 mb-1">
                     <Link className="w-4 h-4 text-green-600 dark:text-green-400" />
@@ -3421,11 +3650,6 @@ const PMProjectViewEnhanced = () => {
                       : 'No shapes fetched yet'}</span>
                   </div>
                 </div>
-                {sectionsCollapsed.lucidData ? (
-                  <ChevronDown className="w-5 h-5 text-green-600 dark:text-green-400" />
-                ) : (
-                  <ChevronUp className="w-5 h-5 text-green-600 dark:text-green-400" />
-                )}
               </button>
 
               {!sectionsCollapsed.lucidData && (
@@ -3557,8 +3781,13 @@ const PMProjectViewEnhanced = () => {
           <div className="flex-1">
             <button
               onClick={() => toggleSection('procurement')}
-              className="flex w-full items-center justify-between rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-4 shadow-sm hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-4 shadow-sm hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
             >
+              {sectionsCollapsed.procurement ? (
+                <ChevronRight className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              )}
               <div className="flex-1 text-left">
                 <div className="flex items-center gap-2 mb-1">
                   <Package className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -3572,11 +3801,6 @@ const PMProjectViewEnhanced = () => {
                   <span>{receivedPieces} received</span>
                 </div>
               </div>
-              {sectionsCollapsed.procurement ? (
-                <ChevronDown className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              ) : (
-                <ChevronUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              )}
             </button>
 
             {!sectionsCollapsed.procurement && (

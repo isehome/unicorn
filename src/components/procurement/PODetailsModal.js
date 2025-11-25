@@ -11,6 +11,8 @@ import { trackingService } from '../../services/trackingService';
 import { milestoneCacheService } from '../../services/milestoneCacheService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
+import DateField from '../ui/DateField';
+import DateInput from '../ui/DateInput';
 import {
   X,
   Trash2,
@@ -681,16 +683,19 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                   Order Date
                 </label>
                 {isEditing ? (
-                  <input
-                    type="date"
+                  <DateInput
                     value={editData.order_date || ''}
                     onChange={(e) => setEditData({ ...editData, order_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   />
                 ) : (
-                  <p className="text-gray-900 dark:text-white">
-                    {po.order_date ? new Date(po.order_date).toLocaleDateString() : 'N/A'}
-                  </p>
+                  <DateField
+                    date={po.order_date}
+                    isCompleted={po.status === 'received'}
+                    showIcon={true}
+                    showBadge={false}
+                    showDescription={false}
+                    variant="compact"
+                  />
                 )}
               </div>
 
@@ -699,16 +704,19 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                   Requested Delivery Date
                 </label>
                 {isEditing ? (
-                  <input
-                    type="date"
+                  <DateInput
                     value={editData.requested_delivery_date || ''}
                     onChange={(e) => setEditData({ ...editData, requested_delivery_date: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   />
                 ) : (
-                  <p className="text-gray-900 dark:text-white">
-                    {po.requested_delivery_date ? new Date(po.requested_delivery_date).toLocaleDateString() : 'N/A'}
-                  </p>
+                  <DateField
+                    date={po.requested_delivery_date}
+                    isCompleted={po.status === 'received'}
+                    showIcon={true}
+                    showBadge={true}
+                    showDescription={true}
+                    variant="compact"
+                  />
                 )}
               </div>
             </div>

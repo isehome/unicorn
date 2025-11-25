@@ -92,7 +92,158 @@ export const enhancedStyles = {
     high: '#10B981',
     complete: '#8B5CF6',
   },
-  
+
+  /**
+   * Date Display Standards
+   *
+   * DISPLAY MODE (Read-Only):
+   * Use DateField component from /src/components/ui/DateField.js
+   * - Automatic color coding based on date proximity
+   * - Shows "—" dash for unset dates
+   * - Greys out completed section dates
+   *
+   * EDIT MODE (Input Fields):
+   * Use DateInput component from /src/components/ui/DateInput.js
+   * - Empty fields: Orange background + "—" dash overlay
+   * - Filled fields: White/normal background with date value
+   * - NO gray backgrounds (too close to white, causes confusion)
+   *
+   * Visual Hierarchy (Display Mode):
+   * - Past Due (Red): Bold, highly visible - dates that have passed
+   * - Urgent (Orange): Bold, visible - dates within 3 days
+   * - Upcoming (Yellow): Medium weight - dates within 7 days
+   * - Future (Blue): Normal weight - dates more than 7 days away
+   * - Not Set (Gray): Faded, shows "—" dash - no date entered
+   * - Completed (Gray): Greyed out, faded - section is complete
+   *
+   * Usage Examples:
+   *
+   * // Display mode (read-only)
+   * <DateField date="2025-11-30" label="Target Date" />
+   * <DateField date={null} label="Not Set" /> // Shows "—"
+   *
+   * // Edit mode (input fields)
+   * <DateInput value={date} onChange={handleChange} />
+   *
+   * See /src/utils/dateUtils.js for date formatting utilities
+   * See DATE_FIELD_USAGE.md for complete documentation
+   */
+  dateDisplay: {
+    // Display mode colors (auto-applied by DateField component)
+    pastDue: {
+      light: '#DC2626', // red-600
+      dark: '#F87171'   // red-400
+    },
+    urgent: {
+      light: '#EA580C', // orange-600
+      dark: '#FB923C'   // orange-400
+    },
+    upcoming: {
+      light: '#CA8A04', // yellow-600
+      dark: '#FACC15'   // yellow-400
+    },
+    future: {
+      light: '#2563EB', // blue-600
+      dark: '#60A5FA'   // blue-400
+    },
+    notSet: {
+      light: '#9CA3AF', // gray-400
+      dark: '#6B7280'   // gray-500
+    },
+    completed: {
+      light: '#6B7280', // gray-500 (faded)
+      dark: '#9CA3AF'   // gray-400 (faded)
+    }
+  },
+
+  /**
+   * Date Input Standards (Edit Mode)
+   *
+   * ALL empty date inputs must show:
+   * - Orange background (light: #FFF7ED, dark: rgba(194, 65, 12, 0.2))
+   * - Orange border (light: #FDBA74, dark: #C2410C)
+   * - "—" dash overlay in gray text
+   *
+   * Filled date inputs show:
+   * - Normal white background (light: #FFFFFF, dark: #374151)
+   * - Normal gray border (light: #D1D5DB, dark: #4B5563)
+   * - Date value in normal text color
+   */
+  dateInput: {
+    empty: {
+      light: {
+        bg: '#FFF7ED',        // orange-50
+        border: '#FDBA74',    // orange-300
+        text: '#9CA3AF',      // gray-400 (for dash)
+      },
+      dark: {
+        bg: 'rgba(194, 65, 12, 0.2)', // orange-900/20
+        border: '#C2410C',    // orange-700
+        text: '#6B7280',      // gray-500 (for dash)
+      }
+    },
+    filled: {
+      light: {
+        bg: '#FFFFFF',        // white
+        border: '#D1D5DB',    // gray-300
+        text: '#111827',      // gray-900
+      },
+      dark: {
+        bg: '#374151',        // gray-700
+        border: '#4B5563',    // gray-600
+        text: '#F9FAFB',      // gray-50
+      }
+    },
+    focus: {
+      light: {
+        border: '#8B5CF6',    // violet-500
+        ring: 'rgba(139, 92, 246, 0.1)',
+      },
+      dark: {
+        border: '#8B5CF6',    // violet-500
+        ring: 'rgba(139, 92, 246, 0.1)',
+      }
+    }
+  },
+
+  /**
+   * Collapsible Section Standards
+   *
+   * CONSISTENT PATTERN FOR ALL COLLAPSIBLE SECTIONS:
+   * - Chevron ALWAYS on the LEFT (first element)
+   * - Uses ChevronRight when collapsed, ChevronDown when expanded
+   * - Layout: flex items-center gap-2 (NOT justify-between)
+   *
+   * Standard Pattern:
+   * <button className="flex items-center gap-2 [other-styles]">
+   *   {collapsed ? (
+   *     <ChevronRight className="w-5 h-5" />
+   *   ) : (
+   *     <ChevronDown className="w-5 h-5" />
+   *   )}
+   *   <Icon className="w-5 h-5" />
+   *   <span>Section Title</span>
+   * </button>
+   *
+   * DO NOT USE:
+   * - justify-between (chevron should NOT be on the right)
+   * - ChevronDown/ChevronUp pattern (use ChevronRight/ChevronDown instead)
+   *
+   * Examples:
+   * - Phase Milestones (PMProjectViewEnhanced.js:3187-3201)
+   * - Building Permits (PMProjectViewEnhanced.js:3326-3339)
+   * - Time Tracking (PMProjectViewEnhanced.js:3361-3374)
+   * - Project Info (PMProjectViewEnhanced.js:2551-2570)
+   *
+   * This ensures a consistent, predictable UI across the application.
+   */
+  collapsibleSections: {
+    chevronPosition: 'left',  // ALWAYS left, NEVER right
+    collapsedIcon: 'ChevronRight',
+    expandedIcon: 'ChevronDown',
+    layout: 'flex items-center gap-2',  // NOT justify-between
+  },
+
   sections: {
     light: {
       header: {

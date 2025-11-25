@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, AlertCircle, FileText, Clock } from 'lucide-react';
 import Button from './ui/Button';
+import DateInput from './ui/DateInput';
+import DateField from './ui/DateField';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 
@@ -168,16 +170,9 @@ const TodoDetailModal = ({
                 <Calendar size={16} />
                 Due Date
               </label>
-              <input
-                type="date"
+              <DateInput
                 value={dueBy}
                 onChange={(e) => setDueBy(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
-                style={{
-                  ...styles.input,
-                  opacity: dueBy ? 1 : 0.4,
-                  color: dueBy ? styles.input.color : styles.subtleText?.color || styles.textSecondary?.color
-                }}
                 disabled={saving}
               />
             </div>
@@ -187,16 +182,9 @@ const TodoDetailModal = ({
                 <Clock size={16} />
                 Do Date
               </label>
-              <input
-                type="date"
+              <DateInput
                 value={doBy}
                 onChange={(e) => setDoBy(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 [&::-webkit-calendar-picker-indicator]:dark:invert"
-                style={{
-                  ...styles.input,
-                  opacity: doBy ? 1 : 0.4,
-                  color: doBy ? styles.input.color : styles.subtleText?.color || styles.textSecondary?.color
-                }}
                 disabled={saving}
               />
             </div>
@@ -242,13 +230,13 @@ const TodoDetailModal = ({
               {todo?.created_at && (
                 <div>
                   <span className="font-medium">Created:</span>{' '}
-                  {new Date(todo.created_at).toLocaleString()}
+                  <DateField date={todo.created_at} variant="inline" showTime={true} />
                 </div>
               )}
               {todo?.updated_at && (
                 <div>
                   <span className="font-medium">Updated:</span>{' '}
-                  {new Date(todo.updated_at).toLocaleString()}
+                  <DateField date={todo.updated_at} variant="inline" showTime={true} />
                 </div>
               )}
             </div>

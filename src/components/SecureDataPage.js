@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
 import {
   ArrowLeft,
   Key,
@@ -834,7 +835,7 @@ const SecureDataPage = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <Clock size={14} style={styles.textSecondary} />
                             <span className="text-xs" style={styles.textSecondary}>
-                              {new Date(log.created_at).toLocaleString()}
+                              <DateField date={log.created_at} variant="inline" showTime={true} />
                             </span>
                           </div>
                           <p className="text-sm font-medium" style={styles.textPrimary}>

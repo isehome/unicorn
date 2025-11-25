@@ -4,6 +4,7 @@ import UnifiedProgressGauge from './UnifiedProgressGauge';
 import CollapsibleGaugeGroup from './CollapsibleGaugeGroup';
 import StandaloneMilestoneGauge from './StandaloneMilestoneGauge';
 import CircularProgressGauge from './CircularProgressGauge';
+import DateField from './ui/DateField';
 
 /**
  * MilestoneGaugesDisplay Component
@@ -41,31 +42,40 @@ const MilestoneGaugesDisplay = ({
     return milestoneDates.find(m => m.milestone_type === milestoneType);
   };
 
-  // Format date for display
-  const formatDate = (dateString) => {
-    if (!dateString) return null;
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
-  // Helper to render milestone dates
+  // Helper to render milestone dates with improved visual hierarchy
   const renderMilestoneDates = (milestoneType, label) => {
     const milestone = getMilestoneDate(milestoneType);
-    if (!milestone || (!milestone.target_date && !milestone.actual_date)) return null;
+    if (!milestone) return null;
+
+    // Check if milestone is completed (has actual_date)
+    const isCompleted = !!milestone.actual_date;
+
+    // Only show if at least one date exists
+    if (!milestone.target_date && !milestone.actual_date) return null;
 
     return (
-      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 space-y-1">
+      <div className="mt-2 space-y-1">
         {milestone.target_date && (
-          <div className="flex items-center gap-2">
-            <span className="font-medium">Target:</span>
-            <span>{formatDate(milestone.target_date)}</span>
-          </div>
+          <DateField
+            date={milestone.target_date}
+            label="Target"
+            isCompleted={isCompleted}
+            showIcon={false}
+            showBadge={!isCompleted}
+            showDescription={!isCompleted}
+            variant="compact"
+          />
         )}
         {milestone.actual_date && (
-          <div className="flex items-center gap-2">
-            <span className="font-medium">Actual:</span>
-            <span className="text-green-600 dark:text-green-400">{formatDate(milestone.actual_date)}</span>
-          </div>
+          <DateField
+            date={milestone.actual_date}
+            label="Completed"
+            isCompleted={true}
+            showIcon={false}
+            showBadge={false}
+            showDescription={false}
+            variant="compact"
+          />
         )}
       </div>
     );

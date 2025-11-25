@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './ui/Button';
+import DateField from './ui/DateField';
+import DateInput from './ui/DateInput';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useTheme } from '../contexts/ThemeContext';
 import {
@@ -958,11 +960,9 @@ const IssueDetail = () => {
               </div>
               <div>
                 <label className="block text-sm mb-1">Due date</label>
-                <input
-                  type="date"
+                <DateInput
                   value={newDueDate}
                   onChange={(e) => setNewDueDate(e.target.value)}
-                  className={`${ui.input} [&::-webkit-calendar-picker-indicator]:dark:invert`}
                 />
               </div>
             </div>
@@ -1231,7 +1231,7 @@ const IssueDetail = () => {
                         <div className="text-sm font-medium">
                           {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
                         </div>
-                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • {new Date(tag.tagged_at).toLocaleString()}</div>
+                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" showTime={true} /></div>
                       </div>
                       <ChevronDown 
                         size={16} 
@@ -1312,7 +1312,7 @@ const IssueDetail = () => {
             {comments.map((c) => (
               <div key={c.id} className="px-3 py-2 rounded-xl border">
                 <div className="text-sm">{c.comment_text}</div>
-                <div className="text-xs text-gray-500 mt-1">by {c.author_name || c.author_email || 'User'} • {new Date(c.created_at).toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-1">by {c.author_name || c.author_email || 'User'} • <DateField date={c.created_at} variant="inline" showTime={true} /></div>
               </div>
             ))}
           </div>
