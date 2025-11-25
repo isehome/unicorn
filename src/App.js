@@ -46,10 +46,13 @@ const InventoryPage = lazy(() => import('./pages/InventoryPage'));
 const PartsReceivingPage = lazy(() => import('./components/PartsReceivingPageNew'));
 const PMProcurementPage = lazy(() => import('./components/PMOrderEquipmentPageEnhanced'));
 const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
+const PublicIssuePortal = lazy(() => import('./pages/PublicIssuePortal'));
+const PublicPurchaseOrderPortal = lazy(() => import('./pages/PublicPurchaseOrderPortal'));
 
 const AppRoutes = () => {
   const location = useLocation();
-  const hideChrome = ['/login', '/auth/callback'].includes(location.pathname);
+  const isPublicRoute = location.pathname.startsWith('/public');
+  const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute;
   const { isOnline } = useNetworkStatus();
   const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
 
@@ -307,6 +310,8 @@ const AppRoutes = () => {
               </ProtectedRoute>
             }
           />
+          <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
+          <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
           <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

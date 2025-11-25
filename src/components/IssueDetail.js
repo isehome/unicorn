@@ -15,12 +15,13 @@ import {
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
+import { issuePublicAccessService } from '../services/issuePublicAccessService';
 import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff, Share2, ShieldAlert, Paperclip, Download, Loader } from 'lucide-react';
 
 const formatStatusLabel = (label = '') => {
   if (!label) return '';
@@ -44,6 +45,13 @@ const deriveStatusDisplayLabel = (currentStatus, nextStatus) => {
   if (next === 'open') return 'Open';
 
   return formatStatusLabel(next);
+};
+
+const formatBytes = (bytes = 0) => {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const IssueDetail = () => {
@@ -71,6 +79,7 @@ const IssueDetail = () => {
   const [availableProjectStakeholders, setAvailableProjectStakeholders] = useState([]);
   const [tagging, setTagging] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [editingDetails, setEditingDetails] = useState(false);
@@ -84,6 +93,11 @@ const IssueDetail = () => {
   const authorProfileIdRef = useRef(undefined);
   const draftIssuePromiseRef = useRef(null);
   const [photoActionLoading, setPhotoActionLoading] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState([]);
+  const [uploadsLoading, setUploadsLoading] = useState(false);
+  const [processingUploadId, setProcessingUploadId] = useState(null);
+  const [portalLinkLoading, setPortalLinkLoading] = useState(null);
+  const [ackExternalWarning, setAckExternalWarning] = useState(false);
   const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
   const currentUserDisplay = useMemo(() => (
     user?.user_metadata?.full_name ||
@@ -100,6 +114,24 @@ const IssueDetail = () => {
   const canManageStakeholders = !isNew || hasIssueRecord;
   const canUploadPhotos = !isNew || hasIssueRecord;
   const canComment = !isNew || hasIssueRecord;
+  const externalStakeholders = useMemo(
+    () => (tags || []).filter(tag => tag.role_category === 'external'),
+    [tags]
+  );
+  const hasExternalStakeholders = externalStakeholders.length > 0;
+
+  const loadExternalUploads = useCallback(async (targetIssueId) => {
+    if (!targetIssueId) return;
+    try {
+      setUploadsLoading(true);
+      const uploads = await issuePublicAccessService.listUploads(targetIssueId);
+      setPendingUploads(uploads);
+    } catch (err) {
+      console.warn('Failed to load external uploads:', err);
+    } finally {
+      setUploadsLoading(false);
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -203,13 +235,14 @@ const IssueDetail = () => {
         setNewDueDate('');
         setCommentText('');
         setEditingDetails(false);
+        await loadExternalUploads(issueId);
       }
     } catch (e) {
       setError(e.message || 'Failed to load issue');
     } finally {
       setLoading(false);
     }
-  }, [projectId, issueId, isNew]);
+  }, [projectId, issueId, isNew, loadExternalUploads]);
 
   useEffect(() => {
     loadData();
@@ -219,6 +252,12 @@ const IssueDetail = () => {
     // Reset cached profile id when user changes
     authorProfileIdRef.current = undefined;
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!hasExternalStakeholders) {
+      setAckExternalWarning(false);
+    }
+  }, [hasExternalStakeholders]);
 
   const issueLink = useMemo(() => {
     if (!activeIssueId || !projectId) return '';
@@ -600,6 +639,13 @@ const IssueDetail = () => {
     }
     if (!issueIdToUse) return;
     try {
+      if (hasExternalStakeholders && !ackExternalWarning) {
+        const confirmed = window.confirm('External stakeholders may receive this comment immediately. Continue?');
+        if (!confirmed) {
+          return;
+        }
+        setAckExternalWarning(true);
+      }
       setSaving(true);
       const { author_id, author_name, author_email } = await getAuthorInfo();
       const created = await issueCommentsService.add(issueIdToUse, {
@@ -852,7 +898,7 @@ const IssueDetail = () => {
     if (!issueIdToUse) return;
     try {
       setTagging(true);
-      await issueStakeholderTagsService.add(issueIdToUse, assignmentId, 'assigned');
+      const createdTag = await issueStakeholderTagsService.add(issueIdToUse, assignmentId, 'assigned');
       const updated = await issueStakeholderTagsService.getDetailed(issueIdToUse);
       setTags(updated);
 
@@ -865,16 +911,42 @@ const IssueDetail = () => {
       };
       const graphToken = await acquireToken();
 
+      let publicPortalPayload = null;
+      if (stakeholder?.category === 'external' && createdTag?.id) {
+        try {
+          const linkDetails = await issuePublicAccessService.ensureLink({
+            issueId: issueIdToUse,
+            projectId,
+            stakeholderTagId: createdTag.id,
+            stakeholder
+          });
+          const shareUrl = typeof window !== 'undefined'
+            ? `${window.location.origin}/public/issues/${linkDetails.token}`
+            : link;
+          publicPortalPayload = {
+            url: shareUrl,
+            otp: linkDetails.otp
+          };
+        } catch (portalError) {
+          console.error('Failed to provision public issue link:', portalError);
+        }
+      }
+
       await notifyStakeholderAdded(
         {
           issue: issueContext,
           project: projectInfo,
           stakeholder,
           actor: currentUserSummary,
-          issueUrl: link
+          issueUrl: link,
+          publicPortal: publicPortalPayload
         },
         { authToken: graphToken }
       );
+      if (publicPortalPayload) {
+        setSuccessMessage(`Shared external portal link with ${stakeholder?.contact_name || stakeholder?.email || 'stakeholder'}`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
     } catch (e) {
       setError(e.message || 'Failed to tag stakeholder');
     } finally {
@@ -908,6 +980,107 @@ const IssueDetail = () => {
     }
   }, []);
 
+  const handleGeneratePortalLink = useCallback(async (tag) => {
+    if (!tag || !activeIssueId || !projectId) return;
+    if (!window.confirm('Generate a new public portal link for this contact? Previous links will stop working.')) {
+      return;
+    }
+    try {
+      setPortalLinkLoading(tag.tag_id);
+      const linkDetails = await issuePublicAccessService.ensureLink({
+        issueId: activeIssueId,
+        projectId,
+        stakeholderTagId: tag.tag_id,
+        stakeholder: tag
+      });
+      const shareUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}/public/issues/${linkDetails.token}`
+        : linkDetails.token;
+      const formatted = `${shareUrl}\nOne-time code: ${linkDetails.otp}`;
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(formatted);
+        setSuccessMessage('Portal link copied to clipboard');
+        setTimeout(() => setSuccessMessage(null), 2500);
+      } else {
+        window.prompt('Portal link', formatted); // eslint-disable-line no-alert
+      }
+    } catch (err) {
+      console.error('Failed to generate portal link:', err);
+      setError(err.message || 'Failed to generate portal link');
+    } finally {
+      setPortalLinkLoading(null);
+    }
+  }, [activeIssueId, projectId]);
+
+  const handlePreviewPendingUpload = useCallback(async (upload) => {
+    if (!upload) return;
+    try {
+      setProcessingUploadId(upload.id);
+      const url = await issuePublicAccessService.getSignedDownloadUrl(upload.id);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      console.error('Failed to preview upload:', err);
+      setError(err.message || 'Failed to generate preview link');
+    } finally {
+      setProcessingUploadId(null);
+    }
+  }, []);
+
+  const handleApprovePendingUpload = useCallback(async (upload) => {
+    if (!upload || !activeIssueId || !projectId) return;
+    try {
+      setProcessingUploadId(upload.id);
+      const photo = await issuePublicAccessService.approveUpload(upload.id, {
+        issueId: activeIssueId,
+        projectId,
+        reviewerLabel: `${currentUserDisplay || 'External Upload'}`
+      });
+      if (photo) {
+        setPhotos((prev) => [...prev, photo]);
+      }
+      await loadExternalUploads(activeIssueId);
+      setSuccessMessage('Upload approved and moved to SharePoint');
+      setTimeout(() => setSuccessMessage(null), 2500);
+    } catch (err) {
+      console.error('Failed to approve upload:', err);
+      setError(err.message || 'Failed to approve upload');
+    } finally {
+      setProcessingUploadId(null);
+    }
+  }, [activeIssueId, projectId, currentUserDisplay, loadExternalUploads]);
+
+  const handleRejectPendingUpload = useCallback(async (upload) => {
+    if (!upload) return;
+    const reason = window.prompt('Provide a reason for rejecting this file (optional):', '');
+    if (reason === null) return;
+    try {
+      setProcessingUploadId(upload.id);
+      await issuePublicAccessService.rejectUpload(upload.id, reason);
+      await loadExternalUploads(activeIssueId);
+    } catch (err) {
+      console.error('Failed to reject upload:', err);
+      setError(err.message || 'Failed to reject upload');
+    } finally {
+      setProcessingUploadId(null);
+    }
+  }, [activeIssueId, loadExternalUploads]);
+
+  const getUploadStatusBadge = useCallback((status) => {
+    const normalized = (status || '').toLowerCase();
+    if (normalized === 'approved') {
+      return { label: 'Approved', className: 'bg-green-100 text-green-700 dark:bg-green-400/10 dark:text-green-300' };
+    }
+    if (normalized === 'rejected' || normalized === 'failed') {
+      return { label: 'Rejected', className: 'bg-rose-100 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300' };
+    }
+    if (normalized === 'uploaded' || normalized === 'pending') {
+      return { label: 'Awaiting review', className: 'bg-amber-100 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300' };
+    }
+    return { label: 'Processing', className: 'bg-blue-100 text-blue-700 dark:bg-blue-400/10 dark:text-blue-300' };
+  }, []);
+
   const toggleStakeholder = useCallback((tagId) => {
     setExpandedStakeholder(prev => prev === tagId ? null : tagId);
   }, []);
@@ -931,6 +1104,11 @@ const IssueDetail = () => {
 
   const content = (
     <>
+      {successMessage && (
+        <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-800 dark:text-green-200">
+          {successMessage}
+        </div>
+      )}
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         {isNew ? (
           <div className="space-y-3">
@@ -1189,6 +1367,80 @@ const IssueDetail = () => {
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">External Uploads</h3>
+          {uploadsLoading && (
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Loader className="w-4 h-4 animate-spin" /> Loading…
+            </div>
+          )}
+        </div>
+        {pendingUploads.length === 0 ? (
+          <div className={`text-sm ${ui.subtle}`}>No external uploads in the queue.</div>
+        ) : (
+          <div className="space-y-2">
+            {pendingUploads.map((upload) => {
+              const badge = getUploadStatusBadge(upload.status);
+              return (
+                <div key={upload.id} className="rounded-xl border p-3 bg-white dark:bg-gray-900/60">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 font-medium text-sm">
+                        <Paperclip size={16} className="text-gray-400" />
+                        <span>{upload.file_name}</span>
+                        <span className="text-xs text-gray-500">{formatBytes(upload.file_size)}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        From {upload.stakeholder_name || upload.stakeholder_email || 'External contact'} •{' '}
+                        <DateField date={upload.submitted_at} variant="inline" showTime={true} />
+                      </div>
+                      {upload.rejection_reason && upload.status === 'rejected' && (
+                        <div className="text-xs text-rose-500 mt-1">Reason: {upload.rejection_reason}</div>
+                      )}
+                    </div>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 mt-3 flex-wrap">
+                    <Button
+                      variant="secondary"
+                      size="xs"
+                      icon={Download}
+                      onClick={() => handlePreviewPendingUpload(upload)}
+                      disabled={processingUploadId === upload.id}
+                    >
+                      Preview
+                    </Button>
+                    {(upload.status === 'uploaded' || upload.status === 'pending') && (
+                      <>
+                        <Button
+                          variant="primary"
+                          size="xs"
+                          onClick={() => handleApprovePendingUpload(upload)}
+                          disabled={processingUploadId === upload.id}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          onClick={() => handleRejectPendingUpload(upload)}
+                          disabled={processingUploadId === upload.id}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+        <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Stakeholders</h3>
           <div className="flex items-center gap-2">
             <div className="relative">
@@ -1291,6 +1543,22 @@ const IssueDetail = () => {
                         {!tag.email && !tag.phone && !tag.company && !tag.address && (
                           <div className="text-gray-500 italic">No contact details available</div>
                         )}
+                        {tag.role_category === 'external' && (
+                          <div className="mt-2 flex items-center justify-between rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 px-3 py-2">
+                            <div className="text-xs text-violet-700 dark:text-violet-200 flex items-center gap-2">
+                              <Share2 size={14} />
+                              External portal link
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={(e) => { e.stopPropagation(); handleGeneratePortalLink(tag); }}
+                              loading={portalLinkLoading === tag.tag_id}
+                            >
+                              {portalLinkLoading === tag.tag_id ? 'Generating…' : 'Copy Link'}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1303,6 +1571,17 @@ const IssueDetail = () => {
 
       <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
         <h3 className="text-sm font-semibold">Comments</h3>
+        {hasExternalStakeholders && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-200 animate-pulse">
+            <ShieldAlert size={20} className="mt-0.5 text-amber-600 dark:text-amber-300" />
+            <div>
+              <p className="font-semibold">External stakeholders will see new comments immediately.</p>
+              <p className="text-xs text-amber-700/80 dark:text-amber-200/80">
+                Notified: {externalStakeholders.map((stakeholder) => stakeholder.contact_name || stakeholder.email || 'Contact').join(', ')}
+              </p>
+            </div>
+          </div>
+        )}
         {!canComment ? (
           <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding comments.</div>
         ) : comments.length === 0 ? (

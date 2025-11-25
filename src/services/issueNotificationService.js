@@ -73,7 +73,7 @@ const collectRecipients = (stakeholders = [], actor) => {
   return Array.from(emailMap.values());
 };
 
-export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl }, options = {}) => {
+export const notifyStakeholderAdded = async ({ issue, project, stakeholder, actor, issueUrl, publicPortal }, options = {}) => {
   if (!stakeholder?.email) return;
 
   const { issueTitle, projectName } = formatIssueContext(issue, project);
@@ -83,20 +83,30 @@ export const notifyStakeholderAdded = async ({ issue, project, stakeholder, acto
   const safeIssueTitle = escapeHtml(issueTitle);
   const safeProjectName = escapeHtml(projectName);
   const safeActorName = escapeHtml(actorName);
-  const safeUrl = issueUrl || '#';
+  const portalUrl = publicPortal?.url || null;
+  const portalOtp = publicPortal?.otp || null;
+  const isExternalStakeholder = stakeholder?.is_internal === false || stakeholder?.role_category === 'external' || stakeholder?.category === 'external';
+  const primaryUrl = isExternalStakeholder && portalUrl ? portalUrl : (issueUrl || '#');
+  const safeUrl = escapeHtml(primaryUrl);
+  const safePortalUrl = portalUrl ? escapeHtml(portalUrl) : null;
+  const safePortalOtp = portalOtp ? escapeHtml(portalOtp) : null;
 
   const html = `
     <p>Hi ${safeRecipient},</p>
     <p>${safeActorName} added you as a stakeholder on issue <strong>${safeIssueTitle}</strong>${safeProjectName}.</p>
-    <p><a href="${safeUrl}">View the issue</a> to review the latest updates.</p>
+    <p><a href="${safeUrl}">${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'View the issue'}</a> to review the latest updates.</p>
+    ${(isExternalStakeholder && safePortalOtp) ? `<p>Your one-time verification code: <strong>${safePortalOtp}</strong></p>` : ''}
+    ${(!isExternalStakeholder && safePortalUrl) ? `<p>External portal link: <a href="${safePortalUrl}">${safePortalUrl}</a>${safePortalOtp ? `<br/>One-time code: <strong>${safePortalOtp}</strong>` : ''}</p>` : ''}
   `;
 
-  const text = `Hi ${recipient},
+  const textIntro = `Hi ${recipient},
 
 ${actorName} added you as a stakeholder on issue "${issueTitle}"${projectName}.
 
-Open the issue: ${safeUrl}
 `;
+  const textBody = `${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'Open the issue'}: ${portalUrl && isExternalStakeholder ? portalUrl : primaryUrl}`;
+  const textOtp = (isExternalStakeholder && portalOtp) ? `\nOne-time verification code: ${portalOtp}` : (portalUrl && portalOtp ? `\nExternal portal: ${portalUrl} (code: ${portalOtp})` : '');
+  const text = `${textIntro}${textBody}${textOtp}`;
 
   await postNotification(
     {
@@ -157,4 +167,8 @@ Open the issue: ${safeUrl}
     },
     { authToken: options?.authToken }
   );
+};
+
+export const sendNotificationEmail = async (message, options = {}) => {
+  await postNotification(message, options);
 };

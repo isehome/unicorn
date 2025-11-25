@@ -9,6 +9,8 @@ import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
 import { trackingService } from '../../services/trackingService';
 import { milestoneCacheService } from '../../services/milestoneCacheService';
+import { poPublicAccessService } from '../../services/poPublicAccessService';
+import { sendNotificationEmail } from '../../services/issueNotificationService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
 import DateField from '../ui/DateField';
@@ -68,6 +70,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const [editingTrackingData, setEditingTrackingData] = useState(null);
   const [showTrackingForm, setShowTrackingForm] = useState(false);
   const [showAddressSelector, setShowAddressSelector] = useState(false);
+  const [vendorRequestLoading, setVendorRequestLoading] = useState(false);
 
   // Edit state
   const [editData, setEditData] = useState({});
@@ -220,6 +223,46 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setError('Failed to undo PO submission: ' + err.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendVendorRequest = async () => {
+    if (!po?.supplier?.email) {
+      setError('Supplier email is required to send a tracking request.');
+      return;
+    }
+    if (!window.confirm(`Send a tracking link to ${po.supplier.name || 'the vendor'}?`)) {
+      return;
+    }
+    try {
+      setVendorRequestLoading(true);
+      const portalLink = await poPublicAccessService.ensureLink({
+        poId,
+        projectId: po.project_id,
+        supplierId: po.supplier_id,
+        supplier: { name: po.supplier.name, email: po.supplier.email }
+      });
+      const shareUrl = `${window.location.origin}/public/po/${portalLink.token}`;
+      const supplierName = po.supplier.name || 'there';
+      const html = `
+        <p>Hi ${supplierName},</p>
+        <p>Please add shipment tracking information for PO <strong>${po.po_number}</strong>.</p>
+        <p><a href="${shareUrl}">Open the vendor tracking portal</a> to submit tracking numbers for this order.</p>
+      `;
+      const text = `Hi ${supplierName},\\n\\nPlease add shipment tracking information for PO ${po.po_number}.\\n${shareUrl}`;
+      await sendNotificationEmail({
+        to: [po.supplier.email],
+        subject: `Tracking request for PO ${po.po_number}`,
+        html,
+        text
+      });
+      setSuccess('Tracking request sent to vendor');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Failed to send vendor tracking request:', err);
+      setError(err.message || 'Failed to send tracking request');
+    } finally {
+      setVendorRequestLoading(false);
     }
   };
 
@@ -642,12 +685,25 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               </div>
             )}
           </div>
-          <button
-            onClick={handleClose}
-            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              icon={Truck}
+              onClick={handleSendVendorRequest}
+              loading={vendorRequestLoading}
+              disabled={!po?.supplier?.email || vendorRequestLoading}
+            >
+              Request Tracking
+            </Button>
+            <button
+              onClick={handleClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Error/Success Messages */}

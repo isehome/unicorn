@@ -1,0 +1,153 @@
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+
+const config = {
+  tenant: process.env.AZURE_TENANT_ID,
+  clientId: process.env.AZURE_CLIENT_ID,
+  clientSecret: process.env.AZURE_CLIENT_SECRET,
+  senderEmail: (process.env.NOTIFICATION_SENDER_EMAIL || 'Unicorn@isehome.com').trim(),
+  senderGroupId: process.env.NOTIFICATION_SENDER_GROUP_ID?.trim() || null,
+  senderGroupEmail: process.env.NOTIFICATION_SENDER_GROUP_EMAIL?.trim() || null
+};
+
+let cachedGroupId = config.senderGroupId || null;
+
+function requireGraphConfig() {
+  if (!config.tenant || !config.clientId || !config.clientSecret || (!config.senderEmail && !config.senderGroupEmail && !config.senderGroupId)) {
+    throw new Error('Missing Graph email configuration');
+  }
+}
+
+async function getAppToken() {
+  requireGraphConfig();
+  const body = new URLSearchParams();
+  body.set('client_id', config.clientId);
+  body.set('client_secret', config.clientSecret);
+  body.set('grant_type', 'client_credentials');
+  body.set('scope', 'https://graph.microsoft.com/.default');
+
+  const resp = await fetch(`https://login.microsoftonline.com/${config.tenant}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Graph token error: ${resp.status} ${text}`);
+  }
+
+  const json = await resp.json();
+  return json.access_token;
+}
+
+function getDelegatedTokenFromHeader(header) {
+  if (!header) return null;
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
+function sanitizeEmailForFilter(email) {
+  return `${email}`.replace(/'/g, "''");
+}
+
+async function resolveGroupId(token) {
+  if (cachedGroupId) return cachedGroupId;
+  if (!config.senderGroupEmail) return null;
+
+  const sanitized = sanitizeEmailForFilter(config.senderGroupEmail);
+  const filter = encodeURIComponent(
+    `mail eq '${sanitized}' or proxyAddresses/any(x:x eq 'smtp:${sanitized.toLowerCase()}') or proxyAddresses/any(x:x eq 'SMTP:${sanitized.toUpperCase()}')`
+  );
+
+  const resp = await fetch(`${GRAPH_BASE}/groups?$filter=${filter}&$select=id,mail,displayName`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Failed to resolve Graph group ID: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json();
+  const group = data.value?.[0];
+  if (!group?.id) {
+    throw new Error(`Group ${config.senderGroupEmail} not found`);
+  }
+
+  cachedGroupId = group.id;
+  return cachedGroupId;
+}
+
+async function sendGraphEmail({ to, subject, html, text }, options = {}) {
+  requireGraphConfig();
+  if (!Array.isArray(to) || to.length === 0) {
+    throw new Error('No recipients provided');
+  }
+
+  const delegatedToken = options.delegatedToken || null;
+  const useDelegated = Boolean(delegatedToken);
+  const token = delegatedToken || await getAppToken();
+  const fromAddress = useDelegated ? (config.senderGroupEmail || config.senderEmail) : config.senderEmail;
+  const contentType = html ? 'HTML' : 'Text';
+  const contentValue = html || (text ? text.replace(/\n/g, '<br/>') : '');
+
+  const payload = {
+    message: {
+      subject: subject || 'Notification',
+      body: {
+        contentType,
+        content: contentValue
+      },
+      toRecipients: to.map(email => ({
+        emailAddress: { address: email }
+      }))
+    },
+    saveToSentItems: false
+  };
+
+  if (useDelegated && fromAddress) {
+    payload.message.from = { emailAddress: { address: fromAddress } };
+  }
+
+  const trySend = async (targetPath) => {
+    const response = await fetch(`${GRAPH_BASE}${targetPath}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Graph sendMail ${response.status}: ${errorText}`);
+    }
+    return { status: response.status };
+  };
+
+  if (!useDelegated && (config.senderGroupId || config.senderGroupEmail) && options.forceUserSend !== true) {
+    try {
+      const groupId = await resolveGroupId(token);
+      return await trySend(`/groups/${encodeURIComponent(groupId)}/sendMail`);
+    } catch (groupError) {
+      console.warn('[GraphMail] Group send failed, retrying via user mailbox:', groupError.message);
+    }
+  }
+
+  const targetPath = useDelegated ? '/me/sendMail' : `/users/${encodeURIComponent(config.senderEmail)}/sendMail`;
+  return await trySend(targetPath);
+}
+
+module.exports = {
+  sendGraphEmail,
+  getDelegatedTokenFromHeader,
+  isGraphConfigured: () => {
+    try {
+      requireGraphConfig();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+};
