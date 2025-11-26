@@ -123,19 +123,26 @@ const PublicPurchaseOrderPortal = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
-        {company && (
-          <div className="flex items-center gap-3">
-            {company.logoUrl ? (
-              <img src={company.logoUrl} alt={company.name || 'Logo'} className="h-10 rounded" />
+        {/* Header with company branding and project name */}
+        <div className="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
+          <div className="flex items-center gap-4">
+            {company?.logoUrl ? (
+              <img src={company.logoUrl} alt={company?.name || 'Logo'} className="h-24 max-w-[200px] object-contain rounded" />
             ) : (
-              <Truck className="w-8 h-8 text-violet-500" />
+              <Truck className="w-16 h-16 text-violet-500" />
             )}
             <div>
-              <p className="text-xs uppercase text-gray-500">Vendor Tracking Portal</p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{company.name || 'Project'}</p>
+              <p className="text-sm uppercase text-gray-500 tracking-wide">Vendor Tracking Portal</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{company?.name || 'Tracking Portal'}</p>
             </div>
           </div>
-        )}
+          {purchaseOrder?.project?.name && (
+            <div className="text-right">
+              <p className="text-sm uppercase text-gray-500 tracking-wide">Project</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{purchaseOrder.project.name}</p>
+            </div>
+          )}
+        </div>
 
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-2 text-sm">{error}</div>
@@ -147,7 +154,6 @@ const PublicPurchaseOrderPortal = () => {
               <div>
                 <p className="text-xs text-gray-500">Purchase Order</p>
                 <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{purchaseOrder.number}</h1>
-                {purchaseOrder.project && <p className="text-sm text-gray-500">Project: {purchaseOrder.project.name}</p>}
               </div>
               <span className={`text-xs font-semibold px-3 py-1 rounded-full ${statusBadge.className}`}>
                 {statusBadge.label}

@@ -195,19 +195,26 @@ const PublicIssuePortal = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
-        {company && (
-          <div className="flex items-center gap-3">
-            {company.logoUrl ? (
-              <img src={company.logoUrl} alt={company.name || 'Company logo'} className="h-10 rounded" />
+        {/* Header with company branding and project name */}
+        <div className="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
+          <div className="flex items-center gap-4">
+            {company?.logoUrl ? (
+              <img src={company.logoUrl} alt={company?.name || 'Company logo'} className="h-24 max-w-[200px] object-contain rounded" />
             ) : (
-              <ImageIcon className="w-8 h-8 text-violet-500" />
+              <ImageIcon className="w-16 h-16 text-violet-500" />
             )}
             <div>
-              <p className="text-sm text-gray-500">External issue portal for</p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-white">{company.name || 'Project'}</p>
+              <p className="text-sm uppercase text-gray-500 tracking-wide">External Issue Portal</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{company?.name || 'Issue Portal'}</p>
             </div>
           </div>
-        )}
+          {project?.name && (
+            <div className="text-right">
+              <p className="text-sm uppercase text-gray-500 tracking-wide">Project</p>
+              <p className="text-xl font-semibold text-gray-900 dark:text-white">{project.name}</p>
+            </div>
+          )}
+        </div>
 
         {error && (
           <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-700 px-4 py-2 text-sm">
@@ -224,7 +231,6 @@ const PublicIssuePortal = () => {
                 <div>
                   <p className="text-xs uppercase text-gray-500 tracking-wide">Issue</p>
                   <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{issue?.title}</h1>
-                  {project && <p className="text-sm text-gray-500">Project: {project.name}</p>}
                 </div>
                 {issue && (
                   <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusBadge(issue.status).className}`}>
