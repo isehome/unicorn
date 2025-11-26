@@ -34,7 +34,9 @@ class IssuePublicAccessService {
       otp_expires_at: expiresAt,
       session_token_hash: null,
       session_expires_at: null,
+      session_version: 0,
       verification_attempts: 0,
+      metadata: {},
       revoked_at: null,
       created_by: userId,
       updated_by: userId
