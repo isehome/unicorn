@@ -102,11 +102,11 @@ const CompanySettingsManager = () => {
       // Generate unique filename
       const fileExt = file.name.split('.').pop();
       const fileName = `company-logo-${Date.now()}.${fileExt}`;
-      const filePath = `logos/${fileName}`;
+      const filePath = `company/${fileName}`;
 
-      // Upload to Supabase storage bucket
+      // Upload to Supabase storage bucket (using 'photos' bucket which has working policies)
       const { data, error: uploadError } = await supabase.storage
-        .from('company-assets')
+        .from('photos')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
@@ -116,7 +116,7 @@ const CompanySettingsManager = () => {
 
       // Get public URL
       const { data: urlData } = supabase.storage
-        .from('company-assets')
+        .from('photos')
         .getPublicUrl(filePath);
 
       // Update form data with Supabase URL
