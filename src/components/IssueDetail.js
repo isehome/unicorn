@@ -912,7 +912,8 @@ const IssueDetail = () => {
       const graphToken = await acquireToken();
 
       let publicPortalPayload = null;
-      if (stakeholder?.category === 'external' && createdTag?.id) {
+      const isExternalStakeholder = stakeholder?.category === 'external' || stakeholder?.role_category === 'external';
+      if (isExternalStakeholder && createdTag?.id) {
         try {
           const linkDetails = await issuePublicAccessService.ensureLink({
             issueId: issueIdToUse,
