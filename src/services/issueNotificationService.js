@@ -119,12 +119,37 @@ ${actorName} added you as a stakeholder on issue "${issueTitle}"${projectName}.
   );
 };
 
-export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl }, options = {}) => {
-  const recipients = collectRecipients(stakeholders, actor);
+export const notifyIssueComment = async ({ issue, project, comment, stakeholders, actor, issueUrl, externalPortalLinks = {} }, options = {}) => {
+  // Separate internal and external stakeholders
+  const internalStakeholders = [];
+  const externalStakeholders = [];
 
-  if (recipients.length === 0) {
-    console.log('[IssueNotificationService] No recipients for comment notification');
-    return;
+  (stakeholders || []).forEach((stakeholder) => {
+    if (!stakeholder?.email) return;
+    const isExternal = stakeholder?.is_internal === false ||
+                       stakeholder?.role_category === 'external' ||
+                       stakeholder?.category === 'external';
+    if (isExternal) {
+      externalStakeholders.push(stakeholder);
+    } else {
+      internalStakeholders.push(stakeholder);
+    }
+  });
+
+  // Add actor to internal recipients if they have an email
+  if (actor?.email) {
+    const actorIsExternal = actor?.is_internal === false ||
+                            actor?.role_category === 'external' ||
+                            actor?.category === 'external';
+    if (!actorIsExternal) {
+      const normalizedActor = actor.email.trim().toLowerCase();
+      const alreadyIncluded = internalStakeholders.some(
+        s => s?.email?.trim().toLowerCase() === normalizedActor
+      );
+      if (!alreadyIncluded) {
+        internalStakeholders.push(actor);
+      }
+    }
   }
 
   const { issueTitle, projectName } = formatIssueContext(issue, project);
@@ -134,39 +159,113 @@ export const notifyIssueComment = async ({ issue, project, comment, stakeholders
   const safeProjectName = escapeHtml(projectName);
   const safeComment = escapeHtml(comment?.text || '');
   const safeUrl = issueUrl || '#';
-  
+
   // Check if this is a system-generated comment (like status change)
   const isSystemComment = comment?.text?.startsWith('Status changed to ') || comment?.is_internal;
+  const subject = `${isSystemComment ? 'Status update' : 'New comment'} on "${issueTitle}"`;
 
-  const html = `
-    <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
-    <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
-    <p><a href="${safeUrl}">Open the issue</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
-  `;
+  console.log('[IssueNotificationService] Sending comment notification', {
+    internalCount: internalStakeholders.length,
+    externalCount: externalStakeholders.length,
+    hasExternalPortalLinks: Object.keys(externalPortalLinks).length,
+    isSystemComment,
+    hasAuthToken: !!options?.authToken,
+    commentText: comment?.text?.substring(0, 50)
+  });
 
-  const text = `${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
+  // Send to internal stakeholders with internal URL
+  if (internalStakeholders.length > 0) {
+    const internalRecipients = internalStakeholders
+      .map(s => s?.email?.trim())
+      .filter(Boolean);
+
+    if (internalRecipients.length > 0) {
+      const html = `
+        <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
+        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
+        <p><a href="${safeUrl}">Open the issue</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
+      `;
+
+      const text = `${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
 
 "${comment?.text || ''}"
 
 Open the issue: ${safeUrl}
 `;
 
-  console.log('[IssueNotificationService] Sending notification', {
-    recipients: recipients.length,
-    isSystemComment,
-    hasAuthToken: !!options?.authToken,
-    commentText: comment?.text?.substring(0, 50)
-  });
+      await postNotification(
+        { to: internalRecipients, subject, html, text },
+        { authToken: options?.authToken }
+      );
+    }
+  }
 
-  await postNotification(
-    {
-      to: recipients,
-      subject: `${isSystemComment ? 'Status update' : 'New comment'} on "${issueTitle}"`,
-      html,
-      text
-    },
-    { authToken: options?.authToken }
-  );
+  // Send to external stakeholders with their portal URLs
+  for (const stakeholder of externalStakeholders) {
+    const email = stakeholder?.email?.trim();
+    if (!email) continue;
+
+    // Check if this stakeholder has a portal link
+    const tagId = stakeholder?.tag_id || stakeholder?.id;
+    const portalInfo = externalPortalLinks[tagId];
+    const portalUrl = portalInfo?.url;
+    const portalOtp = portalInfo?.otp;
+
+    if (portalUrl) {
+      const safePortalUrl = escapeHtml(portalUrl);
+      const recipientName = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'there';
+      const safeRecipientName = escapeHtml(recipientName);
+
+      const html = `
+        <p>Hi ${safeRecipientName},</p>
+        <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
+        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
+        <p><a href="${safePortalUrl}">Open the secure portal</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
+        ${portalOtp ? `<p>Your one-time verification code: <strong>${escapeHtml(portalOtp)}</strong></p>` : ''}
+      `;
+
+      const text = `Hi ${recipientName},
+
+${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
+
+"${comment?.text || ''}"
+
+Open the secure portal: ${portalUrl}
+${portalOtp ? `Your one-time verification code: ${portalOtp}` : ''}
+`;
+
+      await postNotification(
+        { to: [email], subject, html, text },
+        { authToken: options?.authToken }
+      );
+    } else {
+      // External stakeholder without a portal link - send generic message
+      // asking them to use their original invite link
+      const recipientName = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'there';
+      const safeRecipientName = escapeHtml(recipientName);
+
+      const html = `
+        <p>Hi ${safeRecipientName},</p>
+        <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
+        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
+        <p>Please use the secure portal link from your original invitation email to view this issue and respond.</p>
+      `;
+
+      const text = `Hi ${recipientName},
+
+${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
+
+"${comment?.text || ''}"
+
+Please use the secure portal link from your original invitation email to view this issue and respond.
+`;
+
+      await postNotification(
+        { to: [email], subject, html, text },
+        { authToken: options?.authToken }
+      );
+    }
+  }
 };
 
 export const sendNotificationEmail = async (message, options = {}) => {

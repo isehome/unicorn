@@ -403,6 +403,44 @@ const IssueDetail = () => {
     }
   }, [tags]);
 
+  // Generate portal links for external stakeholders (for comment notifications)
+  const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList) => {
+    const portalLinks = {};
+    if (!issueId || !Array.isArray(stakeholderList)) return portalLinks;
+
+    for (const stakeholder of stakeholderList) {
+      const isExternal = stakeholder?.is_internal === false ||
+                         stakeholder?.role_category === 'external' ||
+                         stakeholder?.category === 'external';
+      if (!isExternal) continue;
+
+      const tagId = stakeholder?.tag_id || stakeholder?.id;
+      if (!tagId) continue;
+
+      try {
+        // ensureLink does an upsert - if a link exists, it regenerates the OTP
+        const result = await issuePublicAccessService.ensureLink({
+          issueId,
+          projectId,
+          stakeholderTagId: tagId,
+          stakeholder
+        });
+
+        if (result?.token) {
+          const portalUrl = `${window.location.origin}/public/issues/${result.token}`;
+          portalLinks[tagId] = {
+            url: portalUrl,
+            otp: result.otp
+          };
+        }
+      } catch (err) {
+        console.warn(`[IssueDetail] Failed to generate portal link for stakeholder ${tagId}:`, err);
+      }
+    }
+
+    return portalLinks;
+  }, [projectId]);
+
   const notifyCommentActivity = useCallback(async ({
     issueId,
     text,
@@ -422,10 +460,10 @@ const IssueDetail = () => {
         return `${window.location.origin}/project/${projectId}/issues/${issueId}`;
       })();
       const link = issueLink || defaultLink;
-      
+
       // Use provided token or acquire a new one
       const graphToken = authToken || await acquireToken();
-      
+
       const issueContext = issueSnapshot || resolvedIssue || issue || {
         id: issueId,
         title: issue?.title || newTitle,
@@ -434,6 +472,9 @@ const IssueDetail = () => {
       const stakeholderList = Array.isArray(stakeholdersOverride) && stakeholdersOverride.length > 0
         ? stakeholdersOverride
         : await resolveNotificationStakeholders(issueId);
+
+      // Generate portal links for external stakeholders
+      const externalPortalLinks = await generateExternalPortalLinks(issueId, stakeholderList);
 
       await notifyIssueComment(
         {
@@ -447,7 +488,8 @@ const IssueDetail = () => {
           },
           stakeholders: stakeholderList,
           actor: currentUserSummary,
-          issueUrl: link
+          issueUrl: link,
+          externalPortalLinks
         },
         { authToken: graphToken }
       );
@@ -457,6 +499,7 @@ const IssueDetail = () => {
   }, [
     acquireToken,
     currentUserSummary,
+    generateExternalPortalLinks,
     issue,
     issueLink,
     newTitle,
@@ -484,13 +527,16 @@ const IssueDetail = () => {
       });
       if (created) {
         setComments(prev => [...prev, created]);
-        
+
         // Ensure we have the auth token for system-generated comments
         const graphToken = await acquireToken();
-        
+
         // Get the current stakeholders
         const stakeholderList = options.stakeholdersOverride || await resolveNotificationStakeholders(issueId);
-        
+
+        // Generate portal links for external stakeholders
+        const externalPortalLinks = await generateExternalPortalLinks(issueId, stakeholderList);
+
         // Send notification with auth token
         const defaultLink = (() => {
           if (typeof window === 'undefined') return '';
@@ -498,7 +544,7 @@ const IssueDetail = () => {
           return `${window.location.origin}/project/${projectId}/issues/${issueId}`;
         })();
         const link = issueLink || defaultLink;
-        
+
         await notifyIssueComment(
           {
             issue: targetIssue,
@@ -511,11 +557,12 @@ const IssueDetail = () => {
             },
             stakeholders: stakeholderList,
             actor: currentUserSummary,
-            issueUrl: link
+            issueUrl: link,
+            externalPortalLinks
           },
           { authToken: graphToken }
         );
-        
+
         return created;
       }
     } catch (err) {
@@ -523,14 +570,15 @@ const IssueDetail = () => {
     }
     return null;
   }, [
-    getAuthorInfo, 
-    issue, 
-    acquireToken, 
-    resolveNotificationStakeholders, 
-    projectId, 
-    issueLink, 
-    notifyIssueComment, 
-    projectInfo, 
+    getAuthorInfo,
+    issue,
+    acquireToken,
+    generateExternalPortalLinks,
+    resolveNotificationStakeholders,
+    projectId,
+    issueLink,
+    notifyIssueComment,
+    projectInfo,
     currentUserSummary
   ]);
 

@@ -196,6 +196,40 @@ class IssuePublicAccessService {
       console.warn('Failed to remove rejected upload:', cleanupError);
     }
   }
+
+  /**
+   * Get existing public portal links for an issue, keyed by stakeholder tag ID.
+   * Used for sending notifications to external stakeholders with their unique portal URLs.
+   */
+  async getLinksForIssue(issueId) {
+    if (!supabase || !issueId) return {};
+    try {
+      const { data, error } = await supabase
+        .from('issue_public_access_links')
+        .select('issue_stakeholder_tag_id, token_hash')
+        .eq('issue_id', issueId)
+        .is('revoked_at', null);
+
+      if (error) {
+        console.warn('[IssuePublicAccessService] Failed to fetch portal links:', error);
+        return {};
+      }
+
+      // Build a map: stakeholder_tag_id -> portal URL
+      // Note: We store hashed tokens, so we can't reconstruct the URL directly.
+      // Instead, we'll return a flag indicating this stakeholder has a portal link.
+      const linkMap = {};
+      (data || []).forEach((row) => {
+        if (row.issue_stakeholder_tag_id) {
+          linkMap[row.issue_stakeholder_tag_id] = true;
+        }
+      });
+      return linkMap;
+    } catch (err) {
+      console.warn('[IssuePublicAccessService] Error fetching portal links:', err);
+      return {};
+    }
+  }
 }
 
 export const issuePublicAccessService = new IssuePublicAccessService();
