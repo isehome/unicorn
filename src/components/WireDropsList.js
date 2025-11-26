@@ -290,7 +290,25 @@ const WireDropsList = () => {
   const [normalizing, setNormalizing] = useState(false);
 
   const normalizeAllDropNames = async () => {
-    if (!projectId) return;
+    // If no projectId from URL, try to derive it from the filtered list
+    // We only allow this if exactly ONE project is visible to avoid accidents
+    let targetProjectId = projectId;
+
+    if (!targetProjectId) {
+      const uniqueProjects = new Set(filteredDrops.map(d => d.project_id).filter(Boolean));
+      if (uniqueProjects.size === 1) {
+        targetProjectId = Array.from(uniqueProjects)[0];
+      } else if (uniqueProjects.size > 1) {
+        alert('Please filter the list to a single project before running this tool.');
+        return;
+      } else {
+        alert('No project found to normalize.');
+        return;
+      }
+    }
+
+    if (!targetProjectId) return;
+
     const confirmed = window.confirm(
       'This will update ALL wire drop names in this project to match the "Room Type Number" format (e.g., "Guest 2 IP/Data 1").\n\nThis action writes to the database and cannot be easily undone.\n\nAre you sure?'
     );
@@ -308,7 +326,7 @@ const WireDropsList = () => {
           drop_type,
           project_rooms(name)
         `)
-        .eq('project_id', projectId)
+        .eq('project_id', targetProjectId)
         .order('uid');
 
       if (error) throw error;
@@ -458,7 +476,7 @@ const WireDropsList = () => {
           )}
 
           {/* Admin / Migration Tools */}
-          {projectId && (
+          {(projectId || filteredDrops.length > 0) && (
             <div className="mb-4 flex justify-end">
               <Button
                 variant="secondary"

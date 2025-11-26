@@ -12,11 +12,14 @@
             font-family: system-ui, -apple-system, sans-serif;
             padding: 20px;
             background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
 
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
+            max-width: 800px;
+            width: 100%;
         }
 
         .controls {
@@ -25,31 +28,54 @@
             border-radius: 8px;
             margin-bottom: 20px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
         }
 
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        .nav-controls {
+            display: flex;
             gap: 20px;
+            align-items: center;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .dimension-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
         }
 
         .card {
             background: white;
-            padding: 20px;
+            padding: 40px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
 
         .label-preview {
             border: 1px dashed #ccc;
-            padding: 4px;
+            padding: 10px;
             display: inline-block;
-            margin-top: 10px;
+            margin: 20px 0;
+            background: white;
         }
 
         .label-preview img {
             max-width: 100%;
             display: block;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         button {
@@ -60,69 +86,470 @@
             border-radius: 6px;
             cursor: pointer;
             font-weight: 500;
+            font-size: 16px;
         }
 
         button:hover {
             background: #1d4ed8;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .info {
+            text-align: left;
+            width: 100%;
+            max-width: 400px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .counter {
+            font-weight: bold;
+            font-size: 18px;
+            color: #4b5563;
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h1>Wire Drop Label Layout Test</h1>
-        <p>This is a standalone test page. Logic is embedded below.</p>
+        <h1>Wire Drop Label Test: 106 Tuna</h1>
 
         <div class="controls">
-            <div style="margin-bottom: 15px; display: flex; gap: 20px; align-items: center;">
+            <div class="dimension-controls">
                 <div>
-                    <label for="width">Width (inches):</label>
-                    <input type="number" id="width" value="2.625" step="0.1" style="padding: 5px; width: 80px;">
+                    <label for="width">Width (in):</label>
+                    <input type="number" id="width" value="2.625" step="0.1" style="padding: 5px; width: 70px;">
                 </div>
                 <div>
-                    <label for="height">Height (inches):</label>
-                    <input type="number" id="height" value="0.75" step="0.05" style="padding: 5px; width: 80px;">
+                    <label for="height">Height (in):</label>
+                    <input type="number" id="height" value="0.75" step="0.05" style="padding: 5px; width: 70px;">
                 </div>
-                <button onclick="renderAll()">Regenerate Labels</button>
+                <button onclick="renderCurrent()">Update Size</button>
             </div>
-            <p style="font-size: 14px; color: #666; margin: 0;">Adjust dimensions to match your physical label.</p>
+
+            <div class="nav-controls">
+                <button onclick="prevLabel()" id="prevBtn">← Previous</button>
+                <span class="counter" id="counter">1 / 50</span>
+                <button onclick="nextLabel()" id="nextBtn">Next →</button>
+            </div>
         </div>
 
-        <div id="output" class="grid"></div>
+        <div id="output"></div>
     </div>
 
     <script>
-        // --- MOCK DATA ---
+        // --- REAL PROJECT DATA (106 Tuna) ---
         const testCases = [
             {
-                uid: 'WD-12345',
-                room_name: 'Main Conference Room',
-                wire_type: 'CAT6',
-                drop_type: 'Data',
-                description: 'Standard Room Name'
+                "uid": "PATIOA-S-9557",
+                "room_name": "Patio and Outside",
+                "drop_name": "Patio and Outside Speaker 9",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
             },
             {
-                uid: 'WD-99999',
-                room_name: 'Very Long Room Name That Might Wrap Multiple Lines',
-                wire_type: 'CAT6A',
-                drop_type: 'WAP',
-                description: 'Long Room Name'
+                "uid": "LIVING-IP-3284",
+                "room_name": "Living Room",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
             },
             {
-                uid: 'WD-00001',
-                room_name: 'Gym',
-                wire_type: 'Fiber',
-                drop_type: 'Uplink',
-                description: 'Short Room Name'
+                "uid": "LIVING-L-8871",
+                "room_name": "Living Room",
+                "drop_name": "Living Room Lutron 3",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
             },
             {
-                uid: 'WD-LONG-UID-123',
-                room_name: 'Server Room',
-                wire_type: 'CAT6',
-                drop_type: 'Camera',
-                description: 'Long UID'
+                "uid": "KITCHE-IP-3799",
+                "room_name": "Kitchen",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST2-IP-5201",
+                "room_name": "Guest 2",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-IP-6585",
+                "room_name": "Guest 1",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-IP-7793",
+                "room_name": "Guest 1",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "MAINFL-M-0488",
+                "room_name": "Main Floor",
+                "drop_name": "Main Floor Motion 1",
+                "wire_type": "18/4",
+                "drop_type": "Motion",
+                "notes": null
+            },
+            {
+                "uid": "PATIOA-PATIOA-3130",
+                "room_name": "Patio and Outside",
+                "drop_name": "Patio and Outside Camera 8",
+                "wire_type": "Cat 6e",
+                "drop_type": "Camera",
+                "notes": null
+            },
+            {
+                "uid": "DENOFF-IP-9016",
+                "room_name": "Den / Office",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-IP-0057",
+                "room_name": "Guest 1",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-L-1389",
+                "room_name": "Guest 1",
+                "drop_name": "Guest 1 Lutron 2",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-IP-2417",
+                "room_name": "Game Room",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-IP-3799",
+                "room_name": "Game Room",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST2-L-8418",
+                "room_name": "Guest 2",
+                "drop_name": "Guest 2 Lutron 2",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-S-4106",
+                "room_name": "Game Room",
+                "drop_name": "Game Room Speaker 3",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "AIRHAN-IP-5291",
+                "room_name": "Air Handler",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-AP-6479",
+                "room_name": "Game Room",
+                "drop_name": "AP",
+                "wire_type": "Cat 6e",
+                "drop_type": "Access Point",
+                "notes": null
+            },
+            {
+                "uid": "GUEST3-L-7684",
+                "room_name": "Guest 3",
+                "drop_name": "Guest 3 Lutron 2",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "PRIMAR-IP-8747",
+                "room_name": "Primary Suite",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST3-IP-0189",
+                "room_name": "Guest 3",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "MAINFL-A-4586",
+                "room_name": "Main Floor",
+                "drop_name": "Main Floor Alarm Sounder 1",
+                "wire_type": "18/4",
+                "drop_type": "Alarm Sounder",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-L-3653",
+                "room_name": "Game Room",
+                "drop_name": "Game Room Lutron RF 1",
+                "wire_type": "Cat 6e",
+                "drop_type": "Lutron RF",
+                "notes": null
+            },
+            {
+                "uid": "LIVING-L-7199",
+                "room_name": "Living Room",
+                "drop_name": "Living Room Lutron 7",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-IP-3507",
+                "room_name": "Game Room",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "GUEST2-IP-4891",
+                "room_name": "Guest 2",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "PRIMAR-L-8147",
+                "room_name": "Primary Suite",
+                "drop_name": "Primary Suite Lutron 6",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "PATIOA-IP-1083",
+                "room_name": "Patio and Outside",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-D-3651",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Door/Window 1",
+                "wire_type": "22/4",
+                "drop_type": "Door/Window",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-M-2116",
+                "room_name": "Game Room",
+                "drop_name": "Game Room Motion 1",
+                "wire_type": "18/4",
+                "drop_type": "Motion",
+                "notes": null
+            },
+            {
+                "uid": "DENOFF-L-5056",
+                "room_name": "Den / Office",
+                "drop_name": "Den / Office Lutron 1",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-S-5345",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Speaker 1",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "PANTRY-M-5512",
+                "room_name": "Pantry",
+                "drop_name": "Pantry Motion 1",
+                "wire_type": "18/4",
+                "drop_type": "Motion",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-AP-5661",
+                "room_name": "kitchen Pattio",
+                "drop_name": "AP",
+                "wire_type": "Cat 6e",
+                "drop_type": "Access Point",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-S-5804",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Speaker 2",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-AP-4273",
+                "room_name": "Guest 1",
+                "drop_name": "AP",
+                "wire_type": "Cat 6e",
+                "drop_type": "Access Point",
+                "notes": null
+            },
+            {
+                "uid": "RM-C-4884",
+                "room_name": "",
+                "drop_name": "  1",
+                "wire_type": "Cat 6e",
+                "drop_type": "",
+                "notes": null
+            },
+            {
+                "uid": "RM-R-9864",
+                "room_name": "",
+                "drop_name": " Coax 1",
+                "wire_type": "Coax",
+                "drop_type": "Coax",
+                "notes": null
+            },
+            {
+                "uid": "GUEST1-D-4110",
+                "room_name": "Guest 1",
+                "drop_name": "Guest 1 Door/Window 1",
+                "wire_type": "22/4",
+                "drop_type": "Door/Window",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-L-4443",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Lutron 1",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "PATIOA-S-5327",
+                "room_name": "Patio and Outside",
+                "drop_name": "Patio and Outside Speaker 1",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "DENOFF-D-9310",
+                "room_name": "Den / Office",
+                "drop_name": "Den / Office Door/Window 1",
+                "wire_type": "22/4",
+                "drop_type": "Door/Window",
+                "notes": null
+            },
+            {
+                "uid": "GAMERO-S-2874",
+                "room_name": "Game Room",
+                "drop_name": "Game Room Speaker 1",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "2NDFLO-M-7498",
+                "room_name": "2nd floor hall",
+                "drop_name": "2nd floor hall Motion 1",
+                "wire_type": "18/4",
+                "drop_type": "Motion",
+                "notes": null
+            },
+            {
+                "uid": "2NDFLO-L-9202",
+                "room_name": "2nd floor hall",
+                "drop_name": "2nd floor hall Lutron RF 1",
+                "wire_type": "Cat 6e",
+                "drop_type": "Lutron RF",
+                "notes": null
+            },
+            {
+                "uid": "GARAGE-K-0006",
+                "room_name": "Garage",
+                "drop_name": "Garage Keypad 1",
+                "wire_type": "18/4",
+                "drop_type": "Keypad",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-M-6883",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Motion 1",
+                "wire_type": "18/4",
+                "drop_type": "Motion",
+                "notes": null
+            },
+            {
+                "uid": "KITCHE-S-0626",
+                "room_name": "Kitchen",
+                "drop_name": "Kitchen Speaker 4",
+                "wire_type": "16/2",
+                "drop_type": "Speaker",
+                "notes": null
+            },
+            {
+                "uid": "LIVING-L-5874",
+                "room_name": "Living Room",
+                "drop_name": "Living Room Lutron 6",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
+            },
+            {
+                "uid": "LIVING-L-9757",
+                "room_name": "Living Room",
+                "drop_name": "Living Room Lutron 10",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron",
+                "notes": null
             }
         ];
+
+        let currentIndex = 0;
 
         // --- LABEL RENDER LOGIC (Copied & Adapted) ---
 
@@ -134,16 +561,16 @@
             const widthInput = document.getElementById('width');
             const heightInput = document.getElementById('height');
 
-            const LABEL_WIDTH_INCHES = widthInput ? parseFloat(widthInput.value) : 1.5;
+            const LABEL_WIDTH_INCHES = widthInput ? parseFloat(widthInput.value) : 2.625;
             const LABEL_HEIGHT_INCHES = heightInput ? parseFloat(heightInput.value) : 0.75;
 
             // Convert to pixels
-            const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI); // 304 pixels
-            const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI); // 152 pixels
+            const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI);
+            const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI);
 
-            // Brady M211 printable area on 0.75" label: 0.63" width (leaves 0.06" margins on each side)
-            const PRINTABLE_HEIGHT = Math.floor(0.63 * DPI); // 128 pixels
-            const VERTICAL_MARGIN = Math.floor((HEIGHT - PRINTABLE_HEIGHT) / 2); // ~12 pixels top/bottom
+            // Brady M211 printable area on 0.75" label: 0.63" width
+            const PRINTABLE_HEIGHT = Math.floor(0.63 * DPI);
+            const VERTICAL_MARGIN = Math.floor((HEIGHT - PRINTABLE_HEIGHT) / 2);
 
             // Create canvas
             const canvas = document.createElement('canvas');
@@ -155,30 +582,43 @@
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-            // Flag-style layout: QR (45%) | GAP (10%) | TEXT (45%)
-            const QR_SECTION_WIDTH = Math.floor(WIDTH * 0.45);
-            const GAP_SECTION_WIDTH = Math.floor(WIDTH * 0.10);
-            const TEXT_SECTION_WIDTH = WIDTH - QR_SECTION_WIDTH - GAP_SECTION_WIDTH;
+            // --- LAYOUT CALCULATIONS ---
 
-            // Draw center line in the gap section (for wrapping around wire)
-            const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
+            // 1. Separator Line (EXACT CENTER for Flag Fold)
+            const separatorX = Math.floor(WIDTH / 2);
+
+            // 2. QR Code Dimensions (Maximized, Bottom-Left of Left Half)
+            // HEIGHT is 152px. Use 140px (leaving 6px padding top/bottom)
+            const qrSize = Math.floor(HEIGHT - 12);
+
+            // User requested to move QR/UID "back to the left".
+            // So we align to the left edge with small padding, instead of centering in the left half.
+            const qrX = 4; // Left align with small padding
+            const qrY = HEIGHT - qrSize - 6; // Bottom align
+
+            // 3. UID Dimensions (Rotated next to QR)
+            const uidWidthSlot = 24;
+            const uidX = qrX + qrSize + 4; // Small gap after QR
+
+            // 4. Text Section (Right Half)
+            const textStartX = separatorX + 12; // Gap after separator
+            const textWidth = WIDTH - textStartX - 4; // Remaining width
+            const textStartY = 6; // Top padding
+
+            // --- DRAWING ---
+
+            // Draw Separator Line (Dashed)
             ctx.strokeStyle = '#000000';
             ctx.lineWidth = 2;
             ctx.setLineDash([5, 3]); // Dashed line
             ctx.beginPath();
-            ctx.moveTo(centerLineX, VERTICAL_MARGIN);
-            ctx.lineTo(centerLineX, HEIGHT - VERTICAL_MARGIN);
+            ctx.moveTo(separatorX, VERTICAL_MARGIN);
+            ctx.lineTo(separatorX, HEIGHT - VERTICAL_MARGIN);
             ctx.stroke();
             ctx.setLineDash([]); // Reset to solid line
 
-            // LEFT SECTION: QR Code (maximize size within printable area, centered vertically)
-            // INCREASED SIZE: 85% -> 96%
-            const qrSize = Math.floor(PRINTABLE_HEIGHT * 0.96);
-            const qrX = (QR_SECTION_WIDTH - qrSize) / 2; // Center horizontally in left section
-            const qrY = VERTICAL_MARGIN + Math.floor((PRINTABLE_HEIGHT - qrSize) / 2); // Center vertically
-
+            // LEFT SECTION: QR Code
             try {
-                // Generate QR code as data URL using global QRCode object
                 const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
                     width: qrSize,
                     margin: 0,
@@ -189,7 +629,6 @@
                     },
                 });
 
-                // Load QR code image
                 const qrImage = await loadImage(qrDataUrl);
                 ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
             } catch (error) {
@@ -198,69 +637,71 @@
                 ctx.fillRect(qrX, qrY, qrSize, qrSize);
             }
 
-            // RIGHT SECTION: Text Information
-            const textStartX = QR_SECTION_WIDTH + GAP_SECTION_WIDTH + 4; // Reduced padding
-            const textWidth = TEXT_SECTION_WIDTH - 8; // Reduced padding
-            const textStartY = VERTICAL_MARGIN + 4;
+            // MIDDLE SECTION: UID (Rotated 90 degrees)
+            ctx.save();
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
 
+            // Center vertically
+            const uidCenterY = HEIGHT / 2;
+            // Center horizontally in its slot
+            const uidCenterX = uidX + (uidWidthSlot / 2);
+
+            ctx.translate(uidCenterX, uidCenterY);
+            ctx.rotate(-Math.PI / 2); // Rotate -90 degrees (bottom-to-top reading)
+            ctx.fillText(wireDrop.uid || 'NO-UID', 0, 0);
+            ctx.restore();
+
+            // RIGHT SECTION: Text Information
             ctx.fillStyle = '#000000';
             ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
 
-            // Top: Room Name (PROMINENT, larger, bold, wrapped)
+            // 1. Drop Name (Top, Prominent)
             ctx.font = 'bold 20px Arial';
-            const roomName = wireDrop.room_name || wireDrop.drop_name || 'No Room';
-            const roomLines = wrapText(ctx, roomName, textWidth);
-            let currentY = textStartY + 20;
+            const mainText = wireDrop.drop_name || 'No Name';
+            const mainLines = wrapText(ctx, mainText, textWidth);
+            let currentY = textStartY + 18;
 
-            // If room name is very long (3+ lines), reduce font size further
-            if (roomLines.length > 2) {
-                ctx.font = 'bold 16px Arial';
-                // Re-wrap with new font
-                const smallRoomLines = wrapText(ctx, roomName, textWidth);
-                currentY = textStartY + 16;
-                smallRoomLines.forEach((line, index) => {
-                    if (index < 3) {
-                        ctx.fillText(line, textStartX, currentY);
-                        currentY += 18;
-                    }
-                });
-            } else {
-                roomLines.forEach((line, index) => {
-                    if (index < 2) { // Max 2 lines for room name
-                        ctx.fillText(line, textStartX, currentY);
-                        currentY += 22;
-                    }
-                });
-            }
+            mainLines.forEach((line, index) => {
+                if (index < 3) { // Allow up to 3 lines
+                    ctx.fillText(line, textStartX, currentY);
+                    currentY += 22;
+                }
+            });
 
-            // Bottom section: UID and Wire/Drop Type
-            let bottomY = HEIGHT - VERTICAL_MARGIN - 4;
+            // 2. Bottom Section Calculation (Working Upwards)
+            let bottomY = HEIGHT - 8; // Bottom padding
 
-            // Wire Type / Drop Type (bottom)
-            ctx.font = '14px Arial';
+            // 3. Drop Type / Wire Type (Bottom, Larger Font)
+            ctx.font = 'bold 16px Arial'; // Increased from 14px to match Room Name
             const wireType = wireDrop.wire_type || 'N/A';
             const dropType = wireDrop.drop_type || 'N/A';
-            const typeText = `${wireType} / ${dropType}`;
+            const typeText = `${dropType} / ${wireType}`;
             const typeLines = wrapText(ctx, typeText, textWidth);
-            // Draw from bottom up
+
+            // Draw Type lines (bottom-up)
             for (let i = typeLines.length - 1; i >= 0; i--) {
                 ctx.fillText(typeLines[i], textStartX, bottomY);
-                bottomY -= 16;
+                bottomY -= 20; // Line height
             }
 
-            // UID (above wire type)
-            ctx.font = 'bold 16px Arial';
-            const uidLines = wrapText(ctx, wireDrop.uid || 'NO-UID', textWidth);
-            bottomY -= 2; // Small gap
-            for (let i = uidLines.length - 1; i >= 0; i--) {
-                ctx.fillText(uidLines[i], textStartX, bottomY);
-                bottomY -= 18;
+            // 4. Room Name (Just above Type)
+            bottomY -= 4; // Spacer between Type and Room
+            ctx.font = '16px Arial';
+            const roomText = wireDrop.room_name || 'No Room';
+            const roomLines = wrapText(ctx, roomText, textWidth);
+
+            // Draw Room lines (bottom-up)
+            for (let i = roomLines.length - 1; i >= 0; i--) {
+                ctx.fillText(roomLines[i], textStartX, bottomY);
+                bottomY -= 20; // Line height
             }
 
             // Draw border around entire label
             ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(1, 1, WIDTH - 2, HEIGHT - 2);
 
             return canvas.toDataURL();
         };
@@ -300,32 +741,54 @@
 
         // --- RENDER UI ---
 
-        async function renderAll() {
+        async function renderCurrent() {
             const output = document.getElementById('output');
-            output.innerHTML = 'Generating...';
+            const data = testCases[currentIndex];
+            const counter = document.getElementById('counter');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
 
-            const cards = await Promise.all(testCases.map(async (data) => {
-                const dataUrl = await generateWireDropLabelBitmap(data);
-                return `
-                    <div class="card">
-                        <h3>${data.description}</h3>
-                        <div class="label-preview">
-                            <img src="${dataUrl}" alt="Label">
-                        </div>
-                        <div style="margin-top: 10px; font-size: 12px; color: #666;">
-                            UID: ${data.uid}<br>
-                            Room: ${data.room_name}<br>
-                            Type: ${data.wire_type} / ${data.drop_type}
-                        </div>
+            output.innerHTML = '<div class="card">Generating...</div>';
+
+            const dataUrl = await generateWireDropLabelBitmap(data);
+
+            output.innerHTML = `
+                <div class="card">
+                    <div class="label-preview">
+                        <img src="${dataUrl}" alt="Label">
                     </div>
-                `;
-            }));
+                    <div class="info">
+                        <strong>Data:</strong><br>
+                        UID: ${data.uid}<br>
+                        Room: ${data.room_name}<br>
+                        Drop Name: ${data.drop_name}<br>
+                        Type: ${data.wire_type} / ${data.drop_type}
+                    </div>
+                </div>
+            `;
 
-            output.innerHTML = cards.join('');
+            // Update controls
+            counter.textContent = `${currentIndex + 1} / ${testCases.length}`;
+            prevBtn.disabled = currentIndex === 0;
+            nextBtn.disabled = currentIndex === testCases.length - 1;
+        }
+
+        function nextLabel() {
+            if (currentIndex < testCases.length - 1) {
+                currentIndex++;
+                renderCurrent();
+            }
+        }
+
+        function prevLabel() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderCurrent();
+            }
         }
 
         // Initial render
-        window.onload = renderAll;
+        window.onload = renderCurrent;
     </script>
 </body>
 

@@ -1,0 +1,403 @@
+Found project: 106 tuna (ae59adf0-dc42-4d64-8a23-b49a1f786bfb)
+[
+  {
+    "uid": "PATIOA-S-9557",
+    "room_name": "Patio and Outside",
+    "drop_name": "Patio and Outside Speaker 9",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "LIVING-IP-3284",
+    "room_name": "Living Room",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "LIVING-L-8871",
+    "room_name": "Living Room",
+    "drop_name": "Living Room Lutron 3",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-IP-3799",
+    "room_name": "Kitchen",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST2-IP-5201",
+    "room_name": "Guest 2",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-IP-6585",
+    "room_name": "Guest 1",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-IP-7793",
+    "room_name": "Guest 1",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "MAINFL-M-0488",
+    "room_name": "Main Floor",
+    "drop_name": "Main Floor Motion 1",
+    "wire_type": "18/4",
+    "drop_type": "Motion",
+    "notes": null
+  },
+  {
+    "uid": "PATIOA-PATIOA-3130",
+    "room_name": "Patio and Outside",
+    "drop_name": "Patio and Outside Camera 8",
+    "wire_type": "Cat 6e",
+    "drop_type": "Camera",
+    "notes": null
+  },
+  {
+    "uid": "DENOFF-IP-9016",
+    "room_name": "Den / Office",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-IP-0057",
+    "room_name": "Guest 1",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-L-1389",
+    "room_name": "Guest 1",
+    "drop_name": "Guest 1 Lutron 2",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-IP-2417",
+    "room_name": "Game Room",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-IP-3799",
+    "room_name": "Game Room",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST2-L-8418",
+    "room_name": "Guest 2",
+    "drop_name": "Guest 2 Lutron 2",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-S-4106",
+    "room_name": "Game Room",
+    "drop_name": "Game Room Speaker 3",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "AIRHAN-IP-5291",
+    "room_name": "Air Handler",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-AP-6479",
+    "room_name": "Game Room",
+    "drop_name": "AP",
+    "wire_type": "Cat 6e",
+    "drop_type": "Access Point",
+    "notes": null
+  },
+  {
+    "uid": "GUEST3-L-7684",
+    "room_name": "Guest 3",
+    "drop_name": "Guest 3 Lutron 2",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "PRIMAR-IP-8747",
+    "room_name": "Primary Suite",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST3-IP-0189",
+    "room_name": "Guest 3",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "MAINFL-A-4586",
+    "room_name": "Main Floor",
+    "drop_name": "Main Floor Alarm Sounder 1",
+    "wire_type": "18/4",
+    "drop_type": "Alarm Sounder",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-L-3653",
+    "room_name": "Game Room",
+    "drop_name": "Game Room Lutron RF 1",
+    "wire_type": "Cat 6e",
+    "drop_type": "Lutron RF",
+    "notes": null
+  },
+  {
+    "uid": "LIVING-L-7199",
+    "room_name": "Living Room",
+    "drop_name": "Living Room Lutron 7",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-IP-3507",
+    "room_name": "Game Room",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "GUEST2-IP-4891",
+    "room_name": "Guest 2",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "PRIMAR-L-8147",
+    "room_name": "Primary Suite",
+    "drop_name": "Primary Suite Lutron 6",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "PATIOA-IP-1083",
+    "room_name": "Patio and Outside",
+    "drop_name": "IP",
+    "wire_type": "Cat 6e",
+    "drop_type": "IP/Data",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-D-3651",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Door/Window 1",
+    "wire_type": "22/4",
+    "drop_type": "Door/Window",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-M-2116",
+    "room_name": "Game Room",
+    "drop_name": "Game Room Motion 1",
+    "wire_type": "18/4",
+    "drop_type": "Motion",
+    "notes": null
+  },
+  {
+    "uid": "DENOFF-L-5056",
+    "room_name": "Den / Office",
+    "drop_name": "Den / Office Lutron 1",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-S-5345",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Speaker 1",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "PANTRY-M-5512",
+    "room_name": "Pantry",
+    "drop_name": "Pantry Motion 1",
+    "wire_type": "18/4",
+    "drop_type": "Motion",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-AP-5661",
+    "room_name": "kitchen Pattio",
+    "drop_name": "AP",
+    "wire_type": "Cat 6e",
+    "drop_type": "Access Point",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-S-5804",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Speaker 2",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-AP-4273",
+    "room_name": "Guest 1",
+    "drop_name": "AP",
+    "wire_type": "Cat 6e",
+    "drop_type": "Access Point",
+    "notes": null
+  },
+  {
+    "uid": "RM-C-4884",
+    "room_name": "",
+    "drop_name": "  1",
+    "wire_type": "Cat 6e",
+    "drop_type": "",
+    "notes": null
+  },
+  {
+    "uid": "RM-R-9864",
+    "room_name": "",
+    "drop_name": " Coax 1",
+    "wire_type": "Coax",
+    "drop_type": "Coax",
+    "notes": null
+  },
+  {
+    "uid": "GUEST1-D-4110",
+    "room_name": "Guest 1",
+    "drop_name": "Guest 1 Door/Window 1",
+    "wire_type": "22/4",
+    "drop_type": "Door/Window",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-L-4443",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Lutron 1",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "PATIOA-S-5327",
+    "room_name": "Patio and Outside",
+    "drop_name": "Patio and Outside Speaker 1",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "DENOFF-D-9310",
+    "room_name": "Den / Office",
+    "drop_name": "Den / Office Door/Window 1",
+    "wire_type": "22/4",
+    "drop_type": "Door/Window",
+    "notes": null
+  },
+  {
+    "uid": "GAMERO-S-2874",
+    "room_name": "Game Room",
+    "drop_name": "Game Room Speaker 1",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "2NDFLO-M-7498",
+    "room_name": "2nd floor hall",
+    "drop_name": "2nd floor hall Motion 1",
+    "wire_type": "18/4",
+    "drop_type": "Motion",
+    "notes": null
+  },
+  {
+    "uid": "2NDFLO-L-9202",
+    "room_name": "2nd floor hall",
+    "drop_name": "2nd floor hall Lutron RF 1",
+    "wire_type": "Cat 6e",
+    "drop_type": "Lutron RF",
+    "notes": null
+  },
+  {
+    "uid": "GARAGE-K-0006",
+    "room_name": "Garage",
+    "drop_name": "Garage Keypad 1",
+    "wire_type": "18/4",
+    "drop_type": "Keypad",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-M-6883",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Motion 1",
+    "wire_type": "18/4",
+    "drop_type": "Motion",
+    "notes": null
+  },
+  {
+    "uid": "KITCHE-S-0626",
+    "room_name": "Kitchen",
+    "drop_name": "Kitchen Speaker 4",
+    "wire_type": "16/2",
+    "drop_type": "Speaker",
+    "notes": null
+  },
+  {
+    "uid": "LIVING-L-5874",
+    "room_name": "Living Room",
+    "drop_name": "Living Room Lutron 6",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  },
+  {
+    "uid": "LIVING-L-9757",
+    "room_name": "Living Room",
+    "drop_name": "Living Room Lutron 10",
+    "wire_type": "Lutron Red",
+    "drop_type": "Lutron",
+    "notes": null
+  }
+]

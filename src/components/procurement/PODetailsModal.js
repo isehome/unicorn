@@ -46,7 +46,7 @@ import {
  */
 const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const { mode } = useTheme();
-  const { user } = useAuth();
+  const { user, acquireToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // State
@@ -236,6 +236,10 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     }
     try {
       setVendorRequestLoading(true);
+
+      // Get auth token for sending email (same pattern as IssueDetail)
+      const graphToken = await acquireToken();
+
       const portalLink = await poPublicAccessService.ensureLink({
         poId,
         projectId: po.project_id,
@@ -249,13 +253,17 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         <p>Please add shipment tracking information for PO <strong>${po.po_number}</strong>.</p>
         <p><a href="${shareUrl}">Open the vendor tracking portal</a> to submit tracking numbers for this order.</p>
       `;
-      const text = `Hi ${supplierName},\\n\\nPlease add shipment tracking information for PO ${po.po_number}.\\n${shareUrl}`;
-      await sendNotificationEmail({
-        to: [po.supplier.email],
-        subject: `Tracking request for PO ${po.po_number}`,
-        html,
-        text
-      });
+      const text = `Hi ${supplierName},\n\nPlease add shipment tracking information for PO ${po.po_number}.\n${shareUrl}`;
+
+      await sendNotificationEmail(
+        {
+          to: [po.supplier.email],
+          subject: `Tracking request for PO ${po.po_number}`,
+          html,
+          text
+        },
+        { authToken: graphToken }
+      );
       setSuccess('Tracking request sent to vendor');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {

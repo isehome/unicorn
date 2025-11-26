@@ -87,15 +87,16 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   ctx.fillStyle = '#000000';
   ctx.textAlign = 'left';
 
-  // Top: Room Name (PROMINENT, larger, bold, wrapped)
-  ctx.font = 'bold 22px Arial';
-  const roomName = wireDrop.room_name || wireDrop.drop_name || 'No Room';
-  const roomLines = wrapText(ctx, roomName, textWidth);
-  let currentY = textStartY + 22;
-  roomLines.forEach((line, index) => {
-    if (index < 2) { // Max 2 lines for room name
+  // 1. Drop Name (Top, Prominent)
+  ctx.font = 'bold 20px Arial';
+  const mainText = wireDrop.drop_name || 'No Name';
+  const mainLines = wrapText(ctx, mainText, textWidth);
+  let currentY = textStartY + 18;
+
+  mainLines.forEach((line, index) => {
+    if (index < 3) { // Allow up to 3 lines
       ctx.fillText(line, textStartX, currentY);
-      currentY += 24;
+      currentY += 22;
     }
   });
 
