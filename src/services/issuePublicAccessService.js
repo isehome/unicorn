@@ -12,15 +12,16 @@ class IssuePublicAccessService {
       throw new Error('Missing issue context for public link');
     }
 
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id || null;
+
+    // Generate new token and OTP
     const token = generatePortalToken();
     const otp = generateOtpCode();
     const [tokenHash, otpHash] = await Promise.all([
       hashSecret(token),
       hashSecret(otp)
     ]);
-
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id || null;
     const expiresAt = new Date(Date.now() + OTP_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     const payload = {
@@ -44,7 +45,10 @@ class IssuePublicAccessService {
 
     const { data, error } = await supabase
       .from('issue_public_access_links')
-      .upsert([payload], { onConflict: 'issue_stakeholder_tag_id' })
+      .upsert([payload], {
+        onConflict: 'issue_stakeholder_tag_id',
+        ignoreDuplicates: false  // Ensure updates happen on conflict
+      })
       .select()
       .single();
 
@@ -52,6 +56,21 @@ class IssuePublicAccessService {
       console.error('Failed to upsert issue public link:', error);
       throw new Error('Failed to generate public share link');
     }
+
+    // Verify the token_hash was actually saved correctly
+    const { data: verifyData } = await supabase
+      .from('issue_public_access_links')
+      .select('token_hash')
+      .eq('id', data.id)
+      .single();
+
+    console.log('[IssuePublicAccessService] Link created/updated:', {
+      linkId: data.id,
+      stakeholderTagId,
+      expectedHash: tokenHash.substring(0, 16) + '...',
+      actualHash: verifyData?.token_hash?.substring(0, 16) + '...',
+      hashMatch: verifyData?.token_hash === tokenHash
+    });
 
     return {
       linkId: data.id,
