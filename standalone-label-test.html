@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standalone Wire Drop Label Test</title>
+    <!-- QRCode Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .label-preview {
+            border: 1px dashed #ccc;
+            padding: 4px;
+            display: inline-block;
+            margin-top: 10px;
+        }
+
+        .label-preview img {
+            max-width: 100%;
+            display: block;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Wire Drop Label Layout Test</h1>
+        <p>This is a standalone test page. Logic is embedded below.</p>
+
+        <div class="controls">
+            <div style="margin-bottom: 15px; display: flex; gap: 20px; align-items: center;">
+                <div>
+                    <label for="width">Width (inches):</label>
+                    <input type="number" id="width" value="1.5" step="0.1" style="padding: 5px; width: 80px;">
+                </div>
+                <div>
+                    <label for="height">Height (inches):</label>
+                    <input type="number" id="height" value="0.75" step="0.05" style="padding: 5px; width: 80px;">
+                </div>
+                <button onclick="renderAll()">Regenerate Labels</button>
+            </div>
+            <p style="font-size: 14px; color: #666; margin: 0;">Adjust dimensions to match your physical label.</p>
+        </div>
+
+        <div id="output" class="grid"></div>
+    </div>
+
+    <script>
+        // --- MOCK DATA ---
+        const testCases = [
+            {
+                uid: 'WD-12345',
+                room_name: 'Main Conference Room',
+                wire_type: 'CAT6',
+                drop_type: 'Data',
+                description: 'Standard Room Name'
+            },
+            {
+                uid: 'WD-99999',
+                room_name: 'Very Long Room Name That Might Wrap Multiple Lines',
+                wire_type: 'CAT6A',
+                drop_type: 'WAP',
+                description: 'Long Room Name'
+            },
+            {
+                uid: 'WD-00001',
+                room_name: 'Gym',
+                wire_type: 'Fiber',
+                drop_type: 'Uplink',
+                description: 'Short Room Name'
+            },
+            {
+                uid: 'WD-LONG-UID-123',
+                room_name: 'Server Room',
+                wire_type: 'CAT6',
+                drop_type: 'Camera',
+                description: 'Long UID'
+            }
+        ];
+
+        // --- LABEL RENDER LOGIC (Copied & Adapted) ---
+
+        const generateWireDropLabelBitmap = async (wireDrop) => {
+            // Brady M211 printer resolution: 203 DPI
+            const DPI = 203;
+
+            // Label dimensions in inches
+            const widthInput = document.getElementById('width');
+            const heightInput = document.getElementById('height');
+
+            const LABEL_WIDTH_INCHES = widthInput ? parseFloat(widthInput.value) : 1.5;
+            const LABEL_HEIGHT_INCHES = heightInput ? parseFloat(heightInput.value) : 0.75;
+
+            // Convert to pixels
+            const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI); // 304 pixels
+            const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI); // 152 pixels
+
+            // Brady M211 printable area on 0.75" label: 0.63" width (leaves 0.06" margins on each side)
+            const PRINTABLE_HEIGHT = Math.floor(0.63 * DPI); // 128 pixels
+            const VERTICAL_MARGIN = Math.floor((HEIGHT - PRINTABLE_HEIGHT) / 2); // ~12 pixels top/bottom
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Flag-style layout: QR (45%) | GAP (10%) | TEXT (45%)
+            const QR_SECTION_WIDTH = Math.floor(WIDTH * 0.45);
+            const GAP_SECTION_WIDTH = Math.floor(WIDTH * 0.10);
+            const TEXT_SECTION_WIDTH = WIDTH - QR_SECTION_WIDTH - GAP_SECTION_WIDTH;
+
+            // Draw center line in the gap section (for wrapping around wire)
+            const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 3]); // Dashed line
+            ctx.beginPath();
+            ctx.moveTo(centerLineX, VERTICAL_MARGIN);
+            ctx.lineTo(centerLineX, HEIGHT - VERTICAL_MARGIN);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset to solid line
+
+            // LEFT SECTION: QR Code (maximize size within printable area, centered vertically)
+            // INCREASED SIZE: 85% -> 96%
+            const qrSize = Math.floor(PRINTABLE_HEIGHT * 0.96);
+            const qrX = (QR_SECTION_WIDTH - qrSize) / 2; // Center horizontally in left section
+            const qrY = VERTICAL_MARGIN + Math.floor((PRINTABLE_HEIGHT - qrSize) / 2); // Center vertically
+
+            try {
+                // Generate QR code as data URL using global QRCode object
+                const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
+                    width: qrSize,
+                    margin: 0,
+                    errorCorrectionLevel: 'M',
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF',
+                    },
+                });
+
+                // Load QR code image
+                const qrImage = await loadImage(qrDataUrl);
+                ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(qrX, qrY, qrSize, qrSize);
+            }
+
+            // RIGHT SECTION: Text Information
+            const textStartX = QR_SECTION_WIDTH + GAP_SECTION_WIDTH + 4; // Reduced padding
+            const textWidth = TEXT_SECTION_WIDTH - 8; // Reduced padding
+            const textStartY = VERTICAL_MARGIN + 4;
+
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'left';
+
+            // Top: Room Name (PROMINENT, larger, bold, wrapped)
+            ctx.font = 'bold 20px Arial';
+            const roomName = wireDrop.room_name || wireDrop.drop_name || 'No Room';
+            const roomLines = wrapText(ctx, roomName, textWidth);
+            let currentY = textStartY + 20;
+
+            // If room name is very long (3+ lines), reduce font size further
+            if (roomLines.length > 2) {
+                ctx.font = 'bold 16px Arial';
+                // Re-wrap with new font
+                const smallRoomLines = wrapText(ctx, roomName, textWidth);
+                currentY = textStartY + 16;
+                smallRoomLines.forEach((line, index) => {
+                    if (index < 3) {
+                        ctx.fillText(line, textStartX, currentY);
+                        currentY += 18;
+                    }
+                });
+            } else {
+                roomLines.forEach((line, index) => {
+                    if (index < 2) { // Max 2 lines for room name
+                        ctx.fillText(line, textStartX, currentY);
+                        currentY += 22;
+                    }
+                });
+            }
+
+            // Bottom section: UID and Wire/Drop Type
+            let bottomY = HEIGHT - VERTICAL_MARGIN - 4;
+
+            // Wire Type / Drop Type (bottom)
+            ctx.font = '14px Arial';
+            const wireType = wireDrop.wire_type || 'N/A';
+            const dropType = wireDrop.drop_type || 'N/A';
+            const typeText = `${wireType} / ${dropType}`;
+            const typeLines = wrapText(ctx, typeText, textWidth);
+            // Draw from bottom up
+            for (let i = typeLines.length - 1; i >= 0; i--) {
+                ctx.fillText(typeLines[i], textStartX, bottomY);
+                bottomY -= 16;
+            }
+
+            // UID (above wire type)
+            ctx.font = 'bold 16px Arial';
+            const uidLines = wrapText(ctx, wireDrop.uid || 'NO-UID', textWidth);
+            bottomY -= 2; // Small gap
+            for (let i = uidLines.length - 1; i >= 0; i--) {
+                ctx.fillText(uidLines[i], textStartX, bottomY);
+                bottomY -= 18;
+            }
+
+            // Draw border around entire label
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(1, 1, WIDTH - 2, HEIGHT - 2);
+
+            return canvas.toDataURL();
+        };
+
+        const loadImage = (dataUrl) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = dataUrl;
+            });
+        };
+
+        const wrapText = (ctx, text, maxWidth) => {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+
+            words.forEach(word => {
+                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                const metrics = ctx.measureText(testLine);
+
+                if (metrics.width > maxWidth && currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            });
+
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines;
+        };
+
+        // --- RENDER UI ---
+
+        async function renderAll() {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Generating...';
+
+            const cards = await Promise.all(testCases.map(async (data) => {
+                const dataUrl = await generateWireDropLabelBitmap(data);
+                return `
+                    <div class="card">
+                        <h3>${data.description}</h3>
+                        <div class="label-preview">
+                            <img src="${dataUrl}" alt="Label">
+                        </div>
+                        <div style="margin-top: 10px; font-size: 12px; color: #666;">
+                            UID: ${data.uid}<br>
+                            Room: ${data.room_name}<br>
+                            Type: ${data.wire_type} / ${data.drop_type}
+                        </div>
+                    </div>
+                `;
+            }));
+
+            output.innerHTML = cards.join('');
+        }
+
+        // Initial render
+        window.onload = renderAll;
+    </script>
+</body>
+
+</html>

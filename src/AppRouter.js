@@ -12,20 +12,23 @@ import NotificationTestPage from './components/NotificationTestPage'
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
   { path: '/login-debug', element: <LoginDebug /> },
-  { path: '/my-projects-debug', element: (
+  {
+    path: '/my-projects-debug', element: (
       <ProtectedRoute>
         <MyProjectsDebug />
       </ProtectedRoute>
     )
   },
-  { path: '/notification-test', element: (
+  {
+    path: '/notification-test', element: (
       <ProtectedRoute>
         <NotificationTestPage />
       </ProtectedRoute>
     )
   },
   { path: '/auth/callback', element: <AuthCallback /> },
-  { path: '/', element: (
+  {
+    path: '/', element: (
       <ProtectedRoute>
         <App />
       </ProtectedRoute>
