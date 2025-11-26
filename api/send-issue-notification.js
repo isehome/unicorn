@@ -42,7 +42,7 @@ module.exports = async (req, res) => {
         html,
         text,
       },
-      delegatedToken
+      { delegatedToken }
     );
 
     res.status(200).json({ success: true });
