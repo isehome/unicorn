@@ -457,8 +457,13 @@ async function handleUpload(body) {
     });
 
   if (uploadError) {
-    console.error('[PublicIssue] Storage upload failed:', uploadError);
-    return { status: 500, data: { error: 'Failed to store file' } };
+    console.error('[PublicIssue] Storage upload failed:', {
+      error: uploadError,
+      bucket: PUBLIC_ISSUE_UPLOAD_BUCKET,
+      path: storagePath,
+      bufferSize: buffer.length
+    });
+    return { status: 500, data: { error: `Failed to store file: ${uploadError.message || 'Unknown error'}` } };
   }
 
   const { data, error } = await supabase

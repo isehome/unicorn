@@ -82,30 +82,44 @@ class IssuePublicAccessService {
 
   async listUploads(issueId) {
     if (!supabase) return [];
+    console.log('[IssuePublicAccessService] Fetching uploads for issue:', issueId);
     const { data, error } = await supabase
       .from('issue_external_uploads')
       .select('*')
       .eq('issue_id', issueId)
       .order('submitted_at', { ascending: false });
-    if (error) throw error;
+    if (error) {
+      console.error('[IssuePublicAccessService] Failed to fetch uploads:', error);
+      throw error;
+    }
+    console.log('[IssuePublicAccessService] Found uploads:', data?.length || 0);
     return data || [];
   }
 
   async getSignedDownloadUrl(uploadId) {
     if (!supabase || !uploadId) return null;
+    console.log('[IssuePublicAccessService] Getting signed URL for upload:', uploadId);
+
     const { data, error } = await supabase
       .from('issue_external_uploads')
       .select('id, storage_path')
       .eq('id', uploadId)
       .maybeSingle();
+
+    console.log('[IssuePublicAccessService] Upload record:', { data, error });
+
     if (error || !data?.storage_path) {
       throw error || new Error('Upload not found');
     }
+
+    console.log('[IssuePublicAccessService] Creating signed URL for path:', data.storage_path, 'bucket:', PUBLIC_UPLOAD_BUCKET);
 
     const { data: signed, error: urlError } = await supabase
       .storage
       .from(PUBLIC_UPLOAD_BUCKET)
       .createSignedUrl(data.storage_path, 60);
+
+    console.log('[IssuePublicAccessService] Signed URL result:', { signed, urlError });
 
     if (urlError) {
       throw urlError;

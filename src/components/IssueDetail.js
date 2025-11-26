@@ -196,6 +196,9 @@ const IssueDetail = () => {
         
         const combined = Array.from(stakeholderMap.values());
         setAvailableProjectStakeholders(combined);
+
+        // Load external uploads for existing issues
+        await loadExternalUploads(issueId);
       } else {
         const [projectStakeholders, projectDetails] = await Promise.all([
           projectStakeholdersService.getForProject(projectId),
@@ -235,7 +238,6 @@ const IssueDetail = () => {
         setNewDueDate('');
         setCommentText('');
         setEditingDetails(false);
-        await loadExternalUploads(issueId);
       }
     } catch (e) {
       setError(e.message || 'Failed to load issue');
@@ -984,11 +986,22 @@ const IssueDetail = () => {
             url: shareUrl,
             otp: linkDetails.otp
           };
+          console.log('[IssueDetail] Portal link created for external stakeholder:', {
+            shareUrl: shareUrl?.substring(0, 60),
+            hasOtp: !!linkDetails.otp,
+            stakeholderEmail: stakeholder?.email
+          });
         } catch (portalError) {
           console.error('Failed to provision public issue link:', portalError);
         }
       }
 
+      console.log('[IssueDetail] Calling notifyStakeholderAdded:', {
+        isExternalStakeholder,
+        hasPublicPortal: !!publicPortalPayload,
+        stakeholderEmail: stakeholder?.email,
+        hasGraphToken: !!graphToken
+      });
       await notifyStakeholderAdded(
         {
           issue: issueContext,
@@ -1081,11 +1094,22 @@ const IssueDetail = () => {
 
   const handlePreviewPendingUpload = useCallback(async (upload) => {
     if (!upload) return;
+    console.log('[IssueDetail] Preview upload clicked:', upload);
     try {
       setProcessingUploadId(upload.id);
       const url = await issuePublicAccessService.getSignedDownloadUrl(upload.id);
+      console.log('[IssueDetail] Signed URL result:', url);
       if (url) {
-        window.open(url, '_blank', 'noopener,noreferrer');
+        // Use a link click to avoid popup blocker
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        setError('Could not generate preview URL');
       }
     } catch (err) {
       console.error('Failed to preview upload:', err);
