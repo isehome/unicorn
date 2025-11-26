@@ -1067,8 +1067,9 @@ const IssueDetail = () => {
         setSuccessMessage('Portal link copied to clipboard');
         setTimeout(() => setSuccessMessage(null), 2500);
       } else {
-        // Fallback: show prompt with link
-        window.prompt('Copy this portal link:', formatted); // eslint-disable-line no-alert
+        // Fallback: show prompt with URL only, then alert with OTP
+        window.prompt('Copy this portal link (URL only):', shareUrl); // eslint-disable-line no-alert
+        window.alert(`One-time verification code: ${linkDetails.otp}`); // eslint-disable-line no-alert
       }
     } catch (err) {
       console.error('Failed to generate portal link:', err);
