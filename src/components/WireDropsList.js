@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from './ui/Button';
-import { Search, Plus, Loader, Trash2, Printer, CheckSquare, Square, AlertTriangle } from 'lucide-react';
+import { Search, Plus, Loader, Trash2, Printer, CheckSquare, Square, AlertTriangle, RefreshCw } from 'lucide-react';
 import { wireDropService } from '../services/wireDropService';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -16,7 +16,7 @@ const WireDropsList = () => {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('project');
   const sectionStyles = enhancedStyles.sections[mode];
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFloor, setSelectedFloor] = useState('');
   const [allDrops, setAllDrops] = useState([]);
@@ -25,7 +25,7 @@ const WireDropsList = () => {
   const [project, setProject] = useState(null);
   const [showFloorFilter, setShowFloorFilter] = useState(false);
   const [deletingDropId, setDeletingDropId] = useState(null);
-  
+
   // Bulk selection states
   const [selectedDropIds, setSelectedDropIds] = useState([]);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
@@ -38,21 +38,21 @@ const WireDropsList = () => {
   // Reload data on mount and whenever we return to this page
   useEffect(() => {
     loadWireDrops();
-    
+
     // Also reload when navigating back to this page or window regains focus
     const handleFocus = () => {
       loadWireDrops();
     };
-    
+
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         loadWireDrops();
       }
     };
-    
+
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    
+
     return () => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -163,15 +163,15 @@ const WireDropsList = () => {
   const getDropCompletion = (drop) => {
     // Use wire_drop_stages array to check completion status
     const stages = drop.wire_drop_stages || [];
-    
+
     const prewireStage = stages.find(s => s.stage_type === 'prewire');
     const trimOutStage = stages.find(s => s.stage_type === 'trim_out');
     const commissionStage = stages.find(s => s.stage_type === 'commission');
-    
+
     const prewireComplete = Boolean(prewireStage?.completed);
     const installComplete = Boolean(trimOutStage?.completed);
     const commissionComplete = Boolean(commissionStage?.completed);
-    
+
     // Calculate percentage (33.33% per stage for 3 stages)
     let completion = 0;
     if (prewireComplete) completion += 33.33;
@@ -198,12 +198,12 @@ const WireDropsList = () => {
 
   const filteredDrops = useMemo(() => {
     let filtered = allDrops;
-    
+
     // Apply floor filter
     if (selectedFloor) {
       filtered = filtered.filter(drop => drop.floor === selectedFloor);
     }
-    
+
     // Apply search filter
     if (searchTerm) {
       const query = searchTerm.toLowerCase();
@@ -213,7 +213,7 @@ const WireDropsList = () => {
           .some(value => value.toLowerCase().includes(query))
       );
     }
-    
+
     return filtered;
   }, [allDrops, searchTerm, selectedFloor]);
 
@@ -241,8 +241,8 @@ const WireDropsList = () => {
 
   const handleToggleSelect = (dropId, event) => {
     event.stopPropagation();
-    setSelectedDropIds(prev => 
-      prev.includes(dropId) 
+    setSelectedDropIds(prev =>
+      prev.includes(dropId)
         ? prev.filter(id => id !== dropId)
         : [...prev, dropId]
     );
@@ -284,6 +284,126 @@ const WireDropsList = () => {
 
     setBulkDeleting(false);
     setShowBulkDeleteConfirm(false);
+  };
+
+  // --- MIGRATION TOOL: Normalize Drop Names ---
+  const [normalizing, setNormalizing] = useState(false);
+
+  const normalizeAllDropNames = async () => {
+    if (!projectId) return;
+    const confirmed = window.confirm(
+      'This will update ALL wire drop names in this project to match the "Room Type Number" format (e.g., "Guest 2 IP/Data 1").\n\nThis action writes to the database and cannot be easily undone.\n\nAre you sure?'
+    );
+    if (!confirmed) return;
+
+    setNormalizing(true);
+    try {
+      // 1. Fetch ALL drops for this project
+      const { data: drops, error } = await supabase
+        .from('wire_drops')
+        .select(`
+          id, 
+          drop_name, 
+          room_name, 
+          drop_type,
+          project_rooms(name)
+        `)
+        .eq('project_id', projectId)
+        .order('uid');
+
+      if (error) throw error;
+
+      // 2. Calculate new names (Logic from ProjectDetailView.js)
+      const roomDropTypeCounts = {};
+      const dropNumbers = {};
+
+      // Pass 1: Count types per room
+      drops.forEach((drop) => {
+        const roomName = drop.project_rooms?.name || drop.room_name || 'Unknown Room';
+        const dropType = drop.drop_type || 'Drop';
+        const key = `${roomName}:::${dropType}`;
+
+        if (!roomDropTypeCounts[key]) {
+          roomDropTypeCounts[key] = [];
+        }
+        roomDropTypeCounts[key].push(drop.id);
+      });
+
+      // Pass 2: Assign numbers
+      drops.forEach((drop) => {
+        const roomName = drop.project_rooms?.name || drop.room_name || 'Unknown Room';
+        const dropType = drop.drop_type || 'Drop';
+        const key = `${roomName}:::${dropType}`;
+
+        const dropsOfSameType = roomDropTypeCounts[key];
+        const dropIndex = dropsOfSameType.indexOf(drop.id);
+
+        // Only add number if there's more than one drop of this type in the room
+        dropNumbers[drop.id] = dropsOfSameType.length > 1 ? dropIndex + 1 : 0;
+      });
+
+      // 3. Update records with UNIQUENESS CHECK
+      let updatedCount = 0;
+      const usedNames = new Set();
+
+      // First, populate usedNames with names we are NOT changing (custom names)
+      // We need to do this in two passes or be careful. 
+      // Simplest approach: Calculate ALL intended names first, then resolve conflicts.
+
+      const dropsToUpdate = [];
+
+      for (const drop of drops) {
+        const roomName = drop.project_rooms?.name || drop.room_name || 'Unknown Room';
+        const dropType = drop.drop_type || 'Drop';
+        const dropNumber = dropNumbers[drop.id];
+
+        // Check if generic
+        const isGeneric = !drop.drop_name || drop.drop_name === 'IP' || drop.drop_name === drop.drop_type || drop.drop_name.trim() === '';
+
+        let intendedName;
+        if (isGeneric) {
+          intendedName = dropNumber > 0
+            ? `${roomName} ${dropType} ${dropNumber}`
+            : `${roomName} ${dropType}`;
+        } else {
+          intendedName = drop.drop_name;
+        }
+
+        dropsToUpdate.push({ drop, intendedName, isGeneric });
+      }
+
+      // Resolve collisions
+      for (const item of dropsToUpdate) {
+        let finalName = item.intendedName;
+        let counter = 1;
+
+        // If name is taken, append/increment counter until unique
+        while (usedNames.has(finalName.toLowerCase())) {
+          // If it already has a number at the end, increment it? 
+          // Or just append a new number? 
+          // Simple approach: Append " (X)" or just increment if it looks like a counter.
+          // Let's just append a counter for safety to ensure uniqueness.
+          finalName = `${item.intendedName} ${counter}`;
+          counter++;
+        }
+
+        usedNames.add(finalName.toLowerCase());
+
+        // Only update if it changed from the DB value
+        if (item.drop.drop_name !== finalName) {
+          await wireDropService.updateWireDrop(item.drop.id, { drop_name: finalName });
+          updatedCount++;
+        }
+      }
+
+      alert(`Normalization complete! Updated ${updatedCount} wire drops.`);
+      loadWireDrops(); // Reload list
+    } catch (err) {
+      console.error('Normalization failed:', err);
+      alert(`Normalization failed: ${err.message}`);
+    } finally {
+      setNormalizing(false);
+    }
   };
 
 
@@ -337,6 +457,23 @@ const WireDropsList = () => {
             </div>
           )}
 
+          {/* Admin / Migration Tools */}
+          {projectId && (
+            <div className="mb-4 flex justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={RefreshCw}
+                onClick={normalizeAllDropNames}
+                loading={normalizing}
+                disabled={normalizing}
+                className="text-xs"
+              >
+                Fix All Drop Names
+              </Button>
+            </div>
+          )}
+
           <div className="flex gap-2 mb-6">
             <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -378,9 +515,9 @@ const WireDropsList = () => {
           {filteredDrops.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500 dark:text-gray-400 mb-4">
-                {searchTerm 
+                {searchTerm
                   ? 'No wire drops match your search.'
-                  : allDrops.length === 0 
+                  : allDrops.length === 0
                     ? 'No wire drops found.'
                     : 'No wire drops match your search.'
                 }
@@ -398,15 +535,14 @@ const WireDropsList = () => {
                 const badgeColor = getWireDropBadgeColor(drop);
                 const badgeLetter = getWireDropBadgeLetter(drop);
                 const badgeTextColor = getWireDropBadgeTextColor(badgeColor);
-                
+
                 const isSelected = selectedDropIds.includes(drop.id);
-                
+
                 return (
                   <div
                     key={drop.id}
-                    className={`border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${
-                      isSelected ? 'ring-2 ring-violet-500 bg-violet-50 dark:bg-violet-900/10' : ''
-                    }`}
+                    className={`border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer ${isSelected ? 'ring-2 ring-violet-500 bg-violet-50 dark:bg-violet-900/10' : ''
+                      }`}
                     onClick={() => navigate(`/wire-drops/${drop.id}`)}
                   >
                     <div className="flex gap-4 items-start">
@@ -441,14 +577,14 @@ const WireDropsList = () => {
                         <h3 className="font-semibold text-lg text-gray-900 dark:text-white mb-1">
                           {drop.drop_name || drop.name || 'Unnamed Drop'}
                         </h3>
-                        
+
                         {/* Room Name underneath */}
                         {(drop.room_name || drop.project_room?.name) && (
                           <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                             {drop.room_name || drop.project_room?.name}
                           </p>
                         )}
-                        
+
                         {/* Wire Type and Floor as smaller text */}
                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                           {drop.drop_type && (
@@ -516,34 +652,30 @@ const WireDropsList = () => {
                           </Button>
                         </div>
                         <div className="flex gap-1 justify-end mb-1">
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${
-                            prewireComplete 
-                              ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                              : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                          }`}>
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${prewireComplete
+                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
+                            }`}>
                             Prewire
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${
-                            installComplete
-                              ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                              : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                          }`}>
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${installComplete
+                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
+                            }`}>
                             Install
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${
-                            commissionComplete
-                              ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                              : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                          }`}>
+                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${commissionComplete
+                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
+                            }`}>
                             Comm
                           </span>
                         </div>
-                        <div className={`text-sm font-bold ${
-                          percentage === 100 ? 'text-green-600 dark:text-green-400' :
+                        <div className={`text-sm font-bold ${percentage === 100 ? 'text-green-600 dark:text-green-400' :
                           percentage >= 67 ? 'text-blue-600 dark:text-blue-400' :
-                          percentage >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
-                          'text-gray-600 dark:text-gray-400'
-                        }`}>
+                            percentage >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
+                              'text-gray-600 dark:text-gray-400'
+                          }`}>
                           {percentage}% Complete
                         </div>
                       </div>
@@ -565,20 +697,20 @@ const WireDropsList = () => {
               Delete {selectedDropIds.length} Wire Drop{selectedDropIds.length !== 1 ? 's' : ''}?
             </h3>
             <p className="text-sm mb-6 text-gray-600 dark:text-gray-300">
-              Are you sure you want to delete {selectedDropIds.length} wire drop{selectedDropIds.length !== 1 ? 's' : ''}? 
+              Are you sure you want to delete {selectedDropIds.length} wire drop{selectedDropIds.length !== 1 ? 's' : ''}?
               This action cannot be undone and will remove all associated data including photos, equipment details, and stage progress.
             </p>
             <div className="flex gap-3">
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => setShowBulkDeleteConfirm(false)}
                 disabled={bulkDeleting}
                 className="flex-1"
               >
                 Cancel
               </Button>
-              <Button 
-                variant="danger" 
+              <Button
+                variant="danger"
                 icon={Trash2}
                 onClick={handleBulkDelete}
                 loading={bulkDeleting}

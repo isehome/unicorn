@@ -313,10 +313,10 @@ const SupplierManager = () => {
       {/* Edit Modal */}
       {showModal && (
         <SupplierEditModal
-          isOpen={showModal}
-          onClose={handleModalClose}
+          supplierId={editingSupplier?.id}
           supplier={editingSupplier}
-          onSuccess={handleModalSuccess}
+          onClose={handleModalClose}
+          onSave={handleModalSuccess}
         />
       )}
     </div>
