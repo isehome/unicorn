@@ -13,9 +13,7 @@ import DateField from './ui/DateField';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
 import InventoryManager from './InventoryManager';
-import ShippingAddressManager from './procurement/ShippingAddressManager';
 import ProcurementProgressGauge from './procurement/ProcurementProgressGauge';
-import SupplierManager from './procurement/SupplierManager';
 import {
   Package,
   CheckCircle,
@@ -32,9 +30,7 @@ import {
   Truck,
   Building2,
   Calendar,
-  DollarSign as DollarSignIcon,
-  Settings,
-  MapPin
+  DollarSign as DollarSignIcon
 } from 'lucide-react';
 
 const PMOrderEquipmentPageEnhanced = () => {
@@ -50,7 +46,7 @@ const PMOrderEquipmentPageEnhanced = () => {
   const [vendorStats, setVendorStats] = useState({});
 
   // Tab state (removed viewMode - only Create POs view now)
-  const [tab, setTab] = useState('prewire'); // 'setup', 'inventory', 'prewire', 'trim', 'pos'
+  const [tab, setTab] = useState('prewire'); // 'inventory', 'prewire', 'trim', 'pos'
 
   // Active POs state
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -93,7 +89,7 @@ const PMOrderEquipmentPageEnhanced = () => {
     } else if (tab === 'pos') {
       loadPurchaseOrders();
     }
-    // No data loading needed for 'inventory', 'setup' tabs
+    // No data loading needed for 'inventory' tab
   }, [projectId, tab]);
 
   // No longer need to load vendor grouping - checkbox view uses equipment directly
@@ -1317,17 +1313,6 @@ const PMOrderEquipmentPageEnhanced = () => {
         <div style={sectionStyles.card} className="mb-6">
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => setTab('setup')}
-              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                tab === 'setup'
-                  ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              Setup
-            </button>
-            <button
               onClick={() => setTab('inventory')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
                 tab === 'inventory'
@@ -1370,41 +1355,6 @@ const PMOrderEquipmentPageEnhanced = () => {
             </button>
           </div>
         </div>
-
-        {/* Setup Tab Content */}
-        {tab === 'setup' && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Procurement Setup</h2>
-
-            {/* Shipping Address Section */}
-            <div style={sectionStyles.card} className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <MapPin className="w-5 h-5 text-violet-600" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Default Shipping Address</h3>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Select a default shipping address for all purchase orders in this project. This will be automatically selected when creating new POs.
-              </p>
-              <ShippingAddressManager
-                embedded={true}
-                onSelect={(address) => updateProjectDefaultShipping(address.id)}
-                selectedAddressId={projectDefaultShippingId}
-              />
-            </div>
-
-            {/* Supplier Management Section */}
-            <div style={sectionStyles.card} className="p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <Building2 className="w-5 h-5 text-violet-600" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Supplier Management</h3>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Manage suppliers for purchase orders. Add new suppliers or edit existing supplier information.
-              </p>
-              <SupplierManager />
-            </div>
-          </div>
-        )}
 
         {/* Create POs View (for prewire/trim tabs) */}
         {(tab === 'prewire' || tab === 'trim') && (

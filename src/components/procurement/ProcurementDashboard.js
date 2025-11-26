@@ -7,6 +7,8 @@ import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
 import { SupplierEditModal } from './SupplierEditModal';
 import CompanySettingsManager from './CompanySettingsManager';
+import ShippingAddressManager from './ShippingAddressManager';
+import SupplierManager from './SupplierManager';
 import DateField from '../ui/DateField';
 import {
   Package,
@@ -21,7 +23,8 @@ import {
   ChevronDown,
   Edit3,
   Trash2,
-  Settings
+  Settings,
+  MapPin
 } from 'lucide-react';
 
 const ProcurementDashboard = () => {
@@ -467,11 +470,47 @@ const ProcurementDashboard = () => {
             </Button>
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
               <Settings className="w-5 h-5 text-violet-600" />
-              Company Settings
+              Procurement Settings
             </h3>
           </div>
 
-          <CompanySettingsManager />
+          <div className="space-y-6">
+            {/* Company Information Section */}
+            <div style={sectionStyles.card} className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="w-5 h-5 text-violet-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company Information</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Company logo and contact information for purchase orders and external portals.
+              </p>
+              <CompanySettingsManager />
+            </div>
+
+            {/* Shipping Addresses Section */}
+            <div style={sectionStyles.card} className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <MapPin className="w-5 h-5 text-violet-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Shipping Addresses</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Manage shipping addresses for purchase orders. These addresses are available across all projects.
+              </p>
+              <ShippingAddressManager embedded={true} />
+            </div>
+
+            {/* Supplier Management Section */}
+            <div style={sectionStyles.card} className="p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="w-5 h-5 text-violet-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Supplier Management</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Manage suppliers for purchase orders. Add new suppliers or edit existing supplier information.
+              </p>
+              <SupplierManager />
+            </div>
+          </div>
         </div>
       )}
 

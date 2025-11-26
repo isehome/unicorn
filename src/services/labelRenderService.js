@@ -12,7 +12,7 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   const DPI = 203;
 
   // Label dimensions in inches
-  const LABEL_WIDTH_INCHES = 1.5;
+  const LABEL_WIDTH_INCHES = 2.625;
   const LABEL_HEIGHT_INCHES = 0.75;
 
   // Convert to pixels
