@@ -1,39 +1,36 @@
-import { supabase } from '../lib/supabase';
-import { generatePortalToken, hashSecret } from '../utils/portalTokens';
+const PO_API_ENDPOINT = '/api/public-po';
 
 class POPublicAccessService {
+  /**
+   * Create or update a vendor portal link for a PO
+   * Uses the server-side API to bypass RLS restrictions
+   */
   async ensureLink({ poId, projectId, supplierId, supplier }) {
-    if (!supabase) throw new Error('Supabase not configured');
     if (!poId || !projectId) throw new Error('Missing PO context');
-    const token = generatePortalToken(36);
-    const tokenHash = await hashSecret(token);
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id || null;
 
-    const { data, error } = await supabase
-      .from('po_public_access_links')
-      .upsert([{
-        purchase_order_id: poId,
-        project_id: projectId,
-        supplier_id: supplierId || null,
-        contact_email: supplier?.email || null,
-        contact_name: supplier?.name || null,
-        token_hash: tokenHash,
-        reminders_paused: false,
-        updated_by: userId,
-        created_by: userId
-      }], { onConflict: 'purchase_order_id' })
-      .select()
-      .single();
+    const response = await fetch(PO_API_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'create-link',
+        poId,
+        projectId,
+        supplierId: supplierId || null,
+        supplierName: supplier?.name || null,
+        supplierEmail: supplier?.email || null
+      })
+    });
 
-    if (error) {
-      console.error('Failed to upsert vendor portal link:', error);
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Failed to create vendor portal link:', errorData);
+      throw new Error(errorData.error || `Failed to create portal link (${response.status})`);
     }
 
+    const data = await response.json();
     return {
-      linkId: data.id,
-      token
+      linkId: data.linkId,
+      token: data.token
     };
   }
 }

@@ -162,6 +162,77 @@ ${poUrl ? `\n${poUrl}` : ''}`;
   });
 }
 
+async function handleCreateLink(body) {
+  const { poId, projectId, supplierId, supplierName, supplierEmail } = body || {};
+
+  if (!poId || !projectId) {
+    return { status: 400, data: { error: 'Missing PO context (poId, projectId required)' } };
+  }
+
+  // Generate a secure token
+  const token = crypto.randomBytes(27).toString('base64url'); // 36 chars
+  const tokenHash = hashSecret(token);
+
+  // Check if link already exists for this PO
+  const { data: existing } = await supabase
+    .from('po_public_access_links')
+    .select('id, token_hash')
+    .eq('purchase_order_id', poId)
+    .maybeSingle();
+
+  let linkId;
+  if (existing) {
+    // Update existing link with new token
+    const { data, error } = await supabase
+      .from('po_public_access_links')
+      .update({
+        token_hash: tokenHash,
+        supplier_id: supplierId || null,
+        contact_name: supplierName || null,
+        contact_email: supplierEmail || null,
+        updated_at: nowIso()
+      })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[PublicPO] Failed to update link:', error);
+      return { status: 500, data: { error: 'Failed to update portal link' } };
+    }
+    linkId = data.id;
+  } else {
+    // Create new link
+    const { data, error } = await supabase
+      .from('po_public_access_links')
+      .insert([{
+        purchase_order_id: poId,
+        project_id: projectId,
+        supplier_id: supplierId || null,
+        contact_name: supplierName || null,
+        contact_email: supplierEmail || null,
+        token_hash: tokenHash,
+        reminders_paused: false
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[PublicPO] Failed to create link:', error);
+      return { status: 500, data: { error: 'Failed to create portal link' } };
+    }
+    linkId = data.id;
+  }
+
+  return {
+    status: 200,
+    data: {
+      linkId,
+      token
+    }
+  };
+}
+
 async function handleExchange(body) {
   const link = await fetchPoLink(body?.token);
   if (!link) {
@@ -263,6 +334,9 @@ module.exports = async (req, res) => {
     const { action } = req.body || {};
     let result;
     switch (action) {
+      case 'create-link':
+        result = await handleCreateLink(req.body);
+        break;
       case 'exchange':
         result = await handleExchange(req.body);
         break;
