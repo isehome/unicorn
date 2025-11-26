@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { companySettingsService } from '../../services/companySettingsService';
-import { sharePointStorageService } from '../../services/sharePointStorageService';
-import CachedSharePointImage from '../CachedSharePointImage';
+import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
 import {
-  Building2,
   Mail,
   Phone,
   User,
@@ -101,24 +99,32 @@ const CompanySettingsManager = () => {
       setUploadingLogo(true);
       setError(null);
 
-      // Upload to SharePoint (using a generic company folder path)
-      // Note: You may need to configure this path in your environment
-      const COMPANY_FOLDER_URL = process.env.REACT_APP_COMPANY_SHAREPOINT_URL ||
-        'https://yourtenant.sharepoint.com/sites/YourSite/Shared Documents/Company';
+      // Generate unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `company-logo-${Date.now()}.${fileExt}`;
+      const filePath = `logos/${fileName}`;
 
-      const result = await sharePointStorageService.uploadToSharePoint(
-        COMPANY_FOLDER_URL,
-        'Logos',
-        file.name,
-        file
-      );
+      // Upload to Supabase storage bucket
+      const { data, error: uploadError } = await supabase.storage
+        .from('company-assets')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
 
-      // Update form data with SharePoint info
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('company-assets')
+        .getPublicUrl(filePath);
+
+      // Update form data with Supabase URL
       setFormData(prev => ({
         ...prev,
-        company_logo_url: result.webUrl,
-        company_logo_sharepoint_drive_id: result.driveId,
-        company_logo_sharepoint_item_id: result.itemId
+        company_logo_url: urlData.publicUrl,
+        company_logo_sharepoint_drive_id: null,
+        company_logo_sharepoint_item_id: null
       }));
 
       setSuccess('Logo uploaded successfully');
@@ -222,16 +228,10 @@ const CompanySettingsManager = () => {
           {formData.company_logo_url ? (
             <div className="flex items-start gap-4">
               <div className="w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 flex items-center justify-center p-2">
-                <CachedSharePointImage
-                  sharePointUrl={formData.company_logo_url}
-                  sharePointDriveId={formData.company_logo_sharepoint_drive_id}
-                  sharePointItemId={formData.company_logo_sharepoint_item_id}
-                  displayType="thumbnail"
-                  size="medium"
+                <img
+                  src={formData.company_logo_url}
                   alt="Company Logo"
-                  className="w-full h-full"
-                  objectFit="contain"
-                  showFullOnClick={false}
+                  className="w-full h-full object-contain"
                 />
               </div>
               <Button
