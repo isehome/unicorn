@@ -1006,12 +1006,21 @@ const IssueDetail = () => {
         ? `${window.location.origin}/public/issues/${linkDetails.token}`
         : linkDetails.token;
       const formatted = `${shareUrl}\nOne-time code: ${linkDetails.otp}`;
+      let copied = false;
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(formatted);
+        try {
+          await navigator.clipboard.writeText(formatted);
+          copied = true;
+        } catch (clipboardErr) {
+          console.warn('Clipboard access denied:', clipboardErr);
+        }
+      }
+      if (copied) {
         setSuccessMessage('Portal link copied to clipboard');
         setTimeout(() => setSuccessMessage(null), 2500);
       } else {
-        window.prompt('Portal link', formatted); // eslint-disable-line no-alert
+        // Fallback: show prompt with link
+        window.prompt('Copy this portal link:', formatted); // eslint-disable-line no-alert
       }
     } catch (err) {
       console.error('Failed to generate portal link:', err);
