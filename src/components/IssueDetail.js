@@ -913,6 +913,14 @@ const IssueDetail = () => {
 
       let publicPortalPayload = null;
       const isExternalStakeholder = stakeholder?.category === 'external' || stakeholder?.role_category === 'external';
+      console.log('[IssueDetail] Stakeholder external check:', {
+        contact_name: stakeholder?.contact_name,
+        category: stakeholder?.category,
+        role_category: stakeholder?.role_category,
+        is_internal: stakeholder?.is_internal,
+        isExternalStakeholder,
+        createdTagId: createdTag?.id
+      });
       if (isExternalStakeholder && createdTag?.id) {
         try {
           const linkDetails = await issuePublicAccessService.ensureLink({
