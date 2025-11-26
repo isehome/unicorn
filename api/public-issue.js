@@ -79,7 +79,7 @@ async function fetchStakeholder(tagId) {
 async function fetchIssueContext(issueId) {
   const { data, error } = await supabase
     .from('issues')
-    .select('id, project_id, title, description, status, priority, due_date, actual_date, updated_at, created_at')
+    .select('id, project_id, title, description, status, priority, due_date, updated_at, created_at')
     .eq('id', issueId)
     .maybeSingle();
   if (error) throw error;
@@ -153,7 +153,7 @@ async function buildPortalPayload(link, sessionValid) {
       dueDate: issue.due_date,
       updatedAt: issue.updated_at,
       createdAt: issue.created_at,
-      ...(sessionValid ? { description: issue.description, actualDate: issue.actual_date } : {})
+      ...(sessionValid ? { description: issue.description } : {})
     },
     project: project ? {
       id: project.id,
