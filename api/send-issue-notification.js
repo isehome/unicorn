@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { to, subject, html, text } = req.body || {};
+    const { to, cc, subject, html, text, sendAsUser } = req.body || {};
     if (!Array.isArray(to) || to.length === 0) {
       res.status(400).json({ error: 'No recipients provided' });
       return;
@@ -38,11 +38,12 @@ module.exports = async (req, res) => {
     await sendGraphEmail(
       {
         to: to.filter(Boolean),
+        cc: Array.isArray(cc) ? cc.filter(Boolean) : [],
         subject,
         html,
         text,
       },
-      { delegatedToken }
+      { delegatedToken, sendAsUser: Boolean(sendAsUser) }
     );
 
     res.status(200).json({ success: true });

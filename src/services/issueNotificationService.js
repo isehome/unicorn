@@ -1,6 +1,21 @@
 import { companySettingsService } from './companySettingsService';
 
 const NOTIFICATION_ENDPOINT = '/api/send-issue-notification';
+const SYSTEM_EMAIL = 'unicorn@isehome.com';
+
+// Whitelist notice to include in first-contact emails
+const WHITELIST_NOTICE_HTML = `
+  <p style="margin-top:20px;padding:12px;background:#f0f9ff;border-left:4px solid #0ea5e9;font-size:13px;color:#0369a1;">
+    <strong>Important:</strong> Future updates will come from <strong>${SYSTEM_EMAIL}</strong>.
+    Please add this address to your contacts or whitelist to ensure you receive all notifications.
+  </p>
+`;
+
+const WHITELIST_NOTICE_TEXT = `
+---
+Important: Future updates will come from ${SYSTEM_EMAIL}.
+Please add this address to your contacts or whitelist to ensure you receive all notifications.
+`;
 
 const escapeHtml = (text = '') =>
   `${text}`.replace(/[&<>"']/g, (char) => {
@@ -62,7 +77,7 @@ const generateTextHeader = (companySettings, projectName) => {
   return parts.join('\n') + '\n' + '─'.repeat(40) + '\n\n';
 };
 
-const postNotification = async ({ to, subject, html, text }, options = {}) => {
+const postNotification = async ({ to, cc, subject, html, text, sendAsUser }, options = {}) => {
   if (!Array.isArray(to) || to.length === 0) return;
   const headers = {
     'Content-Type': 'application/json'
@@ -74,7 +89,9 @@ const postNotification = async ({ to, subject, html, text }, options = {}) => {
 
   console.log('[IssueNotificationService] Sending notification:', {
     to,
+    cc,
     subject,
+    sendAsUser,
     hasAuthToken: !!options.authToken,
     htmlLength: html?.length,
     textLength: text?.length
@@ -84,7 +101,7 @@ const postNotification = async ({ to, subject, html, text }, options = {}) => {
     const response = await fetch(NOTIFICATION_ENDPOINT, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ to, subject, html, text })
+      body: JSON.stringify({ to, cc, subject, html, text, sendAsUser })
     });
 
     if (!response.ok) {
@@ -159,7 +176,8 @@ export const notifyStakeholderAdded = async ({ issue, project, stakeholder, acto
     portalUrl: portalUrl?.substring(0, 50),
     hasOtp: !!portalOtp,
     hasAuthToken: !!options?.authToken,
-    hasCompanySettings: !!settings
+    hasCompanySettings: !!settings,
+    sendAsUser: true
   });
   const primaryUrl = isExternalStakeholder && portalUrl ? portalUrl : (issueUrl || '#');
   const safeUrl = escapeHtml(primaryUrl);
@@ -169,6 +187,7 @@ export const notifyStakeholderAdded = async ({ issue, project, stakeholder, acto
   const emailHeader = generateEmailHeader(settings, rawProjectName);
   const textHeader = generateTextHeader(settings, rawProjectName);
 
+  // First-contact email: send from user's email, CC system email, include whitelist notice
   const html = `
     ${emailHeader}
     <p>Hi ${safeRecipient},</p>
@@ -176,6 +195,7 @@ export const notifyStakeholderAdded = async ({ issue, project, stakeholder, acto
     <p><a href="${safeUrl}">${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'View the issue'}</a> to review the latest updates.</p>
     ${(isExternalStakeholder && safePortalOtp) ? `<p>Your one-time verification code: <strong>${safePortalOtp}</strong></p>` : ''}
     ${(!isExternalStakeholder && safePortalUrl) ? `<p>External portal link: <a href="${safePortalUrl}">${safePortalUrl}</a>${safePortalOtp ? `<br/>One-time code: <strong>${safePortalOtp}</strong>` : ''}</p>` : ''}
+    ${WHITELIST_NOTICE_HTML}
   `;
 
   const textIntro = `${textHeader}Hi ${recipient},
@@ -185,14 +205,17 @@ ${actorName} added you as a stakeholder on issue "${issueTitle}"${projectName}.
 `;
   const textBody = `${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'Open the issue'}: ${portalUrl && isExternalStakeholder ? portalUrl : primaryUrl}`;
   const textOtp = (isExternalStakeholder && portalOtp) ? `\nOne-time verification code: ${portalOtp}` : (portalUrl && portalOtp ? `\nExternal portal: ${portalUrl} (code: ${portalOtp})` : '');
-  const text = `${textIntro}${textBody}${textOtp}`;
+  const text = `${textIntro}${textBody}${textOtp}${WHITELIST_NOTICE_TEXT}`;
 
+  // Send from user's email (sendAsUser: true) with system email CC'd
   await postNotification(
     {
       to: [stakeholder.email],
+      cc: [SYSTEM_EMAIL],
       subject: `You were added to "${issueTitle}"`,
       html,
-      text
+      text,
+      sendAsUser: true
     },
     { authToken: options?.authToken }
   );
@@ -369,3 +392,6 @@ Please use the secure portal link from your original invitation email to view th
 export const sendNotificationEmail = async (message, options = {}) => {
   await postNotification(message, options);
 };
+
+// Export constants for use by other services
+export { SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT };

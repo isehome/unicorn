@@ -10,7 +10,7 @@ import { sharePointStorageService } from '../../services/sharePointStorageServic
 import { trackingService } from '../../services/trackingService';
 import { milestoneCacheService } from '../../services/milestoneCacheService';
 import { poPublicAccessService } from '../../services/poPublicAccessService';
-import { sendNotificationEmail } from '../../services/issueNotificationService';
+import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT } from '../../services/issueNotificationService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
 import DateField from '../ui/DateField';
@@ -248,19 +248,25 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       });
       const shareUrl = `${window.location.origin}/public/po/${portalLink.token}`;
       const supplierName = po.supplier.name || 'there';
+
+      // Send from user's email with system email CC'd, include whitelist notice
       const html = `
         <p>Hi ${supplierName},</p>
+        <p>You have been added to Unicorn, our project management system.</p>
         <p>Please add shipment tracking information for PO <strong>${po.po_number}</strong>.</p>
         <p><a href="${shareUrl}">Open the vendor tracking portal</a> to submit tracking numbers for this order.</p>
+        ${WHITELIST_NOTICE_HTML}
       `;
-      const text = `Hi ${supplierName},\n\nPlease add shipment tracking information for PO ${po.po_number}.\n${shareUrl}`;
+      const text = `Hi ${supplierName},\n\nYou have been added to Unicorn, our project management system.\n\nPlease add shipment tracking information for PO ${po.po_number}.\n\n${shareUrl}${WHITELIST_NOTICE_TEXT}`;
 
       await sendNotificationEmail(
         {
           to: [po.supplier.email],
+          cc: [SYSTEM_EMAIL],
           subject: `Tracking request for PO ${po.po_number}`,
           html,
-          text
+          text,
+          sendAsUser: true
         },
         { authToken: graphToken }
       );

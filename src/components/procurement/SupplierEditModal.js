@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supplierService } from '../../services/supplierService';
+import { useAuth } from '../../contexts/AuthContext';
+import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT } from '../../services/issueNotificationService';
 
 // Generate short code from vendor name
 const generateShortCode = (name) => {
@@ -29,11 +31,13 @@ const generateShortCode = (name) => {
 };
 
 export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClose, onSave }) => {
+  const { acquireToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [nameError, setNameError] = useState(null);
   const [allSuppliers, setAllSuppliers] = useState([]);
   const isCreateMode = !supplierId; // No ID = creating new supplier
+  const originalEmail = initialSupplier?.email || ''; // Track original email to detect changes
 
   const [formData, setFormData] = useState({
     name: '',
@@ -139,6 +143,40 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
     });
   };
 
+  // Send welcome email to new vendor
+  const sendVendorWelcomeEmail = async (supplierName, supplierEmail) => {
+    if (!supplierEmail) return;
+
+    try {
+      const graphToken = await acquireToken();
+      const contactName = formData.contact_name || supplierName || 'there';
+
+      const html = `
+        <p>Hi ${contactName},</p>
+        <p>You have been added to <strong>Unicorn</strong>, our project management system.</p>
+        <p>You may receive tracking requests and order updates from this system. When you receive a tracking request, simply click the link to submit your tracking information.</p>
+        ${WHITELIST_NOTICE_HTML}
+      `;
+      const text = `Hi ${contactName},\n\nYou have been added to Unicorn, our project management system.\n\nYou may receive tracking requests and order updates from this system. When you receive a tracking request, simply click the link to submit your tracking information.${WHITELIST_NOTICE_TEXT}`;
+
+      await sendNotificationEmail(
+        {
+          to: [supplierEmail],
+          cc: [SYSTEM_EMAIL],
+          subject: `Welcome to Unicorn - ${supplierName}`,
+          html,
+          text,
+          sendAsUser: true
+        },
+        { authToken: graphToken }
+      );
+      console.log('[SupplierEditModal] Welcome email sent to vendor:', supplierEmail);
+    } catch (err) {
+      // Don't fail the supplier save if email fails
+      console.warn('[SupplierEditModal] Failed to send welcome email:', err);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -158,6 +196,12 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
         throw new Error('A supplier with this name already exists');
       }
 
+      // Check if email is new or changed
+      const newEmail = formData.email?.trim() || '';
+      const emailIsNew = isCreateMode && newEmail;
+      const emailChanged = !isCreateMode && newEmail && newEmail.toLowerCase() !== originalEmail.toLowerCase();
+      const shouldSendWelcomeEmail = emailIsNew || emailChanged;
+
       let result;
       if (isCreateMode) {
         // Create new supplier
@@ -165,6 +209,11 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       } else {
         // Update existing supplier
         result = await supplierService.updateSupplier(supplierId, formData);
+      }
+
+      // Send welcome email if email is new or changed
+      if (shouldSendWelcomeEmail) {
+        await sendVendorWelcomeEmail(formData.name, newEmail);
       }
 
       if (onSave) onSave(result);

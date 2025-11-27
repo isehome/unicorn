@@ -78,16 +78,22 @@ async function resolveGroupId(token) {
   return cachedGroupId;
 }
 
-async function sendGraphEmail({ to, subject, html, text }, options = {}) {
+async function sendGraphEmail({ to, cc, subject, html, text }, options = {}) {
   requireGraphConfig();
   if (!Array.isArray(to) || to.length === 0) {
     throw new Error('No recipients provided');
   }
 
   const delegatedToken = options.delegatedToken || null;
+  const sendAsUser = options.sendAsUser || false; // If true, send from user's mailbox using delegated token
   const useDelegated = Boolean(delegatedToken);
   const token = delegatedToken || await getAppToken();
-  const fromAddress = useDelegated ? (config.senderGroupEmail || config.senderEmail) : config.senderEmail;
+
+  // Determine from address: if sendAsUser is true, we send from the user's own mailbox
+  // Otherwise use the configured system sender
+  const fromAddress = useDelegated && !sendAsUser
+    ? (config.senderGroupEmail || config.senderEmail)
+    : config.senderEmail;
   const contentType = html ? 'HTML' : 'Text';
   const contentValue = html || (text ? text.replace(/\n/g, '<br/>') : '');
 
@@ -102,10 +108,17 @@ async function sendGraphEmail({ to, subject, html, text }, options = {}) {
         emailAddress: { address: email }
       }))
     },
-    saveToSentItems: false
+    saveToSentItems: sendAsUser // Save to sent items if sending as user
   };
 
-  if (useDelegated && fromAddress) {
+  // Add CC recipients if provided
+  if (Array.isArray(cc) && cc.length > 0) {
+    payload.message.ccRecipients = cc.filter(Boolean).map(email => ({
+      emailAddress: { address: email }
+    }));
+  }
+
+  if (useDelegated && fromAddress && !sendAsUser) {
     payload.message.from = { emailAddress: { address: fromAddress } };
   }
 
