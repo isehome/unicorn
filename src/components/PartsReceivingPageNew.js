@@ -493,13 +493,38 @@ const PartsReceivingPageNew = () => {
                       onClick={() => togglePO(po.id)}
                       className="w-full flex items-center justify-between p-4 text-left"
                     >
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {po.po_number}
                         </h3>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                           {po.supplier?.name}
                         </p>
+                        {/* Tracking Info */}
+                        {po.tracking && po.tracking.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                            {po.tracking.map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText(t.tracking_number);
+                                  window.open(`https://www.google.com/search?q=${encodeURIComponent(t.tracking_number)}`, '_blank');
+                                }}
+                                className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                                title="Click to copy and search tracking number"
+                              >
+                                <Truck className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                <span className="font-mono text-xs text-blue-900 dark:text-blue-100">
+                                  {t.tracking_number}
+                                </span>
+                                <span className="text-xs text-blue-700 dark:text-blue-300">
+                                  ({t.carrier})
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <CheckCircle className="w-5 h-5 text-green-600" />
                     </button>
