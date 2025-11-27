@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -36,6 +37,7 @@ import {
 const PMOrderEquipmentPageEnhanced = () => {
   const { projectId } = useParams();
   const { mode } = useTheme();
+  const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // State
@@ -563,7 +565,7 @@ const PMOrderEquipmentPageEnhanced = () => {
             shipping_cost: 0,
             total_amount: subtotal,
             shipping_address_id: projectDefaultShippingId, // Auto-populate default shipping address
-            created_by: 'user',
+            created_by: user?.id,
             internal_notes: `PO created from Create POs view`
           };
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import unifiApi from '../services/unifiApi';
 import { Network, CheckCircle, Loader } from 'lucide-react';
@@ -7,6 +8,7 @@ import Button from './ui/Button';
 
 const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) => {
   const { mode } = useTheme();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [clients, setClients] = useState([]);
   const [selectedClientMac, setSelectedClientMac] = useState('');
@@ -119,10 +121,7 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
 
       if (updateError) throw updateError;
 
-      // Get current user for commission stage completion
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Mark commission stage complete
+      // Mark commission stage complete using logged-in user from AuthContext
       const { error: stageError } = await supabase
         .from('wire_drop_stages')
         .upsert({
@@ -131,7 +130,7 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
           completed: true,
           notes: `Device verified online: ${selectedClient.hostname || selectedClient.name || selectedClient.mac}`,
           completed_at: new Date().toISOString(),
-          completed_by: user?.email || 'system'
+          completed_by: user?.email
         }, {
           onConflict: 'wire_drop_id,stage_type'
         });

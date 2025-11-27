@@ -199,7 +199,7 @@ const POGenerationModal = ({
           milestoneStage
         },
         equipmentIds,
-        'user' // TODO: Replace with actual user identifier from auth context
+        user?.id
       );
 
       // Update the PO with user-edited values (PO remains as 'draft' until officially submitted)

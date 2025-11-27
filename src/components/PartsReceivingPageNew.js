@@ -19,6 +19,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { purchaseOrderService } from '../services/purchaseOrderService';
 import { milestoneService } from '../services/milestoneService';
@@ -40,6 +41,7 @@ const PartsReceivingPageNew = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { mode } = useTheme();
+  const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   const [loading, setLoading] = useState(true);
@@ -133,10 +135,14 @@ const PartsReceivingPageNew = () => {
       setSaving(true);
       setError(null);
 
-      // Update purchase_order_items.quantity_received
+      // Update purchase_order_items.quantity_received and track who received it
       const { error: updateError } = await supabase
         .from('purchase_order_items')
-        .update({ quantity_received: newQuantity })
+        .update({
+          quantity_received: newQuantity,
+          received_by: user?.id,
+          received_at: new Date().toISOString()
+        })
         .eq('id', lineItemId);
 
       if (updateError) throw updateError;
@@ -157,12 +163,13 @@ const PartsReceivingPageNew = () => {
 
       console.log('[PartsReceiving] Calculated total received for equipment:', { projectEquipmentId, totalReceived });
 
-      // Update project_equipment.received_quantity
+      // Update project_equipment.received_quantity and track who received it
       const { error: equipError } = await supabase
         .from('project_equipment')
         .update({
           received_quantity: totalReceived,
-          received_date: new Date().toISOString()
+          received_date: new Date().toISOString(),
+          received_by: user?.id
         })
         .eq('id', projectEquipmentId);
 

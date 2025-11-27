@@ -289,7 +289,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       setError(null);
 
       // Update PO status to 'submitted' and capture who submitted it
-      await purchaseOrderService.submitPurchaseOrder(poId);
+      await purchaseOrderService.submitPurchaseOrder(poId, user?.id);
 
       // Note: submitPurchaseOrder handles:
       // 1. Status update to 'submitted'
