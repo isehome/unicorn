@@ -139,6 +139,7 @@ async function sendGraphEmail({ to, cc, subject, html, text }, options = {}) {
     return { status: response.status };
   };
 
+  // For app-only auth (no delegated token), try group send first if configured
   if (!useDelegated && (config.senderGroupId || config.senderGroupEmail) && options.forceUserSend !== true) {
     try {
       const groupId = await resolveGroupId(token);
@@ -148,8 +149,41 @@ async function sendGraphEmail({ to, cc, subject, html, text }, options = {}) {
     }
   }
 
+  // For delegated auth, use /me/sendMail
+  // For app-only auth, use /users/{email}/sendMail
   const targetPath = useDelegated ? '/me/sendMail' : `/users/${encodeURIComponent(config.senderEmail)}/sendMail`;
-  return await trySend(targetPath);
+
+  try {
+    return await trySend(targetPath);
+  } catch (userSendError) {
+    // If user send fails with ErrorInvalidUser, the senderEmail might be a group/shared mailbox
+    // Try sending via group endpoint as a fallback
+    if (!useDelegated && userSendError.message?.includes('ErrorInvalidUser') && config.senderEmail) {
+      console.warn('[GraphMail] User mailbox send failed, trying as group mailbox:', config.senderEmail);
+      try {
+        // Try to resolve senderEmail as a group
+        const sanitized = sanitizeEmailForFilter(config.senderEmail);
+        const filter = encodeURIComponent(
+          `mail eq '${sanitized}' or proxyAddresses/any(x:x eq 'smtp:${sanitized.toLowerCase()}') or proxyAddresses/any(x:x eq 'SMTP:${sanitized.toUpperCase()}')`
+        );
+        const resp = await fetch(`${GRAPH_BASE}/groups?$filter=${filter}&$select=id,mail,displayName`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const group = data.value?.[0];
+          if (group?.id) {
+            console.log('[GraphMail] Found group for senderEmail, sending via group:', group.displayName);
+            return await trySend(`/groups/${encodeURIComponent(group.id)}/sendMail`);
+          }
+        }
+      } catch (groupFallbackError) {
+        console.warn('[GraphMail] Group fallback also failed:', groupFallbackError.message);
+      }
+    }
+    // Re-throw original error if fallback didn't work
+    throw userSendError;
+  }
 }
 
 module.exports = {

@@ -115,6 +115,15 @@ async function fetchUploads(linkId) {
   return data || [];
 }
 
+async function fetchPhotos(issueId) {
+  const { data } = await supabase
+    .from('issue_photos')
+    .select('id, url, file_name, content_type, size_bytes, uploaded_by, created_at')
+    .eq('issue_id', issueId)
+    .order('created_at', { ascending: true });
+  return data || [];
+}
+
 async function buildPortalPayload(link, sessionValid) {
   if (!link) {
     return { status: 'invalid', reason: 'link_not_found' };
@@ -187,9 +196,10 @@ async function buildPortalPayload(link, sessionValid) {
   };
 
   if (sessionValid) {
-    const [comments, uploads] = await Promise.all([
+    const [comments, uploads, photos] = await Promise.all([
       fetchComments(issue.id),
-      fetchUploads(link.id)
+      fetchUploads(link.id),
+      fetchPhotos(issue.id)
     ]);
 
     base.comments = comments.map((comment) => ({
@@ -211,6 +221,16 @@ async function buildPortalPayload(link, sessionValid) {
       approvedAt: upload.approved_at,
       rejectedAt: upload.rejected_at,
       rejectionReason: upload.rejection_reason
+    }));
+
+    base.photos = photos.map((photo) => ({
+      id: photo.id,
+      url: photo.url,
+      fileName: photo.file_name,
+      contentType: photo.content_type,
+      sizeBytes: photo.size_bytes,
+      uploadedBy: photo.uploaded_by,
+      createdAt: photo.created_at
     }));
   }
 
@@ -408,7 +428,8 @@ async function handleComment(body) {
       comment_text: trimmed,
       author_name: link.contact_name || 'External stakeholder',
       author_email: link.contact_email,
-      is_internal: false
+      is_internal: false,
+      notification_pending: true // Will be processed when internal user views the issue
     }])
     .select()
     .maybeSingle();
@@ -417,7 +438,9 @@ async function handleComment(body) {
     return { status: 500, data: { error: error.message } };
   }
 
-  await notifyComment(link, issue, project, trimmed);
+  // Note: Notification will be sent by the first internal user who views this issue
+  // This allows using their delegated auth token for email sending
+
   const payload = await buildPortalPayload(link, true);
   return { status: 200, data: payload };
 }
@@ -490,7 +513,14 @@ async function handleUpload(body) {
 
   const issue = await fetchIssueContext(link.issue_id);
   const project = await fetchProject(link.project_id);
-  await notifyUpload(link, issue, project, data);
+
+  // Send notification but don't block upload submission if it fails
+  try {
+    await notifyUpload(link, issue, project, data);
+  } catch (notifyError) {
+    console.warn('[PublicIssue] Failed to send upload notification:', notifyError.message);
+  }
+
   const payload = await buildPortalPayload(link, true);
   return { status: 200, data: payload };
 }

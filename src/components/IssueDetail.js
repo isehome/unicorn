@@ -16,7 +16,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
 import { issuePublicAccessService } from '../services/issuePublicAccessService';
-import { notifyIssueComment, notifyStakeholderAdded } from '../services/issueNotificationService';
+import { notifyIssueComment, notifyStakeholderAdded, processPendingNotifications } from '../services/issueNotificationService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { enqueueUpload } from '../lib/offline';
@@ -199,6 +199,18 @@ const IssueDetail = () => {
 
         // Load external uploads for existing issues
         await loadExternalUploads(issueId);
+
+        // Process any pending notifications from external comments
+        // This sends notifications using the current user's auth token
+        try {
+          const authToken = await acquireToken();
+          if (authToken) {
+            processPendingNotifications(issueId, { authToken });
+          }
+        } catch (notifyErr) {
+          // Don't block issue loading if notification processing fails
+          console.warn('[IssueDetail] Failed to process pending notifications:', notifyErr);
+        }
       } else {
         const [projectStakeholders, projectDetails] = await Promise.all([
           projectStakeholdersService.getForProject(projectId),

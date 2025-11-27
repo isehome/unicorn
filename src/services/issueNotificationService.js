@@ -444,5 +444,41 @@ export const sendNotificationEmail = async (message, options = {}) => {
   await postNotification(message, options);
 };
 
+// Process pending notifications for an issue (called when internal user views the issue)
+export const processPendingNotifications = async (issueId, options = {}) => {
+  if (!issueId) return { processed: 0 };
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (options.authToken) {
+    headers.Authorization = `Bearer ${options.authToken}`;
+  }
+
+  try {
+    const response = await fetch('/api/process-pending-issue-notifications', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ issueId })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.warn('[IssueNotificationService] Failed to process pending notifications:', error);
+      return { processed: 0, error: error.error };
+    }
+
+    const result = await response.json();
+    if (result.processed > 0) {
+      console.log('[IssueNotificationService] Processed pending notifications:', result);
+    }
+    return result;
+  } catch (error) {
+    console.warn('[IssueNotificationService] Error processing pending notifications:', error);
+    return { processed: 0, error: error.message };
+  }
+};
+
 // Export constants and functions for use by other services
 export { SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml };

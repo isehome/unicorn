@@ -145,6 +145,7 @@ const PublicIssuePortal = () => {
   const project = portalData?.project || null;
   const comments = portalData?.comments || [];
   const uploads = portalData?.uploads || [];
+  const photos = portalData?.photos || [];
 
   const renderVerification = () => (
     <form onSubmit={handleVerify} className="max-w-md mx-auto bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
@@ -256,6 +257,33 @@ const PublicIssuePortal = () => {
                 </div>
               </div>
             </section>
+
+            {photos.length > 0 && (
+              <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Photos</h3>
+                  <span className="text-xs text-gray-500">{photos.length} {photos.length === 1 ? 'photo' : 'photos'}</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                  {photos.map((photo) => (
+                    <a
+                      key={photo.id}
+                      href={photo.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-violet-400 transition-colors"
+                    >
+                      <img
+                        src={photo.url}
+                        alt={photo.fileName || 'Issue photo'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="rounded-2xl border p-4 space-y-3" style={sectionStyles.card}>
               <div className="flex items-center justify-between">
