@@ -376,7 +376,11 @@ const WireDropsList = () => {
         const dropNumber = dropNumbers[drop.id];
 
         // Check if generic
-        const isGeneric = !drop.drop_name || drop.drop_name === 'IP' || drop.drop_name === drop.drop_type || drop.drop_name.trim() === '';
+        // Check if generic
+        const isGeneric = !drop.drop_name ||
+          ['IP', 'AP', 'WAP', 'Data'].includes(drop.drop_name) ||
+          drop.drop_name === drop.drop_type ||
+          drop.drop_name.trim() === '';
 
         let intendedName;
         if (isGeneric) {

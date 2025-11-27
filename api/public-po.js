@@ -244,7 +244,7 @@ async function handleExchange(body) {
 }
 
 async function handleSubmit(body) {
-  const { token, contactName, contactEmail, entries } = body || {};
+  const { token, entries } = body || {};
   const link = await fetchPoLink(token);
   if (!link) {
     return { status: 404, data: { status: 'invalid' } };
@@ -254,9 +254,9 @@ async function handleSubmit(body) {
     return { status: 400, data: { error: 'Tracking entries required' } };
   }
 
-  if (!contactName || !contactEmail) {
-    return { status: 400, data: { error: 'Contact name and email required' } };
-  }
+  // Use supplier info from the link (already stored when link was created)
+  const contactName = link.contact_name || 'Vendor';
+  const contactEmail = link.contact_email || null;
 
   const po = await fetchPurchaseOrder(link.purchase_order_id);
   const cleaned = entries
