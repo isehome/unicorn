@@ -35,23 +35,24 @@ const escapeHtml = (text = '') =>
     }
   });
 
-// Generate branded email header with company logo, name, and project name
-const generateEmailHeader = (companySettings, projectName) => {
+// Generate branded email footer with company logo (2x size), name, and project name
+const generateEmailFooter = (companySettings, projectName) => {
   const companyName = companySettings?.company_name || '';
   const logoUrl = companySettings?.company_logo_url || '';
   const safeCompanyName = escapeHtml(companyName);
   const safeProjectName = escapeHtml(projectName || '');
 
+  // Logo at 2x size (max-height: 100px instead of 50px)
   const logoHtml = logoUrl
-    ? `<img src="${escapeHtml(logoUrl)}" alt="${safeCompanyName}" style="max-height:50px;max-width:200px;margin-bottom:8px;" />`
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${safeCompanyName}" style="max-height:100px;max-width:400px;margin-bottom:12px;" />`
     : '';
 
   const companyNameHtml = safeCompanyName
-    ? `<div style="font-size:18px;font-weight:bold;color:#333;">${safeCompanyName}</div>`
+    ? `<div style="font-size:18px;font-weight:bold;color:#333333;">${safeCompanyName}</div>`
     : '';
 
   const projectNameHtml = safeProjectName
-    ? `<div style="font-size:14px;color:#666;margin-top:4px;">Project: ${safeProjectName}</div>`
+    ? `<div style="font-size:14px;color:#666666;margin-top:4px;">Project: ${safeProjectName}</div>`
     : '';
 
   if (!logoHtml && !companyNameHtml && !projectNameHtml) {
@@ -59,7 +60,7 @@ const generateEmailHeader = (companySettings, projectName) => {
   }
 
   return `
-    <div style="border-bottom:2px solid #e5e7eb;padding-bottom:16px;margin-bottom:20px;text-align:left;">
+    <div style="border-top:2px solid #e5e7eb;padding-top:20px;margin-top:24px;text-align:left;">
       ${logoHtml}
       ${companyNameHtml}
       ${projectNameHtml}
@@ -67,15 +68,63 @@ const generateEmailHeader = (companySettings, projectName) => {
   `;
 };
 
-// Generate plain text header for company and project
-const generateTextHeader = (companySettings, projectName) => {
+// Generate logo-only footer for vendor emails (no project name)
+const generateVendorEmailFooter = (companySettings) => {
+  const companyName = companySettings?.company_name || '';
+  const logoUrl = companySettings?.company_logo_url || '';
+  const safeCompanyName = escapeHtml(companyName);
+
+  // Logo at 2x size
+  const logoHtml = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${safeCompanyName}" style="max-height:100px;max-width:400px;margin-bottom:12px;" />`
+    : '';
+
+  const companyNameHtml = safeCompanyName
+    ? `<div style="font-size:18px;font-weight:bold;color:#333333;">${safeCompanyName}</div>`
+    : '';
+
+  if (!logoHtml && !companyNameHtml) {
+    return '';
+  }
+
+  return `
+    <div style="border-top:2px solid #e5e7eb;padding-top:20px;margin-top:24px;text-align:left;">
+      ${logoHtml}
+      ${companyNameHtml}
+    </div>
+  `;
+};
+
+// Generate plain text footer for company and project
+const generateTextFooter = (companySettings, projectName) => {
   const companyName = companySettings?.company_name || '';
   const parts = [];
   if (companyName) parts.push(companyName);
   if (projectName) parts.push(`Project: ${projectName}`);
   if (parts.length === 0) return '';
-  return parts.join('\n') + '\n' + '─'.repeat(40) + '\n\n';
+  return '\n' + '─'.repeat(40) + '\n' + parts.join('\n');
 };
+
+// Email wrapper to ensure consistent light-mode styling
+const wrapEmailHtml = (content) => `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <style>
+    :root { color-scheme: light; }
+    body { background-color: #ffffff !important; color: #333333 !important; }
+  </style>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 15px; line-height: 1.6; color: #333333; background-color: #ffffff; margin: 0; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+    ${content}
+  </div>
+</body>
+</html>
+`;
 
 const postNotification = async ({ to, cc, subject, html, text, sendAsUser }, options = {}) => {
   if (!Array.isArray(to) || to.length === 0) return;
@@ -184,28 +233,30 @@ export const notifyStakeholderAdded = async ({ issue, project, stakeholder, acto
   const safePortalUrl = portalUrl ? escapeHtml(portalUrl) : null;
   const safePortalOtp = portalOtp ? escapeHtml(portalOtp) : null;
 
-  const emailHeader = generateEmailHeader(settings, rawProjectName);
-  const textHeader = generateTextHeader(settings, rawProjectName);
+  const emailFooter = generateEmailFooter(settings, rawProjectName);
+  const textFooter = generateTextFooter(settings, rawProjectName);
 
   // First-contact email: send from user's email, CC system email, include whitelist notice
-  const html = `
-    ${emailHeader}
+  // Content first, then whitelist notice, then branding footer at the bottom
+  const htmlContent = `
     <p>Hi ${safeRecipient},</p>
     <p>${safeActorName} added you as a stakeholder on issue <strong>${safeIssueTitle}</strong>${safeProjectName}.</p>
-    <p><a href="${safeUrl}">${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'View the issue'}</a> to review the latest updates.</p>
+    <p><a href="${safeUrl}" style="color:#2563eb;text-decoration:none;">${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'View the issue'}</a> to review the latest updates.</p>
     ${(isExternalStakeholder && safePortalOtp) ? `<p>Your one-time verification code: <strong>${safePortalOtp}</strong></p>` : ''}
-    ${(!isExternalStakeholder && safePortalUrl) ? `<p>External portal link: <a href="${safePortalUrl}">${safePortalUrl}</a>${safePortalOtp ? `<br/>One-time code: <strong>${safePortalOtp}</strong>` : ''}</p>` : ''}
+    ${(!isExternalStakeholder && safePortalUrl) ? `<p>External portal link: <a href="${safePortalUrl}" style="color:#2563eb;">${safePortalUrl}</a>${safePortalOtp ? `<br/>One-time code: <strong>${safePortalOtp}</strong>` : ''}</p>` : ''}
     ${WHITELIST_NOTICE_HTML}
+    ${emailFooter}
   `;
+  const html = wrapEmailHtml(htmlContent);
 
-  const textIntro = `${textHeader}Hi ${recipient},
+  const textIntro = `Hi ${recipient},
 
 ${actorName} added you as a stakeholder on issue "${issueTitle}"${projectName}.
 
 `;
   const textBody = `${isExternalStakeholder && portalUrl ? 'Open the secure portal' : 'Open the issue'}: ${portalUrl && isExternalStakeholder ? portalUrl : primaryUrl}`;
   const textOtp = (isExternalStakeholder && portalOtp) ? `\nOne-time verification code: ${portalOtp}` : (portalUrl && portalOtp ? `\nExternal portal: ${portalUrl} (code: ${portalOtp})` : '');
-  const text = `${textIntro}${textBody}${textOtp}${WHITELIST_NOTICE_TEXT}`;
+  const text = `${textIntro}${textBody}${textOtp}${WHITELIST_NOTICE_TEXT}${textFooter}`;
 
   // Send from user's email (sendAsUser: true) with system email CC'd
   await postNotification(
@@ -273,9 +324,9 @@ export const notifyIssueComment = async ({ issue, project, comment, stakeholders
   const safeComment = escapeHtml(comment?.text || '');
   const safeUrl = issueUrl || '#';
 
-  // Generate branded header
-  const emailHeader = generateEmailHeader(settings, rawProjectName);
-  const textHeader = generateTextHeader(settings, rawProjectName);
+  // Generate branded footer (moved from header)
+  const emailFooter = generateEmailFooter(settings, rawProjectName);
+  const textFooter = generateTextFooter(settings, rawProjectName);
 
   // Check if this is a system-generated comment (like status change)
   const isSystemComment = comment?.text?.startsWith('Status changed to ') || comment?.is_internal;
@@ -298,19 +349,19 @@ export const notifyIssueComment = async ({ issue, project, comment, stakeholders
       .filter(Boolean);
 
     if (internalRecipients.length > 0) {
-      const html = `
-        ${emailHeader}
+      const htmlContent = `
         <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
-        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
-        <p><a href="${safeUrl}">Open the issue</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
+        <blockquote style="border-left:4px solid #cccccc;padding-left:12px;margin:12px 0;color:#555555;">${safeComment}</blockquote>
+        <p><a href="${safeUrl}" style="color:#2563eb;text-decoration:none;">Open the issue</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
+        ${emailFooter}
       `;
+      const html = wrapEmailHtml(htmlContent);
 
-      const text = `${textHeader}${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
+      const text = `${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
 
 "${comment?.text || ''}"
 
-Open the issue: ${safeUrl}
-`;
+Open the issue: ${safeUrl}${textFooter}`;
 
       await postNotification(
         { to: internalRecipients, subject, html, text },
@@ -335,24 +386,24 @@ Open the issue: ${safeUrl}
       const recipientName = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'there';
       const safeRecipientName = escapeHtml(recipientName);
 
-      const html = `
-        ${emailHeader}
+      const htmlContent = `
         <p>Hi ${safeRecipientName},</p>
         <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
-        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
-        <p><a href="${safePortalUrl}">Open the secure portal</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
+        <blockquote style="border-left:4px solid #cccccc;padding-left:12px;margin:12px 0;color:#555555;">${safeComment}</blockquote>
+        <p><a href="${safePortalUrl}" style="color:#2563eb;text-decoration:none;">Open the secure portal</a> to ${isSystemComment ? 'view details' : 'reply or view the full history'}.</p>
         ${portalOtp ? `<p>Your one-time verification code: <strong>${escapeHtml(portalOtp)}</strong></p>` : ''}
+        ${emailFooter}
       `;
+      const html = wrapEmailHtml(htmlContent);
 
-      const text = `${textHeader}Hi ${recipientName},
+      const text = `Hi ${recipientName},
 
 ${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
 
 "${comment?.text || ''}"
 
 Open the secure portal: ${portalUrl}
-${portalOtp ? `Your one-time verification code: ${portalOtp}` : ''}
-`;
+${portalOtp ? `Your one-time verification code: ${portalOtp}` : ''}${textFooter}`;
 
       await postNotification(
         { to: [email], subject, html, text },
@@ -364,22 +415,22 @@ ${portalOtp ? `Your one-time verification code: ${portalOtp}` : ''}
       const recipientName = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'there';
       const safeRecipientName = escapeHtml(recipientName);
 
-      const html = `
-        ${emailHeader}
+      const htmlContent = `
         <p>Hi ${safeRecipientName},</p>
         <p>${safeActorName} ${isSystemComment ? 'updated' : 'left a new comment on'} <strong>${safeIssueTitle}</strong>${safeProjectName}:</p>
-        <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${safeComment}</blockquote>
+        <blockquote style="border-left:4px solid #cccccc;padding-left:12px;margin:12px 0;color:#555555;">${safeComment}</blockquote>
         <p>Please use the secure portal link from your original invitation email to view this issue and respond.</p>
+        ${emailFooter}
       `;
+      const html = wrapEmailHtml(htmlContent);
 
-      const text = `${textHeader}Hi ${recipientName},
+      const text = `Hi ${recipientName},
 
 ${actorName} ${isSystemComment ? 'updated' : 'left a new comment on'} "${issueTitle}"${projectName}:
 
 "${comment?.text || ''}"
 
-Please use the secure portal link from your original invitation email to view this issue and respond.
-`;
+Please use the secure portal link from your original invitation email to view this issue and respond.${textFooter}`;
 
       await postNotification(
         { to: [email], subject, html, text },
@@ -393,5 +444,5 @@ export const sendNotificationEmail = async (message, options = {}) => {
   await postNotification(message, options);
 };
 
-// Export constants for use by other services
-export { SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT };
+// Export constants and functions for use by other services
+export { SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml };

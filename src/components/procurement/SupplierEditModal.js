@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supplierService } from '../../services/supplierService';
 import { useAuth } from '../../contexts/AuthContext';
-import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT } from '../../services/issueNotificationService';
+import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml } from '../../services/issueNotificationService';
+import { companySettingsService } from '../../services/companySettingsService';
 
 // Generate short code from vendor name
 const generateShortCode = (name) => {
@@ -151,12 +152,24 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       const graphToken = await acquireToken();
       const contactName = formData.contact_name || supplierName || 'there';
 
-      const html = `
+      // Fetch company settings for footer branding
+      let companySettings = null;
+      try {
+        companySettings = await companySettingsService.getCompanySettings();
+      } catch (err) {
+        console.warn('Could not fetch company settings for email:', err);
+      }
+
+      const emailFooter = generateVendorEmailFooter(companySettings);
+
+      const htmlContent = `
         <p>Hi ${contactName},</p>
         <p>You have been added to <strong>Unicorn</strong>, our project management system.</p>
         <p>You may receive tracking requests and order updates from this system. When you receive a tracking request, simply click the link to submit your tracking information.</p>
         ${WHITELIST_NOTICE_HTML}
+        ${emailFooter}
       `;
+      const html = wrapEmailHtml(htmlContent);
       const text = `Hi ${contactName},\n\nYou have been added to Unicorn, our project management system.\n\nYou may receive tracking requests and order updates from this system. When you receive a tracking request, simply click the link to submit your tracking information.${WHITELIST_NOTICE_TEXT}`;
 
       await sendNotificationEmail(

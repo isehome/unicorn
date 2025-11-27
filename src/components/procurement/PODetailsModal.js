@@ -10,7 +10,8 @@ import { sharePointStorageService } from '../../services/sharePointStorageServic
 import { trackingService } from '../../services/trackingService';
 import { milestoneCacheService } from '../../services/milestoneCacheService';
 import { poPublicAccessService } from '../../services/poPublicAccessService';
-import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT } from '../../services/issueNotificationService';
+import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml } from '../../services/issueNotificationService';
+import { companySettingsService } from '../../services/companySettingsService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
 import DateField from '../ui/DateField';
@@ -240,6 +241,14 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       // Get auth token for sending email (same pattern as IssueDetail)
       const graphToken = await acquireToken();
 
+      // Fetch company settings for footer branding
+      let companySettings = null;
+      try {
+        companySettings = await companySettingsService.getCompanySettings();
+      } catch (err) {
+        console.warn('Could not fetch company settings for email:', err);
+      }
+
       const portalLink = await poPublicAccessService.ensureLink({
         poId,
         projectId: po.project_id,
@@ -248,15 +257,18 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       });
       const shareUrl = `${window.location.origin}/public/po/${portalLink.token}`;
       const supplierName = po.supplier.name || 'there';
+      const emailFooter = generateVendorEmailFooter(companySettings);
 
-      // Send from user's email with system email CC'd, include whitelist notice
-      const html = `
+      // Send from user's email with system email CC'd, include whitelist notice and company logo footer
+      const htmlContent = `
         <p>Hi ${supplierName},</p>
         <p>You have been added to Unicorn, our project management system.</p>
         <p>Please add shipment tracking information for PO <strong>${po.po_number}</strong>.</p>
-        <p><a href="${shareUrl}">Open the vendor tracking portal</a> to submit tracking numbers for this order.</p>
+        <p><a href="${shareUrl}" style="color:#2563eb;text-decoration:none;">Open the vendor tracking portal</a> to submit tracking numbers for this order.</p>
         ${WHITELIST_NOTICE_HTML}
+        ${emailFooter}
       `;
+      const html = wrapEmailHtml(htmlContent);
       const text = `Hi ${supplierName},\n\nYou have been added to Unicorn, our project management system.\n\nPlease add shipment tracking information for PO ${po.po_number}.\n\n${shareUrl}${WHITELIST_NOTICE_TEXT}`;
 
       await sendNotificationEmail(
