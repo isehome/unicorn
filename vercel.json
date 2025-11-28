@@ -12,5 +12,25 @@
       "memory": 1024,
       "maxDuration": 10
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/AGENT.md", "destination": "/AGENT.md" },
+    { "source": "/docs/:path*.md", "destination": "/docs/:path*.md" },
+    { "source": "/docs/:path*.json", "destination": "/docs/:path*.json" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*).md",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(.*).json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+      ]
+    }
+  ]
 }
