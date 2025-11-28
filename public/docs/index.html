@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unicorn Documentation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .prose h1 { font-size: 2em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
+        .prose h2 { font-size: 1.5em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.25em; }
+        .prose h3 { font-size: 1.25em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; }
+        .prose p { margin-bottom: 1em; }
+        .prose ul, .prose ol { margin-left: 1.5em; margin-bottom: 1em; }
+        .prose li { margin-bottom: 0.25em; }
+        .prose code { background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 0.25em; font-size: 0.9em; }
+        .prose pre { background: #1f2937; color: #f9fafb; padding: 1em; border-radius: 0.5em; overflow-x: auto; margin-bottom: 1em; }
+        .prose pre code { background: none; padding: 0; }
+        .prose table { width: 100%; border-collapse: collapse; margin-bottom: 1em; }
+        .prose th, .prose td { border: 1px solid #e5e7eb; padding: 0.5em; text-align: left; }
+        .prose th { background: #f9fafb; font-weight: bold; }
+        .prose a { color: #7c3aed; text-decoration: underline; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="max-w-6xl mx-auto p-6">
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">🦄 Unicorn Documentation</h1>
+            <p class="text-gray-600 mt-2">Project management for low-voltage installations</p>
+            <div class="mt-4 p-4 bg-violet-50 border border-violet-200 rounded-lg">
+                <p class="text-sm text-violet-800">
+                    <strong>For AI Assistants:</strong> Fetch <code>/docs/index.json</code> for file listing, 
+                    or start with <code>/docs/CLAUDE.md</code> and <code>/docs/PROJECT_OVERVIEW.md</code>
+                </p>
+            </div>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Sidebar -->
+            <nav class="lg:w-64 flex-shrink-0">
+                <div class="bg-white rounded-lg shadow-sm p-4 sticky top-6">
+                    <h2 class="font-bold text-gray-900 mb-3">📚 Documentation</h2>
+                    
+                    <div class="mb-4">
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Essential</h3>
+                        <ul class="space-y-1">
+                            <li><a href="#" onclick="loadDoc('CLAUDE.md')" class="text-violet-600 hover:underline text-sm">AI Guidelines</a></li>
+                            <li><a href="#" onclick="loadDoc('PROJECT_OVERVIEW.md')" class="text-violet-600 hover:underline text-sm">Project Overview</a></li>
+                            <li><a href="#" onclick="loadDoc('README.md')" class="text-violet-600 hover:underline text-sm">Doc Index</a></li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Features</h3>
+                        <ul class="space-y-1">
+                            <li><a href="#" onclick="loadDoc('WIRE_DROPS.md')" class="text-violet-600 hover:underline text-sm">Wire Drops</a></li>
+                            <li><a href="#" onclick="loadDoc('EQUIPMENT.md')" class="text-violet-600 hover:underline text-sm">Equipment</a></li>
+                            <li><a href="#" onclick="loadDoc('PROCUREMENT.md')" class="text-violet-600 hover:underline text-sm">Procurement</a></li>
+                            <li><a href="#" onclick="loadDoc('MILESTONES.md')" class="text-violet-600 hover:underline text-sm">Milestones</a></li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Integrations</h3>
+                        <ul class="space-y-1">
+                            <li><a href="#" onclick="loadDoc('INTEGRATIONS.md')" class="text-violet-600 hover:underline text-sm">Overview</a></li>
+                            <li><a href="#" onclick="loadDoc('AUTHENTICATION.md')" class="text-violet-600 hover:underline text-sm">Authentication</a></li>
+                            <li><a href="#" onclick="loadDoc('SHAREPOINT.md')" class="text-violet-600 hover:underline text-sm">SharePoint</a></li>
+                            <li><a href="#" onclick="loadDoc('UNIFI_INTEGRATION.md')" class="text-violet-600 hover:underline text-sm">UniFi</a></li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-4">
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Operations</h3>
+                        <ul class="space-y-1">
+                            <li><a href="#" onclick="loadDoc('DEPLOYMENT.md')" class="text-violet-600 hover:underline text-sm">Deployment</a></li>
+                            <li><a href="#" onclick="loadDoc('TROUBLESHOOTING.md')" class="text-violet-600 hover:underline text-sm">Troubleshooting</a></li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="text-xs font-semibold text-gray-500 uppercase mb-2">Reference</h3>
+                        <ul class="space-y-1">
+                            <li><a href="#" onclick="loadDoc('CODE_ANALYSIS.md')" class="text-violet-600 hover:underline text-sm">Code Analysis</a></li>
+                            <li><a href="#" onclick="loadDoc('ROADMAP.md')" class="text-violet-600 hover:underline text-sm">Roadmap</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Content -->
+            <main class="flex-1">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <div id="doc-content" class="prose max-w-none">
+                        <h1>Welcome to Unicorn Documentation</h1>
+                        <p>Select a document from the sidebar to view it, or use these quick links:</p>
+                        <ul>
+                            <li><a href="#" onclick="loadDoc('CLAUDE.md')">AI Guidelines</a> - Start here if you're an AI assistant</li>
+                            <li><a href="#" onclick="loadDoc('PROJECT_OVERVIEW.md')">Project Overview</a> - Complete system documentation</li>
+                            <li><a href="#" onclick="loadDoc('TROUBLESHOOTING.md')">Troubleshooting</a> - Common issues and solutions</li>
+                        </ul>
+                        <h2>For AI Tools</h2>
+                        <p>Raw markdown files are available at:</p>
+                        <ul>
+                            <li><code>/docs/CLAUDE.md</code> - AI guidelines</li>
+                            <li><code>/docs/PROJECT_OVERVIEW.md</code> - System overview</li>
+                            <li><code>/docs/index.json</code> - Complete file listing</li>
+                        </ul>
+                    </div>
+                </div>
+                <div id="raw-link" class="mt-4 text-sm text-gray-500 hidden">
+                    📄 <a id="raw-url" href="#" target="_blank" class="text-violet-600 hover:underline">View raw markdown</a>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        async function loadDoc(filename) {
+            const contentDiv = document.getElementById('doc-content');
+            const rawLink = document.getElementById('raw-link');
+            const rawUrl = document.getElementById('raw-url');
+            
+            contentDiv.innerHTML = '<p class="text-gray-500">Loading...</p>';
+            
+            try {
+                const response = await fetch('/docs/' + filename);
+                if (!response.ok) throw new Error('Failed to load');
+                const markdown = await response.text();
+                contentDiv.innerHTML = marked.parse(markdown);
+                
+                rawUrl.href = '/docs/' + filename;
+                rawLink.classList.remove('hidden');
+            } catch (error) {
+                contentDiv.innerHTML = '<p class="text-red-500">Failed to load document: ' + error.message + '</p>';
+            }
+        }
+
+        // Load from URL hash if present
+        if (window.location.hash) {
+            const doc = window.location.hash.substring(1);
+            if (doc) loadDoc(doc + '.md');
+        }
+    </script>
+</body>
+</html>

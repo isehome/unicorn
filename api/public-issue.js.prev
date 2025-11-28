@@ -13,9 +13,9 @@ const COMMENT_MAX = 2000;
 
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-    global: { headers: { 'x-client-info': 'unicorn-public-issue' } }
-  })
+      auth: { persistSession: false },
+      global: { headers: { 'x-client-info': 'unicorn-public-issue' } }
+    })
   : null;
 
 const nowIso = () => new Date().toISOString();

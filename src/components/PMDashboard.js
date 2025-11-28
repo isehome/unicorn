@@ -40,6 +40,11 @@ const PMDashboard = () => {
     portal_proposal_url: '',
   });
 
+  // Get query params and state
+  const queryParams = new URLSearchParams(location.search);
+  const initialView = queryParams.get('view');
+  const returnTo = location.state?.returnTo;
+
   // Load projects and contacts on mount
   useEffect(() => {
     loadProjects();
@@ -239,9 +244,9 @@ const PMDashboard = () => {
   // Filter projects based on search term - must be before any conditional returns
   const filteredProjects = useMemo(() => {
     if (!searchTerm.trim()) return projects;
-    
+
     const search = searchTerm.toLowerCase();
-    return projects.filter(project => 
+    return projects.filter(project =>
       project.name?.toLowerCase().includes(search) ||
       project.client?.toLowerCase().includes(search) ||
       project.address?.toLowerCase().includes(search) ||
@@ -267,7 +272,7 @@ const PMDashboard = () => {
             <h2 className="text-xl font-semibold mb-6 text-gray-900 dark:text-white">
               Create New Project
             </h2>
-            
+
             <div className="grid gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -277,12 +282,12 @@ const PMDashboard = () => {
                   <input
                     type="text"
                     value={newProject.name}
-                    onChange={(e) => setNewProject({...newProject, name: e.target.value})}
+                    onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="Enter project name"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                     Client
@@ -292,7 +297,7 @@ const PMDashboard = () => {
                     onChange={(e) => {
                       const selectedContact = contacts.find(c => c.id === e.target.value);
                       setNewProject({
-                        ...newProject, 
+                        ...newProject,
                         client_contact_id: e.target.value,
                         client: selectedContact ? (selectedContact.full_name || selectedContact.name || selectedContact.company || '') : ''
                       });
@@ -302,7 +307,7 @@ const PMDashboard = () => {
                     <option value="">Select a client contact...</option>
                     {contacts.map(contact => (
                       <option key={contact.id} value={contact.id}>
-                        {contact.full_name || contact.name || 'Unnamed'} 
+                        {contact.full_name || contact.name || 'Unnamed'}
                         {contact.company && ` - ${contact.company}`}
                         {contact.email && ` (${contact.email})`}
                       </option>
@@ -322,7 +327,7 @@ const PMDashboard = () => {
                   <input
                     type="text"
                     value={newProject.address}
-                    onChange={(e) => setNewProject({...newProject, address: e.target.value})}
+                    onChange={(e) => setNewProject({ ...newProject, address: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="Enter project address"
                   />
@@ -335,7 +340,7 @@ const PMDashboard = () => {
                   <input
                     type="text"
                     value={newProject.project_number}
-                    onChange={(e) => setNewProject({...newProject, project_number: e.target.value})}
+                    onChange={(e) => setNewProject({ ...newProject, project_number: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="Enter project number"
                   />
@@ -347,7 +352,7 @@ const PMDashboard = () => {
                   </label>
                   <select
                     value={newProject.phase}
-                    onChange={(e) => setNewProject({...newProject, phase: e.target.value})}
+                    onChange={(e) => setNewProject({ ...newProject, phase: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select Phase</option>
@@ -365,7 +370,7 @@ const PMDashboard = () => {
                   </label>
                   <select
                     value={newProject.status}
-                    onChange={(e) => setNewProject({...newProject, status: e.target.value})}
+                    onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="active">Active</option>
@@ -381,7 +386,7 @@ const PMDashboard = () => {
                 <h3 className="text-sm font-semibold mb-3 text-gray-900 dark:text-white">
                   Documentation Links (Optional)
                 </h3>
-                
+
                 <div className="grid gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
@@ -390,7 +395,7 @@ const PMDashboard = () => {
                     <input
                       type="url"
                       value={newProject.wiring_diagram_url}
-                      onChange={(e) => setNewProject({...newProject, wiring_diagram_url: e.target.value})}
+                      onChange={(e) => setNewProject({ ...newProject, wiring_diagram_url: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                       placeholder="https://..."
                     />
@@ -403,7 +408,7 @@ const PMDashboard = () => {
                     <input
                       type="url"
                       value={newProject.portal_proposal_url}
-                      onChange={(e) => setNewProject({...newProject, portal_proposal_url: e.target.value})}
+                      onChange={(e) => setNewProject({ ...newProject, portal_proposal_url: e.target.value })}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                       placeholder="https://..."
                     />
@@ -452,8 +457,8 @@ const PMDashboard = () => {
                            placeholder-gray-500 dark:placeholder-gray-400 text-sm sm:text-base"
                 />
               </div>
-              <Button 
-                variant="primary" 
+              <Button
+                variant="primary"
                 icon={Plus}
                 onClick={() => setShowNewProjectForm(!showNewProjectForm)}
                 className="flex-shrink-0 text-sm sm:text-base"
@@ -501,7 +506,7 @@ const PMDashboard = () => {
                       <h3 className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">
                         {project.name}
                       </h3>
-                      
+
                       {/* Progress Gauges */}
                       <MilestoneGaugesDisplay
                         milestonePercentages={milestonePercentages[project.id] || {}}
@@ -517,7 +522,10 @@ const PMDashboard = () => {
         </div>
 
         {/* Procurement Dashboard - Shows after projects */}
-        <ProcurementDashboard />
+        <ProcurementDashboard
+          initialView={initialView}
+          returnTo={returnTo}
+        />
       </div>
     </div>
   );

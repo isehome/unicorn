@@ -40,8 +40,8 @@ class FuzzyMatchService {
 
     // Return cached data if still valid
     if (!forceRefresh && this.cache.suppliers &&
-        this.cache.lastFetch &&
-        (now - this.cache.lastFetch) < this.cache.ttl) {
+      this.cache.lastFetch &&
+      (now - this.cache.lastFetch) < this.cache.ttl) {
       return this.cache.suppliers;
     }
 
@@ -224,6 +224,19 @@ class FuzzyMatchService {
     }
 
     const name = supplierName.trim();
+
+    // STRICT CHECK: Check if supplier with this name already exists (case-insensitive)
+    // This prevents duplicates when fuzzy match fails but exact name exists
+    const { data: existingSupplier } = await supabase
+      .from('suppliers')
+      .select('*')
+      .ilike('name', name)
+      .maybeSingle();
+
+    if (existingSupplier) {
+      console.log(`[Supplier Creation] Found existing supplier "${name}" (ID: ${existingSupplier.id}) - skipping creation`);
+      return existingSupplier;
+    }
 
     // Generate short code from name (first 3-5 letters, uppercase)
     const shortCode = this.generateShortCode(name);

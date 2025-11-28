@@ -9,8 +9,10 @@ async function request(body) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data?.error || 'Public portal request failed');
+    const errorMessage = data?.error || `Public portal request failed (${response.status} ${response.statusText})`;
+    const error = new Error(errorMessage);
     error.data = data;
+    error.status = response.status;
     throw error;
   }
   return data;

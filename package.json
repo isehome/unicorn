@@ -28,8 +28,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "sync-docs": "cp -r docs/*.md public/docs/ && cp CLAUDE.md public/docs/",
     "start": "react-scripts start",
-    "build": "GENERATE_SOURCEMAP=false CI=false react-scripts build",
+    "build": "npm run sync-docs && GENERATE_SOURCEMAP=false CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

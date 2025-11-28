@@ -897,7 +897,9 @@ const PMOrderEquipmentPageEnhanced = () => {
                 variant="secondary"
                 size="sm"
                 icon={Settings}
-                onClick={() => navigate('/vendors')}
+                onClick={() => navigate('/pm-dashboard?view=suppliers', {
+                  state: { returnTo: `/projects/${projectId}/procurement` }
+                })}
               >
                 Manage Vendors
               </Button>

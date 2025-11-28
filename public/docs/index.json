@@ -1,0 +1,94 @@
+{
+  "name": "Unicorn Documentation",
+  "description": "Project management for low-voltage installations",
+  "version": "1.0",
+  "lastUpdated": "2025-11",
+  "aiInstructions": "Start by reading CLAUDE.md for project rules, then PROJECT_OVERVIEW.md for system understanding.",
+  "files": {
+    "essential": [
+      {
+        "name": "CLAUDE.md",
+        "url": "/docs/CLAUDE.md",
+        "description": "AI assistant guidelines - READ FIRST"
+      },
+      {
+        "name": "PROJECT_OVERVIEW.md",
+        "url": "/docs/PROJECT_OVERVIEW.md",
+        "description": "Complete system architecture and features"
+      },
+      {
+        "name": "README.md",
+        "url": "/docs/README.md",
+        "description": "Documentation index"
+      }
+    ],
+    "features": [
+      {
+        "name": "WIRE_DROPS.md",
+        "url": "/docs/WIRE_DROPS.md",
+        "description": "Wire drop system architecture"
+      },
+      {
+        "name": "EQUIPMENT.md",
+        "url": "/docs/EQUIPMENT.md",
+        "description": "Equipment management and CSV import"
+      },
+      {
+        "name": "PROCUREMENT.md",
+        "url": "/docs/PROCUREMENT.md",
+        "description": "Purchase order system"
+      },
+      {
+        "name": "MILESTONES.md",
+        "url": "/docs/MILESTONES.md",
+        "description": "Progress gauge calculations"
+      }
+    ],
+    "integrations": [
+      {
+        "name": "INTEGRATIONS.md",
+        "url": "/docs/INTEGRATIONS.md",
+        "description": "All third-party integrations overview"
+      },
+      {
+        "name": "AUTHENTICATION.md",
+        "url": "/docs/AUTHENTICATION.md",
+        "description": "MSAL auth and RLS policies"
+      },
+      {
+        "name": "SHAREPOINT.md",
+        "url": "/docs/SHAREPOINT.md",
+        "description": "SharePoint photo storage"
+      },
+      {
+        "name": "UNIFI_INTEGRATION.md",
+        "url": "/docs/UNIFI_INTEGRATION.md",
+        "description": "UniFi network integration"
+      }
+    ],
+    "operations": [
+      {
+        "name": "DEPLOYMENT.md",
+        "url": "/docs/DEPLOYMENT.md",
+        "description": "Deployment and environment setup"
+      },
+      {
+        "name": "TROUBLESHOOTING.md",
+        "url": "/docs/TROUBLESHOOTING.md",
+        "description": "Common issues and solutions"
+      }
+    ],
+    "reference": [
+      {
+        "name": "CODE_ANALYSIS.md",
+        "url": "/docs/CODE_ANALYSIS.md",
+        "description": "Codebase analysis"
+      },
+      {
+        "name": "ROADMAP.md",
+        "url": "/docs/ROADMAP.md",
+        "description": "Future features"
+      }
+    ]
+  }
+}
