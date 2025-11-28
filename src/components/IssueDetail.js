@@ -1747,7 +1747,7 @@ const IssueDetail = () => {
                 className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
               />
               <span className={isPublicComment ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-zinc-500 dark:text-zinc-400'}>
-                {isPublicComment ? 'Visible to External Stakeholders' : 'Internal Only'}
+                Visible to External Stakeholders
               </span>
             </label>
           </div>

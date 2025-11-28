@@ -6,8 +6,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const PUBLIC_SITE_URL = process.env.PUBLIC_SITE_URL || process.env.APP_BASE_URL || null;
 const PUBLIC_ISSUE_UPLOAD_BUCKET = process.env.PUBLIC_ISSUE_UPLOAD_BUCKET || 'public-issue-uploads';
-const SESSION_DAYS = parseInt(process.env.PUBLIC_ISSUE_SESSION_DAYS || '7', 10);
-const OTP_TTL_DAYS = parseInt(process.env.PUBLIC_ISSUE_OTP_TTL_DAYS || '7', 10);
+const SESSION_DAYS = parseInt(process.env.PUBLIC_ISSUE_SESSION_DAYS || '365', 10);
+const OTP_TTL_DAYS = parseInt(process.env.PUBLIC_ISSUE_OTP_TTL_DAYS || '365', 10);
 const MAX_UPLOAD_BYTES = parseInt(process.env.PUBLIC_ISSUE_MAX_UPLOAD_BYTES || `${8 * 1024 * 1024}`, 10);
 const COMMENT_MAX = 2000;
 
@@ -146,6 +146,10 @@ async function buildPortalPayload(link, sessionValid) {
 
   if (!issue) {
     return { status: 'invalid', reason: 'issue_missing' };
+  }
+
+  if ((issue.status || '').toLowerCase() === 'resolved') {
+    return { status: 'invalid', reason: 'issue_closed' };
   }
 
   const base = {

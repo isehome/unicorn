@@ -3,7 +3,7 @@ import { sharePointStorageService } from './sharePointStorageService';
 import { generatePortalToken, generateOtpCode, hashSecret } from '../utils/portalTokens';
 
 const PUBLIC_UPLOAD_BUCKET = 'public-issue-uploads';
-const OTP_TTL_DAYS = 7;
+const OTP_TTL_DAYS = 365; // Effectively never expire (until issue closed)
 
 class IssuePublicAccessService {
   async ensureLink({ issueId, projectId, stakeholderTagId, stakeholder }) {
