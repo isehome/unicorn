@@ -1,37 +1,164 @@
-# AGENT.md - Project Guidelines
+# AGENT.md - Unicorn Project Guidelines
 
-**⚠️ AI ASSISTANT: Read this ENTIRE file before writing any code. Follow ALL rules strictly.**
-
----
-
-# WHAT YOU MUST DO
-
-1. **Read this entire file first**
-2. **Follow all styling patterns exactly** (colors, dark mode, components)
-3. **Put files in correct locations** (never in root)
-4. **Update documentation after every change**
-5. **Include RLS policies with `anon` role** for any database changes
+**⚠️ AI ASSISTANT: Read this ENTIRE file before writing any code.**
 
 ---
 
-# PROJECT STRUCTURE
+# PART 1: WHAT THIS APP IS
+
+## Overview
+
+**Unicorn** is a project management application for low-voltage installations (network cabling, AV systems, wire drops).
+
+**Owner:** Steve / Intelligent Systems
+**Tech Level:** Non-programmer (needs copy-paste ready code)
+**Stack:** React 18, Supabase, Azure MSAL, Tailwind CSS, Vercel
+
+---
+
+## User Roles
+
+### Technician (Field Worker)
+- View assigned projects
+- Complete wire drop stages (prewire → trim-out → commissioning)
+- Upload stage photos
+- Receive parts/equipment
+- Log issues with photos
+
+### Project Manager (PM)
+- Everything technicians can do, PLUS:
+- Create/manage projects
+- Import equipment from CSV
+- Generate purchase orders
+- Manage vendors
+- View progress gauges
+- Configure integrations (Lucid, UniFi)
+
+---
+
+## Core Features
+
+### 1. Wire Drop Management
+
+Wire drops are cable installation points. Each goes through 3 stages:
+
+| Stage | What Happens | Required |
+|-------|--------------|----------|
+| **Prewire** | Cable run from head-end to location | Photo |
+| **Trim-Out** | Mount device, terminate cable | Photo + Equipment |
+| **Commissioning** | Test, connect to network | Photo |
+
+**Flow:**
+```
+Import from Lucid → Create Wire Drops → Assign Equipment → Complete Stages → Done
+```
+
+### 2. Equipment System (3 Tiers)
+
+| Tier | Table | Purpose |
+|------|-------|---------|
+| Global Parts | `global_parts` | Master catalog (reusable) |
+| Project Equipment | `project_equipment` | Instances for a project (from CSV import) |
+| Wire Drop Links | `wire_drop_equipment_links` | Which equipment at which drop |
+
+**CSV Import Flow:**
+1. PM exports from D-Tools/proposal software
+2. Upload CSV (Room, Part, Quantity columns)
+3. System creates individual instances
+4. Technician assigns to wire drops
+
+### 3. Progress Gauges (Milestones)
+
+| Gauge | What It Measures |
+|-------|------------------|
+| Planning | Has Lucid URL + Portal URL |
+| Prewire Orders | % of prewire parts on submitted POs |
+| Prewire Receiving | % of prewire parts received |
+| Prewire Stages | % of wire drops with prewire photo |
+| Trim Orders | % of trim parts ordered |
+| Trim Receiving | % of trim parts received |
+| Trim Stages | % of wire drops with trim photo + equipment |
+| Commissioning | % of wire drops commissioned |
+
+### 4. Procurement (Purchase Orders)
+
+**Flow:**
+```
+Equipment imported → Group by supplier → Generate PO → Submit → Add tracking → Receive items
+```
+
+**PO Numbering:** `PO-2025-001-AMZN-001` (Year-Sequence-Supplier-PerSupplierSeq)
+
+### 5. Photo Storage (SharePoint)
+
+Photos stored in SharePoint with structure:
+```
+{project_url}/wire_drops/{Room}_{Drop}/PREWIRE_{timestamp}.jpg
+{project_url}/issues/{Issue_Title}/{timestamp}.jpg
+```
+
+### 6. Integrations
+
+| Integration | Purpose |
+|-------------|---------|
+| **Lucid Charts** | Import floor plans, create wire drops from shapes |
+| **UniFi** | Match equipment to network clients by MAC |
+| **SharePoint** | Photo storage |
+| **Brady Printer** | Print equipment labels |
+
+---
+
+## Key Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `projects` | Project records |
+| `wire_drops` | Cable drop locations |
+| `wire_drop_stages` | Stage completion tracking |
+| `project_equipment` | Equipment per project |
+| `global_parts` | Master parts catalog |
+| `purchase_orders` | PO headers |
+| `purchase_order_items` | PO line items |
+| `issues` | Problems/issues |
+| `contacts` | People |
+| `suppliers` | Vendors |
+
+---
+
+## Key Files to Know
+
+| Purpose | File |
+|---------|------|
+| Wire drop logic | `src/services/wireDropService.js` |
+| Milestone calculations | `src/services/milestoneService.js` |
+| Equipment management | `src/services/projectEquipmentService.js` |
+| Auth context | `src/contexts/AuthContext.js` |
+| Theme context | `src/contexts/ThemeContext.js` |
+| Style system | `src/styles/styleSystem.js` |
+| Main PM view | `src/components/PMProjectViewEnhanced.js` |
+| Wire drop detail | `src/components/WireDropDetailEnhanced.js` |
+
+---
+
+# PART 2: HOW TO WORK ON THIS APP
+
+## Project Structure
 
 ```
 unicorn/
 ├── src/
-│   ├── components/         # React components go here
-│   ├── services/           # Business logic services
+│   ├── components/         # React components
+│   ├── services/           # Business logic
 │   ├── contexts/           # React contexts
 │   ├── hooks/              # Custom hooks
 │   ├── lib/                # Utilities
-│   ├── styles/             # styleSystem.js (DO NOT MODIFY)
+│   ├── styles/             # Style system
 │   └── config/             # Configuration
 ├── api/                    # Vercel serverless functions
 ├── database/
-│   ├── migrations/         # SQL migrations (YYYY-MM-DD_name.sql)
-│   └── scripts/            # Utility SQL
+│   ├── migrations/         # SQL migrations
+│   └── scripts/            # SQL utilities
 ├── docs/                   # Documentation (UPDATE AFTER CHANGES)
-├── public/docs/            # Auto-deployed docs (don't edit directly)
 └── AGENT.md                # This file
 ```
 
@@ -45,149 +172,105 @@ unicorn/
 | SQL migration | `database/migrations/` |
 | Documentation | `docs/` |
 
-### NEVER DO THIS
-- ❌ Create ANY files in root directory
-- ❌ Create .md files outside of `docs/`
-- ❌ Create .sql files outside of `database/`
-- ❌ Create duplicate components (ComponentV2, ComponentNew)
+### NEVER
+- ❌ Create files in root directory
+- ❌ Create .md files outside `docs/`
+- ❌ Create .sql files outside `database/`
+- ❌ Create duplicate components (V2, New, etc.)
 
 ---
 
-# STYLING SYSTEM
+## Styling System
 
-## Color Scale: ZINC (Not Gray)
-
-**ALWAYS use `zinc`. NEVER use `gray`.**
+### Use ZINC, Not GRAY
 
 ```jsx
 // ✅ CORRECT
-bg-zinc-50 dark:bg-zinc-950      // Page background
-bg-white dark:bg-zinc-900        // Cards
-bg-zinc-100 dark:bg-zinc-800     // Muted backgrounds
-text-zinc-900 dark:text-zinc-100 // Primary text
-text-zinc-600 dark:text-zinc-400 // Secondary text
-text-zinc-500                    // Muted text
-border-zinc-200 dark:border-zinc-700  // Borders
+bg-zinc-50 dark:bg-zinc-950
+bg-white dark:bg-zinc-900
+text-zinc-900 dark:text-zinc-100
+text-zinc-600 dark:text-zinc-400
+border-zinc-200 dark:border-zinc-700
 
-// ❌ WRONG - Never use gray
-bg-gray-50    // WRONG
-bg-gray-100   // WRONG
-bg-gray-800   // WRONG
-bg-gray-900   // WRONG
-text-gray-900 // WRONG
+// ❌ WRONG
+bg-gray-50    // Never use gray!
+bg-gray-900   // Never use gray!
 ```
 
-## Dark Mode: REQUIRED
+### Dark Mode Required
 
-**Every background, text, and border MUST have a dark: variant.**
+Every color MUST have a `dark:` variant:
 
 ```jsx
-// ✅ CORRECT - Has dark mode
+// ✅ CORRECT
 className="bg-white dark:bg-zinc-900"
 className="text-zinc-900 dark:text-zinc-100"
-className="border-zinc-200 dark:border-zinc-700"
 
-// ❌ WRONG - Missing dark mode
-className="bg-white"           // WRONG
-className="text-zinc-900"      // WRONG
-className="border-zinc-200"    // WRONG
+// ❌ WRONG
+className="bg-white"              // Missing dark!
+className="text-zinc-900"         // Missing dark!
 ```
 
-## Brand Colors
+### Brand Colors
 
-| Purpose | Light | Dark | Tailwind |
-|---------|-------|------|----------|
-| Primary | `#8B5CF6` | `#8B5CF6` | `violet-500` |
-| Primary Hover | `#7C3AED` | `#7C3AED` | `violet-600` |
-| Success | `#94AF32` | `#94AF32` | Use hex or `emerald-500` |
-| Warning | `#F59E0B` | `#F59E0B` | `amber-500` |
-| Danger | `#EF4444` | `#EF4444` | `red-500` |
-| Info | `#3B82F6` | `#3B82F6` | `blue-500` |
+| Purpose | Tailwind |
+|---------|----------|
+| Primary | `violet-500`, `violet-600` (hover) |
+| Success | `emerald-500` or `#94AF32` |
+| Warning | `amber-500` |
+| Danger | `red-500` |
+| Info | `blue-500` |
 
 ---
 
-# COMPONENT PATTERNS
+## Component Patterns
 
-Copy these patterns exactly.
-
-## Card
+### Card
 ```jsx
 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm p-4">
-  {/* content */}
-</div>
 ```
 
-## Card with Hover
-```jsx
-<div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-sm p-4 transition-all hover:shadow-lg hover:border-violet-300 dark:hover:border-violet-600 cursor-pointer">
-  {/* content */}
-</div>
-```
-
-## Primary Button
+### Primary Button
 ```jsx
 <button className="px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg font-medium transition-colors">
-  Button
-</button>
 ```
 
-## Secondary Button
+### Secondary Button
 ```jsx
 <button className="px-4 py-2 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-600 rounded-lg transition-colors">
-  Button
-</button>
 ```
 
-## Danger Button
+### Text Input
 ```jsx
-<button className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors">
-  Delete
-</button>
+<input className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" />
 ```
 
-## Text Input
-```jsx
-<input 
-  className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-/>
-```
-
-## Select
-```jsx
-<select className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500">
-  <option>Option</option>
-</select>
-```
-
-## Status Badges
+### Status Badges
 ```jsx
 // Success
-<span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-medium">Active</span>
+<span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-medium">
 
 // Warning
-<span className="px-2 py-1 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">Pending</span>
+<span className="px-2 py-1 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
 
 // Error
-<span className="px-2 py-1 bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 rounded-full text-xs font-medium">Error</span>
-
-// Info
-<span className="px-2 py-1 bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400 rounded-full text-xs font-medium">Info</span>
+<span className="px-2 py-1 bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 rounded-full text-xs font-medium">
 ```
 
-## Collapsible Section
+### Collapsible Sections
 ```jsx
-// Chevron ALWAYS on LEFT, use ChevronRight/ChevronDown
-<button onClick={() => setOpen(!open)} className="flex items-center gap-2 w-full p-3">
+// Chevron ALWAYS on LEFT, use Right→Down icons
+<button className="flex items-center gap-2">
   {open ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-  <span>Section Title</span>
+  <span>Title</span>
 </button>
 ```
 
-## Progress Bar Colors
+### Progress Colors
 ```jsx
 const getProgressColor = (pct) => {
   if (pct === 100) return '#8B5CF6'; // violet
-  if (pct >= 75) return '#94AF32';   // success/olive
+  if (pct >= 75) return '#94AF32';   // olive/success
   if (pct >= 50) return '#3B82F6';   // blue
   if (pct >= 25) return '#F59E0B';   // amber
   return '#EF4444';                   // red
@@ -196,72 +279,61 @@ const getProgressColor = (pct) => {
 
 ---
 
-# DATABASE RULES
+## Database Rules
 
-## RLS Policies - CRITICAL
+### RLS Policies - CRITICAL
 
-We use **MSAL for auth, NOT Supabase Auth**. All policies MUST include `anon`:
+We use MSAL (not Supabase Auth). ALL policies MUST include `anon`:
 
 ```sql
 -- ✅ CORRECT
-CREATE POLICY "policy_name" ON public.table_name
+CREATE POLICY "name" ON public.table
 FOR ALL TO anon, authenticated
 USING (true);
 
--- ❌ WRONG (will silently fail)
-CREATE POLICY "policy_name" ON public.table_name
-FOR ALL TO authenticated  -- MISSING anon!
+-- ❌ WRONG (will silently fail!)
+CREATE POLICY "name" ON public.table
+FOR ALL TO authenticated  -- Missing anon!
 USING (true);
 ```
 
-## Migration Format
+### Migration Format
 ```sql
 -- File: database/migrations/YYYY-MM-DD_description.sql
-
-ALTER TABLE table_name 
-ADD COLUMN IF NOT EXISTS column_name type;
-
--- Always add RLS for new tables
-CREATE POLICY "table_all" ON public.table_name
-FOR ALL TO anon, authenticated USING (true);
+ALTER TABLE table ADD COLUMN IF NOT EXISTS col type;
 ```
 
 ---
 
-# DOCUMENTATION UPDATES
+## Documentation Rules
 
-## MANDATORY: Update Docs After Every Change
+### MANDATORY: Update Docs After Every Change
 
-| What Changed | Update This File |
-|--------------|------------------|
+| Change Type | Update File |
+|-------------|-------------|
 | New feature | `docs/PROJECT_OVERVIEW.md` |
 | Wire drops | `docs/WIRE_DROPS.md` |
 | Equipment | `docs/EQUIPMENT.md` |
 | Procurement | `docs/PROCUREMENT.md` |
-| Milestones/gauges | `docs/MILESTONES.md` |
-| Authentication | `docs/AUTHENTICATION.md` |
-| SharePoint | `docs/SHAREPOINT.md` |
-| UniFi | `docs/UNIFI_INTEGRATION.md` |
-| Any integration | `docs/INTEGRATIONS.md` |
+| Milestones | `docs/MILESTONES.md` |
+| Auth/RLS | `docs/AUTHENTICATION.md` |
+| Integrations | `docs/INTEGRATIONS.md` |
 | Bug fix | `docs/TROUBLESHOOTING.md` |
-| Database table | `docs/PROJECT_OVERVIEW.md` |
-| API endpoint | `docs/INTEGRATIONS.md` |
 | Styling | `docs/STYLES.md` |
 
-## Update Format
+### Update Format
 ```markdown
 ### Feature Name
 **Changed:** YYYY-MM-DD
 **Files:** `src/components/File.js`
-
-What was added or changed.
+Description of change.
 ```
 
 ---
 
-# CODE STANDARDS
+## Code Standards
 
-## React Component
+### React Component
 ```jsx
 import { useState } from 'react';
 import { Icon } from 'lucide-react';
@@ -279,7 +351,7 @@ const MyComponent = ({ prop }) => {
 export default MyComponent;
 ```
 
-## Service Class
+### Service Class
 ```javascript
 import { supabase } from '../lib/supabase';
 
@@ -296,35 +368,62 @@ export const myService = new MyService();
 
 ---
 
-# PROJECT CONTEXT
+## Environment Variables
 
-**Owner:** Steve (Intelligent Systems - low-voltage installation)
-**Tech Level:** Non-programmer, needs copy-paste ready code
-
-**Stack:**
-- React 18, Tailwind CSS, React Router
-- Supabase (PostgreSQL)
-- Azure MSAL (Microsoft 365 auth)
-- Vercel hosting
-- Integrations: SharePoint, Lucid Charts, UniFi, Brady Printers
-
-**How to help:**
-- Provide complete, copy-paste ready code
-- Include exact file paths
-- Explain in plain terms
-- Always include documentation updates
+```bash
+REACT_APP_SUPABASE_URL=
+REACT_APP_SUPABASE_ANON_KEY=
+REACT_APP_AZURE_CLIENT_ID=
+REACT_APP_AZURE_TENANT_ID=
+REACT_APP_UNIFI_API_KEY=        # Optional
+REACT_APP_LUCID_CLIENT_ID=      # Optional
+REACT_APP_LUCID_CLIENT_SECRET=  # Optional
+```
 
 ---
 
-# CHECKLIST BEFORE FINISHING
+## API Endpoints
 
-- [ ] Used `zinc` (not `gray`) for all neutral colors
+| Endpoint | Purpose |
+|----------|---------|
+| `/api/unifi-proxy` | UniFi API proxy |
+| `/api/lucid-proxy` | Lucid API proxy |
+| `/api/graph-upload` | SharePoint upload |
+| `/api/graph-file` | SharePoint download |
+| `/api/sharepoint-thumbnail` | Get thumbnails |
+| `/api/public-po` | Public PO view |
+
+---
+
+## Common Issues
+
+| Problem | Solution |
+|---------|----------|
+| Auth hangs | Check Azure redirect URIs |
+| Photos not loading | Verify SharePoint URL on project |
+| RLS errors | Add `anon` to policy |
+| Wrong milestone % | Check `required_for_prewire` flags |
+
+---
+
+## Checklist Before Finishing
+
+- [ ] Used `zinc` (not `gray`)
 - [ ] All colors have `dark:` variants
-- [ ] Components follow patterns above
-- [ ] Files in correct locations (not in root)
+- [ ] Files in correct locations
 - [ ] Database policies include `anon`
-- [ ] Updated relevant doc file in `docs/`
+- [ ] Updated relevant doc in `docs/`
 - [ ] Removed console.log statements
+
+---
+
+## How to Help Steve
+
+1. **Provide complete, copy-paste ready code**
+2. **Include exact file paths**
+3. **Explain in plain terms**
+4. **Show documentation updates in same response**
+5. **Follow all patterns above exactly**
 
 ---
 
