@@ -34,8 +34,9 @@ const formatBytes = (bytes = 0) => {
 
 const PublicIssuePortal = () => {
   const { token } = useParams();
-  const { mode } = useTheme();
+  const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const palette = theme.palette;
   const storageKey = token ? `publicIssueSession:${token}` : null;
   const sessionRef = useRef(typeof window !== 'undefined' && storageKey ? window.localStorage.getItem(storageKey) : null);
 
@@ -146,6 +147,7 @@ const PublicIssuePortal = () => {
   const comments = portalData?.comments || [];
   const uploads = portalData?.uploads || [];
   const photos = portalData?.photos || [];
+  const currentStakeholderEmail = (portalData?.stakeholder?.email || '').toLowerCase().trim();
 
   const renderVerification = () => (
     <form onSubmit={handleVerify} className="max-w-md mx-auto bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
@@ -253,7 +255,7 @@ const PublicIssuePortal = () => {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Last Updated</p>
-                  <DateField date={issue?.updatedAt} variant="inline" showTime={true} />
+                  <DateField date={issue?.updatedAt} variant="inline" colorMode="timestamp" showTime={true} />
                 </div>
               </div>
             </section>
@@ -316,14 +318,23 @@ const PublicIssuePortal = () => {
                 <div className="text-sm text-gray-500">No comments yet.</div>
               ) : (
                 <div className="space-y-2">
-                  {comments.map((entry) => (
-                    <div key={entry.id} className="rounded-xl border px-3 py-2">
-                      <div className="text-sm text-gray-900 dark:text-gray-100">{entry.text}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        by {entry.author || 'Team'} • <DateField date={entry.createdAt} variant="inline" showTime={true} />
+                  {comments.map((entry) => {
+                    // Check if comment author matches current external stakeholder
+                    const authorEmail = (entry.email || '').toLowerCase().trim();
+                    const isFromExternalStakeholder = authorEmail && authorEmail === currentStakeholderEmail;
+                    return (
+                      <div key={entry.id} className="rounded-xl border px-3 py-2">
+                        <div className="text-sm text-gray-900 dark:text-gray-100">{entry.text}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          by{' '}
+                          <span className="font-medium" style={{ color: isFromExternalStakeholder ? palette.success : palette.accent }}>
+                            {entry.author || 'Team'}
+                          </span>
+                          {' '}• <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -353,7 +364,7 @@ const PublicIssuePortal = () => {
                               <span className="text-xs text-gray-500">{formatBytes(upload.fileSize)}</span>
                             </div>
                             <div className="text-xs text-gray-500">
-                              Submitted on <DateField date={upload.submittedAt} variant="inline" showTime={true} />
+                              Submitted on <DateField date={upload.submittedAt} variant="inline" colorMode="timestamp" showTime={true} />
                             </div>
                           </div>
                           <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>

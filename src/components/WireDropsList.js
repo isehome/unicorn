@@ -310,7 +310,7 @@ const WireDropsList = () => {
     if (!targetProjectId) return;
 
     const confirmed = window.confirm(
-      'This will update ALL wire drop names in this project to match the "Room Type Number" format (e.g., "Guest 2 IP/Data 1").\n\nThis action writes to the database and cannot be easily undone.\n\nAre you sure?'
+      'This will update generic wire drop names (e.g. "IP", "AP") to the standard "Room Type Number" format.\n\nCustom names you have manually edited will be PRESERVED.\n\nAre you sure?'
     );
     if (!confirmed) return;
 
@@ -375,7 +375,6 @@ const WireDropsList = () => {
         const dropType = drop.drop_type || 'Drop';
         const dropNumber = dropNumbers[drop.id];
 
-        // Check if generic
         // Check if generic
         const isGeneric = !drop.drop_name ||
           ['IP', 'AP', 'WAP', 'Data'].includes(drop.drop_name) ||
@@ -674,30 +673,51 @@ const WireDropsList = () => {
                           </Button>
                         </div>
                         <div className="flex gap-1 justify-end mb-1">
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${prewireComplete
-                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                            }`}>
+                          <span
+                            className="px-2 py-0.5 text-xs font-semibold rounded-full uppercase"
+                            style={prewireComplete ? {
+                              backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                              color: '#94AF32'
+                            } : {
+                              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                              color: '#F59E0B'
+                            }}
+                          >
                             Prewire
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${installComplete
-                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                            }`}>
+                          <span
+                            className="px-2 py-0.5 text-xs font-semibold rounded-full uppercase"
+                            style={installComplete ? {
+                              backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                              color: '#94AF32'
+                            } : {
+                              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                              color: '#F59E0B'
+                            }}
+                          >
                             Install
                           </span>
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded-full uppercase ${commissionComplete
-                            ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                            : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
-                            }`}>
+                          <span
+                            className="px-2 py-0.5 text-xs font-semibold rounded-full uppercase"
+                            style={commissionComplete ? {
+                              backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                              color: '#94AF32'
+                            } : {
+                              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                              color: '#F59E0B'
+                            }}
+                          >
                             Comm
                           </span>
                         </div>
-                        <div className={`text-sm font-bold ${percentage === 100 ? 'text-green-600 dark:text-green-400' :
-                          percentage >= 67 ? 'text-blue-600 dark:text-blue-400' :
-                            percentage >= 33 ? 'text-yellow-600 dark:text-yellow-400' :
-                              'text-gray-600 dark:text-gray-400'
-                          }`}>
+                        <div
+                          className="text-sm font-bold"
+                          style={{
+                            color: percentage === 100 ? '#94AF32' :
+                              percentage >= 67 ? '#3B82F6' :
+                                percentage >= 33 ? '#F59E0B' : '#6B7280'
+                          }}
+                        >
                           {percentage}% Complete
                         </div>
                       </div>

@@ -38,7 +38,7 @@ class WireDropService {
         .order('room_name, drop_name');
 
       if (error) throw error;
-      
+
       // Calculate completion for each wire drop
       const wireDropsWithCompletion = (data || []).map(drop => ({
         ...drop,
@@ -139,25 +139,31 @@ class WireDropService {
    * Generate automatic drop name based on room and drop type
    * Format: "Room Name Drop Type #" (e.g., "Living Room Speaker 1")
    */
-  async generateDropName(projectId, roomName, dropType) {
+  async generateDropName(projectId, roomName, dropType, excludeDropId = null) {
     if (!roomName || !dropType) return '';
-    
+
     try {
       // Get existing wire drops for this project, room, and drop type
-      const { data: existingDrops, error } = await supabase
+      let query = supabase
         .from('wire_drops')
-        .select('drop_name, room_name, drop_type')
+        .select('id, drop_name, room_name, drop_type')
         .eq('project_id', projectId)
         .eq('room_name', roomName)
         .eq('drop_type', dropType)
         .order('created_at', { ascending: true });
+
+      if (excludeDropId) {
+        query = query.neq('id', excludeDropId);
+      }
+
+      const { data: existingDrops, error } = await query;
 
       if (error) throw error;
 
       // Extract numbers from existing drop names for this room/type combination
       const existingNumbers = [];
       const basePattern = `${roomName} ${dropType}`;
-      
+
       (existingDrops || []).forEach(drop => {
         if (drop.drop_name && drop.drop_name.startsWith(basePattern)) {
           const match = drop.drop_name.match(/(\d+)$/);
@@ -384,7 +390,7 @@ class WireDropService {
       } else {
         // Update the first matching stage (and handle duplicates if they exist)
         const stageId = existingStages[0].id;
-        
+
         // If there are duplicates, remove them
         if (existingStages.length > 1) {
           const duplicateIds = existingStages.slice(1).map(s => s.id);
@@ -446,12 +452,12 @@ class WireDropService {
       if (!wireDrop || !wireDrop.project_id) {
         throw new Error('Wire drop not found or project ID missing');
       }
-      
+
       // Import SharePoint storage service dynamically to avoid circular dependencies
       const { sharePointStorageService } = await import('./sharePointStorageService');
-      
+
       console.log(`Uploading photo to SharePoint for wire drop: ${wireDropId}, stage: ${stageType}`);
-      
+
       // Upload to SharePoint - now returns metadata object
       const uploadResult = await sharePointStorageService.uploadWireDropPhoto(
         wireDrop.project_id,
@@ -526,7 +532,7 @@ class WireDropService {
   async completeCommission(wireDropId, commissionData = {}) {
     try {
       const currentUser = await this.getCurrentUserInfo();
-      
+
       return await this.updateStage(wireDropId, 'commission', {
         completed: true,
         stage_data: commissionData,
@@ -667,9 +673,9 @@ class WireDropService {
    */
   calculateWireDropCompletion(stages) {
     if (!stages || stages.length === 0) return 0;
-    
+
     const completedCount = stages.filter(s => s.completed).length;
-    
+
     if (completedCount === 0) return 0;
     if (completedCount === 1) return 33;
     if (completedCount === 2) return 67;
@@ -681,13 +687,13 @@ class WireDropService {
    */
   calculateProjectCompletion(wireDrops) {
     if (!wireDrops || wireDrops.length === 0) return 0;
-    
+
     const totalCompletion = wireDrops.reduce((sum, drop) => {
-      const dropCompletion = drop.completion || 
+      const dropCompletion = drop.completion ||
         this.calculateWireDropCompletion(drop.wire_drop_stages || []);
       return sum + dropCompletion;
     }, 0);
-    
+
     return Math.round(totalCompletion / wireDrops.length);
   }
 
@@ -709,7 +715,7 @@ class WireDropService {
   async deleteWireDrop(wireDropId) {
     try {
       console.log(`Attempting to delete wire drop: ${wireDropId}`);
-      
+
       // First check if the wire drop exists
       const { data: existingDrop, error: checkError } = await supabase
         .from('wire_drops')
@@ -736,19 +742,19 @@ class WireDropService {
           hint: error.hint,
           code: error.code
         });
-        
+
         // Check for specific error types
         if (error.code === '42501' || error.message?.includes('policy')) {
           throw new Error('Permission denied: Database DELETE policy is missing. Please run the fix_wire_drops_delete_NOW.sql script in Supabase SQL Editor.');
         }
-        
+
         throw error;
       }
 
       // Verify the delete actually removed something
       if (!data || data.length === 0) {
         console.error('Delete operation returned no data - item may not have been deleted');
-        
+
         // Double-check if it still exists
         const { data: stillExists } = await supabase
           .from('wire_drops')
@@ -793,7 +799,7 @@ class WireDropService {
     }
   }
 
-  async updateEquipmentLinks(wireDropId, linkSide, equipmentIds = []) {
+  async updateEquipmentLinks(wireDropId, linkSide, equipmentIds = [], userId = null) {
     try {
       console.log('[wireDropService] updateEquipmentLinks called:', {
         wireDropId,
@@ -801,10 +807,19 @@ class WireDropService {
         equipmentIds
       });
 
+      // Get previously linked equipment IDs to track what's being unlinked
+      const { data: previousLinks } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('project_equipment_id')
+        .eq('wire_drop_id', wireDropId)
+        .eq('link_side', linkSide);
+
+      const previousEquipmentIds = (previousLinks || []).map(l => l.project_equipment_id);
+
       // USE SERVER-SIDE RPC FUNCTION
       // This bypasses Supabase JS client issues and runs directly on the database server
       console.log('[wireDropService] Using RPC function set_wire_drop_equipment_links');
-      
+
       const { data, error } = await supabase.rpc('set_wire_drop_equipment_links', {
         p_wire_drop_id: wireDropId,
         p_link_side: linkSide,
@@ -817,17 +832,100 @@ class WireDropService {
       }
 
       console.log('[wireDropService] RPC results:', data);
-      
+
       // Data should show: [{operation: 'deleted', count: X}, {operation: 'inserted', count: Y}]
       const deletedCount = data?.find(r => r.operation === 'deleted')?.count || 0;
       const insertedCount = data?.find(r => r.operation === 'inserted')?.count || 0;
-      
+
       console.log(`[wireDropService] Deleted ${deletedCount} link(s), Inserted ${insertedCount} link(s)`);
+
+      // Mark newly linked equipment as installed
+      if (equipmentIds && equipmentIds.length > 0) {
+        const newlyLinked = equipmentIds.filter(id => !previousEquipmentIds.includes(id));
+        if (newlyLinked.length > 0) {
+          console.log(`[wireDropService] Marking ${newlyLinked.length} equipment item(s) as installed`);
+          await this.markEquipmentInstalled(newlyLinked, true, userId);
+        }
+      }
+
+      // Unmark equipment that was unlinked (only if it has no other wire drop links)
+      const unlinkedIds = previousEquipmentIds.filter(id => !equipmentIds.includes(id));
+      if (unlinkedIds.length > 0) {
+        console.log(`[wireDropService] Checking ${unlinkedIds.length} unlinked equipment for other wire drop connections`);
+        await this.checkAndUnmarkEquipment(unlinkedIds);
+      }
+
       console.log('[wireDropService] updateEquipmentLinks completed successfully');
       return true;
     } catch (error) {
       console.error('[wireDropService] Failed to update wire drop equipment links:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Mark equipment items as installed or not installed
+   * @param {string[]} equipmentIds - Array of equipment UUIDs
+   * @param {boolean} installed - Whether to mark as installed or not
+   * @param {string} userId - Current user ID (optional)
+   */
+  async markEquipmentInstalled(equipmentIds, installed = true, userId = null) {
+    if (!equipmentIds || equipmentIds.length === 0) return;
+
+    try {
+      const updates = {
+        installed,
+        installed_at: installed ? new Date().toISOString() : null,
+        installed_by: installed ? userId : null
+      };
+
+      const { error } = await supabase
+        .from('project_equipment')
+        .update(updates)
+        .in('id', equipmentIds);
+
+      if (error) {
+        console.error('[wireDropService] Failed to mark equipment installed:', error);
+        throw error;
+      }
+
+      console.log(`[wireDropService] Marked ${equipmentIds.length} equipment as ${installed ? 'installed' : 'not installed'}`);
+    } catch (error) {
+      console.error('[wireDropService] markEquipmentInstalled error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if unlinked equipment has any other wire drop connections
+   * If not, unmark them as installed
+   * @param {string[]} equipmentIds - Array of equipment UUIDs to check
+   */
+  async checkAndUnmarkEquipment(equipmentIds) {
+    if (!equipmentIds || equipmentIds.length === 0) return;
+
+    try {
+      // For each equipment, check if it still has wire drop links
+      for (const equipmentId of equipmentIds) {
+        const { data: remainingLinks, error } = await supabase
+          .from('wire_drop_equipment_links')
+          .select('id')
+          .eq('project_equipment_id', equipmentId)
+          .limit(1);
+
+        if (error) {
+          console.warn(`[wireDropService] Error checking links for equipment ${equipmentId}:`, error);
+          continue;
+        }
+
+        // If no remaining links, unmark as installed
+        if (!remainingLinks || remainingLinks.length === 0) {
+          console.log(`[wireDropService] Equipment ${equipmentId} has no more wire drop links, unmarking as installed`);
+          await this.markEquipmentInstalled([equipmentId], false, null);
+        }
+      }
+    } catch (error) {
+      console.error('[wireDropService] checkAndUnmarkEquipment error:', error);
     }
   }
 }

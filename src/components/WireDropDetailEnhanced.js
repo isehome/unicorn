@@ -1301,7 +1301,7 @@ const WireDropDetailEnhanced = () => {
   const handleSaveRoomEnd = async () => {
     try {
       setSavingRoomEquipment(true);
-      await wireDropService.updateEquipmentLinks(id, 'room_end', roomEquipmentSelection);
+      await wireDropService.updateEquipmentLinks(id, 'room_end', roomEquipmentSelection, user?.id);
       alert('Room end equipment updated');
       await loadWireDrop();
     } catch (err) {
@@ -1315,7 +1315,7 @@ const WireDropDetailEnhanced = () => {
   const handleSaveHeadEnd = async () => {
     try {
       setSavingHeadEquipment(true);
-      await wireDropService.updateEquipmentLinks(id, 'head_end', headEquipmentSelection);
+      await wireDropService.updateEquipmentLinks(id, 'head_end', headEquipmentSelection, user?.id);
       alert('Head end equipment updated');
       await loadWireDrop();
     } catch (err) {
@@ -2791,18 +2791,18 @@ const WireDropDetailEnhanced = () => {
                                 try {
                                   // Use service method to update equipment (single-select)
                                   console.log('[Equipment] Using service method to update equipment');
-                                  const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id]);
-                                  
+                                  const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id], user?.id);
+
                                   if (success) {
                                     console.log('[Equipment] Successfully updated equipment link');
-                                    
+
                                     // Update local state
                                     setRoomEquipmentSelection([item.id]);
                                     setPrimaryRoomEquipmentId(item.id);
-                                    
+
                                     // Reload wire drop data
                                     await loadWireDrop();
-                                    
+
                                     // Close dropdown
                                     setShowRoomEquipmentDropdown(false);
                                     setRoomEquipmentSearch('');
@@ -2907,10 +2907,10 @@ const WireDropDetailEnhanced = () => {
                               if (!window.confirm('Remove this equipment link?')) {
                                 return;
                               }
-                              
+
                               try {
-                                const success = await wireDropService.updateEquipmentLinks(id, 'room_end', []);
-                                
+                                const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [], user?.id);
+
                                 if (success) {
                                   setRoomEquipmentSelection([]);
                                   setPrimaryRoomEquipmentId(null);
@@ -2977,22 +2977,22 @@ const WireDropDetailEnhanced = () => {
                                     key={item.id}
                                     onClick={async () => {
                                       console.log('[Equipment] Other room item selected:', item.name, item.id);
-                                      
+
                                       try {
                                         // Use service method to update equipment (single-select)
                                         console.log('[Equipment] Using service method to update equipment');
-                                        const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id]);
-                                        
+                                        const success = await wireDropService.updateEquipmentLinks(id, 'room_end', [item.id], user?.id);
+
                                         if (success) {
                                           console.log('[Equipment] Successfully updated equipment link');
-                                          
+
                                           // Update local state
                                           setRoomEquipmentSelection([item.id]);
                                           setPrimaryRoomEquipmentId(item.id);
-                                          
+
                                           // Reload wire drop data
                                           await loadWireDrop();
-                                          
+
                                           // Close dropdown
                                           setShowRoomEquipmentDropdown(false);
                                           setRoomEquipmentSearch('');

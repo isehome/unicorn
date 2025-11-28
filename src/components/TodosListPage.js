@@ -20,7 +20,7 @@ const importanceColors = {
   critical: '#ef4444',
   high: '#f97316',
   normal: '#3b82f6',
-  low: '#22c55e'
+  low: '#94AF32'  // brand success color
 };
 
 const getImportanceRank = (value) => {

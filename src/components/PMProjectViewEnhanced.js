@@ -56,9 +56,9 @@ import {
 const normalizeFieldKey = (value) =>
   typeof value === 'string'
     ? value
-        .toLowerCase()
-        .replace(/[_\s-]+/g, '')
-        .trim()
+      .toLowerCase()
+      .replace(/[_\s-]+/g, '')
+      .trim()
     : '';
 
 const extractFieldValue = (raw) => {
@@ -285,7 +285,7 @@ const PMProjectViewEnhanced = () => {
   const { mode } = useTheme();
   const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
-  
+
   const [project, setProject] = useState(null);
   const [phases, setPhases] = useState([]);
   const [statuses, setStatuses] = useState([]);
@@ -357,7 +357,7 @@ const PMProjectViewEnhanced = () => {
     totalMinutes: 0,
     entries: []
   });
-  
+
   // Client selection state
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [availableContacts, setAvailableContacts] = useState([]);
@@ -498,7 +498,7 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     // Build room list from BOTH existing wire drops AND fresh Lucid data
     const roomNameMap = new Map();
-    
+
     // First, get room names from existing wire drops (persistent data)
     existingWireDrops.forEach((drop) => {
       const roomName = drop.room_name;
@@ -511,7 +511,7 @@ const PMProjectViewEnhanced = () => {
       }
       roomNameMap.set(normalized, entry);
     });
-    
+
     // Then add any additional rooms from Lucid shapes (if fetched)
     droppableShapes.forEach((shape) => {
       const roomName = extractShapeRoomName(shape);
@@ -590,10 +590,10 @@ const PMProjectViewEnhanced = () => {
         { key: 'client_folder', label: 'Client Folder', url: normalizedClientFolder, icon: FolderOpen },
         ...(normalizedClientFolder
           ? [
-              { key: 'photos', label: 'Photos', url: `${normalizedClientFolder}/Photos`, icon: Camera },
-              { key: 'files', label: 'Files', url: `${normalizedClientFolder}/Files`, icon: FolderOpen },
-              { key: 'procurement', label: 'Procurement', url: `${normalizedClientFolder}/Procurement`, icon: FolderOpen }
-            ]
+            { key: 'photos', label: 'Photos', url: `${normalizedClientFolder}/Photos`, icon: Camera },
+            { key: 'files', label: 'Files', url: `${normalizedClientFolder}/Files`, icon: FolderOpen },
+            { key: 'procurement', label: 'Procurement', url: `${normalizedClientFolder}/Procurement`, icon: FolderOpen }
+          ]
           : [])
       ].filter((item) => Boolean(item.url)),
     [
@@ -741,7 +741,7 @@ const PMProjectViewEnhanced = () => {
         .from('contacts')
         .select('*')
         .order('name', { ascending: true });
-      
+
       if (!error && data) {
         setAvailableContacts(data);
       }
@@ -822,7 +822,7 @@ const PMProjectViewEnhanced = () => {
       setLoading(true);
       const projectData = await projectsService.getAll();
       const currentProject = projectData.find(p => p.id === projectId);
-      
+
       if (currentProject) {
         setProject(currentProject);
         setFormData({
@@ -853,7 +853,7 @@ const PMProjectViewEnhanced = () => {
             phase:project_phases(*)
           `)
           .eq('project_id', projectId);
-        
+
         setMilestones(milestonesData || []);
       }
     } catch (error) {
@@ -1019,7 +1019,7 @@ const PMProjectViewEnhanced = () => {
         .from('wire_drops')
         .select('*')
         .eq('project_id', projectId);
-      
+
       setExistingWireDrops(wireDrops || []);
     } catch (error) {
       console.error('Failed to load wire drops:', error);
@@ -1067,18 +1067,18 @@ const PMProjectViewEnhanced = () => {
       }
 
       setMilestonePercentages(percentages);
-      
+
       // Get milestone data
       const milestones = await milestoneService.getProjectMilestones(projectId);
-      
+
       // Format milestones for display
       const formattedMilestones = milestones.map(m => milestoneService.formatMilestone(m));
       setProjectMilestones(formattedMilestones);
-      
+
       // Check completion status for all milestones - handle errors gracefully
       try {
         await milestoneService.checkAllMilestones(projectId);
-        
+
         // Reload to get updated completion data
         const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
         const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
@@ -1341,9 +1341,9 @@ const PMProjectViewEnhanced = () => {
         lucid_document_id: lucidDocId,
         lucid_document_url: lucidDocUrl
       };
-      
+
       console.log('Sending update with fields:', validFields);
-      
+
       // Use supabase directly to avoid any service layer issues
       const { data, error } = await supabase
         .from('projects')
@@ -1351,12 +1351,12 @@ const PMProjectViewEnhanced = () => {
         .eq('id', projectId)
         .select()
         .single();
-        
+
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
-      
+
       console.log('Update successful:', data);
       setProject({ ...project, ...data });
 
@@ -1403,17 +1403,17 @@ const PMProjectViewEnhanced = () => {
       let stakeholderResult = null;
       if (formData.client) {
         let contactToUse = selectedClient;
-        
+
         // If no selectedClient, try to find matching contact
         if (!contactToUse) {
           console.log('No selectedClient, searching for matching contact...');
-          contactToUse = availableContacts.find(c => 
-            c.company === formData.client || 
+          contactToUse = availableContacts.find(c =>
+            c.company === formData.client ||
             c.name === formData.client
           );
           console.log('Found matching contact:', contactToUse);
         }
-        
+
         if (contactToUse) {
           stakeholderResult = await updateClientStakeholder(contactToUse);
         } else {
@@ -1421,7 +1421,7 @@ const PMProjectViewEnhanced = () => {
           alert(`Warning: Client "${formData.client}" was saved, but no matching contact was found to create a stakeholder. Please ensure this contact exists in your contacts list.`);
         }
       }
-      
+
       setEditMode(false);
 
       // Show success message
@@ -1435,7 +1435,7 @@ const PMProjectViewEnhanced = () => {
         successMessage += '\n\nWarning: Issue updating client stakeholder.';
       }
       alert(successMessage);
-      
+
     } catch (error) {
       console.error('Failed to save project:', error);
       alert(`Failed to save: ${error.message || 'Unknown error'}`);
@@ -1690,12 +1690,12 @@ const PMProjectViewEnhanced = () => {
       console.log('Contact:', contact);
       console.log('Project ID:', projectId);
       console.log('========================================');
-      
+
       if (!contact || !contact.id) {
         console.error('Invalid contact provided:', contact);
         return false;
       }
-      
+
       // First, get or create the "Client" role in stakeholder_roles
       let clientRoleId = null;
       const { data: existingRoles, error: roleQueryError } = await supabase
@@ -1703,13 +1703,13 @@ const PMProjectViewEnhanced = () => {
         .select('*')
         .eq('name', 'Client')
         .single();
-      
+
       if (roleQueryError && roleQueryError.code !== 'PGRST116') {
         // PGRST116 is "not found" error, which is okay
         console.error('Error checking for Client role:', roleQueryError);
         return false;
       }
-      
+
       if (existingRoles) {
         clientRoleId = existingRoles.id;
         console.log('Found existing Client role with ID:', clientRoleId);
@@ -1726,42 +1726,42 @@ const PMProjectViewEnhanced = () => {
           }])
           .select()
           .single();
-        
+
         if (createRoleError) {
           console.error('Failed to create Client role:', createRoleError);
           return false;
         }
-        
+
         clientRoleId = newRole.id;
         console.log('Created new Client role with ID:', clientRoleId);
       }
-      
+
       // Now check if there's already a stakeholder assignment for this contact with Client role
       const { data: existingAssignment, error: assignmentQueryError } = await supabase
         .from('project_stakeholders')
         .select('*')
         .eq('project_id', projectId)
         .eq('stakeholder_role_id', clientRoleId);
-        
+
       if (assignmentQueryError) {
         console.error('Error checking for existing Client assignment:', assignmentQueryError);
         return false;
       }
-      
+
       console.log('Existing Client assignments found:', existingAssignment);
-      
+
       if (existingAssignment && existingAssignment.length > 0) {
         // Update existing assignment with new contact
         console.log('Updating existing assignment with contact_id:', contact.id);
         const { data: updateData, error: updateError } = await supabase
           .from('project_stakeholders')
-          .update({ 
+          .update({
             contact_id: contact.id
           })
           .eq('project_id', projectId)
           .eq('stakeholder_role_id', clientRoleId)
           .select();
-          
+
         if (updateError) {
           console.error('Failed to update Client assignment:', updateError);
           return false;
@@ -1778,7 +1778,7 @@ const PMProjectViewEnhanced = () => {
           stakeholder_role_id: clientRoleId,
           is_primary: true
         });
-        
+
         const { data: insertData, error: insertError } = await supabase
           .from('project_stakeholders')
           .insert([{
@@ -1789,7 +1789,7 @@ const PMProjectViewEnhanced = () => {
             assignment_notes: 'Auto-assigned from project client field'
           }])
           .select();
-          
+
         if (insertError) {
           console.error('Failed to create Client assignment:', insertError);
           console.error('Error details:', JSON.stringify(insertError, null, 2));
@@ -1824,7 +1824,7 @@ const PMProjectViewEnhanced = () => {
     setSelectedClient(contact);
     setShowClientPicker(false);
     setClientSearchTerm('');
-    
+
     // Note: The stakeholder assignment will happen when the project is saved
     console.log('Client selected:', contact);
   };
@@ -1837,7 +1837,7 @@ const PMProjectViewEnhanced = () => {
     setSelectedClient(null);
     setClientSearchTerm('');
   };
-  
+
   const handleCreateNewContact = async () => {
     try {
       // Validate required fields
@@ -1845,22 +1845,22 @@ const PMProjectViewEnhanced = () => {
         alert('Please provide at least a name or company');
         return;
       }
-      
+
       // Create new contact
       const { data: newContact, error } = await supabase
         .from('contacts')
         .insert([newContactData])
         .select()
         .single();
-      
+
       if (error) throw error;
-      
+
       // Add to available contacts
       setAvailableContacts([...availableContacts, newContact]);
-      
+
       // Select the new contact
       handleClientSelect(newContact);
-      
+
       // Reset form
       setNewContactData({
         name: '',
@@ -1869,32 +1869,32 @@ const PMProjectViewEnhanced = () => {
         phone: ''
       });
       setShowNewContactForm(false);
-      
+
     } catch (error) {
       console.error('Failed to create contact:', error);
       alert('Failed to create contact: ' + error.message);
     }
   };
-  
+
   // Filter contacts based on search term
   const filteredContacts = useMemo(() => {
     if (!clientSearchTerm.trim()) return availableContacts;
-    
+
     const search = clientSearchTerm.toLowerCase();
     return availableContacts.filter(contact => {
       const name = (contact.name || '').toLowerCase();
       const company = (contact.company || '').toLowerCase();
       const email = (contact.email || '').toLowerCase();
-      
-      return name.includes(search) || 
-             company.includes(search) || 
-             email.includes(search);
+
+      return name.includes(search) ||
+        company.includes(search) ||
+        email.includes(search);
     });
   }, [availableContacts, clientSearchTerm]);
 
   const handleAddPhase = async () => {
     if (!newPhase.name) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('project_phases')
@@ -1904,7 +1904,7 @@ const PMProjectViewEnhanced = () => {
         }])
         .select()
         .single();
-      
+
       if (!error) {
         setPhases([...phases, data]);
         setNewPhase({ name: '', description: '', color: '#6b7280' });
@@ -1917,7 +1917,7 @@ const PMProjectViewEnhanced = () => {
 
   const handleAddStatus = async () => {
     if (!newStatus.name) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('project_statuses')
@@ -1927,7 +1927,7 @@ const PMProjectViewEnhanced = () => {
         }])
         .select()
         .single();
-      
+
       if (!error) {
         setStatuses([...statuses, data]);
         setNewStatus({ name: '', description: '', color: '#6b7280' });
@@ -2011,11 +2011,11 @@ const PMProjectViewEnhanced = () => {
             phase:project_phases(*)
           `)
           .single();
-        
+
         if (error) {
           throw error;
         }
-        
+
         setMilestones([...milestones, data]);
       }
     } catch (error) {
@@ -2037,7 +2037,7 @@ const PMProjectViewEnhanced = () => {
     const now = new Date();
     const diffMs = now - date;
     const diffMins = Math.floor(diffMs / 60000);
-    
+
     if (diffMins < 1) return 'Just now';
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
@@ -2066,7 +2066,7 @@ const PMProjectViewEnhanced = () => {
 
       // Extract shapes
       const shapes = extractShapes(docData);
-      
+
       // Filter shapes that have IS Drop = true (case-insensitive for both key and value)
       const droppable = shapes.filter((shape) => {
         const isDropValue = getShapeCustomValue(shape, 'IS Drop');
@@ -2092,7 +2092,7 @@ const PMProjectViewEnhanced = () => {
         .from('wire_drops')
         .select('*')
         .eq('project_id', projectId);
-      
+
       setExistingWireDrops(wireDrops || []);
       setShowLucidSection(true);
 
@@ -2116,7 +2116,7 @@ const PMProjectViewEnhanced = () => {
 
   const handleSelectAll = () => {
     // Only select shapes that don't already have wire drops
-    const selectableShapes = droppableShapes.filter(shape => 
+    const selectableShapes = droppableShapes.filter(shape =>
       !existingWireDrops.some(wd => wd.lucid_shape_id === shape.id)
     );
     setSelectedShapes(new Set(selectableShapes.map(s => s.id)));
@@ -2145,7 +2145,7 @@ const PMProjectViewEnhanced = () => {
         .from('wire_drops')
         .select('room_name, drop_type, drop_name')
         .eq('project_id', projectId);
-      
+
       if (existingDrops) {
         existingDrops.forEach(drop => {
           if (drop.room_name && drop.drop_type) {
@@ -2194,15 +2194,19 @@ const PMProjectViewEnhanced = () => {
 
         // Check if wire drop already exists for this shape
         const existingDrop = existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
-        
+
         if (existingDrop) {
           // Update existing wire drop with latest data from Lucid
-          // Generate new name if room or type changed
-          let updatedDropName = existingDrop.drop_name;
-          if (canonicalRoomName && dropType && 
-              (existingDrop.room_name !== canonicalRoomName || existingDrop.drop_type !== dropType)) {
-            updatedDropName = await wireDropService.generateDropName(projectId, canonicalRoomName, dropType);
-          }
+          // Generate new name if room or type changed OR if current name is generic
+          // Update existing wire drop with latest data from Lucid
+          // STRICTLY ENFORCE STANDARD NAMING: Always regenerate name based on Room + Type + Number
+          // This overwrites any custom names to ensure global consistency and uniqueness
+          let updatedDropName = await wireDropService.generateDropName(
+            projectId,
+            canonicalRoomName,
+            dropType,
+            existingDrop.id // Pass ID to exclude self from collision check
+          );
 
           const shapeColors = extractShapeColors(shape);
           const positionInfo = extractShapePositionInfo(shape);
@@ -2226,15 +2230,15 @@ const PMProjectViewEnhanced = () => {
             existingDrop.shape_line_color ||
             null;
           const shapeDataPayload = shapeMetadata || existingDrop.shape_data || null;
-          
+
           const updatePayload = {
             drop_name: updatedDropName || existingDrop.drop_name,
             room_name: canonicalRoomName,
             location: locationValue,
             wire_type: wireType,
             drop_type: dropType,
-            install_note: getShapeCustomValue(shape, 'Install Note') || 
-                          getShapeCustomValue(shape, 'Note') || null,
+            install_note: getShapeCustomValue(shape, 'Install Note') ||
+              getShapeCustomValue(shape, 'Note') || null,
             device: extractShapeDevice(shape),
             shape_color: resolvedShapeColor,
             shape_fill_color: resolvedFillColor,
@@ -2271,7 +2275,7 @@ const PMProjectViewEnhanced = () => {
         } else {
           // Use the service to create wire drop properly with stages
           // The service will auto-generate drop_name based on room + type + number
-          
+
           // Extract color from shape metadata - store in both places
           const shapeColors = extractShapeColors(shape);
           const positionInfo = extractShapePositionInfo(shape);
@@ -2279,15 +2283,15 @@ const PMProjectViewEnhanced = () => {
             shapeColors,
             colorCandidates: shapeColors.candidates
           });
-          
+
           const wireDropData = {
             room_name: canonicalRoomName,
             drop_type: dropType,  // This is required for auto-generation
             drop_name: dropNameToUse, // Always null - let service auto-generate
             location: locationValue,
             wire_type: wireType,
-            install_note: getShapeCustomValue(shape, 'Install Note') || 
-                          getShapeCustomValue(shape, 'Note') || null,
+            install_note: getShapeCustomValue(shape, 'Install Note') ||
+              getShapeCustomValue(shape, 'Note') || null,
             device: extractShapeDevice(shape),
             // Store color in individual columns (fallback)
             shape_color: shapeColors.primary,
@@ -2345,7 +2349,7 @@ const PMProjectViewEnhanced = () => {
         .from('wire_drops')
         .select('*')
         .eq('project_id', projectId);
-      
+
       setExistingWireDrops(updatedWireDrops || []);
       setSelectedShapes(new Set());
 
@@ -2360,7 +2364,7 @@ const PMProjectViewEnhanced = () => {
       if (errors.length > 0) {
         messages.push(`\n\nErrors:\n${errors.join('\n')}`);
       }
-      
+
       if (messages.length > 0) {
         alert(messages.join('\n'));
       }
@@ -2568,355 +2572,355 @@ const PMProjectViewEnhanced = () => {
                   </span>
                 )}
               </button>
-              
+
               {!sectionsCollapsed.projectInfo && (
-              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
-              <div className="space-y-6">
-                {/* Project Basics Section */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Basic Information
-                  </h3>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Project Name
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    disabled={!editMode}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+                  <div className="space-y-6">
+                    {/* Project Basics Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                        <FileText className="w-4 h-4" />
+                        Basic Information
+                      </h3>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Project Name
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          disabled={!editMode}
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                              bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                              disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Client
-                  </label>
-                  <div className="relative">
-                    {!editMode ? (
-                      <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
-                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
-                        {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
+                        />
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            name="client"
-                            value={formData.client}
-                            onChange={handleInputChange}
-                            placeholder="Enter client name or company"
-                            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Client
+                        </label>
+                        <div className="relative">
+                          {!editMode ? (
+                            <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
+                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+                              {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  name="client"
+                                  value={formData.client}
+                                  onChange={handleInputChange}
+                                  placeholder="Enter client name or company"
+                                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowClientPicker(!showClientPicker)}
-                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowClientPicker(!showClientPicker)}
+                                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                      bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400
                                      hover:border-violet-500 dark:hover:border-violet-400 hover:text-violet-600 
                                      dark:hover:text-violet-400 transition-colors"
-                            title="Select from contacts"
-                          >
-                            <Users className="w-4 h-4" />
-                          </button>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Type directly or click <Users className="w-3 h-3 inline" /> to select from contacts
-                        </p>
+                                  title="Select from contacts"
+                                >
+                                  <Users className="w-4 h-4" />
+                                </button>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Type directly or click <Users className="w-3 h-3 inline" /> to select from contacts
+                              </p>
 
-                        {showClientPicker && (
-                          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
+                              {showClientPicker && (
+                                <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
                                         dark:border-gray-600 rounded-lg shadow-xl max-h-96 overflow-hidden">
-                            <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                              <input
-                                type="text"
-                                value={clientSearchTerm}
-                                onChange={(e) => setClientSearchTerm(e.target.value)}
-                                placeholder="Search contacts..."
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
+                                  <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                                    <input
+                                      type="text"
+                                      value={clientSearchTerm}
+                                      onChange={(e) => setClientSearchTerm(e.target.value)}
+                                      placeholder="Search contacts..."
+                                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
                                          bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                          placeholder-gray-500 dark:placeholder-gray-400
                                          focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                                autoFocus
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </div>
+                                      autoFocus
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  </div>
 
-                            <div className="max-h-60 overflow-y-auto">
-                              {filteredContacts.length === 0 ? (
-                                <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                                  {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
-                                </div>
-                              ) : (
-                                filteredContacts.map((contact) => {
-                                  const displayName =
-                                    contact.name || contact.company || 'Unnamed Contact';
+                                  <div className="max-h-60 overflow-y-auto">
+                                    {filteredContacts.length === 0 ? (
+                                      <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                                        {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
+                                      </div>
+                                    ) : (
+                                      filteredContacts.map((contact) => {
+                                        const displayName =
+                                          contact.name || contact.company || 'Unnamed Contact';
 
-                                  return (
-                                    <div
-                                      key={contact.id}
-                                      className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
+                                        return (
+                                          <div
+                                            key={contact.id}
+                                            className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
                                                border-b border-gray-100 dark:border-gray-700 last:border-0
                                                transition-colors"
-                                      onClick={() => handleClientSelect(contact)}
+                                            onClick={() => handleClientSelect(contact)}
+                                          >
+                                            <div className="font-medium text-gray-900 dark:text-white">
+                                              {displayName}
+                                            </div>
+                                            {contact.company && contact.name && (
+                                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                                                {contact.company}
+                                              </div>
+                                            )}
+                                            {contact.email && (
+                                              <div className="text-sm text-gray-500 dark:text-gray-500">
+                                                {contact.email} {contact.phone && `• ${contact.phone}`}
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+
+                                  <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowNewContactForm(true);
+                                        setShowClientPicker(false);
+                                      }}
+                                      className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
+                                         flex items-center justify-center gap-2"
                                     >
-                                      <div className="font-medium text-gray-900 dark:text-white">
-                                        {displayName}
-                                      </div>
-                                      {contact.company && contact.name && (
-                                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                                          {contact.company}
-                                        </div>
-                                      )}
-                                      {contact.email && (
-                                        <div className="text-sm text-gray-500 dark:text-gray-500">
-                                          {contact.email} {contact.phone && `• ${contact.phone}`}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
+                                      <Plus className="w-4 h-4" />
+                                      Add New Contact
+                                    </button>
+                                  </div>
+                                </div>
                               )}
                             </div>
-
-                            <div className="p-2 border-t border-gray-200 dark:border-gray-700">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowNewContactForm(true);
-                                  setShowClientPicker(false);
-                                }}
-                                className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
-                                         flex items-center justify-center gap-2"
-                              >
-                                <Plus className="w-4 h-4" />
-                                Add New Contact
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Phase
-                      {editMode && (
-                        <button
-                          onClick={() => setShowPhaseModal(true)}
-                          className="ml-2 text-violet-600 hover:text-violet-700"
-                        >
-                          <Plus className="w-4 h-4 inline" />
-                        </button>
-                      )}
-                    </label>
-                    <select
-                      name="phase"
-                      value={formData.phase}
-                      onChange={handleInputChange}
-                      disabled={!editMode}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Phase
+                            {editMode && (
+                              <button
+                                onClick={() => setShowPhaseModal(true)}
+                                className="ml-2 text-violet-600 hover:text-violet-700"
+                              >
+                                <Plus className="w-4 h-4 inline" />
+                              </button>
+                            )}
+                          </label>
+                          <select
+                            name="phase"
+                            value={formData.phase}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                    >
-                      <option value="">Select Phase</option>
-                      {phases.map((phase) => (
-                        <option key={phase.id} value={phase.name}>
-                          {phase.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                          >
+                            <option value="">Select Phase</option>
+                            {phases.map((phase) => (
+                              <option key={phase.id} value={phase.name}>
+                                {phase.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Status
-                      {editMode && (
-                        <button
-                          onClick={() => setShowStatusModal(true)}
-                          className="ml-2 text-violet-600 hover:text-violet-700"
-                        >
-                          <Plus className="w-4 h-4 inline" />
-                        </button>
-                      )}
-                    </label>
-                    <select
-                      name="status"
-                      value={formData.status}
-                      onChange={handleInputChange}
-                      disabled={!editMode}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Status
+                            {editMode && (
+                              <button
+                                onClick={() => setShowStatusModal(true)}
+                                className="ml-2 text-violet-600 hover:text-violet-700"
+                              >
+                                <Plus className="w-4 h-4 inline" />
+                              </button>
+                            )}
+                          </label>
+                          <select
+                            name="status"
+                            value={formData.status}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                    >
-                      {statuses.length === 0 ? (
-                        <>
-                          <option value="active">Active</option>
-                          <option value="on_hold">On Hold</option>
-                          <option value="completed">Completed</option>
-                          <option value="cancelled">Cancelled</option>
-                        </>
-                      ) : (
-                        statuses.map((status) => (
-                          <option key={status.id} value={status.name}>
-                            {status.name}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-                  </div>
-                </div>
+                          >
+                            {statuses.length === 0 ? (
+                              <>
+                                <option value="active">Active</option>
+                                <option value="on_hold">On Hold</option>
+                                <option value="completed">Completed</option>
+                                <option value="cancelled">Cancelled</option>
+                              </>
+                            ) : (
+                              statuses.map((status) => (
+                                <option key={status.id} value={status.name}>
+                                  {status.name}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Schedule & Notes Section */}
-                <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Schedule & Notes
-                  </h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Project Number
-                      </label>
-                      <input
-                        type="text"
-                        name="project_number"
-                        value={formData.project_number}
-                        onChange={handleInputChange}
-                        disabled={!editMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                    {/* Schedule & Notes Section */}
+                    <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        Schedule & Notes
+                      </h3>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Project Number
+                          </label>
+                          <input
+                            type="text"
+                            name="project_number"
+                            value={formData.project_number}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                  disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed
                                  [&::-webkit-calendar-picker-indicator]:dark:invert"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Start Date
-                      </label>
-                      <input
-                        type="date"
-                        name="start_date"
-                        value={formData.start_date}
-                        onChange={handleInputChange}
-                        disabled={!editMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Start Date
+                          </label>
+                          <input
+                            type="date"
+                            name="start_date"
+                            value={formData.start_date}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                  disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        End Date
-                      </label>
-                      <input
-                        type="date"
-                        name="end_date"
-                        value={formData.end_date}
-                        onChange={handleInputChange}
-                        disabled={!editMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            End Date
+                          </label>
+                          <input
+                            type="date"
+                            name="end_date"
+                            value={formData.end_date}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                  disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Address
-                      </label>
-                      <input
-                        type="text"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleInputChange}
-                        disabled={!editMode}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Address
+                          </label>
+                          <input
+                            type="text"
+                            name="address"
+                            value={formData.address}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                  disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Description
-                      </label>
-                      <textarea
-                        name="description"
-                        value={formData.description}
-                        onChange={handleInputChange}
-                        disabled={!editMode}
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Description
+                          </label>
+                          <textarea
+                            name="description"
+                            value={formData.description}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                  bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                  disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                      />
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Client Contact Section */}
-                <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    Client Contact
-                  </h3>
-                  <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                    {formData.client ? (
-                      <>
-                        <p className="text-base font-semibold text-gray-900 dark:text-white">
-                          {formData.client}
-                        </p>
-                        {currentClientContact ? (
-                          <div className="space-y-1 text-xs">
-                            {currentClientContact.company && (
-                              <p className="text-gray-500 dark:text-gray-400">
-                                Company: {currentClientContact.company}
+                    {/* Client Contact Section */}
+                    <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        Client Contact
+                      </h3>
+                      <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                        {formData.client ? (
+                          <>
+                            <p className="text-base font-semibold text-gray-900 dark:text-white">
+                              {formData.client}
+                            </p>
+                            {currentClientContact ? (
+                              <div className="space-y-1 text-xs">
+                                {currentClientContact.company && (
+                                  <p className="text-gray-500 dark:text-gray-400">
+                                    Company: {currentClientContact.company}
+                                  </p>
+                                )}
+                                {currentClientContact.email && (
+                                  <p className="text-gray-500 dark:text-gray-400">
+                                    Email: {currentClientContact.email}
+                                  </p>
+                                )}
+                                {currentClientContact.phone && (
+                                  <p className="text-gray-500 dark:text-gray-400">
+                                    Phone: {currentClientContact.phone}
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                No matching contact details found in your directory.
                               </p>
                             )}
-                            {currentClientContact.email && (
-                              <p className="text-gray-500 dark:text-gray-400">
-                                Email: {currentClientContact.email}
-                              </p>
-                            )}
-                            {currentClientContact.phone && (
-                              <p className="text-gray-500 dark:text-gray-400">
-                                Phone: {currentClientContact.phone}
-                              </p>
-                            )}
-                          </div>
+                          </>
                         ) : (
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            No matching contact details found in your directory.
+                            Client not set. Switch to edit mode to assign a primary contact.
                           </p>
                         )}
-                      </>
-                    ) : (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Client not set. Switch to edit mode to assign a primary contact.
-                      </p>
-                    )}
-                    {editMode && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Use the client picker above to search, link, or create a new contact.
-                      </p>
-                    )}
+                        {editMode && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            Use the client picker above to search, link, or create a new contact.
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-              </div>
-            )}
+              )}
             </div>
           </div>
 
@@ -2938,235 +2942,235 @@ const PMProjectViewEnhanced = () => {
                   Linked Resources
                 </h2>
               </button>
-              
+
               {!sectionsCollapsed.linkedResources && (
-              <div className="p-5 border-t border-gray-200 dark:border-gray-700">
-              <div className="space-y-4">
-                {editMode ? (
+                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
                   <div className="space-y-4">
-                    {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
-                      <div key={key}>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          <Icon className="w-4 h-4 inline mr-1" />
-                          {label}
-                        </label>
-                        <input
-                          type="url"
-                          name={key}
-                          value={value || ''}
-                          onChange={handleInputChange}
-                          placeholder={placeholder}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                    {editMode ? (
+                      <div className="space-y-4">
+                        {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
+                          <div key={key}>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              <Icon className="w-4 h-4 inline mr-1" />
+                              {label}
+                            </label>
+                            <input
+                              type="url"
+                              name={key}
+                              value={value || ''}
+                              onChange={handleInputChange}
+                              placeholder={placeholder}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                                    bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                    focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                        />
-                        {helper && (
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {resourceEntries.map(({ key, label, icon: Icon, value }) => (
-                      <div
-                        key={key}
-                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                            <Icon className="w-4 h-4 text-violet-500" />
-                            {label}
+                            />
+                            {helper && (
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+                            )}
                           </div>
-                          {value ? (
-                            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
-                              {value}
-                            </p>
-                          ) : (
-                            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Not set</p>
-                          )}
-                        </div>
-                        {value && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon={ExternalLink}
-                            onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {resourceEntries.map(({ key, label, icon: Icon, value }) => (
+                          <div
+                            key={key}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
                           >
-                            Open
-                          </Button>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                                <Icon className="w-4 h-4 text-violet-500" />
+                                {label}
+                              </div>
+                              {value ? (
+                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
+                                  {value}
+                                </p>
+                              ) : (
+                                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Not set</p>
+                              )}
+                            </div>
+                            {value && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon={ExternalLink}
+                                onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                              >
+                                Open
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                        {resourceEntries.every(({ value }) => !value) && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            No URLs configured yet. Switch to edit mode to add links.
+                          </p>
                         )}
                       </div>
-                    ))}
-                    {resourceEntries.every(({ value }) => !value) && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        No URLs configured yet. Switch to edit mode to add links.
-                      </p>
                     )}
-                  </div>
-                )}
 
-                {/* UniFi Network Configuration Section */}
-                <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    UniFi Network Configuration
-                  </h3>
+                    {/* UniFi Network Configuration Section */}
+                    <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        UniFi Network Configuration
+                      </h3>
 
-                  {editMode ? (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Controller Local IP Address
-                        </label>
-                        <input
-                          type="text"
-                          name="unifi_controller_ip"
-                          value={formData.unifi_controller_ip}
-                          onChange={handleInputChange}
-                          placeholder="192.168.1.1"
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                      {editMode ? (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Controller Local IP Address
+                            </label>
+                            <input
+                              type="text"
+                              name="unifi_controller_ip"
+                              value={formData.unifi_controller_ip}
+                              onChange={handleInputChange}
+                              placeholder="192.168.1.1"
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                                    bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                    focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                        />
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Local IP of your UDM Pro (only works on the same network)
-                        </p>
-                      </div>
+                            />
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              Local IP of your UDM Pro (only works on the same network)
+                            </p>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Network API Key
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showUnifiApiKey ? "text" : "password"}
-                            name="unifi_network_api_key"
-                            value={formData.unifi_network_api_key}
-                            onChange={handleInputChange}
-                            placeholder="Enter Network API Key"
-                            className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Network API Key
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showUnifiApiKey ? "text" : "password"}
+                                name="unifi_network_api_key"
+                                value={formData.unifi_network_api_key}
+                                onChange={handleInputChange}
+                                placeholder="Enter Network API Key"
+                                className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
                                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowUnifiApiKey(!showUnifiApiKey)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowUnifiApiKey(!showUnifiApiKey)}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
                                      text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300"
-                          >
-                            {showUnifiApiKey ? 'Hide' : 'Show'}
-                          </button>
-                        </div>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Generate from: Network Application → Settings → System → Integrations
-                        </p>
-                      </div>
-
-                      <div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon={RefreshCw}
-                          onClick={async () => {
-                            const result = await fetchUnifiSiteData();
-                            if (result) {
-                              alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
-                            } else {
-                              alert('Failed to connect. Check your UniFi Network URL in the field above.');
-                            }
-                          }}
-                          disabled={!formData.unifi_url}
-                        >
-                          Test Connection & Fetch Site Data
-                        </Button>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Click to fetch site info from Cloud API and auto-populate Site ID below
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Site ID
-                          </label>
-                          <input
-                            type="text"
-                            name="unifi_site_id"
-                            value={formData.unifi_site_id}
-                            onChange={handleInputChange}
-                            placeholder="Auto-fetched from API"
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
-                            readOnly
-                          />
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Automatically populated from controller
-                          </p>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Site Name
-                          </label>
-                          <input
-                            type="text"
-                            name="unifi_site_name"
-                            value={formData.unifi_site_name}
-                            onChange={handleInputChange}
-                            placeholder="Auto-fetched from API"
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
-                            readOnly
-                          />
-                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Automatically populated from controller
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            Controller IP
-                          </div>
-                          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                            {formData.unifi_controller_ip || 'Not configured'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900 dark:text-white">
-                            Network API Key
-                          </div>
-                          <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                            {formData.unifi_network_api_key ? '••••••••••••••••' : 'Not configured'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {formData.unifi_site_id && (
-                        <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-gray-900 dark:text-white">
-                              Site: {formData.unifi_site_name || 'Unknown'}
+                              >
+                                {showUnifiApiKey ? 'Hide' : 'Show'}
+                              </button>
                             </div>
-                            <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 font-mono">
-                              {formData.unifi_site_id}
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              Generate from: Network Application → Settings → System → Integrations
                             </p>
                           </div>
+
+                          <div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              icon={RefreshCw}
+                              onClick={async () => {
+                                const result = await fetchUnifiSiteData();
+                                if (result) {
+                                  alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
+                                } else {
+                                  alert('Failed to connect. Check your UniFi Network URL in the field above.');
+                                }
+                              }}
+                              disabled={!formData.unifi_url}
+                            >
+                              Test Connection & Fetch Site Data
+                            </Button>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              Click to fetch site info from Cloud API and auto-populate Site ID below
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Site ID
+                              </label>
+                              <input
+                                type="text"
+                                name="unifi_site_id"
+                                value={formData.unifi_site_id}
+                                onChange={handleInputChange}
+                                placeholder="Auto-fetched from API"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                                readOnly
+                              />
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Automatically populated from controller
+                              </p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Site Name
+                              </label>
+                              <input
+                                type="text"
+                                name="unifi_site_name"
+                                value={formData.unifi_site_name}
+                                onChange={handleInputChange}
+                                placeholder="Auto-fetched from API"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                                readOnly
+                              />
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Automatically populated from controller
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                Controller IP
+                              </div>
+                              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                {formData.unifi_controller_ip || 'Not configured'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                Network API Key
+                              </div>
+                              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                {formData.unifi_network_api_key ? '••••••••••••••••' : 'Not configured'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {formData.unifi_site_id && (
+                            <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                  Site: {formData.unifi_site_name || 'Unknown'}
+                                </div>
+                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 font-mono">
+                                  {formData.unifi_site_id}
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-              </div>
-            )}
+              )}
             </div>
           </div>
         </div>
@@ -3237,7 +3241,7 @@ const PMProjectViewEnhanced = () => {
                   { type: 'trim', label: 'Trim', color: '#f59e0b' },
                   { type: 'final_inspection', label: 'Final Inspection', color: '#ec4899' },
                   { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
-                  { type: 'handoff_training', label: 'Handoff / Training', color: '#10b981' }
+                  { type: 'handoff_training', label: 'Handoff / Training', color: '#94AF32' }
                 ].map(({ type, label, color }) => {
                   const milestone = milestoneDates.find(m => m.milestone_type === type);
                   return (
@@ -3298,7 +3302,7 @@ const PMProjectViewEnhanced = () => {
                             <option value="completed">Completed</option>
                           </select>
                         ) : milestone?.completed_manually ? (
-                          <span className="text-sm text-green-600 dark:text-green-400">Completed</span>
+                          <span className="text-sm" style={{ color: '#94AF32' }}>Completed</span>
                         ) : (
                           <span className="text-sm text-gray-400 dark:text-gray-500">Not set</span>
                         )}
@@ -3397,9 +3401,8 @@ const PMProjectViewEnhanced = () => {
                   {remainingMinutesRaw < 0 ? 'Over Budget' : 'Remaining'}
                 </p>
                 <p
-                  className={`text-sm font-semibold ${
-                    remainingMinutesRaw < 0 ? 'text-red-500' : 'text-emerald-500'
-                  }`}
+                  className="text-sm font-semibold"
+                  style={{ color: remainingMinutesRaw < 0 ? '#EF4444' : '#94AF32' }}
                 >
                   {remainingMinutesRaw < 0
                     ? `-${formatDuration(overrunMinutes)}`
@@ -3421,181 +3424,188 @@ const PMProjectViewEnhanced = () => {
             </div>
 
             <div className="mb-6">
-          <button
-            type="button"
-            onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Labor Budget</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                {laborSummary.entries.length > 0
-                  ? `${laborSummary.entries.length} labor entries • ${formatDuration(totalLaborMinutes)} allocated`
-                  : 'No labor budget imported yet'}
-              </p>
-            </div>
-            <ChevronDown
-              className={`w-5 h-5 text-gray-500 transition-transform ${
-                laborBudgetCollapsed ? '' : 'rotate-180'
-              }`}
-            />
-          </button>
+              <button
+                type="button"
+                onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Labor Budget</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {laborSummary.entries.length > 0
+                      ? `${laborSummary.entries.length} labor entries • ${formatDuration(totalLaborMinutes)} allocated`
+                      : 'No labor budget imported yet'}
+                  </p>
+                </div>
+                <ChevronDown
+                  className={`w-5 h-5 text-gray-500 transition-transform ${laborBudgetCollapsed ? '' : 'rotate-180'
+                    }`}
+                />
+              </button>
 
-          {!laborBudgetCollapsed && (
-            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-              {laborSummary.entries.length === 0 ? (
+              {!laborBudgetCollapsed && (
+                <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                  {laborSummary.entries.length === 0 ? (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No labor entries imported from the portal CSV yet.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-900/50">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Labor Type</th>
+                            <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                            <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hours</th>
+                            <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hourly Rate</th>
+                            <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Planned Cost</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                          {laborSummary.entries.map((entry) => {
+                            const plannedCost = entry.hours * entry.hourlyRate;
+                            return (
+                              <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.laborType}</td>
+                                <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.roomName}</td>
+                                <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
+                                  {entry.hours.toFixed(2)}h
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
+                                  {entry.hourlyRate ? `$${entry.hourlyRate.toFixed(2)}` : '—'}
+                                </td>
+                                <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
+                                  {entry.hourlyRate ? `$${plannedCost.toFixed(2)}` : '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-50 dark:bg-gray-900/50">
+                          <tr>
+                            <td className="px-4 py-2 font-semibold text-gray-900 dark:text-white">Total</td>
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2 text-right font-semibold text-gray-900 dark:text-white">
+                              {laborSummary.totalHours.toFixed(2)}h
+                            </td>
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2" />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+            </div>
+
+            {/* Currently Checked In Users */}
+            {timeData.activeUsers.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Currently Checked In ({timeData.activeUsers.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {timeData.activeUsers.map((user) => (
+                    <div
+                      key={user.user_email}
+                      className="flex items-center justify-between p-3 rounded-lg"
+                      style={{
+                        backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                        border: '1px solid rgba(148, 175, 50, 0.3)'
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {user.user_name || user.user_email}
+                          </p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            Checked in {formatLastActivity(user.active_session_start)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* All Users Time Summary */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Time Summary by User
+              </h3>
+              {timeData.summary.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  No labor entries imported from the portal CSV yet.
+                  No time logged for this project yet
                 </p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-900/50">
                       <tr>
-                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Labor Type</th>
-                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hours</th>
-                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Hourly Rate</th>
-                        <th className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">Planned Cost</th>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Total Time</th>
+                        <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Last Activity</th>
+                        <th className="px-4 py-2 text-center text-gray-700 dark:text-gray-300">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                      {laborSummary.entries.map((entry) => {
-                        const plannedCost = entry.hours * entry.hourlyRate;
-                        return (
-                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                            <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.laborType}</td>
-                            <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.roomName}</td>
-                            <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
-                              {entry.hours.toFixed(2)}h
-                            </td>
-                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
-                              {entry.hourlyRate ? `$${entry.hourlyRate.toFixed(2)}` : '—'}
-                            </td>
-                            <td className="px-4 py-2 text-right text-gray-600 dark:text-gray-300">
-                              {entry.hourlyRate ? `$${plannedCost.toFixed(2)}` : '—'}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {timeData.summary.map((user) => (
+                        <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                          <td className="px-4 py-3">
+                            <div>
+                              <p className="font-medium text-gray-900 dark:text-white">
+                                {user.user_name || 'Unknown'}
+                              </p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                {user.user_email}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 dark:text-white">
+                            {user.total_sessions}
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 dark:text-white">
+                            <span className="font-semibold">{user.total_hours}h</span>
+                            <span className="text-xs text-gray-500 ml-1">
+                              ({formatDuration(user.total_minutes)})
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
+                            {formatLastActivity(user.last_activity || user.last_check_out)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {user.has_active_session ? (
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-full"
+                                style={{
+                                  backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                                  color: '#94AF32'
+                                }}
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
+                                           bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
+                                <XCircle className="w-3 h-3" />
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
-                    <tfoot className="bg-gray-50 dark:bg-gray-900/50">
-                      <tr>
-                        <td className="px-4 py-2 font-semibold text-gray-900 dark:text-white">Total</td>
-                        <td className="px-4 py-2" />
-                        <td className="px-4 py-2 text-right font-semibold text-gray-900 dark:text-white">
-                          {laborSummary.totalHours.toFixed(2)}h
-                        </td>
-                        <td className="px-4 py-2" />
-                        <td className="px-4 py-2" />
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
               )}
             </div>
-          )}
-
-          </div>
-
-          {/* Currently Checked In Users */}
-          {timeData.activeUsers.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Currently Checked In ({timeData.activeUsers.length})
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                {timeData.activeUsers.map((user) => (
-                  <div
-                    key={user.user_email}
-                    className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 
-                             border border-green-200 dark:border-green-800 rounded-lg"
-                  >
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {user.user_name || user.user_email}
-                        </p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">
-                          Checked in {formatLastActivity(user.active_session_start)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Users Time Summary */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Time Summary by User
-            </h3>
-            {timeData.summary.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No time logged for this project yet
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900/50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Total Time</th>
-                      <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Last Activity</th>
-                      <th className="px-4 py-2 text-center text-gray-700 dark:text-gray-300">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {timeData.summary.map((user) => (
-                      <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {user.user_name || 'Unknown'}
-                            </p>
-                            <p className="text-xs text-gray-600 dark:text-gray-400">
-                              {user.user_email}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-white">
-                          {user.total_sessions}
-                        </td>
-                        <td className="px-4 py-3 text-gray-900 dark:text-white">
-                          <span className="font-semibold">{user.total_hours}h</span>
-                          <span className="text-xs text-gray-500 ml-1">
-                            ({formatDuration(user.total_minutes)})
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">
-                          {formatLastActivity(user.last_activity || user.last_check_out)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {user.has_active_session ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                           bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                              <CheckCircle className="w-3 h-3" />
-                              Active
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                           bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                              <XCircle className="w-3 h-3" />
-                              Inactive
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
           </>
         )}
       </div>
@@ -3619,7 +3629,7 @@ const PMProjectViewEnhanced = () => {
           <div className="mb-6 flex gap-3">
             {/* Step Number Badge */}
             <div className="flex-shrink-0">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500 dark:bg-green-600 shadow-sm">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-sm" style={{ backgroundColor: '#94AF32' }}>
                 <span className="text-lg font-bold text-white">1</span>
               </div>
             </div>
@@ -3628,19 +3638,23 @@ const PMProjectViewEnhanced = () => {
             <div className="flex-1">
               <button
                 onClick={() => toggleSection('lucidData')}
-                className="flex w-full items-center gap-2 rounded-lg border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 px-4 py-4 shadow-sm hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                className="flex w-full items-center gap-2 rounded-lg border-2 px-4 py-4 shadow-sm transition-colors"
+                style={{
+                  borderColor: 'rgba(148, 175, 50, 0.5)',
+                  backgroundColor: 'rgba(148, 175, 50, 0.1)'
+                }}
               >
                 {sectionsCollapsed.lucidData ? (
-                  <ChevronRight className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <ChevronRight className="w-5 h-5" style={{ color: '#94AF32' }} />
                 ) : (
-                  <ChevronDown className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <ChevronDown className="w-5 h-5" style={{ color: '#94AF32' }} />
                 )}
                 <div className="flex-1 text-left">
                   <div className="flex items-center gap-2 mb-1">
-                    <Link className="w-4 h-4 text-green-600 dark:text-green-400" />
-                    <p className="text-sm font-semibold text-green-900 dark:text-green-100">Import Lucid Wire Drops</p>
+                    <Link className="w-4 h-4" style={{ color: '#94AF32' }} />
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import Lucid Wire Drops</p>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-green-700 dark:text-green-300">
+                  <div className="flex items-center gap-4 text-xs" style={{ color: '#94AF32' }}>
                     <span className="font-medium">{existingWireDrops.length} wire drops</span>
                     <span>•</span>
                     <span>{linkedDropCount} linked to Lucid</span>
@@ -3677,89 +3691,95 @@ const PMProjectViewEnhanced = () => {
 
                   {droppableShapes.length > 0 && (
                     <div>
-                <div className="flex justify-between items-center mb-3">
-                  <div className="flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleSelectAll}
-                      disabled={droppableShapes.every(s => isShapeLinked(s.id))}
-                    >
-                      Select All
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleDeselectAll}
-                      disabled={selectedShapes.size === 0}
-                    >
-                      Deselect All
-                    </Button>
-                  </div>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={batchCreating ? Loader : Plus}
-                    onClick={handleCreateWireDropsFromSelected}
-                    disabled={selectedShapes.size === 0 || batchCreating}
-                  >
-                    {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
-                  </Button>
-                </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleSelectAll}
+                            disabled={droppableShapes.every(s => isShapeLinked(s.id))}
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleDeselectAll}
+                            disabled={selectedShapes.size === 0}
+                          >
+                            Deselect All
+                          </Button>
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={batchCreating ? Loader : Plus}
+                          onClick={handleCreateWireDropsFromSelected}
+                          disabled={selectedShapes.size === 0 || batchCreating}
+                        >
+                          {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
+                        </Button>
+                      </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-100 dark:bg-gray-800">
-                      <tr>
-                        <th className="px-3 py-2 text-left">
-                          <input
-                            type="checkbox"
-                            onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
-                            checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
-                            className="rounded"
-                          />
-                        </th>
-                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
-                        <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                      {droppableShapes.map((shape) => {
-                        const linked = isShapeLinked(shape.id);
-                        const wireDrop = getLinkedWireDrop(shape.id);
-                        const roomName = extractShapeRoomName(shape);
-                        const dropType = extractShapeDropType(shape);
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-100 dark:bg-gray-800">
+                            <tr>
+                              <th className="px-3 py-2 text-left">
+                                <input
+                                  type="checkbox"
+                                  onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
+                                  checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
+                                  className="rounded"
+                                />
+                              </th>
+                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                            {droppableShapes.map((shape) => {
+                              const linked = isShapeLinked(shape.id);
+                              const wireDrop = getLinkedWireDrop(shape.id);
+                              const roomName = extractShapeRoomName(shape);
+                              const dropType = extractShapeDropType(shape);
 
-                        return (
-                          <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
-                            <td className="px-3 py-2">
-                              <input
-                                type="checkbox"
-                                checked={selectedShapes.has(shape.id)}
-                                onChange={() => handleShapeSelection(shape.id)}
-                                disabled={linked}
-                                className="rounded disabled:opacity-50"
-                              />
-                            </td>
-                            <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
-                            <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
-                            <td className="px-3 py-2">
-                              {linked ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                  <CheckCircle className="w-3 h-3" />
-                                  Linked
-                                </span>
-                              ) : (
-                                <span className="text-xs text-gray-500">Available</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              return (
+                                <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedShapes.has(shape.id)}
+                                      onChange={() => handleShapeSelection(shape.id)}
+                                      disabled={linked}
+                                      className="rounded disabled:opacity-50"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
+                                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
+                                  <td className="px-3 py-2">
+                                    {linked ? (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                                        style={{
+                                          backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                                          color: '#94AF32'
+                                        }}
+                                      >
+                                        <CheckCircle className="w-3 h-3" />
+                                        Linked
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">Available</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -3861,382 +3881,391 @@ const PMProjectViewEnhanced = () => {
                 </p>
 
                 {unmatchedRoomEntries.length > 0 ? (
-                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                  <div className="flex items-start gap-2">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
-                        Action Required
-                      </p>
-                      <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                        {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
-                      </p>
+                  <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
+                          Action Required
+                        </p>
+                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                          {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
 
-              <div className="space-y-4">
-              {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
-              {(() => {
-                const roomNameMap = new Map();
-                
-                // First get rooms from existing wire drops (persistent data)
-                existingWireDrops.forEach((drop) => {
-                  const roomName = drop.room_name;
-                  if (!roomName) return;
-                  const normalized = normalizeRoomName(roomName);
-                  if (!normalized) return;
-                  const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                  if (!entry.samples.includes(roomName)) {
-                    entry.samples.push(roomName);
-                  }
-                  entry.sourceCount.wireDrops++;
-                  roomNameMap.set(normalized, entry);
-                });
-                
-                // Then add rooms from Lucid shapes (if fetched)
-                droppableShapes.forEach((shape) => {
-                  const roomName = extractShapeRoomName(shape);
-                  if (!roomName) return;
-                  const normalized = normalizeRoomName(roomName);
-                  if (!normalized) return;
-                  const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                  if (!entry.samples.includes(roomName)) {
-                    entry.samples.push(roomName);
-                  }
-                  entry.sourceCount.lucid++;
-                  roomNameMap.set(normalized, entry);
-                });
+                <div className="space-y-4">
+                  {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
+                  {(() => {
+                    const roomNameMap = new Map();
 
-                const allRoomEntries = Array.from(roomNameMap.values());
+                    // First get rooms from existing wire drops (persistent data)
+                    existingWireDrops.forEach((drop) => {
+                      const roomName = drop.room_name;
+                      if (!roomName) return;
+                      const normalized = normalizeRoomName(roomName);
+                      if (!normalized) return;
+                      const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                      if (!entry.samples.includes(roomName)) {
+                        entry.samples.push(roomName);
+                      }
+                      entry.sourceCount.wireDrops++;
+                      roomNameMap.set(normalized, entry);
+                    });
 
-                if (allRoomEntries.length === 0) {
-                  return (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        No rooms found yet. Complete steps 1 & 2 to import room data.
-                      </p>
-                    </div>
-                  );
-                }
+                    // Then add rooms from Lucid shapes (if fetched)
+                    droppableShapes.forEach((shape) => {
+                      const roomName = extractShapeRoomName(shape);
+                      if (!roomName) return;
+                      const normalized = normalizeRoomName(roomName);
+                      if (!normalized) return;
+                      const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                      if (!entry.samples.includes(roomName)) {
+                        entry.samples.push(roomName);
+                      }
+                      entry.sourceCount.lucid++;
+                      roomNameMap.set(normalized, entry);
+                    });
 
-                return (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                        All Rooms from Wire Drops ({allRoomEntries.length})
-                      </h3>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        CSV Rooms Available: {projectRooms.length}
-                      </p>
-                    </div>
+                    const allRoomEntries = Array.from(roomNameMap.values());
 
-                    {allRoomEntries.map((entry) => {
-                      const resolvedRoom = resolveRoomForName(entry.samples[0]);
-                      const isMatched = !!resolvedRoom?.room;
-                      const suggestion = suggestRoomMatch(entry.normalized);
-
+                    if (allRoomEntries.length === 0) {
                       return (
-                        <div
-                          key={entry.normalized}
-                          className={`p-4 rounded-lg border ${
-                            isMatched
-                              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                              : 'bg-white dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-2">
-                                {isMatched && (
-                                  <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
-                                )}
-                                <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                    Room: {entry.samples[0]}
-                                  </p>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
-                                    {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
-                                    {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
-                                  </p>
-                                </div>
-                              </div>
+                        <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            No rooms found yet. Complete steps 1 & 2 to import room data.
+                          </p>
+                        </div>
+                      );
+                    }
 
-                              {isMatched && (
-                                <p className="text-xs text-green-700 dark:text-green-300 mb-2">
-                                  ✓ Matched to: {resolvedRoom.room.name}
-                                  {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
-                                </p>
-                              )}
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                            All Rooms from Wire Drops ({allRoomEntries.length})
+                          </h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            CSV Rooms Available: {projectRooms.length}
+                          </p>
+                        </div>
 
-                              {!isMatched && suggestion && suggestion.score >= 0.5 && (
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
-                                  💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
-                                </p>
-                              )}
+                        {allRoomEntries.map((entry) => {
+                          const resolvedRoom = resolveRoomForName(entry.samples[0]);
+                          const isMatched = !!resolvedRoom?.room;
+                          const suggestion = suggestRoomMatch(entry.normalized);
 
-                              <div className="flex gap-2 items-center">
-                                <select
-                                  value={
-                                    isMatched
-                                      ? resolvedRoom.room.id
-                                      : roomAssignments[entry.normalized]?.type === 'existing'
-                                      ? roomAssignments[entry.normalized].roomId
-                                      : roomAssignments[entry.normalized]?.type === 'new'
-                                      ? '__new__'
-                                      : ''
-                                  }
-                                  onChange={(e) =>
-                                    handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                  }
-                                  disabled={isMatched && !roomAssignments[entry.normalized]}
-                                  className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg 
+                          return (
+                            <div
+                              key={entry.normalized}
+                              className="p-4 rounded-lg border"
+                              style={isMatched ? {
+                                backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                                borderColor: 'rgba(148, 175, 50, 0.3)'
+                              } : {}}
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {isMatched && (
+                                      <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
+                                    )}
+                                    <div className="flex-1">
+                                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        Room: {entry.samples[0]}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
+                                        {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
+                                        {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {isMatched && (
+                                    <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
+                                      ✓ Matched to: {resolvedRoom.room.name}
+                                      {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
+                                    </p>
+                                  )}
+
+                                  {!isMatched && suggestion && suggestion.score >= 0.5 && (
+                                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
+                                      💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
+                                    </p>
+                                  )}
+
+                                  <div className="flex gap-2 items-center">
+                                    <select
+                                      value={
+                                        isMatched
+                                          ? resolvedRoom.room.id
+                                          : roomAssignments[entry.normalized]?.type === 'existing'
+                                            ? roomAssignments[entry.normalized].roomId
+                                            : roomAssignments[entry.normalized]?.type === 'new'
+                                              ? '__new__'
+                                              : ''
+                                      }
+                                      onChange={(e) =>
+                                        handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                      }
+                                      disabled={isMatched && !roomAssignments[entry.normalized]}
+                                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg 
                                            bg-white dark:bg-gray-900 text-gray-900 dark:text-white
                                            disabled:opacity-75"
-                                >
-                                  <option value="">-- Select CSV Room or Create New --</option>
-                                  <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
-                                  <optgroup label="Existing CSV Rooms">
-                                    {projectRooms.map((room) => (
-                                      <option key={room.id} value={room.id}>
-                                        {room.name} {room.is_headend ? '(Head-End)' : ''}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                </select>
+                                    >
+                                      <option value="">-- Select CSV Room or Create New --</option>
+                                      <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
+                                      <optgroup label="Existing CSV Rooms">
+                                        {projectRooms.map((room) => (
+                                          <option key={room.id} value={room.id}>
+                                            {room.name} {room.is_headend ? '(Head-End)' : ''}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    </select>
 
-                                {!isMatched && roomAssignments[entry.normalized] && (
+                                    {!isMatched && roomAssignments[entry.normalized] && (
+                                      <Button
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={() => handleRoomAliasApply(entry)}
+                                        disabled={roomAliasSaving === entry.normalized}
+                                        loading={roomAliasSaving === entry.normalized}
+                                      >
+                                        {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                      </Button>
+                                    )}
+
+                                    {isMatched && (
+                                      <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => {
+                                          // Allow editing of already matched rooms
+                                          setRoomAssignments(prev => ({
+                                            ...prev,
+                                            [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
+                                          }));
+                                        }}
+                                      >
+                                        Edit
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  {/* New Room Configuration */}
+                                  {roomAssignments[entry.normalized]?.type === 'new' && (
+                                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
+                                      <input
+                                        type="text"
+                                        value={roomAssignments[entry.normalized]?.name || ''}
+                                        onChange={(e) =>
+                                          handleNewRoomNameChange(entry.normalized, e.target.value)
+                                        }
+                                        placeholder="Enter room name"
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                             bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                      />
+                                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                        <input
+                                          type="checkbox"
+                                          checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                          onChange={(e) =>
+                                            handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                          }
+                                          className="rounded"
+                                        />
+                                        Mark as Head-End Room
+                                      </label>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+
+                  {/* Unmatched Rooms Section */}
+                  {unmatchedRoomEntries.length > 0 && (
+                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                      <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4" />
+                        Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
+                      </h3>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
+                        These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
+                      </p>
+
+                      <div className="space-y-3">
+                        {unmatchedRoomEntries.map((entry) => (
+                          <div
+                            key={entry.normalized}
+                            className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                                  From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
+                                </p>
+
+                                {entry.suggestion && entry.suggestion.score >= 0.72 && (
+                                  <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
+                                    Suggested match: {entry.suggestion.room.name} (
+                                    {Math.round(entry.suggestion.score * 100)}% similar)
+                                  </p>
+                                )}
+
+                                <div className="flex gap-2 items-end">
+                                  <div className="flex-1">
+                                    <select
+                                      value={
+                                        roomAssignments[entry.normalized]?.type === 'existing'
+                                          ? roomAssignments[entry.normalized].roomId
+                                          : roomAssignments[entry.normalized]?.type === 'new'
+                                            ? '__new__'
+                                            : ''
+                                      }
+                                      onChange={(e) =>
+                                        handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                      }
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                    >
+                                      <option value="">-- Select Action --</option>
+                                      <option value="__new__">Create New Room</option>
+                                      <optgroup label="Existing Rooms">
+                                        {allRoomOptions.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    </select>
+                                  </div>
+
                                   <Button
                                     variant="primary"
                                     size="sm"
                                     onClick={() => handleRoomAliasApply(entry)}
-                                    disabled={roomAliasSaving === entry.normalized}
+                                    disabled={
+                                      !roomAssignments[entry.normalized] ||
+                                      roomAliasSaving === entry.normalized
+                                    }
                                     loading={roomAliasSaving === entry.normalized}
                                   >
                                     {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
                                   </Button>
-                                )}
-                                
-                                {isMatched && (
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => {
-                                      // Allow editing of already matched rooms
-                                      setRoomAssignments(prev => ({
-                                        ...prev,
-                                        [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
-                                      }));
-                                    }}
-                                  >
-                                    Edit
-                                  </Button>
-                                )}
-                              </div>
-
-                              {/* New Room Configuration */}
-                              {roomAssignments[entry.normalized]?.type === 'new' && (
-                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
-                                  <input
-                                    type="text"
-                                    value={roomAssignments[entry.normalized]?.name || ''}
-                                    onChange={(e) =>
-                                      handleNewRoomNameChange(entry.normalized, e.target.value)
-                                    }
-                                    placeholder="Enter room name"
-                                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                             bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                  />
-                                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                    <input
-                                      type="checkbox"
-                                      checked={roomAssignments[entry.normalized]?.isHeadend || false}
-                                      onChange={(e) =>
-                                        handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
-                                      }
-                                      className="rounded"
-                                    />
-                                    Mark as Head-End Room
-                                  </label>
                                 </div>
-                              )}
+
+                                {/* New Room Name Input */}
+                                {roomAssignments[entry.normalized]?.type === 'new' && (
+                                  <div className="mt-2 space-y-2">
+                                    <input
+                                      type="text"
+                                      value={roomAssignments[entry.normalized]?.name || ''}
+                                      onChange={(e) =>
+                                        handleNewRoomNameChange(entry.normalized, e.target.value)
+                                      }
+                                      placeholder="Enter room name"
+                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
+                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                    />
+                                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                      <input
+                                        type="checkbox"
+                                        checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                        onChange={(e) =>
+                                          handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                        }
+                                        className="rounded"
+                                      />
+                                      Mark as Head-End Room
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-
-
-                {/* Unmatched Rooms Section */}
-                {unmatchedRoomEntries.length > 0 && (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                  <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
-                  </h3>
-                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
-                    These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
-                  </p>
-                  
-                  <div className="space-y-3">
-                    {unmatchedRoomEntries.map((entry) => (
-                      <div
-                        key={entry.normalized}
-                        className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                              From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
-                            </p>
-                            
-                            {entry.suggestion && entry.suggestion.score >= 0.72 && (
-                              <p className="text-xs text-green-600 dark:text-green-400 mb-2">
-                                Suggested match: {entry.suggestion.room.name} (
-                                {Math.round(entry.suggestion.score * 100)}% similar)
-                              </p>
-                            )}
-
-                            <div className="flex gap-2 items-end">
-                              <div className="flex-1">
-                                <select
-                                  value={
-                                    roomAssignments[entry.normalized]?.type === 'existing'
-                                      ? roomAssignments[entry.normalized].roomId
-                                      : roomAssignments[entry.normalized]?.type === 'new'
-                                      ? '__new__'
-                                      : ''
-                                  }
-                                  onChange={(e) =>
-                                    handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                  }
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                >
-                                  <option value="">-- Select Action --</option>
-                                  <option value="__new__">Create New Room</option>
-                                  <optgroup label="Existing Rooms">
-                                    {allRoomOptions.map((opt) => (
-                                      <option key={opt.value} value={opt.value}>
-                                        {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
-                                      </option>
-                                    ))}
-                                  </optgroup>
-                                </select>
-                              </div>
-                              
-                              <Button
-                                variant="primary"
-                                size="sm"
-                                onClick={() => handleRoomAliasApply(entry)}
-                                disabled={
-                                  !roomAssignments[entry.normalized] ||
-                                  roomAliasSaving === entry.normalized
-                                }
-                                loading={roomAliasSaving === entry.normalized}
-                              >
-                                {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
-                              </Button>
-                            </div>
-
-                            {/* New Room Name Input */}
-                            {roomAssignments[entry.normalized]?.type === 'new' && (
-                              <div className="mt-2 space-y-2">
-                                <input
-                                  type="text"
-                                  value={roomAssignments[entry.normalized]?.name || ''}
-                                  onChange={(e) =>
-                                    handleNewRoomNameChange(entry.normalized, e.target.value)
-                                  }
-                                  placeholder="Enter room name"
-                                  className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                />
-                                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                  <input
-                                    type="checkbox"
-                                    checked={roomAssignments[entry.normalized]?.isHeadend || false}
-                                    onChange={(e) =>
-                                      handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
-                                    }
-                                    className="rounded"
-                                  />
-                                  Mark as Head-End Room
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  </div>
-                )}
-
-                {/* Matched Rooms Info */}
-                {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                      <div>
-                        <p className="text-sm font-semibold text-green-900 dark:text-green-200">
-                          All Lucid rooms are matched!
-                        </p>
-                        <p className="text-xs text-green-700 dark:text-green-300">
-                          All room names from Lucid wire drops have been successfully matched to project rooms.
-                        </p>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Show instructions when no data available */}
-                {droppableShapes.length === 0 && projectRooms.length === 0 && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
-                    <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
-                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                      No Room Data Available Yet
-                    </p>
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      Complete Steps 1 & 2 above to import room data, then return here to align room names.
-                    </p>
-                  </div>
-                )}
-
-                {/* Summary of aligned rooms */}
-                {droppableShapes.length > 0 && projectRooms.length > 0 && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
-                      Summary
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4 text-center mb-3">
-                      <div>
-                        <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
-                        <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                          {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
-                        </p>
-                        <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
+                  {/* Matched Rooms Info */}
+                  {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
+                    <div
+                      className="p-4 rounded-lg"
+                      style={{
+                        backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                        border: '1px solid rgba(148, 175, 50, 0.3)'
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            All Lucid rooms are matched!
+                          </p>
+                          <p className="text-xs" style={{ color: '#94AF32' }}>
+                            All room names from Lucid wire drops have been successfully matched to project rooms.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
-                      <div className="flex items-center justify-center gap-2 p-2 bg-green-100 dark:bg-green-900/30 rounded">
-                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                        <p className="text-sm font-medium text-green-900 dark:text-green-100">
-                          All rooms successfully aligned
-                        </p>
+                  )}
+
+                  {/* Show instructions when no data available */}
+                  {droppableShapes.length === 0 && projectRooms.length === 0 && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
+                      <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                        No Room Data Available Yet
+                      </p>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        Complete Steps 1 & 2 above to import room data, then return here to align room names.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Summary of aligned rooms */}
+                  {droppableShapes.length > 0 && projectRooms.length > 0 && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
+                        Summary
+                      </h3>
+                      <div className="grid grid-cols-2 gap-4 text-center mb-3">
+                        <div>
+                          <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
+                          <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                            {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
+                          </p>
+                          <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
+                      {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
+                        <div
+                          className="flex items-center justify-center gap-2 p-2 rounded"
+                          style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)' }}
+                        >
+                          <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
+                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            All rooms successfully aligned
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -4258,7 +4287,7 @@ const PMProjectViewEnhanced = () => {
           View Wire Drops
         </Button>
       </div>
-      
+
       {/* Add Phase Modal */}
       {showPhaseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4268,20 +4297,20 @@ const PMProjectViewEnhanced = () => {
               type="text"
               placeholder="Phase name"
               value={newPhase.name}
-              onChange={(e) => setNewPhase({...newPhase, name: e.target.value})}
+              onChange={(e) => setNewPhase({ ...newPhase, name: e.target.value })}
               className="w-full px-3 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg"
             />
             <input
               type="text"
               placeholder="Description (optional)"
               value={newPhase.description}
-              onChange={(e) => setNewPhase({...newPhase, description: e.target.value})}
+              onChange={(e) => setNewPhase({ ...newPhase, description: e.target.value })}
               className="w-full px-3 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg"
             />
             <input
               type="color"
               value={newPhase.color}
-              onChange={(e) => setNewPhase({...newPhase, color: e.target.value})}
+              onChange={(e) => setNewPhase({ ...newPhase, color: e.target.value })}
               className="w-full h-10 mb-3"
             />
             <div className="flex gap-2">
@@ -4291,7 +4320,7 @@ const PMProjectViewEnhanced = () => {
           </div>
         </div>
       )}
-      
+
       {/* Add Status Modal */}
       {showStatusModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4301,20 +4330,20 @@ const PMProjectViewEnhanced = () => {
               type="text"
               placeholder="Status name"
               value={newStatus.name}
-              onChange={(e) => setNewStatus({...newStatus, name: e.target.value})}
+              onChange={(e) => setNewStatus({ ...newStatus, name: e.target.value })}
               className="w-full px-3 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg"
             />
             <input
               type="text"
               placeholder="Description (optional)"
               value={newStatus.description}
-              onChange={(e) => setNewStatus({...newStatus, description: e.target.value})}
+              onChange={(e) => setNewStatus({ ...newStatus, description: e.target.value })}
               className="w-full px-3 py-2 mb-3 border border-gray-300 dark:border-gray-600 rounded-lg"
             />
             <input
               type="color"
               value={newStatus.color}
-              onChange={(e) => setNewStatus({...newStatus, color: e.target.value})}
+              onChange={(e) => setNewStatus({ ...newStatus, color: e.target.value })}
               className="w-full h-10 mb-3"
             />
             <div className="flex gap-2">
@@ -4324,7 +4353,7 @@ const PMProjectViewEnhanced = () => {
           </div>
         </div>
       )}
-      
+
       {/* Phase Order Modal */}
       {showPhaseOrderModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4332,14 +4361,14 @@ const PMProjectViewEnhanced = () => {
             <h3 className="text-lg font-semibold mb-4">Reorder Phases</h3>
             <div className="space-y-2">
               {phases.map((phase, index) => (
-                <div 
-                  key={phase.id} 
+                <div
+                  key={phase.id}
                   className="flex items-center justify-between p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900/50"
                 >
                   <div className="flex items-center gap-2">
                     <GripVertical className="w-4 h-4 text-gray-400" />
-                    <div 
-                      className="w-3 h-3 rounded-full" 
+                    <div
+                      className="w-3 h-3 rounded-full"
                       style={{ backgroundColor: phase.color }}
                     />
                     <span className="font-medium text-gray-900 dark:text-white">
@@ -4350,22 +4379,20 @@ const PMProjectViewEnhanced = () => {
                     <button
                       onClick={() => handlePhaseReorder(phase.id, 'up')}
                       disabled={index === 0}
-                      className={`p-1 rounded ${
-                        index === 0 
-                          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400'
-                      }`}
+                      className={`p-1 rounded ${index === 0
+                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400'
+                        }`}
                     >
                       <ChevronUp className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handlePhaseReorder(phase.id, 'down')}
                       disabled={index === phases.length - 1}
-                      className={`p-1 rounded ${
-                        index === phases.length - 1 
-                          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400'
-                      }`}
+                      className={`p-1 rounded ${index === phases.length - 1
+                        ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                        : 'text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400'
+                        }`}
                     >
                       <ChevronDown className="w-4 h-4" />
                     </button>
@@ -4381,7 +4408,7 @@ const PMProjectViewEnhanced = () => {
           </div>
         </div>
       )}
-      
+
       {/* New Contact Form Modal */}
       {showNewContactForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4389,7 +4416,7 @@ const PMProjectViewEnhanced = () => {
             <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
               Add New Contact
             </h3>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -4398,14 +4425,14 @@ const PMProjectViewEnhanced = () => {
                 <input
                   type="text"
                   value={newContactData.name}
-                  onChange={(e) => setNewContactData({...newContactData, name: e.target.value})}
+                  onChange={(e) => setNewContactData({ ...newContactData, name: e.target.value })}
                   placeholder="Full name"
                   required
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Company
@@ -4413,12 +4440,12 @@ const PMProjectViewEnhanced = () => {
                 <input
                   type="text"
                   value={newContactData.company}
-                  onChange={(e) => setNewContactData({...newContactData, company: e.target.value})}
+                  onChange={(e) => setNewContactData({ ...newContactData, company: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Email
@@ -4426,13 +4453,13 @@ const PMProjectViewEnhanced = () => {
                 <input
                   type="email"
                   value={newContactData.email}
-                  onChange={(e) => setNewContactData({...newContactData, email: e.target.value})}
+                  onChange={(e) => setNewContactData({ ...newContactData, email: e.target.value })}
                   placeholder="email@example.com"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Phone
@@ -4440,17 +4467,17 @@ const PMProjectViewEnhanced = () => {
                 <input
                   type="tel"
                   value={newContactData.phone}
-                  onChange={(e) => setNewContactData({...newContactData, phone: e.target.value})}
+                  onChange={(e) => setNewContactData({ ...newContactData, phone: e.target.value })}
                   placeholder="(555) 123-4567"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
-            
+
             <div className="flex gap-2 mt-6">
-              <Button 
-                onClick={handleCreateNewContact} 
+              <Button
+                onClick={handleCreateNewContact}
                 variant="primary"
                 className="flex-1"
               >

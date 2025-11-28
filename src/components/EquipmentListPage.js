@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const mapEquipmentRecord = (item) => {
   const name = item.name || item.global_part?.name || 'Unnamed Equipment';
@@ -31,6 +32,9 @@ const mapEquipmentRecord = (item) => {
   const isReceived = quantityReceived > 0;
   const isFullyReceived = quantityPlanned > 0 && quantityReceived >= quantityPlanned;
 
+  // Check if equipment should show in wire drop selector (filter for technician view)
+  const isWireDropVisible = item.global_part?.is_wire_drop_visible !== false;
+
   return {
     id: item.id,
     name,
@@ -50,10 +54,20 @@ const mapEquipmentRecord = (item) => {
     fullyReceived: isFullyReceived,
     onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by onsite checkbox
     onsiteAt: item.onsite_confirmed_at || null,
+    installed: Boolean(item.installed), // INSTALLED: Auto-set when linked to wire drop, or manual for wireless items
+    installedAt: item.installed_at || null,
+    isWireDropVisible, // Used for filtering - only show equipment marked for wire drop selector
     notes: item.notes || '',
     homekitQRUrl,
     homekitQRDriveId: item.homekit_qr_sharepoint_drive_id || null,
     homekitQRItemId: item.homekit_qr_sharepoint_item_id || null,
+    // Additional fields for expanded view
+    description: item.description || item.global_part?.description || null,
+    // Network information (UniFi)
+    unifiMac: item.unifi_client_mac || null,
+    unifiIp: item.unifi_last_ip || null,
+    unifiLastSeen: item.unifi_last_seen || null,
+    unifiData: item.unifi_data || null,
     searchIndex: [
       name,
       partNumber,
@@ -83,6 +97,7 @@ const EquipmentListPage = () => {
   const navigate = useNavigate();
   const { theme, mode } = useTheme();
   const { openPhotoViewer } = usePhotoViewer();
+  const { user } = useAuth();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -93,6 +108,15 @@ const EquipmentListPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('all');
   const [installFilter, setInstallFilter] = useState('all');
+  const [installedFilter, setInstalledFilter] = useState('all'); // 'all', 'installed', 'not_installed'
+  const [expandedItems, setExpandedItems] = useState({}); // Track expanded equipment cards
+
+  const toggleExpanded = (itemId) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
+  };
 
   const cardStyles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
@@ -171,16 +195,15 @@ const EquipmentListPage = () => {
       const { data: wireDropLinks, error: linksError } = await supabase
         .from('wire_drop_equipment_links')
         .select(`
-          equipment_id,
+          project_equipment_id,
           link_side,
-          wire_drops (
+          wire_drop:wire_drop_id (
             id,
-            name,
             drop_name,
-            type
+            drop_type
           )
         `)
-        .in('equipment_id', equipmentIds);
+        .in('project_equipment_id', equipmentIds);
 
       if (linksError) {
         console.warn('Failed to load wire drop links:', linksError);
@@ -189,13 +212,14 @@ const EquipmentListPage = () => {
       // Map wire drop links to equipment
       const wireDropsByEquipment = {};
       wireDropLinks?.forEach(link => {
-        if (!wireDropsByEquipment[link.equipment_id]) {
-          wireDropsByEquipment[link.equipment_id] = [];
+        if (!link.wire_drop) return;
+        if (!wireDropsByEquipment[link.project_equipment_id]) {
+          wireDropsByEquipment[link.project_equipment_id] = [];
         }
-        wireDropsByEquipment[link.equipment_id].push({
-          wireDropId: link.wire_drops.id,
-          wireDropName: link.wire_drops.drop_name || link.wire_drops.name,
-          wireDropType: link.wire_drops.type,
+        wireDropsByEquipment[link.project_equipment_id].push({
+          wireDropId: link.wire_drop.id,
+          wireDropName: link.wire_drop.drop_name,
+          wireDropType: link.wire_drop.drop_type,
           linkSide: link.link_side
         });
       });
@@ -235,12 +259,16 @@ const EquipmentListPage = () => {
   const filteredEquipment = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return equipment.filter((item) => {
+      // Only show equipment marked for wire drop selector
+      if (!item.isWireDropVisible) return false;
       if (selectedRoom !== 'all' && item.room !== selectedRoom) return false;
       if (installFilter !== 'all' && item.installSide !== installFilter) return false;
+      if (installedFilter === 'installed' && !item.installed) return false;
+      if (installedFilter === 'not_installed' && item.installed) return false;
       if (query && !item.searchIndex.includes(query)) return false;
       return true;
     });
-  }, [equipment, searchQuery, selectedRoom, installFilter]);
+  }, [equipment, searchQuery, selectedRoom, installFilter, installedFilter]);
 
   const groupedEquipment = useMemo(() => {
     const groups = new Map();
@@ -289,16 +317,34 @@ const EquipmentListPage = () => {
       }
 
       setStatusUpdating(equipmentId);
-      const payload = { userId: null };
 
       if (field === 'onsite') {
-        payload.onsite = value;
-      }
+        const payload = { onsite: value };
+        const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
+        setEquipment((prev) =>
+          prev.map((item) => (item.id === equipmentId ? { ...mapEquipmentRecord(updated), wireDrops: item.wireDrops } : item))
+        );
+      } else if (field === 'installed') {
+        // Manual installed toggle (for items without wires like lights, battery devices)
+        const updates = {
+          installed: value,
+          installed_at: value ? new Date().toISOString() : null,
+          installed_by: value ? user?.id : null
+        };
 
-      const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
-      setEquipment((prev) =>
-        prev.map((item) => (item.id === equipmentId ? mapEquipmentRecord(updated) : item))
-      );
+        const { data: updated, error } = await supabase
+          .from('project_equipment')
+          .update(updates)
+          .eq('id', equipmentId)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setEquipment((prev) =>
+          prev.map((item) => (item.id === equipmentId ? { ...mapEquipmentRecord(updated), wireDrops: item.wireDrops } : item))
+        );
+      }
     } catch (err) {
       console.error('Failed to update equipment status:', err);
       alert(err.message || 'Failed to update equipment status');
@@ -318,157 +364,263 @@ const EquipmentListPage = () => {
     }, { canEdit: false });
   }, [openPhotoViewer]);
 
-  const renderEquipmentRow = (item) => (
-    <div
-      key={item.id}
-      className="rounded-xl border px-3 py-3 text-sm transition hover:border-violet-400 dark:hover:border-violet-500"
-      style={{
-        borderColor: mode === 'dark' ? '#374151' : '#E5E7EB',
-        backgroundColor: mode === 'dark' ? '#111827' : '#F9FAFB'
-      }}
-    >
-      <div className="flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
-            <p className="font-semibold text-gray-900 dark:text-gray-100">{item.name}</p>
-            {item.partNumber && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">Part #{item.partNumber}</p>
-            )}
+  const renderEquipmentRow = (item) => {
+    const isExpanded = expandedItems[item.id];
+
+    return (
+      <div
+        key={item.id}
+        className="rounded-xl border text-sm transition"
+        style={{
+          borderColor: isExpanded
+            ? (mode === 'dark' ? '#7C3AED' : '#A78BFA')
+            : (mode === 'dark' ? '#374151' : '#E5E7EB'),
+          backgroundColor: mode === 'dark' ? '#111827' : '#F9FAFB'
+        }}
+      >
+        {/* Collapsed Header - Always Visible */}
+        <div
+          className="flex items-center justify-between gap-3 px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
+          onClick={() => toggleExpanded(item.id)}
+        >
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button className="flex-shrink-0 text-gray-400">
+              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+            </button>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
+              {item.description && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-              style={{
-                backgroundColor: withAlpha(
-                  item.isHeadend ? palette.accent : palette.info,
-                  mode === 'dark' ? 0.18 : 0.12
-                ),
-                color: item.isHeadend ? palette.accent : palette.info
-              }}
-            >
-              <Box className="h-3 w-3" />
-              {item.isHeadend ? 'Head-End' : 'Room End'}
-            </span>
-            {item.homekitQRUrl && (
-              <div
-                className="w-12 h-12 rounded-lg border overflow-hidden cursor-pointer hover:scale-105 transition"
-                onClick={() => openHomeKitViewer(item)}
-                title="View HomeKit QR"
-                style={{ borderColor: mode === 'dark' ? '#4C1D95' : '#C4B5FD' }}
+
+          {/* Status Checkboxes with Labels */}
+          <div className="flex items-center gap-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-not-allowed" title="Ordered">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 opacity-75 cursor-not-allowed"
+                checked={item.ordered}
+                readOnly
+                disabled
+              />
+              <span className="font-medium">Ordered</span>
+            </label>
+
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-not-allowed" title="Received">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
+                checked={item.received}
+                readOnly
+                disabled
+              />
+              <span className="font-medium">Received</span>
+            </label>
+
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Onsite">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                checked={item.onsite}
+                onChange={(e) => toggleStatus(item.id, 'onsite', e.target.checked)}
+                disabled={statusUpdating === item.id}
+              />
+              <span className="font-medium">Onsite</span>
+            </label>
+
+            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Installed">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                checked={item.installed}
+                onChange={(e) => toggleStatus(item.id, 'installed', e.target.checked)}
+                disabled={statusUpdating === item.id}
+              />
+              <span className="font-medium">Installed</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+            {/* Equipment Details Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4">
+              {item.manufacturer && (
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400">Manufacturer</span>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{item.manufacturer}</p>
+                </div>
+              )}
+              {item.model && (
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400">Model</span>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{item.model}</p>
+                </div>
+              )}
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Planned Qty</span>
+                <p className="font-medium text-gray-900 dark:text-gray-100">{item.plannedQuantity || 1}</p>
+              </div>
+              {item.quantityOrdered > 0 && (
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400">Qty Ordered</span>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{item.quantityOrdered}</p>
+                </div>
+              )}
+              {item.quantityReceived > 0 && (
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400">Qty Received</span>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">
+                    {item.fullyReceived ? '✓ ' : ''}{item.quantityReceived}/{item.plannedQuantity}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Status with Dates */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6' }}>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Ordered</span>
+                <p className={`font-medium ${item.ordered ? 'text-violet-600 dark:text-violet-400' : 'text-gray-400'}`}>
+                  {item.ordered ? (item.orderedAt ? <DateField date={item.orderedAt} variant="inline" /> : 'Yes') : 'No'}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Received</span>
+                <p className={`font-medium ${item.received ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                  {item.received ? (item.receivedAt ? <DateField date={item.receivedAt} variant="inline" /> : 'Yes') : 'No'}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Onsite</span>
+                <p className={`font-medium ${item.onsite ? 'text-violet-600 dark:text-violet-400' : 'text-gray-400'}`}>
+                  {item.onsite ? (item.onsiteAt ? <DateField date={item.onsiteAt} variant="inline" /> : 'Yes') : 'No'}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-500 dark:text-gray-400">Installed</span>
+                <p className={`font-medium ${item.installed ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
+                  {item.installed ? (item.installedAt ? <DateField date={item.installedAt} variant="inline" /> : 'Yes') : 'No'}
+                </p>
+              </div>
+            </div>
+
+            {/* Documentation Links Placeholder */}
+            <div className="flex flex-wrap gap-3 mb-4">
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+                title="Manuals (coming soon)"
+                disabled
               >
-                <CachedSharePointImage
-                  sharePointUrl={item.homekitQRUrl}
-                  sharePointDriveId={item.homekitQRDriveId}
-                  sharePointItemId={item.homekitQRItemId}
-                  displayType="thumbnail"
-                  size="small"
-                  className="w-full h-full"
-                  showFullOnClick={false}
-                  objectFit="contain"
-                />
+                <BookOpen size={14} />
+                <span>Manuals</span>
+              </button>
+              <button
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
+                title="Schematics (coming soon)"
+                disabled
+              >
+                <FileText size={14} />
+                <span>Schematics</span>
+              </button>
+              {item.homekitQRUrl && (
+                <button
+                  onClick={() => openHomeKitViewer(item)}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                >
+                  <div className="w-5 h-5 rounded overflow-hidden">
+                    <CachedSharePointImage
+                      sharePointUrl={item.homekitQRUrl}
+                      sharePointDriveId={item.homekitQRDriveId}
+                      sharePointItemId={item.homekitQRItemId}
+                      displayType="thumbnail"
+                      size="small"
+                      className="w-full h-full"
+                      showFullOnClick={false}
+                      objectFit="contain"
+                    />
+                  </div>
+                  <span>HomeKit QR</span>
+                </button>
+              )}
+            </div>
+
+            {/* Notes */}
+            {item.notes && (
+              <div className="mb-4">
+                <span className="text-xs text-gray-500 dark:text-gray-400">Notes</span>
+                <p className="text-xs italic text-gray-600 dark:text-gray-300 mt-1">{item.notes}</p>
+              </div>
+            )}
+
+            {/* Wire Drop Links */}
+            {/* Network Information */}
+            {(item.unifiMac || item.unifiIp) && (
+              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Wifi size={14} className="text-blue-500" />
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                    Network Information
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  {item.unifiMac && (
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">MAC Address</span>
+                      <p className="font-mono font-medium text-gray-900 dark:text-gray-100">{item.unifiMac}</p>
+                    </div>
+                  )}
+                  {item.unifiIp && (
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">IP Address</span>
+                      <p className="font-mono font-medium text-gray-900 dark:text-gray-100">{item.unifiIp}</p>
+                    </div>
+                  )}
+                  {item.unifiLastSeen && (
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Last Seen</span>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">
+                        <DateField date={item.unifiLastSeen} variant="inline" />
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Wire Drop Links */}
+            {item.wireDrops && item.wireDrops.length > 0 && (
+              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Cable size={14} className="text-violet-500" />
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                    Connected Wire Drops
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {item.wireDrops.map(wd => (
+                    <button
+                      key={wd.wireDropId}
+                      onClick={() => navigate(`/wire-drops/${wd.wireDropId}`)}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                    >
+                      <span>{wd.wireDropName}</span>
+                      {wd.wireDropType && (
+                        <span className="text-[10px] opacity-75">({wd.wireDropType})</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 text-xs text-gray-600 dark:text-gray-400">
-          {item.manufacturer && <span>Manufacturer: {item.manufacturer}</span>}
-          {item.model && <span>Model: {item.model}</span>}
-          <span>Planned Qty: {item.plannedQuantity || 1}</span>
-        </div>
-
-        <div className="flex flex-wrap gap-4 text-xs">
-          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300" title="Auto-synced with procurement system - updates when PM submits POs">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 opacity-75 cursor-not-allowed"
-              checked={item.ordered}
-              readOnly
-              disabled
-            />
-            <span className="font-medium">Ordered</span>
-            {item.ordered && item.quantityOrdered && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">
-                Qty: {item.quantityOrdered}
-              </span>
-            )}
-            {item.orderedAt && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                <DateField date={item.orderedAt} variant="inline" />
-              </span>
-            )}
-          </label>
-
-          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300" title="Auto-synced with Parts Receiving - updates when technicians receive items">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
-              checked={item.received}
-              readOnly
-              disabled
-            />
-            <span className="font-medium">Received</span>
-            {item.received && item.quantityReceived && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium">
-                {item.fullyReceived ? '✓ ' : ''}{item.quantityReceived}/{item.plannedQuantity}
-              </span>
-            )}
-            {item.receivedAt && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                <DateField date={item.receivedAt} variant="inline" />
-              </span>
-            )}
-          </label>
-
-          <label className="inline-flex items-center gap-2 text-gray-600 dark:text-gray-300">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-              checked={item.onsite}
-              onChange={(e) => toggleStatus(item.id, 'onsite', e.target.checked)}
-              disabled={statusUpdating === item.id}
-            />
-            <span className="font-medium">Onsite</span>
-            {item.onsiteAt && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                <DateField date={item.onsiteAt} variant="inline" />
-              </span>
-            )}
-          </label>
-        </div>
-
-        {item.notes && (
-          <p className="text-xs italic text-gray-500 dark:text-gray-400">Notes: {item.notes}</p>
-        )}
-
-        {/* Wire Drop Links */}
-        {item.wireDrops && item.wireDrops.length > 0 && (
-          <div className="pt-3 mt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Cable size={14} className="text-violet-500" />
-              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-                Connected Wire Drops
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {item.wireDrops.map(wd => (
-                <button
-                  key={wd.wireDropId}
-                  onClick={() => navigate(`/wire-drops/${wd.wireDropId}`)}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
-                >
-                  <span>{wd.wireDropName}</span>
-                  {wd.wireDropType && (
-                    <span className="text-[10px] opacity-75">({wd.wireDropType})</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
         )}
       </div>
-    </div>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -537,6 +689,23 @@ const EquipmentListPage = () => {
                   <option value="all">Head &amp; Room Equipment</option>
                   <option value="head_end">Head-End Only</option>
                   <option value="room_end">Room-End Only</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-gray-400" />
+                <select
+                  value={installedFilter}
+                  onChange={(e) => setInstalledFilter(e.target.value)}
+                  className="rounded-lg border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  style={{
+                    backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#1F2937' : '#D1D5DB'
+                  }}
+                >
+                  <option value="all">All Installation Status</option>
+                  <option value="installed">Installed Only</option>
+                  <option value="not_installed">Not Installed</option>
                 </select>
               </div>
             </div>

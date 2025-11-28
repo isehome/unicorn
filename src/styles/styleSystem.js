@@ -86,11 +86,11 @@ const paletteByMode = {
 
 export const enhancedStyles = {
   progressColors: {
-    low: '#EF4444',
-    medium: '#F59E0B',
-    good: '#3B82F6',
-    high: '#10B981',
-    complete: '#8B5CF6',
+    low: '#EF4444',      // red - 0-25%
+    medium: '#F59E0B',   // amber - 25-50%
+    good: '#3B82F6',     // blue - 50-75%
+    high: '#94AF32',     // brand success (olive green) - 75-99%
+    complete: '#8B5CF6', // violet - 100%
   },
 
   /**

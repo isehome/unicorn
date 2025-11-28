@@ -667,7 +667,7 @@ const SecureDataManager = ({ projectId, onClose }) => {
                   {item.last_accessed && (
                     <div className="flex items-center gap-1 mt-2 text-xs" style={styles.subtleText}>
                       <Clock size={12} />
-                      Last accessed: <DateField date={item.last_accessed} variant="inline" showTime={true} />
+                      Last accessed: <DateField date={item.last_accessed} variant="inline" colorMode="timestamp" showTime={true} />
                     </div>
                   )}
                 </div>

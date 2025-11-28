@@ -230,13 +230,13 @@ const TodoDetailModal = ({
               {todo?.created_at && (
                 <div>
                   <span className="font-medium">Created:</span>{' '}
-                  <DateField date={todo.created_at} variant="inline" showTime={true} />
+                  <DateField date={todo.created_at} variant="inline" colorMode="timestamp" showTime={true} />
                 </div>
               )}
               {todo?.updated_at && (
                 <div>
                   <span className="font-medium">Updated:</span>{' '}
-                  <DateField date={todo.updated_at} variant="inline" showTime={true} />
+                  <DateField date={todo.updated_at} variant="inline" colorMode="timestamp" showTime={true} />
                 </div>
               )}
             </div>

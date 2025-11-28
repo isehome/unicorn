@@ -14,7 +14,11 @@ import { formatDateWithStatus } from '../../utils/dateUtils';
  * - Makes active/upcoming dates prominent with bold styling
  * - Provides visual hierarchy: active > upcoming > future > not set/completed
  *
- * @param {string} date - ISO date string (YYYY-MM-DD)
+ * COLOR MODES:
+ * - 'deadline' (default): Color-coded by urgency - use for milestones, due dates, target dates
+ * - 'timestamp': Neutral gray - use for historical dates like created_at, updated_at, comment timestamps
+ *
+ * @param {string} date - ISO date string (YYYY-MM-DD or ISO datetime)
  * @param {string} label - Label for the date field (e.g., "Target Date", "Delivery Date")
  * @param {boolean} isCompleted - Whether the associated section/milestone is completed
  * @param {boolean} showIcon - Whether to show calendar icon
@@ -22,6 +26,8 @@ import { formatDateWithStatus } from '../../utils/dateUtils';
  * @param {boolean} showDescription - Whether to show description (e.g., "3 days away")
  * @param {string} variant - Display variant: 'default' | 'compact' | 'inline'
  * @param {object} thresholds - Custom urgency thresholds { warningDays, urgentDays }
+ * @param {string} colorMode - 'deadline' (colored by urgency) | 'timestamp' (neutral gray)
+ * @param {boolean} showTime - Whether to show time (e.g., "Nov 28, 2025, 3:45 PM")
  */
 const DateField = ({
   date,
@@ -31,10 +37,56 @@ const DateField = ({
   showBadge = false,
   showDescription = true,
   variant = 'default',
-  thresholds = {}
+  thresholds = {},
+  colorMode = 'deadline',
+  showTime = false
 }) => {
-  const dateInfo = formatDateWithStatus(date, isCompleted, thresholds);
-  const { formatted, status, classes } = dateInfo;
+  const isTimestamp = colorMode === 'timestamp';
+
+  // For timestamp mode, format differently and use neutral colors
+  let formatted = '—';
+  let classes = {};
+  let status = { status: 'not-set', label: '', description: '' };
+
+  if (isTimestamp) {
+    // Timestamp mode: neutral gray, optional time display
+    if (date) {
+      try {
+        const dateObj = new Date(date);
+        if (showTime) {
+          formatted = dateObj.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+          });
+        } else {
+          formatted = dateObj.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          });
+        }
+      } catch (e) {
+        formatted = '—';
+      }
+    }
+    // Neutral gray styling for timestamps
+    classes = {
+      text: 'text-gray-500 dark:text-gray-400',
+      bg: '',
+      border: '',
+      badge: ''
+    };
+    status = { status: 'timestamp', label: '', description: '' };
+  } else {
+    // Deadline mode: color-coded by urgency (existing behavior)
+    const dateInfo = formatDateWithStatus(date, isCompleted, thresholds);
+    formatted = dateInfo.formatted;
+    classes = dateInfo.classes;
+    status = dateInfo.status;
+  }
 
   // Icon based on status
   const getIcon = () => {

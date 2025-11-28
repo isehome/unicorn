@@ -13,8 +13,7 @@ import {
   Mail,
   Phone,
   MapPin,
-  CheckCircle,
-  AlertCircle
+  Trash2
 } from 'lucide-react';
 
 /**
@@ -68,6 +67,22 @@ const SupplierManager = () => {
     handleModalClose();
   };
 
+  const handleDeleteSupplier = async (supplier) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to permanently delete "${supplier.name}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await supplierService.deleteSupplier(supplier.id, true); // true = hard delete
+      loadSuppliers();
+    } catch (error) {
+      console.error('Error deleting supplier:', error);
+      alert(`Failed to delete supplier: ${error.message}`);
+    }
+  };
+
   const toggleExpansion = (supplierId) => {
     setExpandedSuppliers(prev => ({
       ...prev,
@@ -75,33 +90,13 @@ const SupplierManager = () => {
     }));
   };
 
-  // Determine supplier status based on completeness
+  // Determine supplier status based on completeness (used for icon colors)
   const getSupplierStatus = (supplier) => {
     // Must have email to be considered complete/ready
     if (supplier.email) {
       return 'complete';
     }
     return 'needs_setup';
-  };
-
-  const getStatusBadge = (supplier) => {
-    const status = getSupplierStatus(supplier);
-
-    if (status === 'complete') {
-      return (
-        <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs font-medium rounded">
-          <CheckCircle className="w-3 h-3" />
-          Ready
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs font-medium rounded">
-        <AlertCircle className="w-3 h-3" />
-        Needs Setup
-      </span>
-    );
   };
 
   if (loading) {
@@ -202,12 +197,6 @@ const SupplierManager = () => {
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {supplier.name}
                         </h3>
-                        {supplier.short_code && (
-                          <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
-                            {supplier.short_code}
-                          </span>
-                        )}
-                        {getStatusBadge(supplier)}
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mt-1">
                         {supplier.contact_name && (
@@ -235,6 +224,16 @@ const SupplierManager = () => {
                     >
                       Edit
                     </Button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSupplier(supplier);
+                      }}
+                      className="p-2 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                      title="Delete Vendor"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                     {isExpanded ? (
                       <ChevronDown className="w-5 h-5 text-gray-400" />
                     ) : (

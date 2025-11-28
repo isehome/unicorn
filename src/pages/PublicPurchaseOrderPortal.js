@@ -296,7 +296,7 @@ const PublicPurchaseOrderPortal = () => {
                     <CheckCircle className="w-4 h-4 text-green-500" />
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    Added <DateField date={entry.createdAt} variant="inline" showTime={true} />
+                    Added <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} />
                   </div>
                   {entry.notes && <div className="text-xs text-gray-600 mt-1">Notes: {entry.notes}</div>}
                 </div>

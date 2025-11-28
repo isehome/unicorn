@@ -6,8 +6,9 @@ import Button from './ui/Button';
 import { Plus, Edit, Trash2, User, Mail, Phone, Building, Loader, Search, X } from 'lucide-react';
 
 const PeopleManagement = () => {
-  const { mode } = useTheme();
+  const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const palette = theme.palette;
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -172,14 +173,17 @@ const PeopleManagement = () => {
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex gap-3">
-                      <div className={`w-12 h-12 ${person.is_internal ? 'bg-violet-100 dark:bg-violet-900/20' : 'bg-cyan-100 dark:bg-cyan-900/20'} rounded-full flex items-center justify-center`}>
-                        <User className={`w-6 h-6 ${person.is_internal ? 'text-violet-600 dark:text-violet-400' : 'text-cyan-600 dark:text-cyan-400'}`} />
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: person.is_internal ? `${palette.accent}20` : `${palette.success}20` }}
+                      >
+                        <User className="w-6 h-6" style={{ color: person.is_internal ? palette.accent : palette.success }} />
                       </div>
                       <div>
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {person.name || `${person.first_name} ${person.last_name}`}
                         </h3>
-                        <p className={`text-sm ${person.is_internal ? 'text-violet-600 dark:text-violet-400' : 'text-cyan-600 dark:text-cyan-400'}`}>
+                        <p className="text-sm" style={{ color: person.is_internal ? palette.accent : palette.success }}>
                           {person.role} {person.is_internal && person.department ? `• ${person.department}` : ''}
                         </p>
                         <div className="mt-2 space-y-1">

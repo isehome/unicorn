@@ -99,7 +99,7 @@ const PrinterConnection = ({ onConnectionChange }) => {
             <div
               style={{
                 fontSize: '14px',
-                color: connected ? '#10B981' : '#6B7280',
+                color: connected ? '#94AF32' : '#6B7280', // brand success
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',

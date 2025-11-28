@@ -99,9 +99,8 @@ async function fetchProject(projectId) {
 async function fetchComments(issueId) {
   const { data } = await supabase
     .from('issue_comments')
-    .select('id, comment_text, created_at, author_name, author_email')
+    .select('id, comment_text, created_at, author_name, author_email, is_internal')
     .eq('issue_id', issueId)
-    .eq('is_internal', false)
     .order('created_at', { ascending: true });
   return data || [];
 }
@@ -207,7 +206,8 @@ async function buildPortalPayload(link, sessionValid) {
       text: comment.comment_text,
       createdAt: comment.created_at,
       author: comment.author_name || 'Team Member',
-      email: comment.author_email || null
+      email: comment.author_email || null,
+      isInternal: comment.is_internal !== false
     }));
 
     base.uploads = uploads.map((upload) => ({

@@ -18,7 +18,7 @@
   --secondary-bg: #f4f4f5;  /* zinc-100 */
   --secondary-text: #18181b;/* zinc-900 */
 
-  --success: #10b981; /* emerald-500 */
+  --success: #94AF32; /* brand success color */
   --warning: #f59e0b; /* amber-500 */
   --danger: #ef4444;  /* red-500 */
   --info: #3b82f6;    /* blue-500 */
@@ -141,7 +141,7 @@
   line-height: 1rem;
 }
 .ui-badge--internal { background-color: rgba(59,130,246,0.20); color: #60a5fa; }
-.ui-badge--primary { background-color: rgba(16,185,129,0.20); color: #34d399; }
+.ui-badge--primary { background-color: rgba(148,175,50,0.20); color: #94AF32; } /* brand success */
 
 /* Generic accent background (gradient) */
 .ui-accent {

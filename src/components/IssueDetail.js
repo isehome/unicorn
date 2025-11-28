@@ -715,7 +715,7 @@ const IssueDetail = () => {
         author_name,
         author_email,
         comment_text: text,
-        is_internal: false  // User comments are not internal/system comments
+        is_internal: true  // Comments from internal portal are from internal users
       });
       if (created) {
         setComments(prev => [...prev, created]);
@@ -1173,7 +1173,7 @@ const IssueDetail = () => {
   const getUploadStatusBadge = useCallback((status) => {
     const normalized = (status || '').toLowerCase();
     if (normalized === 'approved') {
-      return { label: 'Approved', className: 'bg-green-100 text-green-700 dark:bg-green-400/10 dark:text-green-300' };
+      return { label: 'Approved', style: { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } };
     }
     if (normalized === 'rejected' || normalized === 'failed') {
       return { label: 'Rejected', className: 'bg-rose-100 text-rose-700 dark:bg-rose-400/10 dark:text-rose-300' };
@@ -1208,7 +1208,14 @@ const IssueDetail = () => {
   const content = (
     <>
       {successMessage && (
-        <div className="rounded-2xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-800 dark:text-green-200">
+        <div
+          className="rounded-2xl border px-4 py-3 text-sm"
+          style={{
+            backgroundColor: 'rgba(148, 175, 50, 0.1)',
+            borderColor: 'rgba(148, 175, 50, 0.3)',
+            color: '#94AF32'
+          }}
+        >
           {successMessage}
         </div>
       )}
@@ -1318,10 +1325,10 @@ const IssueDetail = () => {
                 <button
                   type="button"
                   disabled={saving}
-                  style={(issue?.status || '').toLowerCase() === 'resolved' ? { 
-                    backgroundColor: '#10b981', // Tailwind green-500
-                    color: '#ffffff', 
-                    borderColor: '#10b981',
+                  style={(issue?.status || '').toLowerCase() === 'resolved' ? {
+                    backgroundColor: '#94AF32', // brand success color
+                    color: '#ffffff',
+                    borderColor: '#94AF32',
                     padding: '6px 12px',
                     borderRadius: '0.75rem',
                     fontSize: '0.875rem',
@@ -1494,7 +1501,7 @@ const IssueDetail = () => {
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
                         From {upload.stakeholder_name || upload.stakeholder_email || 'External contact'} •{' '}
-                        <DateField date={upload.submitted_at} variant="inline" showTime={true} />
+                        <DateField date={upload.submitted_at} variant="inline" colorMode="timestamp" showTime={true} />
                       </div>
                       {upload.rejection_reason && upload.status === 'rejected' && (
                         <div className="text-xs text-rose-500 mt-1">Reason: {upload.rejection_reason}</div>
@@ -1586,7 +1593,7 @@ const IssueDetail = () => {
                         <div className="text-sm font-medium">
                           {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
                         </div>
-                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" showTime={true} /></div>
+                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" colorMode="timestamp" showTime={true} /></div>
                       </div>
                       <ChevronDown 
                         size={16} 
@@ -1691,12 +1698,25 @@ const IssueDetail = () => {
           <div className="text-sm text-gray-600 dark:text-gray-300">No comments yet.</div>
         ) : (
           <div className="space-y-2">
-            {comments.map((c) => (
-              <div key={c.id} className="px-3 py-2 rounded-xl border">
-                <div className="text-sm">{c.comment_text}</div>
-                <div className="text-xs text-gray-500 mt-1">by {c.author_name || c.author_email || 'User'} • <DateField date={c.created_at} variant="inline" showTime={true} /></div>
-              </div>
-            ))}
+            {comments.map((c) => {
+              // Check if comment author matches any external stakeholder by email
+              const authorEmail = (c.author_email || '').toLowerCase().trim();
+              const isFromExternalStakeholder = authorEmail && externalStakeholders.some(
+                (s) => (s.email || '').toLowerCase().trim() === authorEmail
+              );
+              return (
+                <div key={c.id} className="px-3 py-2 rounded-xl border">
+                  <div className="text-sm">{c.comment_text}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    by{' '}
+                    <span className="font-semibold" style={{ color: isFromExternalStakeholder ? palette.success : palette.accent }}>
+                      {c.author_name || c.author_email || 'User'}
+                    </span>
+                    {' '}• <DateField date={c.created_at} variant="inline" colorMode="timestamp" showTime={true} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="flex gap-2">

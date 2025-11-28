@@ -35,9 +35,9 @@ const IssueCard = memo(({ issue, onClick, sectionStyles, isDark, showStakeholder
           const status = (issue.status || 'open').toLowerCase();
           if (status === 'resolved' || status === 'closed') {
             return {
-              backgroundColor: '#10b98120',
-              color: '#10b981',
-              border: '1px solid #10b98140'
+              backgroundColor: '#94AF3220',
+              color: '#94AF32',
+              border: '1px solid #94AF3240'
             };
           } else if (status === 'blocked') {
             return {
@@ -394,8 +394,13 @@ const PMIssuesPage = () => {
                     </td>
                     <td className="px-4 py-3 text-center">
                       {stakeholder.resolvedIssues > 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full 
-                                       bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-full"
+                          style={{
+                            backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                            color: '#94AF32'
+                          }}
+                        >
                           <CheckCircle className="w-3 h-3" />
                           {stakeholder.resolvedIssues}
                         </span>

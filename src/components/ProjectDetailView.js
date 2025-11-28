@@ -1100,8 +1100,8 @@ const ProjectDetailView = () => {
                             <span
                               className="px-2 py-1 rounded-full text-xs"
                               style={{
-                                backgroundColor: contact.is_internal ? withAlpha(palette.info, 0.15) : withAlpha(palette.success, 0.15),
-                                color: contact.is_internal ? palette.info : palette.success
+                                backgroundColor: contact.is_internal ? withAlpha(palette.accent, 0.15) : withAlpha(palette.success, 0.15),
+                                color: contact.is_internal ? palette.accent : palette.success
                               }}
                             >
                               {contact.is_internal ? 'Internal' : 'External'}

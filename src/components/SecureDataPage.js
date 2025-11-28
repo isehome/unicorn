@@ -835,7 +835,7 @@ const SecureDataPage = () => {
                           <div className="flex items-center gap-2 mb-1">
                             <Clock size={14} style={styles.textSecondary} />
                             <span className="text-xs" style={styles.textSecondary}>
-                              <DateField date={log.created_at} variant="inline" showTime={true} />
+                              <DateField date={log.created_at} variant="inline" colorMode="timestamp" showTime={true} />
                             </span>
                           </div>
                           <p className="text-sm font-medium" style={styles.textPrimary}>

@@ -26,7 +26,8 @@ const CircularProgressGauge = ({
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (normalizedPercentage / 100) * circumference;
 
-  // Get color based on percentage (matching UnifiedProgressGauge logic)
+  // Get color based on percentage
+  // Uses brand success color #94AF32 (rgb 148, 175, 50) at 100%
   const getColor = (pct) => {
     if (pct === 0) return 'rgb(203, 213, 225)'; // Slate gray for 0%
     if (pct < 50) {
@@ -37,11 +38,12 @@ const CircularProgressGauge = ({
       const b = Math.round(68 + (11 - 68) * ratio);
       return `rgb(${r}, ${g}, ${b})`;
     } else {
-      // Yellow to Green (50-100%)
+      // Yellow to Brand Success Green (50-100%)
+      // End color: #94AF32 = rgb(148, 175, 50)
       const ratio = (pct - 50) / 50;
-      const r = Math.round(245 - (245 - 16) * ratio);
-      const g = Math.round(245 - (245 - 185) * ratio);
-      const b = Math.round(11 + (129 - 11) * ratio);
+      const r = Math.round(245 - (245 - 148) * ratio);
+      const g = Math.round(245 - (245 - 175) * ratio);
+      const b = Math.round(11 + (50 - 11) * ratio);
       return `rgb(${r}, ${g}, ${b})`;
     }
   };

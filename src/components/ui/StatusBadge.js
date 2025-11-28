@@ -1,12 +1,20 @@
 import React from 'react';
 import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
 
+// Brand colors from styleSystem.js
+const brandColors = {
+  success: '#94AF32',  // brand success (olive green)
+  warning: '#F59E0B',  // amber
+  danger: '#EF4444',   // red
+  accent: '#8B5CF6',   // violet
+};
+
 const StatusBadge = ({ status, size = 'sm' }) => {
   const statusConfig = {
-    active: { color: 'green', label: 'Active', icon: CheckCircle },
-    pending: { color: 'amber', label: 'Pending', icon: Clock },
-    critical: { color: 'red', label: 'Critical', icon: AlertCircle },
-    complete: { color: 'violet', label: 'Complete', icon: CheckCircle },
+    active: { color: brandColors.success, label: 'Active', icon: CheckCircle },
+    pending: { color: brandColors.warning, label: 'Pending', icon: Clock },
+    critical: { color: brandColors.danger, label: 'Critical', icon: AlertCircle },
+    complete: { color: brandColors.accent, label: 'Complete', icon: CheckCircle },
   };
 
   const config = statusConfig[status] || statusConfig.pending;
@@ -19,12 +27,12 @@ const StatusBadge = ({ status, size = 'sm' }) => {
   };
 
   return (
-    <span 
+    <span
       className={`inline-flex items-center gap-1 font-medium rounded-full ${sizeClasses[size]}`}
       style={{
-        backgroundColor: `${config.color === 'green' ? '#10B98120' : config.color === 'amber' ? '#F59E0B20' : config.color === 'red' ? '#EF444420' : '#8B5CF620'}`,
-        color: `${config.color === 'green' ? '#10B981' : config.color === 'amber' ? '#F59E0B' : config.color === 'red' ? '#EF4444' : '#8B5CF6'}`,
-        border: `1px solid ${config.color === 'green' ? '#10B98140' : config.color === 'amber' ? '#F59E0B40' : config.color === 'red' ? '#EF444440' : '#8B5CF640'}`
+        backgroundColor: `${config.color}20`,
+        color: config.color,
+        border: `1px solid ${config.color}40`
       }}
     >
       <Icon className="w-3 h-3" />

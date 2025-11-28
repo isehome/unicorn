@@ -1,7 +1,8 @@
 import React from 'react';
 
 /**
- * Calculate gradient color from red (0%) to yellow (50%) to green (100%)
+ * Calculate gradient color from red (0%) to yellow (50%) to brand success green (100%)
+ * End color: #94AF32 = rgb(148, 175, 50) - brand success color
  */
 const getGradientColor = (percentage) => {
   const percent = Math.max(0, Math.min(100, percentage));
@@ -14,11 +15,12 @@ const getGradientColor = (percentage) => {
     const b = 68; // Blue stays at 68
     return `rgb(${r}, ${g}, ${b})`;
   } else {
-    // Yellow to Green (50-100%)
+    // Yellow to Brand Success Green (50-100%)
+    // End color: #94AF32 = rgb(148, 175, 50)
     const ratio = (percent - 50) / 50;
-    const r = Math.round(245 - (229 * ratio)); // 245 → 16
-    const g = Math.round(245 - (60 * ratio)); // 245 → 185
-    const b = Math.round(11 + (118 * ratio)); // 11 → 129
+    const r = Math.round(245 - (97 * ratio));  // 245 → 148
+    const g = Math.round(245 - (70 * ratio));  // 245 → 175
+    const b = Math.round(11 + (39 * ratio));   // 11 → 50
     return `rgb(${r}, ${g}, ${b})`;
   }
 };

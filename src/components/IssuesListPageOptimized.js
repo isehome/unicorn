@@ -24,9 +24,9 @@ const IssueCard = memo(({ issue, project, onClick, sectionStyles, isDark }) => (
           const status = (issue.status || 'open').toLowerCase();
           if (status === 'resolved' || status === 'closed') {
             return {
-              backgroundColor: '#10b98120',
-              color: '#10b981',
-              border: '1px solid #10b98140'
+              backgroundColor: '#94AF3220',
+              color: '#94AF32',
+              border: '1px solid #94AF3240'
             };
           } else if (status === 'blocked') {
             return {
