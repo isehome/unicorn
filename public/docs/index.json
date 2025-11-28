@@ -3,13 +3,38 @@
   "description": "Project management for low-voltage installations",
   "version": "1.0",
   "lastUpdated": "2025-11",
-  "aiInstructions": "Start by reading CLAUDE.md for project rules, then PROJECT_OVERVIEW.md for system understanding.",
+  "aiInstructions": "IMPORTANT: Start by reading AGENT_INSTRUCTIONS.md, then CLAUDE.md for project rules, then PROJECT_OVERVIEW.md for system understanding. Documentation updates are MANDATORY after every code change.",
+  "startHere": [
+    {
+      "name": "AGENT_INSTRUCTIONS.md",
+      "url": "/docs/AGENT_INSTRUCTIONS.md",
+      "description": "READ FIRST - Quick rules for AI assistants",
+      "priority": 1
+    },
+    {
+      "name": "CLAUDE.md",
+      "url": "/docs/CLAUDE.md",
+      "description": "Complete AI guidelines and coding standards",
+      "priority": 2
+    },
+    {
+      "name": "PROJECT_OVERVIEW.md",
+      "url": "/docs/PROJECT_OVERVIEW.md",
+      "description": "Full system architecture and features",
+      "priority": 3
+    }
+  ],
   "files": {
     "essential": [
       {
+        "name": "AGENT_INSTRUCTIONS.md",
+        "url": "/docs/AGENT_INSTRUCTIONS.md",
+        "description": "Quick start for AI assistants - READ FIRST"
+      },
+      {
         "name": "CLAUDE.md",
         "url": "/docs/CLAUDE.md",
-        "description": "AI assistant guidelines - READ FIRST"
+        "description": "Complete AI guidelines and coding standards"
       },
       {
         "name": "PROJECT_OVERVIEW.md",
@@ -90,5 +115,36 @@
         "description": "Future features"
       }
     ]
+  },
+  "rules": {
+    "fileLocations": {
+      "components": "src/components/",
+      "services": "src/services/",
+      "api": "api/",
+      "migrations": "database/migrations/",
+      "documentation": "docs/",
+      "scripts": "scripts/",
+      "neverInRoot": true
+    },
+    "documentation": {
+      "mandatory": true,
+      "updateAfterEveryChange": true,
+      "newFeature": ["docs/PROJECT_OVERVIEW.md", "relevant feature doc"],
+      "bugFix": "docs/TROUBLESHOOTING.md",
+      "databaseChange": "docs/PROJECT_OVERVIEW.md",
+      "apiChange": "docs/INTEGRATIONS.md"
+    },
+    "database": {
+      "authType": "MSAL (not Supabase Auth)",
+      "rlsRequirement": "ALL policies must include 'anon' role",
+      "policyPattern": "CREATE POLICY name ON table FOR ALL TO anon, authenticated USING (true);"
+    },
+    "coding": {
+      "components": "React functional with hooks",
+      "styling": "Tailwind only, include dark mode",
+      "services": "Class-based with singleton export",
+      "noInlineStyles": true,
+      "noCssFiles": true
+    }
   }
 }

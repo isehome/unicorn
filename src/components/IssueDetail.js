@@ -75,6 +75,7 @@ const IssueDetail = () => {
   const [issue, setIssue] = useState(null);
   const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
+  const [isPublicComment, setIsPublicComment] = useState(false);
   const [tags, setTags] = useState([]);
   const [availableProjectStakeholders, setAvailableProjectStakeholders] = useState([]);
   const [tagging, setTagging] = useState(false);
@@ -154,7 +155,7 @@ const IssueDetail = () => {
           projectStakeholdersService.getForProject(projectId),
           projectPromise
         ]);
-        
+
         setDraftIssue(null);
         draftIssuePromiseRef.current = null;
 
@@ -162,7 +163,7 @@ const IssueDetail = () => {
         console.log('Issue Data Loaded:', issueData);
         console.log('Is Blocked:', issueData?.is_blocked);
         console.log('Status:', issueData?.status);
-        
+
         setIssue(issueData);
         setComments(commentsData);
         setTags(tagsData);
@@ -178,7 +179,7 @@ const IssueDetail = () => {
         // Combine stakeholders and ensure no duplicates
         const internalMapped = (projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' }));
         const externalMapped = (projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }));
-        
+
         // Use a Map to deduplicate by the combination of contact_name, role_name, and category
         // This prevents the same person/role from appearing multiple times
         const stakeholderMap = new Map();
@@ -186,14 +187,14 @@ const IssueDetail = () => {
           if (stakeholder.assignment_id) {
             // Create a unique key based on what's displayed to the user
             const displayKey = `${stakeholder.contact_name || ''}_${stakeholder.role_name || ''}_${stakeholder.category || ''}`;
-            
+
             // Only add if we haven't seen this combination before
             if (!stakeholderMap.has(displayKey)) {
               stakeholderMap.set(displayKey, stakeholder);
             }
           }
         });
-        
+
         const combined = Array.from(stakeholderMap.values());
         setAvailableProjectStakeholders(combined);
 
@@ -219,7 +220,7 @@ const IssueDetail = () => {
         // Combine stakeholders and ensure no duplicates  
         const internalMapped = (projectStakeholders.internal || []).map(p => ({ ...p, category: 'internal' }));
         const externalMapped = (projectStakeholders.external || []).map(p => ({ ...p, category: 'external' }));
-        
+
         // Use a Map to deduplicate by the combination of contact_name, role_name, and category
         // This prevents the same person/role from appearing multiple times
         const stakeholderMap = new Map();
@@ -227,14 +228,14 @@ const IssueDetail = () => {
           if (stakeholder.assignment_id) {
             // Create a unique key based on what's displayed to the user
             const displayKey = `${stakeholder.contact_name || ''}_${stakeholder.role_name || ''}_${stakeholder.category || ''}`;
-            
+
             // Only add if we haven't seen this combination before
             if (!stakeholderMap.has(displayKey)) {
               stakeholderMap.set(displayKey, stakeholder);
             }
           }
         });
-        
+
         const combined = Array.from(stakeholderMap.values());
         setProjectInfo(projectDetails);
         setAvailableProjectStakeholders(combined);
@@ -336,8 +337,8 @@ const IssueDetail = () => {
 
     const ownerMatch = user?.email
       ? availableProjectStakeholders.find(
-          p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase()
-        )
+        p => (p.email || '').toLowerCase() === (user.email || '').toLowerCase()
+      )
       : null;
 
     const creatorProfileId = await resolveCreatorProfileId();
@@ -424,8 +425,8 @@ const IssueDetail = () => {
 
     for (const stakeholder of stakeholderList) {
       const isExternal = stakeholder?.is_internal === false ||
-                         stakeholder?.role_category === 'external' ||
-                         stakeholder?.category === 'external';
+        stakeholder?.role_category === 'external' ||
+        stakeholder?.category === 'external';
       if (!isExternal) continue;
 
       const tagId = stakeholder?.tag_id || stakeholder?.id;
@@ -715,11 +716,12 @@ const IssueDetail = () => {
         author_name,
         author_email,
         comment_text: text,
-        is_internal: true  // Comments from internal portal are from internal users
+        is_internal: !isPublicComment
       });
       if (created) {
         setComments(prev => [...prev, created]);
         setCommentText('');
+        setIsPublicComment(false);
 
         const issueContext = resolvedIssue || {
           id: issueIdToUse,
@@ -729,7 +731,7 @@ const IssueDetail = () => {
 
         // Ensure we pass the auth token for user comments as well
         const graphToken = await acquireToken();
-        
+
         await notifyCommentActivity({
           issueId: issueIdToUse,
           text,
@@ -1269,111 +1271,111 @@ const IssueDetail = () => {
             <span className={`text-xs ${ui.subtle}`}>Provide context for this issue.</span>
           ) : (
             <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={saving}
-                  style={(issue?.status || '').toLowerCase() === 'blocked' ? { 
-                    backgroundColor: '#ef4444', // Tailwind red-500
-                    color: '#ffffff', 
-                    borderColor: '#ef4444',
-                    padding: '6px 12px',
-                    borderRadius: '0.75rem',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1px solid',
-                    transition: 'all 0.2s',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.6 : 1
-                  } : {
-                    backgroundColor: 'transparent',
-                    color: mode === 'dark' ? '#9ca3af' : '#6b7280',
-                    borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
-                    padding: '6px 12px',
-                    borderRadius: '0.75rem',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1px solid',
-                    transition: 'all 0.2s',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.6 : 1
-                  }}
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (saving) return;
-                    
-                    // Check status field for blocked state (only field that exists in DB)
-                    const normalizedStatus = (issue?.status || '').toLowerCase().trim();
-                    const isBlocked = normalizedStatus === 'blocked';
-                    const nextStatus = isBlocked ? 'open' : 'blocked';
-                    console.log('Blocked Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
-                    
-                    await updateStatusAndLog(nextStatus, 'Failed to update blocked status', {
-                      displayLabelOverride: isBlocked ? 'Unblocked' : 'Blocked'
-                    });
-                  }}
-                >
-                  <AlertTriangle size={16} />
-                  {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  style={(issue?.status || '').toLowerCase() === 'resolved' ? {
-                    backgroundColor: '#94AF32', // brand success color
-                    color: '#ffffff',
-                    borderColor: '#94AF32',
-                    padding: '6px 12px',
-                    borderRadius: '0.75rem',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1px solid',
-                    transition: 'all 0.2s',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.6 : 1
-                  } : {
-                    backgroundColor: 'transparent',
-                    color: mode === 'dark' ? '#9ca3af' : '#6b7280',
-                    borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
-                    padding: '6px 12px',
-                    borderRadius: '0.75rem',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    border: '1px solid',
-                    transition: 'all 0.2s',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.6 : 1
-                  }}
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (saving) return;
-                    
-                    const normalizedStatus = (issue?.status || '').toLowerCase().trim();
-                    const isResolved = normalizedStatus === 'resolved';
-                    const nextStatus = isResolved ? 'open' : 'resolved';
-                    console.log('Resolved Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
-                    
-                    await updateStatusAndLog(nextStatus, 'Failed to update resolved status', {
-                      displayLabelOverride: isResolved ? 'Open' : 'Resolved'
-                    });
-                  }}
-                >
-                  <CheckCircle size={16} />
-                  {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
-                </button>
+              <button
+                type="button"
+                disabled={saving}
+                style={(issue?.status || '').toLowerCase() === 'blocked' ? {
+                  backgroundColor: '#ef4444', // Tailwind red-500
+                  color: '#ffffff',
+                  borderColor: '#ef4444',
+                  padding: '6px 12px',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid',
+                  transition: 'all 0.2s',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.6 : 1
+                } : {
+                  backgroundColor: 'transparent',
+                  color: mode === 'dark' ? '#9ca3af' : '#6b7280',
+                  borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                  padding: '6px 12px',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid',
+                  transition: 'all 0.2s',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.6 : 1
+                }}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (saving) return;
+
+                  // Check status field for blocked state (only field that exists in DB)
+                  const normalizedStatus = (issue?.status || '').toLowerCase().trim();
+                  const isBlocked = normalizedStatus === 'blocked';
+                  const nextStatus = isBlocked ? 'open' : 'blocked';
+                  console.log('Blocked Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
+
+                  await updateStatusAndLog(nextStatus, 'Failed to update blocked status', {
+                    displayLabelOverride: isBlocked ? 'Unblocked' : 'Blocked'
+                  });
+                }}
+              >
+                <AlertTriangle size={16} />
+                {(issue?.status || '').toLowerCase() === 'blocked' ? 'Unblock' : 'Mark Blocked'}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                style={(issue?.status || '').toLowerCase() === 'resolved' ? {
+                  backgroundColor: '#94AF32', // brand success color
+                  color: '#ffffff',
+                  borderColor: '#94AF32',
+                  padding: '6px 12px',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid',
+                  transition: 'all 0.2s',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.6 : 1
+                } : {
+                  backgroundColor: 'transparent',
+                  color: mode === 'dark' ? '#9ca3af' : '#6b7280',
+                  borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                  padding: '6px 12px',
+                  borderRadius: '0.75rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  border: '1px solid',
+                  transition: 'all 0.2s',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                  opacity: saving ? 0.6 : 1
+                }}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (saving) return;
+
+                  const normalizedStatus = (issue?.status || '').toLowerCase().trim();
+                  const isResolved = normalizedStatus === 'resolved';
+                  const nextStatus = isResolved ? 'open' : 'resolved';
+                  console.log('Resolved Button Clicked! Current:', issue?.status, 'Next:', nextStatus);
+
+                  await updateStatusAndLog(nextStatus, 'Failed to update resolved status', {
+                    displayLabelOverride: isResolved ? 'Open' : 'Resolved'
+                  });
+                }}
+              >
+                <CheckCircle size={16} />
+                {(issue?.status || '').toLowerCase() === 'resolved' ? 'Reopen' : 'Mark Resolved'}
+              </button>
               {!editingDetails && (
                 <Button variant="secondary" size="sm" onClick={() => setEditingDetails(true)}>Edit</Button>
               )}
@@ -1556,7 +1558,7 @@ const IssueDetail = () => {
             <div className="relative">
               <select
                 disabled={tagging || !canManageStakeholders}
-                onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value=''; } }}
+                onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value = ''; } }}
                 className={ui.select}
                 defaultValue=""
               >
@@ -1580,7 +1582,7 @@ const IssueDetail = () => {
               const isExpanded = expandedStakeholder === tag.tag_id;
               return (
                 <div key={tag.tag_id} className="rounded-xl border overflow-hidden">
-                  <div 
+                  <div
                     className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                     onClick={() => toggleStakeholder(tag.tag_id)}
                   >
@@ -1595,14 +1597,14 @@ const IssueDetail = () => {
                         </div>
                         <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" colorMode="timestamp" showTime={true} /></div>
                       </div>
-                      <ChevronDown 
-                        size={16} 
+                      <ChevronDown
+                        size={16}
                         className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                       />
                     </div>
-                    <button 
-                      className="text-rose-500 ml-2" 
-                      onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag.tag_id); }} 
+                    <button
+                      className="text-rose-500 ml-2"
+                      onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag.tag_id); }}
                       title="Remove"
                     >
                       <Trash2 size={16} />
@@ -1709,32 +1711,65 @@ const IssueDetail = () => {
                   <div className="text-sm">{c.comment_text}</div>
                   <div className="text-xs text-gray-500 mt-1">
                     by{' '}
-                    <span className="font-semibold" style={{ color: isFromExternalStakeholder ? palette.success : palette.accent }}>
-                      {c.author_name || c.author_email || 'User'}
-                    </span>
-                    {' '}• <DateField date={c.created_at} variant="inline" colorMode="timestamp" showTime={true} />
+                    <div className={`flex justify-between items-start mb-1 ${c.is_internal === false ? 'bg-amber-50 -mx-2 px-2 py-1 rounded' : ''
+                      }`}>
+                      <span className={`font-medium ${palette.text.primary} flex items-center gap-2`}>
+                        {c.author_name || 'Unknown'}
+                        {c.is_internal === false && (
+                          <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full border border-amber-200">
+                            Public
+                          </span>
+                        )}
+                      </span>
+                      <DateField date={c.created_at} showTime={true} colorMode="timestamp" className="text-xs" />
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex items-center justify-between mb-2">
+          <h3 className={`text-lg font-semibold ${palette.text.primary}`}>Discussion</h3>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isPublicComment}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  if (checked) {
+                    const confirmed = window.confirm('Warning: This comment will be seen by external stakeholders. Are you sure you want to proceed?');
+                    if (confirmed) setIsPublicComment(true);
+                  } else {
+                    setIsPublicComment(false);
+                  }
+                }}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className={isPublicComment ? 'text-amber-600 font-medium' : 'text-gray-500'}>
+                {isPublicComment ? 'Visible to External Stakeholders' : 'Internal Only'}
+              </span>
+            </label>
+          </div>
+        </div>
+        <div className="flex gap-2 mb-6">
+          <textarea
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder={canComment ? 'Add a comment…' : 'Enter a title to add comments.'}
-            className={ui.input}
-            disabled={!canComment}
+            placeholder={isPublicComment ? "Write a public comment..." : "Write an internal comment..."}
+            className={`flex-1 p-3 rounded-xl border ${isPublicComment
+                ? 'border-amber-300 bg-amber-50 focus:ring-amber-500 focus:border-amber-500'
+                : `${ui.input} focus:ring-2 focus:ring-blue-500 focus:border-transparent`
+              } resize-none h-24`}
           />
           <Button
-            variant="primary"
-            icon={Plus}
             onClick={handleAddComment}
             disabled={!canComment || saving || !commentText.trim()}
+            variant={isPublicComment ? 'warning' : 'primary'}
+            className="h-24 px-6"
           >
-            Add
+            {saving ? 'Posting...' : 'Post'}
           </Button>
         </div>
       </section>

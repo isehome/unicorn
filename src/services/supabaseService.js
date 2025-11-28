@@ -203,12 +203,12 @@ export const projectsService = {
   async getAll() {
     try {
       if (!supabase) return [];
-      
+
       const { data, error } = await supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (error) throw error;
       return data || [];
     } catch (error) {
@@ -250,7 +250,7 @@ export const projectsService = {
         .select('*')
         .eq('id', projectId)
         .single();
-        
+
       if (projectError) {
         console.error('Project fetch error:', projectError);
         return {
@@ -279,13 +279,13 @@ export const projectsService = {
   async create(projectData) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('projects')
         .insert([projectData])
         .select()
         .single();
-        
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -394,7 +394,7 @@ export const projectStakeholdersService = {
         .from('project_stakeholders_detailed')
         .select('*')
         .eq('project_id', projectId);
-      
+
       if (error) {
         console.error('Stakeholders fetch error:', error);
         return { internal: [], external: [] };
@@ -419,7 +419,7 @@ export const projectStakeholdersService = {
   async addToProject(projectId, contactId, roleId, options = {}) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('project_stakeholders')
         .insert([{
@@ -431,7 +431,7 @@ export const projectStakeholdersService = {
         }])
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -619,7 +619,7 @@ export const projectTodosService = {
           p_items: items
         });
         if (!error) return true;
-      } catch (_) {}
+      } catch (_) { }
       await Promise.all(items.map(it => supabase
         .from('project_todos')
         .update({ sort_order: it.sort_order })
@@ -678,13 +678,13 @@ export const issuesService = {
   async create(issueData) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('issues')
         .insert([issueData])
         .select()
         .single();
-        
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -810,7 +810,7 @@ export const contactsService = {
   async getAll(filters = {}) {
     try {
       if (!supabase) return [];
-      
+
       let query = supabase
         .from('contacts')
         .select('*')
@@ -849,13 +849,13 @@ export const contactsService = {
   async getById(id) {
     try {
       if (!supabase) return null;
-      
+
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
         .eq('id', id)
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -867,13 +867,13 @@ export const contactsService = {
   async create(contactData) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('contacts')
         .insert([contactData])
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -884,14 +884,14 @@ export const contactsService = {
   async update(id, updates) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { data, error } = await supabase
         .from('contacts')
         .update(updates)
         .eq('id', id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     } catch (error) {
@@ -902,12 +902,12 @@ export const contactsService = {
   async delete(id) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       const { error } = await supabase
         .from('contacts')
         .update({ is_active: false })
         .eq('id', id);
-      
+
       if (error) throw error;
     } catch (error) {
       handleError(error, 'Failed to delete contact');
@@ -920,13 +920,13 @@ export const stakeholderRolesService = {
   async getAll() {
     try {
       if (!supabase) return [];
-      
+
       const { data, error } = await supabase
         .from('stakeholder_roles')
         .select('*')
         .eq('is_active', true)
         .order('sort_order', { ascending: true });
-      
+
       if (error) throw error;
       return data || [];
     } catch (error) {
@@ -966,7 +966,7 @@ export const timeLogsService = {
   async checkIn(projectId, userEmail, userName = null) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       // Use the Supabase function for check-in
       const { data, error } = await supabase
         .rpc('time_log_check_in', {
@@ -974,123 +974,123 @@ export const timeLogsService = {
           p_user_email: userEmail,
           p_user_name: userName || userEmail
         });
-        
+
       if (error) {
         console.error('Check-in error:', error);
         return { success: false, message: error.message || 'Failed to check in' };
       }
-      
+
       return { success: true, data };
     } catch (error) {
       console.error('Failed to check in:', error);
       return { success: false, message: error.message || 'Failed to check in' };
     }
   },
-  
+
   async checkOut(projectId, userEmail) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
+
       // Use the Supabase function for check-out
       const { data, error } = await supabase
         .rpc('time_log_check_out', {
           p_project_id: projectId,
           p_user_email: userEmail
         });
-        
+
       if (error) {
         console.error('Check-out error:', error);
         return { success: false, message: error.message || 'Failed to check out' };
       }
-      
+
       return { success: true, data };
     } catch (error) {
       console.error('Failed to check out:', error);
       return { success: false, message: error.message || 'Failed to check out' };
     }
   },
-  
+
   async getActiveSession(projectId, userEmail) {
     try {
       if (!supabase) return null;
-      
+
       // Use the Supabase function to get active session
       const { data, error } = await supabase
         .rpc('get_active_session', {
           p_project_id: projectId,
           p_user_email: userEmail
         });
-        
+
       if (error) {
         console.error('Failed to get active session:', error);
         return null;
       }
-      
+
       return data && data.length > 0 ? data[0] : null;
     } catch (error) {
       console.error('Failed to get active session:', error);
       return null;
     }
   },
-  
+
   async getUserProjectTime(projectId, userEmail) {
     try {
       if (!supabase) return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
-      
+
       const { data, error } = await supabase
         .rpc('get_user_project_time', {
           p_project_id: projectId,
           p_user_email: userEmail
         });
-        
+
       if (error) {
         console.error('Failed to get user project time:', error);
         return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
       }
-      
+
       return data && data.length > 0 ? data[0] : { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
     } catch (error) {
       console.error('Failed to get user project time:', error);
       return { total_minutes: 0, total_hours: 0, total_sessions: 0, active_session: false };
     }
   },
-  
+
   async getProjectTimeSummary(projectId) {
     try {
       if (!supabase) return [];
-      
+
       const { data, error } = await supabase
         .rpc('get_project_time_summary', {
           p_project_id: projectId
         });
-        
+
       if (error) {
         console.error('Failed to get project time summary:', error);
         return [];
       }
-      
+
       return data || [];
     } catch (error) {
       console.error('Failed to get project time summary:', error);
       return [];
     }
   },
-  
+
   async getWeeklyTimeSummary(userEmail = null, weeksBack = 4) {
     try {
       if (!supabase) return [];
-      
+
       const { data, error } = await supabase
         .rpc('get_weekly_time_summary', {
           p_user_email: userEmail,
           p_weeks_back: weeksBack
         });
-        
+
       if (error) {
         console.error('Failed to get weekly time summary:', error);
         return [];
       }
-      
+
       return data || [];
     } catch (error) {
       console.error('Failed to get weekly time summary:', error);
@@ -1112,23 +1112,23 @@ export const projectProgressService = {
       };
 
       if (!supabase) return baseProgress;
-      
+
       // Get all wire drops with their stages
       const { data: wireDrops, error } = await supabase
         .from('wire_drops')
         .select('*, wire_drop_stages(*)')
         .eq('project_id', projectId);
-        
+
       if (error || !wireDrops || wireDrops.length === 0) {
         return baseProgress;
       }
-      
+
       // Calculate progress for each stage
       const totalDrops = wireDrops.length;
       let prewireComplete = 0;
       let trimComplete = 0;
       let commissionComplete = 0;
-      
+
       wireDrops.forEach(drop => {
         const stages = drop.wire_drop_stages || [];
         stages.forEach(stage => {
@@ -1139,7 +1139,7 @@ export const projectProgressService = {
           }
         });
       });
-      
+
       baseProgress.prewire = Math.round((prewireComplete / totalDrops) * 100);
       baseProgress.trim = Math.round((trimComplete / totalDrops) * 100);
       baseProgress.commission = Math.round((commissionComplete / totalDrops) * 100);
@@ -1183,7 +1183,7 @@ export const projectProgressService = {
 
 // ============= SUBSCRIPTIONS (mock for compatibility) =============
 export const subscriptions = {
-  subscribeToProject: () => ({ unsubscribe: () => {} }),
-  subscribeToContacts: () => ({ unsubscribe: () => {} }),
-  unsubscribe: () => {}
+  subscribeToProject: () => ({ unsubscribe: () => { } }),
+  subscribeToContacts: () => ({ unsubscribe: () => { } }),
+  unsubscribe: () => { }
 };
