@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './ui/Button';
+import Modal from './ui/Modal';
 import DateField from './ui/DateField';
 import DateInput from './ui/DateInput';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -64,9 +65,9 @@ const IssueDetail = () => {
   const ui = useMemo(() => {
     const isDark = mode === 'dark';
     return {
-      input: `w-full px-3 py-2 rounded-xl border ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`,
-      select: `w-full px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'}`,
-      subtle: isDark ? 'text-gray-400' : 'text-gray-600',
+      input: `w-full px-3 py-2 rounded-xl border ${isDark ? 'bg-slate-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
+      select: `w-full px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
+      subtle: isDark ? 'text-zinc-400' : 'text-zinc-600',
     };
   }, [mode]);
 
@@ -99,6 +100,8 @@ const IssueDetail = () => {
   const [processingUploadId, setProcessingUploadId] = useState(null);
   const [portalLinkLoading, setPortalLinkLoading] = useState(null);
   const [ackExternalWarning, setAckExternalWarning] = useState(false);
+  const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
+  const [pendingPublicToggle, setPendingPublicToggle] = useState(false);
   const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
   const currentUserDisplay = useMemo(() => (
     user?.user_metadata?.full_name ||
@@ -1481,7 +1484,7 @@ const IssueDetail = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">External Uploads</h3>
           {uploadsLoading && (
-            <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2 text-xs text-zinc-500">
               <Loader className="w-4 h-4 animate-spin" /> Loading…
             </div>
           )}
@@ -1493,15 +1496,15 @@ const IssueDetail = () => {
             {pendingUploads.map((upload) => {
               const badge = getUploadStatusBadge(upload.status);
               return (
-                <div key={upload.id} className="rounded-xl border p-3 bg-white dark:bg-gray-900/60">
+                <div key={upload.id} className="rounded-xl border p-3 bg-white dark:bg-zinc-900/60">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2 font-medium text-sm">
-                        <Paperclip size={16} className="text-gray-400" />
+                        <Paperclip size={16} className="text-zinc-400" />
                         <span>{upload.file_name}</span>
-                        <span className="text-xs text-gray-500">{formatBytes(upload.file_size)}</span>
+                        <span className="text-xs text-zinc-500">{formatBytes(upload.file_size)}</span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="text-xs text-zinc-500 mt-1">
                         From {upload.stakeholder_name || upload.stakeholder_email || 'External contact'} •{' '}
                         <DateField date={upload.submitted_at} variant="inline" colorMode="timestamp" showTime={true} />
                       </div>
@@ -1575,7 +1578,7 @@ const IssueDetail = () => {
         {!canManageStakeholders ? (
           <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding stakeholders.</div>
         ) : tags.length === 0 ? (
-          <div className="text-sm text-gray-600 dark:text-gray-300">No stakeholders tagged.</div>
+          <div className="text-sm text-zinc-600 dark:text-zinc-300">No stakeholders tagged.</div>
         ) : (
           <div className="space-y-2">
             {tags.map(tag => {
@@ -1583,23 +1586,23 @@ const IssueDetail = () => {
               return (
                 <div key={tag.tag_id} className="rounded-xl border overflow-hidden">
                   <div
-                    className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                     onClick={() => toggleStakeholder(tag.tag_id)}
                   >
                     <div className="flex items-start gap-2 flex-1">
                       <span
                         className="mt-1 inline-block w-2 h-2 rounded-full"
-                        style={{ backgroundColor: tag.is_internal ? palette.accent : palette.success }}
+                        style={{ backgroundColor: tag.is_internal ? (palette?.accent || '#8B5CF6') : (palette?.success || '#10B981') }}
                       />
                       <div className="flex-1">
                         <div className="text-sm font-medium">
-                          {tag.contact_name} <span className="text-xs text-gray-500">({tag.role_name})</span>
+                          {tag.contact_name} <span className="text-xs text-zinc-500">({tag.role_name})</span>
                         </div>
-                        <div className="text-xs text-gray-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" colorMode="timestamp" showTime={true} /></div>
+                        <div className="text-xs text-zinc-500">{tag.tag_type || 'assigned'} • <DateField date={tag.tagged_at} variant="inline" colorMode="timestamp" showTime={true} /></div>
                       </div>
                       <ChevronDown
                         size={16}
-                        className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        className={`text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                       />
                     </div>
                     <button
@@ -1611,11 +1614,11 @@ const IssueDetail = () => {
                     </button>
                   </div>
                   {isExpanded && (
-                    <div className="px-3 pb-3 border-t bg-gray-50 dark:bg-gray-800/50">
+                    <div className="px-3 pb-3 border-t bg-zinc-50 dark:bg-zinc-800/50">
                       <div className="pt-3 space-y-2 text-sm">
                         {tag.email && (
                           <div className="flex items-center gap-2">
-                            <Mail size={14} className="text-gray-400" />
+                            <Mail size={14} className="text-zinc-400" />
                             <button
                               onClick={(e) => { e.stopPropagation(); handleContactAction('email', tag.email); }}
                               className="text-blue-600 hover:underline"
@@ -1626,7 +1629,7 @@ const IssueDetail = () => {
                         )}
                         {tag.phone && (
                           <div className="flex items-center gap-2">
-                            <Phone size={14} className="text-gray-400" />
+                            <Phone size={14} className="text-zinc-400" />
                             <button
                               onClick={(e) => { e.stopPropagation(); handleContactAction('phone', tag.phone); }}
                               className="text-blue-600 hover:underline"
@@ -1637,13 +1640,13 @@ const IssueDetail = () => {
                         )}
                         {tag.company && (
                           <div className="flex items-center gap-2">
-                            <Building size={14} className="text-gray-400" />
+                            <Building size={14} className="text-zinc-400" />
                             <span>{tag.company}</span>
                           </div>
                         )}
                         {tag.address && (
                           <div className="flex items-center gap-2">
-                            <MapIcon size={14} className="text-gray-400" />
+                            <MapIcon size={14} className="text-zinc-400" />
                             <button
                               onClick={(e) => { e.stopPropagation(); handleContactAction('address', tag.address); }}
                               className="text-blue-600 hover:underline text-left"
@@ -1653,7 +1656,7 @@ const IssueDetail = () => {
                           </div>
                         )}
                         {!tag.email && !tag.phone && !tag.company && !tag.address && (
-                          <div className="text-gray-500 italic">No contact details available</div>
+                          <div className="text-zinc-500 italic">No contact details available</div>
                         )}
                         {tag.role_category === 'external' && (
                           <div className="mt-2 flex items-center justify-between rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 px-3 py-2">
@@ -1697,7 +1700,7 @@ const IssueDetail = () => {
         {!canComment ? (
           <div className={`text-sm ${ui.subtle}`}>Enter a title to auto-save this issue before adding comments.</div>
         ) : comments.length === 0 ? (
-          <div className="text-sm text-gray-600 dark:text-gray-300">No comments yet.</div>
+          <div className="text-sm text-zinc-600 dark:text-zinc-300">No comments yet.</div>
         ) : (
           <div className="space-y-2">
             {comments.map((c) => {
@@ -1707,22 +1710,19 @@ const IssueDetail = () => {
                 (s) => (s.email || '').toLowerCase().trim() === authorEmail
               );
               return (
-                <div key={c.id} className="px-3 py-2 rounded-xl border">
+                <div key={c.id} className="rounded-xl border px-3 py-2">
                   <div className="text-sm">{c.comment_text}</div>
                   <div className="text-xs text-gray-500 mt-1">
                     by{' '}
-                    <div className={`flex justify-between items-start mb-1 ${c.is_internal === false ? 'bg-amber-50 -mx-2 px-2 py-1 rounded' : ''
-                      }`}>
-                      <span className={`font-medium ${palette.text.primary} flex items-center gap-2`}>
-                        {c.author_name || 'Unknown'}
-                        {c.is_internal === false && (
-                          <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full border border-amber-200">
-                            Public
-                          </span>
-                        )}
+                    <span className="font-medium" style={{ color: isFromExternalStakeholder ? (palette?.success || '#10B981') : (palette?.accent || '#8B5CF6') }}>
+                      {c.author_name || 'Unknown'}
+                    </span>
+                    {c.is_internal === false && (
+                      <span className="ml-2 text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-700/50">
+                        Public
                       </span>
-                      <DateField date={c.created_at} showTime={true} colorMode="timestamp" className="text-xs" />
-                    </div>
+                    )}
+                    {' '}• <DateField date={c.created_at} showTime={true} variant="inline" colorMode="timestamp" className="text-xs" />
                   </div>
                 </div>
               );
@@ -1730,7 +1730,7 @@ const IssueDetail = () => {
           </div>
         )}
         <div className="flex items-center justify-between mb-2">
-          <h3 className={`text-lg font-semibold ${palette.text.primary}`}>Discussion</h3>
+          <h3 className={`text-lg font-semibold ${palette?.text?.primary || 'text-zinc-900'}`}>Discussion</h3>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <input
@@ -1739,15 +1739,14 @@ const IssueDetail = () => {
                 onChange={(e) => {
                   const checked = e.target.checked;
                   if (checked) {
-                    const confirmed = window.confirm('Warning: This comment will be seen by external stakeholders. Are you sure you want to proceed?');
-                    if (confirmed) setIsPublicComment(true);
+                    setShowPublicWarningModal(true);
                   } else {
                     setIsPublicComment(false);
                   }
                 }}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
               />
-              <span className={isPublicComment ? 'text-amber-600 font-medium' : 'text-gray-500'}>
+              <span className={isPublicComment ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-zinc-500 dark:text-zinc-400'}>
                 {isPublicComment ? 'Visible to External Stakeholders' : 'Internal Only'}
               </span>
             </label>
@@ -1759,8 +1758,8 @@ const IssueDetail = () => {
             onChange={(e) => setCommentText(e.target.value)}
             placeholder={isPublicComment ? "Write a public comment..." : "Write an internal comment..."}
             className={`flex-1 p-3 rounded-xl border ${isPublicComment
-              ? 'border-amber-300 bg-amber-50 focus:ring-amber-500 focus:border-amber-500'
-              : `${ui.input} focus:ring-2 focus:ring-blue-500 focus:border-transparent`
+              ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-500/50 focus:ring-amber-500 focus:border-amber-500'
+              : `${ui?.input || 'border-zinc-300'} focus:ring-2 focus:ring-blue-500 focus:border-transparent`
               } resize-none h-24`}
           />
           <Button
@@ -1801,6 +1800,41 @@ const IssueDetail = () => {
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       {content}
+
+      <Modal
+        isOpen={showPublicWarningModal}
+        onClose={() => setShowPublicWarningModal(false)}
+        title="Make Comment Public?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 rounded-lg border border-amber-200 dark:border-amber-800">
+            <ShieldAlert className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">External stakeholders will see this comment.</p>
+              <p className="mt-1 opacity-90">They will receive an email notification immediately.</p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              variant="secondary"
+              onClick={() => setShowPublicWarningModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="warning"
+              onClick={() => {
+                setIsPublicComment(true);
+                setShowPublicWarningModal(false);
+              }}
+            >
+              Confirm Public Visibility
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

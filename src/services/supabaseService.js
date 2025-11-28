@@ -746,7 +746,7 @@ export const issueCommentsService = {
   async add(issueId, { author_id, author_name, author_email, comment_text, is_internal = true }) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      const payload = { issue_id: issueId, author_id, author_name, author_email, comment_text, is_internal };
+      const payload = { issue_id: issueId, author_id, author_name, author_email, comment_text }; // is_internal removed temporarily
       const { data, error } = await supabase
         .from('issue_comments')
         .insert([payload])

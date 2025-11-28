@@ -101,7 +101,7 @@ async function fetchComments(issueId) {
     .from('issue_comments')
     .select('id, comment_text, created_at, author_name, author_email')
     .eq('issue_id', issueId)
-    .eq('is_internal', false)
+    // .eq('is_internal', false) // TODO: Uncomment after migration is applied
     .order('created_at', { ascending: true });
   return data || [];
 }
@@ -428,7 +428,7 @@ async function handleComment(body) {
       comment_text: trimmed,
       author_name: link.contact_name || 'External stakeholder',
       author_email: link.contact_email,
-      is_internal: false,
+      // is_internal: false, // TODO: Uncomment after migration is applied
       notification_pending: true // Will be processed when internal user views the issue
     }])
     .select()
