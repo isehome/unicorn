@@ -680,16 +680,27 @@ class PurchaseOrderService {
           contact: po.ship_to_contact,
           phone: po.ship_to_phone
         },
-        items: po.items.map(item => ({
-          line_number: item.line_number,
-          part_number: item.equipment?.part_number,
-          description: item.equipment?.name || item.equipment?.description,
-          manufacturer: item.equipment?.manufacturer,
-          model: item.equipment?.model,
-          quantity_ordered: item.quantity_ordered,
-          unit_cost: item.unit_cost,
-          line_total: item.line_total
-        })),
+        items: Object.values(po.items.reduce((acc, item) => {
+          const partNumber = item.equipment?.part_number || 'N/A';
+
+          if (!acc[partNumber]) {
+            acc[partNumber] = {
+              line_number: Object.keys(acc).length + 1,
+              part_number: partNumber,
+              description: item.equipment?.description || item.equipment?.name,
+              manufacturer: item.equipment?.manufacturer,
+              model: item.equipment?.model,
+              quantity_ordered: 0,
+              unit_cost: item.unit_cost,
+              line_total: 0
+            };
+          }
+
+          acc[partNumber].quantity_ordered += (item.quantity_ordered || 0);
+          acc[partNumber].line_total += (item.line_total || 0);
+
+          return acc;
+        }, {})),
         totals: {
           subtotal: po.subtotal,
           tax: po.tax_amount,

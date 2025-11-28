@@ -13,7 +13,7 @@ import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
-import UniFiClientSelectorEnhanced from './UniFiClientSelectorEnhanced';
+
 import HomeKitQRUpload from './HomeKitQRUpload';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
@@ -49,7 +49,7 @@ import { usePrinter } from '../contexts/PrinterContext';
 const normalizeRoomName = (value) =>
   typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, ' ') : '';
 
-const WireDropDetailEnhanced = () => {
+const WireDropDetail = () => {
   const { id } = useParams();
   const { theme, mode } = useTheme();
   const { user } = useAuth();
@@ -57,14 +57,14 @@ const WireDropDetailEnhanced = () => {
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
   const { openPhotoViewer, closePhotoViewer, updatePhotoViewerOptions, photo: activeViewerPhoto } = usePhotoViewer();
-  
+
   const [wireDrop, setWireDrop] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({});
-  
+
   // Equipment states
   const [projectEquipment, setProjectEquipment] = useState([]);
   const [projectRooms, setProjectRooms] = useState([]);
@@ -77,18 +77,18 @@ const WireDropDetailEnhanced = () => {
   const [primaryRoomEquipmentId, setPrimaryRoomEquipmentId] = useState(null);
   const [showAllRooms, setShowAllRooms] = useState(false);
   const [showAllHeadEquipment, setShowAllHeadEquipment] = useState(false);
-  
+
   // Equipment dropdown states
   const [showRoomEquipmentDropdown, setShowRoomEquipmentDropdown] = useState(false);
   const [showHeadEquipmentDropdown, setShowHeadEquipmentDropdown] = useState(false);
   const [roomEquipmentSearch, setRoomEquipmentSearch] = useState('');
   const [headEquipmentSearch, setHeadEquipmentSearch] = useState('');
-  
+
   // Debug state changes
   useEffect(() => {
     console.log('[Equipment Debug] showRoomEquipmentDropdown changed to:', showRoomEquipmentDropdown);
   }, [showRoomEquipmentDropdown]);
-  
+
   // Stage states
   const [uploadingStage, setUploadingStage] = useState(null);
   const [stageViewerLoading, setStageViewerLoading] = useState(null);
@@ -99,7 +99,7 @@ const WireDropDetailEnhanced = () => {
   const [commissionNotes, setCommissionNotes] = useState('');
   const [savingRoomEquipment, setSavingRoomEquipment] = useState(false);
   const [savingHeadEquipment, setSavingHeadEquipment] = useState(false);
-  
+
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -125,7 +125,7 @@ const WireDropDetailEnhanced = () => {
   // Notes editing
   const [editingNotes, setEditingNotes] = useState(false);
   const [tempNotes, setTempNotes] = useState('');
-  
+
   // Issue association
   const [associatedIssues, setAssociatedIssues] = useState([]);
   const [showIssueSelector, setShowIssueSelector] = useState(false);
@@ -322,7 +322,7 @@ const WireDropDetailEnhanced = () => {
         .select('*, unifi_switch_ports(*)')
         .eq('project_id', projectId)
         .eq('is_active', true);
-      
+
       setAvailableSwitches(data || []);
     } catch (err) {
       console.error('Failed to load switches:', err);
@@ -333,16 +333,16 @@ const WireDropDetailEnhanced = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const data = await wireDropService.getWireDrop(id);
-      
+
       console.log('[WireDropDetail] Raw data from service:', {
         hasShapeData: !!data.shape_data,
         hasNotes: !!data.notes,
         notesLength: data.notes?.length,
         notesPreview: data.notes?.substring(0, 100)
       });
-      
+
       // Parse shape_data from notes if it's a JSON string
       if (!data.shape_data && data.notes) {
         try {
@@ -368,7 +368,7 @@ const WireDropDetailEnhanced = () => {
           fullShapeData: data.shape_data
         });
       }
-      
+
       setWireDrop(data);
       setEditForm({
         room_name: data.room_name || '',
@@ -381,20 +381,20 @@ const WireDropDetailEnhanced = () => {
         schematic_reference: data.schematic_reference || '',
         notes: data.notes || ''
       });
-      
+
       // DEBUG: Log raw equipment links to identify data format issues
       console.log('[Equipment Debug] Raw wire_drop_equipment_links:', data.wire_drop_equipment_links);
-      
+
       const equipmentLinks = (data.wire_drop_equipment_links || []).filter(
         (link) => link?.project_equipment?.id
       );
-      
+
       // DEBUG: Check link_side values in the data
       console.log('[Equipment Debug] Equipment links with link_side values:');
       equipmentLinks.forEach(link => {
         console.log(`  - ID: ${link.id}, link_side: "${link.link_side}", equipment: ${link.project_equipment?.name}`);
       });
-      
+
       // Handle both exact 'room_end' and potentially null/undefined link_side
       // If link_side is missing or null, we'll treat it as room_end for backward compatibility
       const roomLinks = equipmentLinks
@@ -455,7 +455,7 @@ const WireDropDetailEnhanced = () => {
       updatePhotoViewerOptions({ loading: homeKitViewerLoading || uploadingHomeKitQR });
     }
   }, [homeKitViewerActive, homeKitViewerLoading, uploadingHomeKitQR, updatePhotoViewerOptions]);
-  
+
   const loadAssociatedIssues = async () => {
     try {
       const { data, error } = await supabase
@@ -465,31 +465,31 @@ const WireDropDetailEnhanced = () => {
           issues:issue_id(*)
         `)
         .eq('wire_drop_id', id);
-      
+
       if (error) throw error;
       setAssociatedIssues(data || []);
     } catch (err) {
       console.error('Failed to load associated issues:', err);
     }
   };
-  
+
   const loadAvailableIssues = async () => {
     if (!wireDrop?.project_id) return;
-    
+
     try {
       const { data, error } = await supabase
         .from('issues')
         .select('*')
         .eq('project_id', wireDrop.project_id)
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       setAvailableIssues(data || []);
     } catch (err) {
       console.error('Failed to load available issues:', err);
     }
   };
-  
+
   const handleNotesBlur = async () => {
     setEditingNotes(false);
     if (tempNotes !== wireDrop.notes) {
@@ -503,10 +503,10 @@ const WireDropDetailEnhanced = () => {
       }
     }
   };
-  
+
   const handleAssociateIssue = async () => {
     if (!selectedIssueId) return;
-    
+
     try {
       const { error } = await supabase
         .from('wire_drop_issues')
@@ -514,9 +514,9 @@ const WireDropDetailEnhanced = () => {
           wire_drop_id: id,
           issue_id: selectedIssueId
         });
-      
+
       if (error) throw error;
-      
+
       await loadAssociatedIssues();
       setShowIssueSelector(false);
       setSelectedIssueId(null);
@@ -525,16 +525,16 @@ const WireDropDetailEnhanced = () => {
       alert('Failed to associate issue');
     }
   };
-  
+
   const handleRemoveIssue = async (issueAssociationId) => {
     try {
       const { error } = await supabase
         .from('wire_drop_issues')
         .delete()
         .eq('id', issueAssociationId);
-      
+
       if (error) throw error;
-      
+
       await loadAssociatedIssues();
     } catch (err) {
       console.error('Failed to remove issue association:', err);
@@ -587,7 +587,7 @@ const WireDropDetailEnhanced = () => {
           file: compressedFile,
           metadata: {
             wireDropId: id,
-          stage: stageType,
+            stage: stageType,
             uploadedBy: currentUserName
           }
         });
@@ -599,11 +599,11 @@ const WireDropDetailEnhanced = () => {
             wire_drop_stages: stages.map(stage =>
               stage.stage_type === stageType
                 ? {
-                    ...stage,
-                    photo_url: URL.createObjectURL(compressedFile),
-                    isPending: true,
-                    status: 'pending'
-                  }
+                  ...stage,
+                  photo_url: URL.createObjectURL(compressedFile),
+                  isPending: true,
+                  status: 'pending'
+                }
                 : stage
             )
           };
@@ -638,7 +638,7 @@ const WireDropDetailEnhanced = () => {
       if (!file) return;
       try {
         await processStagePhotoUpload(stageType, file, isReUpload);
-      } catch (_) {}
+      } catch (_) { }
     };
     input.click();
   };
@@ -919,10 +919,10 @@ const WireDropDetailEnhanced = () => {
   const handleCommissionComplete = async () => {
     try {
       setCompletingCommission(true);
-      
+
       // Get user display name from AuthContext
       const currentUserName = user?.displayName || user?.email || user?.account?.username || 'Unknown User';
-      
+
       await wireDropService.completeCommission(id, {
         notes: commissionNotes,
         completed_by: currentUserName
@@ -1147,10 +1147,10 @@ const WireDropDetailEnhanced = () => {
     console.log('[Equipment Debug] Computing sortedRoomEquipment');
     console.log('[Equipment Debug] selectableEquipment count:', selectableEquipment.length);
     console.log('[Equipment Debug] selectableEquipment:', selectableEquipment);
-    
+
     const wireDropRoom = wireDrop?.room_name?.toLowerCase().trim();
     const currentSelection = roomEquipmentSelection[0]; // Only care about first selection for single-select
-    
+
     console.log('[Equipment Debug] wireDropRoom:', wireDropRoom);
     console.log('[Equipment Debug] currentSelection:', currentSelection);
 
@@ -1162,7 +1162,7 @@ const WireDropDetailEnhanced = () => {
       const itemRoom = item.project_rooms?.name?.toLowerCase().trim();
       const isSameRoom = itemRoom === wireDropRoom;
       const isSelected = item.id === currentSelection;
-      
+
       // Debug room matching
       if (selectableEquipment.length > 0 && selectableEquipment.indexOf(item) === 0) {
         console.log('[Equipment Debug] First item room comparison:', {
@@ -1200,14 +1200,14 @@ const WireDropDetailEnhanced = () => {
       otherRooms,
       hasOtherRooms: otherRooms.length > 0
     };
-    
+
     console.log('[Equipment Debug] sortedRoomEquipment result:', {
       sameRoomCount: result.sameRoomItems.length,
       otherRoomsCount: result.otherRooms.length,
       hasOtherRooms: result.hasOtherRooms,
       otherRoomNames: result.otherRooms.map(r => r.roomName)
     });
-    
+
     return result;
   }, [selectableEquipment, wireDrop, roomEquipmentSelection]);
 
@@ -1377,27 +1377,27 @@ const WireDropDetailEnhanced = () => {
                     <div className="flex items-center justify-between mb-3">
                       <h2 className="text-xl font-bold" style={styles.textPrimary}>Edit Wire Drop</h2>
                       <div className="flex flex-wrap gap-2 justify-end">
-                        <Button 
-                          variant="danger" 
-                          icon={Trash2} 
+                        <Button
+                          variant="danger"
+                          icon={Trash2}
                           onClick={() => setShowDeleteConfirm(true)}
                           size="sm"
                           disabled={saving || deleting}
                         >
                           Delete
                         </Button>
-                        <Button 
-                          variant="ghost" 
-                          icon={X} 
+                        <Button
+                          variant="ghost"
+                          icon={X}
                           onClick={handleCancel}
                           size="sm"
                           disabled={saving}
                         >
                           Cancel
                         </Button>
-                        <Button 
-                          variant="primary" 
-                          icon={Save} 
+                        <Button
+                          variant="primary"
+                          icon={Save}
                           onClick={handleSave}
                           loading={saving}
                           disabled={saving}
@@ -1503,7 +1503,7 @@ const WireDropDetailEnhanced = () => {
                   <>
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-4">
                       {/* Lucid shape badge */}
-                      <div 
+                      <div
                         className="w-14 h-14 rounded-full flex-shrink-0 shadow-md flex items-center justify-center select-none"
                         style={{
                           backgroundColor: badgeColor,
@@ -1515,7 +1515,7 @@ const WireDropDetailEnhanced = () => {
                       >
                         <span className="text-xl font-bold">{badgeLetter}</span>
                       </div>
-                      
+
                       <div className="flex-1">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4">
                           <div>
@@ -1529,9 +1529,9 @@ const WireDropDetailEnhanced = () => {
                             )}
                           </div>
                           <div className="flex gap-2 justify-start md:justify-end">
-                            <Button 
-                              variant="primary" 
-                              icon={Edit} 
+                            <Button
+                              variant="primary"
+                              icon={Edit}
                               onClick={() => setEditing(true)}
                               size="sm"
                             >
@@ -1567,7 +1567,7 @@ const WireDropDetailEnhanced = () => {
                     </div>
                   </>
                 )}
-                
+
                 {wireDrop.projects?.name && !editing && (
                   <button
                     onClick={() => navigate(`/project/${wireDrop.projects.id}`)}
@@ -1585,9 +1585,9 @@ const WireDropDetailEnhanced = () => {
                         Linked Equipment
                       </h4>
                     </div>
-                    
+
                     {primaryRoomEquipment ? (
-                      <div 
+                      <div
                         className="rounded-xl border p-4"
                         style={{
                           ...styles.mutedCard,
@@ -1691,7 +1691,7 @@ const WireDropDetailEnhanced = () => {
                             )}
                           </button>
                         </div>
-                        
+
                         <div className="pt-3 mt-3 border-t space-y-2" style={{ borderColor: styles.card.borderColor }}>
                           <Button
                             variant="ghost"
@@ -1775,73 +1775,73 @@ const WireDropDetailEnhanced = () => {
 
                   {!qrSectionCollapsed && (
                     <div className="p-4 pt-0 text-center">
-                  {qrCodeSrc ? (
-                    <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
-                      <img
-                        src={qrCodeSrc}
-                        alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
-                        className="h-40 w-40 object-contain"
-                      />
-                    </div>
-                  ) : (
-                    <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
-                      style={styles.subtleText}
-                    >
-                      QR unavailable
-                    </div>
-                  )}
-                  {wireDrop.uid && (
-                    <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
-                      UID: {wireDrop.uid}
-                    </p>
-                  )}
-                  {wireDrop.qr_code_url && (
-                    <a
-                      href={wireDrop.qr_code_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-3 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
-                    >
-                      Open QR asset
-                    </a>
-                  )}
-                  
-                  {/* Print Label - Compact */}
-                  <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
-                    <p className="text-xs font-medium mb-2" style={styles.textPrimary}>Print Label</p>
-                    <div className="flex items-center gap-2 mb-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={printCopies}
-                        onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
-                        className="w-16 px-2 py-1 text-sm rounded border"
-                        style={styles.input}
-                      />
-                      <span className="text-xs" style={styles.subtleText}>copies</span>
-                    </div>
-                    <Button
-                      onClick={handlePrintLabel}
-                      disabled={!printerConnected || printing}
-                      size="sm"
-                      className="w-full"
-                    >
-                      <Printer size={14} />
-                      {printing ? 'Printing...' : 'Print'}
-                    </Button>
-                    {!printerConnected && (
-                      <p className="text-[10px] mt-1" style={styles.subtleText}>
-                        Connect printer in{' '}
-                        <button
-                          onClick={() => navigate('/settings')}
-                          className="text-blue-500 underline"
+                      {qrCodeSrc ? (
+                        <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
+                          <img
+                            src={qrCodeSrc}
+                            alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
+                            className="h-40 w-40 object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
+                          style={styles.subtleText}
                         >
-                          Settings
-                        </button>
-                      </p>
-                    )}
-                  </div>
+                          QR unavailable
+                        </div>
+                      )}
+                      {wireDrop.uid && (
+                        <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
+                          UID: {wireDrop.uid}
+                        </p>
+                      )}
+                      {wireDrop.qr_code_url && (
+                        <a
+                          href={wireDrop.qr_code_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
+                        >
+                          Open QR asset
+                        </a>
+                      )}
+
+                      {/* Print Label - Compact */}
+                      <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                        <p className="text-xs font-medium mb-2" style={styles.textPrimary}>Print Label</p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <input
+                            type="number"
+                            min="1"
+                            max="10"
+                            value={printCopies}
+                            onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
+                            className="w-16 px-2 py-1 text-sm rounded border"
+                            style={styles.input}
+                          />
+                          <span className="text-xs" style={styles.subtleText}>copies</span>
+                        </div>
+                        <Button
+                          onClick={handlePrintLabel}
+                          disabled={!printerConnected || printing}
+                          size="sm"
+                          className="w-full"
+                        >
+                          <Printer size={14} />
+                          {printing ? 'Printing...' : 'Print'}
+                        </Button>
+                        {!printerConnected && (
+                          <p className="text-[10px] mt-1" style={styles.subtleText}>
+                            Connect printer in{' '}
+                            <button
+                              onClick={() => navigate('/settings')}
+                              className="text-blue-500 underline"
+                            >
+                              Settings
+                            </button>
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1881,7 +1881,7 @@ const WireDropDetailEnhanced = () => {
                       autoFocus
                     />
                   ) : (
-                    <div 
+                    <div
                       className="px-3 py-2 rounded-lg border min-h-[100px] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
                       style={styles.input}
                       onClick={() => {
@@ -1893,7 +1893,7 @@ const WireDropDetailEnhanced = () => {
                     </div>
                   )}
                 </div>
-                
+
                 {/* Associated Issues Section */}
                 <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
                   <div className="flex items-center justify-between mb-2">
@@ -1907,7 +1907,7 @@ const WireDropDetailEnhanced = () => {
                       {showIssueSelector ? 'Cancel' : 'Add Issue'}
                     </button>
                   </div>
-                  
+
                   {showIssueSelector && (
                     <div className="mb-3 p-3 rounded-lg border" style={styles.mutedCard}>
                       <select
@@ -1936,7 +1936,7 @@ const WireDropDetailEnhanced = () => {
                       </Button>
                     </div>
                   )}
-                  
+
                   {associatedIssues.length === 0 ? (
                     <p className="text-sm" style={styles.subtleText}>No associated issues</p>
                   ) : (
@@ -1972,12 +1972,11 @@ const WireDropDetailEnhanced = () => {
             {/* Completion Percentage */}
             {!editing && (
               <div className="text-right border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
-                <div className={`text-3xl font-bold ${
-                  wireDrop.completion === 100 ? 'text-green-500' :
+                <div className={`text-3xl font-bold ${wireDrop.completion === 100 ? 'text-green-500' :
                   wireDrop.completion >= 67 ? 'text-blue-500' :
-                  wireDrop.completion >= 33 ? 'text-yellow-500' :
-                  'text-gray-500'
-                }`}>
+                    wireDrop.completion >= 33 ? 'text-yellow-500' :
+                      'text-gray-500'
+                  }`}>
                   {wireDrop.completion || 0}%
                 </div>
                 <div className="text-xs" style={styles.subtleText}>Complete</div>
@@ -2132,7 +2131,7 @@ const WireDropDetailEnhanced = () => {
                     <Circle size={24} className="text-yellow-500" />
                   )}
                 </div>
-                
+
                 {prewireStage?.photo_url ? (
                   <div className="space-y-3">
                     {isBrokenPhotoUrl(prewireStage.photo_url) ? (
@@ -2141,9 +2140,9 @@ const WireDropDetailEnhanced = () => {
                         <p className="text-sm mb-3 text-red-600 dark:text-red-400">
                           Photo link is broken and needs to be re-uploaded
                         </p>
-                        <Button 
-                          variant="danger" 
-                          icon={RefreshCw} 
+                        <Button
+                          variant="danger"
+                          icon={RefreshCw}
                           size="sm"
                           onClick={() => promptStagePhotoUpload('prewire', true)}
                           loading={uploadingStage === 'prewire'}
@@ -2211,15 +2210,15 @@ const WireDropDetailEnhanced = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="border-2 border-dashed rounded-lg p-8 text-center" 
-                       style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
+                  <div className="border-2 border-dashed rounded-lg p-8 text-center"
+                    style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
                     <Upload size={32} className="text-yellow-500 mx-auto mb-3" />
                     <p className="text-sm mb-3" style={styles.textSecondary}>
                       Upload photo to complete
                     </p>
-                    <Button 
-                      variant="primary" 
-                      icon={Camera} 
+                    <Button
+                      variant="primary"
+                      icon={Camera}
                       size="sm"
                       onClick={() => promptStagePhotoUpload('prewire')}
                       loading={uploadingStage === 'prewire'}
@@ -2251,7 +2250,7 @@ const WireDropDetailEnhanced = () => {
                     <Circle size={24} className="text-yellow-500" />
                   )}
                 </div>
-                
+
                 {trimOutStage?.photo_url ? (
                   <div className="space-y-3">
                     {isBrokenPhotoUrl(trimOutStage.photo_url) ? (
@@ -2260,9 +2259,9 @@ const WireDropDetailEnhanced = () => {
                         <p className="text-sm mb-3 text-red-600 dark:text-red-400">
                           Photo link is broken and needs to be re-uploaded
                         </p>
-                        <Button 
-                          variant="danger" 
-                          icon={RefreshCw} 
+                        <Button
+                          variant="danger"
+                          icon={RefreshCw}
                           size="sm"
                           onClick={() => promptStagePhotoUpload('trim_out', true)}
                           loading={uploadingStage === 'trim_out'}
@@ -2330,15 +2329,15 @@ const WireDropDetailEnhanced = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="border-2 border-dashed rounded-lg p-8 text-center" 
-                       style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
+                  <div className="border-2 border-dashed rounded-lg p-8 text-center"
+                    style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
                     <Upload size={32} className="text-yellow-500 mx-auto mb-3" />
                     <p className="text-sm mb-3" style={styles.textSecondary}>
                       Upload photo to complete
                     </p>
-                    <Button 
-                      variant="primary" 
-                      icon={Camera} 
+                    <Button
+                      variant="primary"
+                      icon={Camera}
                       size="sm"
                       onClick={() => promptStagePhotoUpload('trim_out')}
                       loading={uploadingStage === 'trim_out'}
@@ -2370,7 +2369,7 @@ const WireDropDetailEnhanced = () => {
                     <Circle size={24} className="text-yellow-500" />
                   )}
                 </div>
-                
+
                 {commissionStage?.completed ? (
                   <div className="space-y-3">
                     <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
@@ -2403,8 +2402,8 @@ const WireDropDetailEnhanced = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="p-3 rounded-lg border-2 border-dashed text-center" 
-                         style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
+                    <div className="p-3 rounded-lg border-2 border-dashed text-center"
+                      style={{ borderColor: 'rgba(251, 191, 36, 0.4)' }}>
                       <AlertCircle size={24} className="text-yellow-500 mx-auto mb-2" />
                       <p className="text-sm mb-2" style={styles.textSecondary}>
                         Requires user approval
@@ -2418,9 +2417,9 @@ const WireDropDetailEnhanced = () => {
                       className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
                       style={styles.input}
                     />
-                    <Button 
-                      variant="primary" 
-                      icon={CheckCircle} 
+                    <Button
+                      variant="primary"
+                      icon={CheckCircle}
                       className="w-full"
                       onClick={handleCommissionComplete}
                       loading={completingCommission}
@@ -2609,7 +2608,7 @@ const WireDropDetailEnhanced = () => {
                     <Network size={20} />
                     Network Port Assignment
                   </h4>
-                  
+
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-1" style={styles.subtleText}>
@@ -2649,7 +2648,7 @@ const WireDropDetailEnhanced = () => {
                           <option value="">-- Select Port --</option>
                           {availablePorts.map(port => (
                             <option key={port.id} value={port.id}>
-                              Port {port.port_idx} {port.port_name ? `(${port.port_name})` : ''} 
+                              Port {port.port_idx} {port.port_name ? `(${port.port_name})` : ''}
                               {port.vlan_id ? ` - VLAN ${port.vlan_id}` : ''}
                             </option>
                           ))}
@@ -2722,7 +2721,7 @@ const WireDropDetailEnhanced = () => {
         {/* Equipment Dropdown Modal */}
         {showRoomEquipmentDropdown && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div 
+            <div
               className="rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
               style={styles.card}
             >
@@ -2746,8 +2745,8 @@ const WireDropDetailEnhanced = () => {
               {/* Search Bar */}
               <div className="p-4 border-b" style={{ borderColor: styles.card.borderColor }}>
                 <div className="relative">
-                  <SearchIcon 
-                    size={16} 
+                  <SearchIcon
+                    size={16}
                     className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
                   />
                   <input
@@ -2766,8 +2765,8 @@ const WireDropDetailEnhanced = () => {
               <div className="flex-1 overflow-y-auto">
                 {(() => {
                   const searchLower = roomEquipmentSearch.toLowerCase().trim();
-                  const filteredSameRoom = sortedRoomEquipment.sameRoomItems.filter(({ item }) => 
-                    !searchLower || 
+                  const filteredSameRoom = sortedRoomEquipment.sameRoomItems.filter(({ item }) =>
+                    !searchLower ||
                     item.name?.toLowerCase().includes(searchLower) ||
                     item.manufacturer?.toLowerCase().includes(searchLower) ||
                     item.model?.toLowerCase().includes(searchLower) ||
@@ -2787,7 +2786,7 @@ const WireDropDetailEnhanced = () => {
                               key={item.id}
                               onClick={async () => {
                                 console.log('[Equipment] Item selected:', item.name, item.id);
-                                
+
                                 try {
                                   // Use service method to update equipment (single-select)
                                   console.log('[Equipment] Using service method to update equipment');
@@ -2815,11 +2814,10 @@ const WireDropDetailEnhanced = () => {
                                   alert(`Failed to update equipment: ${err.message || 'Unknown error'}`);
                                 }
                               }}
-                              className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
-                                isSelected 
-                                  ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400' 
-                                  : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
-                              }`}
+                              className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
+                                ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400'
+                                : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                                }`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
@@ -2849,10 +2847,10 @@ const WireDropDetailEnhanced = () => {
                       {/* No results in same room */}
                       {filteredSameRoom.length === 0 && !showAllRooms && (
                         <div className="p-6 text-center space-y-3">
-                          <div 
+                          <div
                             className="mx-auto w-16 h-16 rounded-full flex items-center justify-center"
-                            style={{ 
-                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6' 
+                            style={{
+                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6'
                             }}
                           >
                             <Monitor size={24} className="opacity-40" style={styles.subtleText} />
@@ -2862,9 +2860,9 @@ const WireDropDetailEnhanced = () => {
                               No equipment in "{wireDrop.room_name || 'this room'}"
                             </p>
                             <p className="text-xs" style={styles.subtleText}>
-                              {searchLower 
-                                ? 'No matching equipment found in this room' 
-                                : sortedRoomEquipment.hasOtherRooms 
+                              {searchLower
+                                ? 'No matching equipment found in this room'
+                                : sortedRoomEquipment.hasOtherRooms
                                   ? `Equipment exists in other rooms (${sortedRoomEquipment.otherRooms.reduce((acc, r) => acc + r.items.length, 0)} items available)`
                                   : 'No equipment available in the project'}
                             </p>
@@ -2874,10 +2872,10 @@ const WireDropDetailEnhanced = () => {
                               <p>Available in:</p>
                               <div className="mt-1 flex flex-wrap gap-1 justify-center">
                                 {sortedRoomEquipment.otherRooms.slice(0, 3).map(({ roomName, items }) => (
-                                  <span 
+                                  <span
                                     key={roomName}
                                     className="inline-block px-2 py-1 rounded-full text-[10px] font-medium"
-                                    style={{ 
+                                    style={{
                                       backgroundColor: mode === 'dark' ? '#4B5563' : '#E5E7EB',
                                       color: mode === 'dark' ? '#D1D5DB' : '#4B5563'
                                     }}
@@ -2886,7 +2884,7 @@ const WireDropDetailEnhanced = () => {
                                   </span>
                                 ))}
                                 {sortedRoomEquipment.otherRooms.length > 3 && (
-                                  <span 
+                                  <span
                                     className="inline-block px-2 py-1 text-[10px]"
                                     style={styles.subtleText}
                                   >
@@ -3005,11 +3003,10 @@ const WireDropDetailEnhanced = () => {
                                         alert(`Failed to update equipment: ${err.message || 'Unknown error'}`);
                                       }
                                     }}
-                                    className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
-                                      isSelected 
-                                        ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400' 
-                                        : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
-                                    }`}
+                                    className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
+                                      ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400'
+                                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                                      }`}
                                   >
                                     <div className="flex items-start justify-between gap-2">
                                       <div className="flex-1 min-w-0">
@@ -3036,7 +3033,7 @@ const WireDropDetailEnhanced = () => {
                               </div>
                             );
                           })}
-                          
+
                           {/* Hide Button */}
                           <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
                             <button
@@ -3165,16 +3162,16 @@ const WireDropDetailEnhanced = () => {
                 Are you sure you want to delete this wire drop? This action cannot be undone and will remove all associated data including photos, equipment details, and stage progress.
               </p>
               <div className="flex gap-3">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   onClick={() => setShowDeleteConfirm(false)}
                   disabled={deleting}
                   className="flex-1"
                 >
                   Cancel
                 </Button>
-                <Button 
-                  variant="danger" 
+                <Button
+                  variant="danger"
                   icon={Trash2}
                   onClick={handleDeleteWireDrop}
                   loading={deleting}
@@ -3192,4 +3189,4 @@ const WireDropDetailEnhanced = () => {
   );
 };
 
-export default WireDropDetailEnhanced;
+export default WireDropDetail;

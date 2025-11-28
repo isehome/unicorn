@@ -683,6 +683,36 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     );
   };
 
+  // Group items by part number for display
+  const getGroupedItems = () => {
+    if (!po?.items) return [];
+
+    const grouped = po.items.reduce((acc, item) => {
+      const partNumber = item.equipment?.part_number || 'N/A';
+
+      if (!acc[partNumber]) {
+        acc[partNumber] = {
+          id: item.id, // Use first item's ID as key
+          line_number: Object.keys(acc).length + 1,
+          part_number: partNumber,
+          description: item.equipment?.description || item.equipment?.name || 'N/A',
+          quantity_ordered: 0,
+          unit_cost: item.unit_cost,
+          line_total: 0
+        };
+      }
+
+      acc[partNumber].quantity_ordered += (item.quantity_ordered || 0);
+      acc[partNumber].line_total += (item.line_total || 0);
+
+      return acc;
+    }, {});
+
+    return Object.values(grouped);
+  };
+
+  const displayItems = getGroupedItems();
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div
@@ -697,12 +727,11 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
             </h2>
             {po && (
               <div className="flex items-center gap-2 mt-1">
-                <span className={`px-2 py-1 text-xs font-medium rounded ${
-                  po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
+                <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
                   po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                  po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                  'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                }`}>
+                    po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                      'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                  }`}>
                   {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -930,7 +959,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
             <div>
               <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                 <Package className="w-5 h-5" />
-                Line Items ({po.items?.length || 0})
+                Line Items ({displayItems.length})
               </h3>
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
                 <table className="w-full text-sm min-w-[600px]">
@@ -945,14 +974,14 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {po.items?.map((item) => (
+                    {displayItems.map((item) => (
                       <tr key={item.id}>
                         <td className="px-3 py-2 text-gray-900 dark:text-white">{item.line_number}</td>
                         <td className="px-3 py-2 text-gray-900 dark:text-white">
-                          {item.equipment?.part_number || 'N/A'}
+                          {item.part_number}
                         </td>
                         <td className="px-3 py-2 text-gray-900 dark:text-white">
-                          {item.equipment?.name || item.equipment?.description || 'N/A'}
+                          {item.description}
                         </td>
                         <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
                           {item.quantity_ordered}

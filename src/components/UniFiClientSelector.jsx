@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { RefreshCw, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-const UniFiClientSelectorEnhanced = ({ 
-  equipment, 
+const UniFiClientSelector = ({
+  equipment,
   onClientLinked
 }) => {
   const [clients, setClients] = useState([]);
@@ -15,12 +15,12 @@ const UniFiClientSelectorEnhanced = ({
   const fetchUniFiClients = async () => {
     try {
       const { data, error } = await supabase.functions.invoke('unifi-proxy', {
-        body: { 
+        body: {
           action: 'getClients',
-          site: 'default' 
+          site: 'default'
         }
       });
-      
+
       if (error) throw error;
       return data.clients || [];
     } catch (error) {
@@ -32,13 +32,13 @@ const UniFiClientSelectorEnhanced = ({
   const refreshClients = async () => {
     setLoading(true);
     setRefreshStatus(null);
-    
+
     try {
       const data = await fetchUniFiClients();
       setClients(data);
       setLastRefresh(new Date());
       setRefreshStatus('success');
-      
+
       // Auto-match by MAC address if equipment has one
       if (equipment.mac_address) {
         const match = data.find(
@@ -49,7 +49,7 @@ const UniFiClientSelectorEnhanced = ({
           await handleClientSelection(match);
         }
       }
-      
+
       setTimeout(() => setRefreshStatus(null), 3000);
     } catch (error) {
       console.error('Failed to fetch UniFi clients:', error);
@@ -62,9 +62,9 @@ const UniFiClientSelectorEnhanced = ({
 
   const handleClientSelection = async (client) => {
     if (!client) return;
-    
+
     setSelectedClient(client);
-    
+
     const unifiData = {
       mac_address: client.mac,
       ip_address: client.ip,
@@ -83,7 +83,7 @@ const UniFiClientSelectorEnhanced = ({
       },
       unifi_synced_at: new Date().toISOString()
     };
-    
+
     if (onClientLinked) {
       await onClientLinked(equipment.id, unifiData);
     }
@@ -115,12 +115,12 @@ const UniFiClientSelectorEnhanced = ({
               Failed
             </span>
           )}
-          <button 
-            onClick={refreshClients} 
+          <button
+            onClick={refreshClients}
             disabled={loading}
             className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm 
-              ${loading 
-                ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500' 
+              ${loading
+                ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
               } transition`}
           >
@@ -184,7 +184,7 @@ const UniFiClientSelectorEnhanced = ({
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Select UniFi Client (Manual MAC Address Matching)
           </label>
-          <select 
+          <select
             onChange={(e) => {
               const client = clients.find(c => c._id === e.target.value);
               if (client) handleClientSelection(client);
@@ -212,4 +212,4 @@ const UniFiClientSelectorEnhanced = ({
   );
 };
 
-export default UniFiClientSelectorEnhanced;
+export default UniFiClientSelector;
