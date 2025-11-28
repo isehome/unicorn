@@ -1710,10 +1710,9 @@ const IssueDetail = () => {
                 <div key={c.id} className="px-3 py-2 rounded-xl border">
                   <div className="text-sm">{c.comment_text}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    by{' '}
                     <div className={`flex justify-between items-start mb-1 ${c.is_internal === false ? 'bg-amber-50 -mx-2 px-2 py-1 rounded' : ''
                       }`}>
-                      <span className={`font-medium ${palette.text.primary} flex items-center gap-2`}>
+                      <span className={`font-medium ${palette?.text?.primary || 'text-gray-900'} flex items-center gap-2`}>
                         {c.author_name || 'Unknown'}
                         {c.is_internal === false && (
                           <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full border border-amber-200">
@@ -1730,7 +1729,7 @@ const IssueDetail = () => {
           </div>
         )}
         <div className="flex items-center justify-between mb-2">
-          <h3 className={`text-lg font-semibold ${palette.text.primary}`}>Discussion</h3>
+          <h3 className={`text-lg font-semibold ${palette?.text?.primary || 'text-gray-900'}`}>Discussion</h3>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <input
@@ -1759,8 +1758,8 @@ const IssueDetail = () => {
             onChange={(e) => setCommentText(e.target.value)}
             placeholder={isPublicComment ? "Write a public comment..." : "Write an internal comment..."}
             className={`flex-1 p-3 rounded-xl border ${isPublicComment
-                ? 'border-amber-300 bg-amber-50 focus:ring-amber-500 focus:border-amber-500'
-                : `${ui.input} focus:ring-2 focus:ring-blue-500 focus:border-transparent`
+              ? 'border-amber-300 bg-amber-50 focus:ring-amber-500 focus:border-amber-500'
+              : `${ui?.input || 'border-gray-300'} focus:ring-2 focus:ring-blue-500 focus:border-transparent`
               } resize-none h-24`}
           />
           <Button
