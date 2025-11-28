@@ -1,150 +1,29 @@
 {
   "name": "Unicorn Documentation",
-  "description": "Project management for low-voltage installations",
   "version": "1.0",
-  "lastUpdated": "2025-11",
-  "aiInstructions": "IMPORTANT: Start by reading AGENT_INSTRUCTIONS.md, then CLAUDE.md for project rules, then PROJECT_OVERVIEW.md for system understanding. Documentation updates are MANDATORY after every code change.",
-  "startHere": [
-    {
-      "name": "AGENT_INSTRUCTIONS.md",
-      "url": "/docs/AGENT_INSTRUCTIONS.md",
-      "description": "READ FIRST - Quick rules for AI assistants",
-      "priority": 1
-    },
-    {
-      "name": "CLAUDE.md",
-      "url": "/docs/CLAUDE.md",
-      "description": "Complete AI guidelines and coding standards",
-      "priority": 2
-    },
-    {
-      "name": "PROJECT_OVERVIEW.md",
-      "url": "/docs/PROJECT_OVERVIEW.md",
-      "description": "Full system architecture and features",
-      "priority": 3
-    }
-  ],
+  "instruction": "Read /docs/AGENT.md first. Follow all rules.",
+  "startHere": "/docs/AGENT.md",
   "files": {
-    "essential": [
-      {
-        "name": "AGENT_INSTRUCTIONS.md",
-        "url": "/docs/AGENT_INSTRUCTIONS.md",
-        "description": "Quick start for AI assistants - READ FIRST"
-      },
-      {
-        "name": "CLAUDE.md",
-        "url": "/docs/CLAUDE.md",
-        "description": "Complete AI guidelines and coding standards"
-      },
-      {
-        "name": "PROJECT_OVERVIEW.md",
-        "url": "/docs/PROJECT_OVERVIEW.md",
-        "description": "Complete system architecture and features"
-      },
-      {
-        "name": "README.md",
-        "url": "/docs/README.md",
-        "description": "Documentation index"
-      }
+    "required": [
+      {"name": "AGENT.md", "url": "/docs/AGENT.md", "description": "All project rules - READ FIRST"},
+      {"name": "PROJECT_OVERVIEW.md", "url": "/docs/PROJECT_OVERVIEW.md", "description": "System architecture"}
     ],
     "features": [
-      {
-        "name": "WIRE_DROPS.md",
-        "url": "/docs/WIRE_DROPS.md",
-        "description": "Wire drop system architecture"
-      },
-      {
-        "name": "EQUIPMENT.md",
-        "url": "/docs/EQUIPMENT.md",
-        "description": "Equipment management and CSV import"
-      },
-      {
-        "name": "PROCUREMENT.md",
-        "url": "/docs/PROCUREMENT.md",
-        "description": "Purchase order system"
-      },
-      {
-        "name": "MILESTONES.md",
-        "url": "/docs/MILESTONES.md",
-        "description": "Progress gauge calculations"
-      }
+      {"name": "WIRE_DROPS.md", "url": "/docs/WIRE_DROPS.md"},
+      {"name": "EQUIPMENT.md", "url": "/docs/EQUIPMENT.md"},
+      {"name": "PROCUREMENT.md", "url": "/docs/PROCUREMENT.md"},
+      {"name": "MILESTONES.md", "url": "/docs/MILESTONES.md"}
     ],
     "integrations": [
-      {
-        "name": "INTEGRATIONS.md",
-        "url": "/docs/INTEGRATIONS.md",
-        "description": "All third-party integrations overview"
-      },
-      {
-        "name": "AUTHENTICATION.md",
-        "url": "/docs/AUTHENTICATION.md",
-        "description": "MSAL auth and RLS policies"
-      },
-      {
-        "name": "SHAREPOINT.md",
-        "url": "/docs/SHAREPOINT.md",
-        "description": "SharePoint photo storage"
-      },
-      {
-        "name": "UNIFI_INTEGRATION.md",
-        "url": "/docs/UNIFI_INTEGRATION.md",
-        "description": "UniFi network integration"
-      }
+      {"name": "INTEGRATIONS.md", "url": "/docs/INTEGRATIONS.md"},
+      {"name": "AUTHENTICATION.md", "url": "/docs/AUTHENTICATION.md"},
+      {"name": "SHAREPOINT.md", "url": "/docs/SHAREPOINT.md"},
+      {"name": "UNIFI_INTEGRATION.md", "url": "/docs/UNIFI_INTEGRATION.md"}
     ],
     "operations": [
-      {
-        "name": "DEPLOYMENT.md",
-        "url": "/docs/DEPLOYMENT.md",
-        "description": "Deployment and environment setup"
-      },
-      {
-        "name": "TROUBLESHOOTING.md",
-        "url": "/docs/TROUBLESHOOTING.md",
-        "description": "Common issues and solutions"
-      }
-    ],
-    "reference": [
-      {
-        "name": "CODE_ANALYSIS.md",
-        "url": "/docs/CODE_ANALYSIS.md",
-        "description": "Codebase analysis"
-      },
-      {
-        "name": "ROADMAP.md",
-        "url": "/docs/ROADMAP.md",
-        "description": "Future features"
-      }
+      {"name": "DEPLOYMENT.md", "url": "/docs/DEPLOYMENT.md"},
+      {"name": "TROUBLESHOOTING.md", "url": "/docs/TROUBLESHOOTING.md"},
+      {"name": "STYLES.md", "url": "/docs/STYLES.md"}
     ]
-  },
-  "rules": {
-    "fileLocations": {
-      "components": "src/components/",
-      "services": "src/services/",
-      "api": "api/",
-      "migrations": "database/migrations/",
-      "documentation": "docs/",
-      "scripts": "scripts/",
-      "neverInRoot": true
-    },
-    "documentation": {
-      "mandatory": true,
-      "updateAfterEveryChange": true,
-      "newFeature": ["docs/PROJECT_OVERVIEW.md", "relevant feature doc"],
-      "bugFix": "docs/TROUBLESHOOTING.md",
-      "databaseChange": "docs/PROJECT_OVERVIEW.md",
-      "apiChange": "docs/INTEGRATIONS.md"
-    },
-    "database": {
-      "authType": "MSAL (not Supabase Auth)",
-      "rlsRequirement": "ALL policies must include 'anon' role",
-      "policyPattern": "CREATE POLICY name ON table FOR ALL TO anon, authenticated USING (true);"
-    },
-    "coding": {
-      "components": "React functional with hooks",
-      "styling": "Tailwind only, include dark mode",
-      "services": "Class-based with singleton export",
-      "noInlineStyles": true,
-      "noCssFiles": true
-    }
   }
 }
