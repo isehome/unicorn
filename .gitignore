@@ -22,8 +22,7 @@ out/
 # Misc
 coverage/
 *.log
-*.tmpcat > .gitignore <<'EOF'
-cat > .gitignore <<'EOF'
+
 # macOS
 .DS_Store
 
