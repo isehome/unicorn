@@ -295,6 +295,72 @@ className="text-zinc-900"         // Missing dark!
 )}
 ```
 
+### Dropdown / Select
+```jsx
+<select
+  value={selectedValue}
+  onChange={(e) => setSelectedValue(e.target.value)}
+  className="rounded-lg border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500"
+  style={{
+    backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
+    borderColor: mode === 'dark' ? '#1F2937' : '#D1D5DB'
+  }}
+>
+  <option value="all">All Items</option>
+  <option value="option1">Option 1</option>
+</select>
+```
+
+### Navigation Link Buttons
+```jsx
+// Used for Equipment List, Receiving, Secure Data navigation
+<button
+  onClick={() => navigate(`/projects/${projectId}/equipment`)}
+  className="flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md group"
+  style={styles.card}
+>
+  <div className="flex items-center gap-3">
+    <Package size={20} style={styles.textPrimary} />
+    <span className="font-medium" style={styles.textPrimary}>Equipment List</span>
+  </div>
+  <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
+</button>
+```
+
+### Mobile-Responsive List Items
+```jsx
+// For equipment/parts lists on mobile - name on top, actions below
+<div className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition">
+  {/* Top row: Chevron + Name */}
+  <div className="flex items-center gap-3">
+    <button className="flex-shrink-0 text-gray-400">
+      {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+    </button>
+    <div className="flex-1 min-w-0">
+      <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
+    </div>
+  </div>
+
+  {/* Bottom row: Status/Actions (indented under name) */}
+  <div className="flex items-center gap-4 mt-2 ml-7">
+    <label className="inline-flex items-center gap-1.5 text-xs">
+      <input type="checkbox" className="h-4 w-4 rounded" />
+      <span className="font-medium">Status</span>
+    </label>
+  </div>
+</div>
+```
+
+### Page Container
+```jsx
+// Standard full-width page container
+<div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20">
+  <div className="max-w-7xl mx-auto px-4 py-6">
+    {/* page content */}
+  </div>
+</div>
+```
+
 ### Progress Colors
 ```jsx
 const getProgressColor = (pct) => {
