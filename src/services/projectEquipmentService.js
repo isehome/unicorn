@@ -1695,6 +1695,7 @@ export const projectEquipmentService = {
     if (updates.install_side !== undefined) cleanUpdates.install_side = updates.install_side;
     if (updates.equipment_type !== undefined) cleanUpdates.equipment_type = updates.equipment_type;
     if (updates.unit_of_measure !== undefined) cleanUpdates.unit_of_measure = updates.unit_of_measure;
+    if (updates.supplier_id !== undefined) cleanUpdates.supplier_id = updates.supplier_id || null;
 
     cleanUpdates.updated_at = new Date().toISOString();
 

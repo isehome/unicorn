@@ -3,7 +3,7 @@
  *
  * Handles the complete PO generation workflow:
  * 1. Groups equipment by milestone and supplier (using fuzzy matching)
- * 2. Generates PO with auto-number (PO-YYYY-NNN-SUP-NNN)
+ * 2. Generates PO with auto-number (ProjectName-PO-YYYY-NNN-SUP-NNN)
  * 3. Creates PO records in database
  * 4. Links equipment to PO
  * 5. Updates equipment ordered quantities
@@ -137,9 +137,12 @@ class POGeneratorService {
     const { projectId, supplierId, milestoneStage } = poData;
 
     try {
-      // Step 1: Generate PO number
+      // Step 1: Generate PO number (includes project name prefix)
       const { data: poNumber, error: poError } = await supabase
-        .rpc('generate_po_number', { p_supplier_id: supplierId });
+        .rpc('generate_po_number', {
+          p_supplier_id: supplierId,
+          p_project_id: projectId
+        });
 
       if (poError) throw poError;
 

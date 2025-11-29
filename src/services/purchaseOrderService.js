@@ -778,36 +778,28 @@ class PurchaseOrderService {
    * it's called, ensuring it accounts for any last-minute inventory updates to
    * global_parts.quantity_on_hand before the PO is placed.
    */
-  async generateInventoryPO(projectId, userId = null) {
+  /**
+   * Generate an Internal Inventory PO for specified items
+   * @param {string} projectId - Project ID
+   * @param {string} userId - User ID for tracking
+   * @param {Array} itemsWithQuantities - Array of { equipmentId, quantity } objects
+   */
+  async generateInventoryPO(projectId, userId = null, itemsWithQuantities = null) {
     try {
       const timestamp = new Date().toISOString();
       console.log('[generateInventoryPO]', timestamp, 'Starting inventory PO generation for project:', projectId);
+      console.log('[generateInventoryPO] Items with quantities:', itemsWithQuantities);
 
-      // Check if an inventory PO already exists for this project
-      const inventorySupplierCheck = await this.ensureInventorySupplier();
-      const { data: existingInventoryPOs } = await supabase
-        .from('purchase_orders')
-        .select('id, po_number, status')
-        .eq('project_id', projectId)
-        .eq('supplier_id', inventorySupplierCheck.id)
-        .in('status', ['draft', 'submitted', 'confirmed']);
-
-      if (existingInventoryPOs && existingInventoryPOs.length > 0) {
-        const submitted = existingInventoryPOs.filter(po => po.status !== 'draft');
-        if (submitted.length > 0) {
-          console.log('[generateInventoryPO] Inventory PO already exists and is submitted:', submitted[0].po_number);
-          return null;
-        }
-        // If there's a draft inventory PO, we'll delete it and regenerate with fresh data
-        for (const po of existingInventoryPOs) {
-          console.log('[generateInventoryPO] Deleting existing draft inventory PO:', po.po_number);
-          await this.deletePurchaseOrder(po.id);
-        }
+      if (!itemsWithQuantities || itemsWithQuantities.length === 0) {
+        console.log('[generateInventoryPO] No items provided');
+        return null;
       }
 
-      // FRESH DATA FETCH: Get all equipment with current inventory levels
-      // This query executes at this exact moment, capturing any inventory updates
-      // that happened right before PO submission
+      // Ensure inventory supplier exists
+      const inventorySupplier = await this.ensureInventorySupplier();
+
+      // Get equipment details for the specified IDs
+      const equipmentIds = itemsWithQuantities.map(i => i.equipmentId);
       const { data: equipment, error: equipError } = await supabase
         .from('project_equipment')
         .select(`
@@ -822,106 +814,26 @@ class PurchaseOrderService {
             required_for_prewire
           )
         `)
-        .eq('project_id', projectId)
-        .not('global_part_id', 'is', null)
-        .order('part_number', { ascending: true });
+        .in('id', equipmentIds);
 
       if (equipError) throw equipError;
 
-      console.log('[generateInventoryPO] === Equipment Fetch Results ===');
-      console.log('[generateInventoryPO] Total equipment items with global_part_id:', equipment?.length || 0);
+      console.log('[generateInventoryPO] Equipment items found:', equipment?.length || 0);
 
       if (!equipment || equipment.length === 0) {
-        console.log('[generateInventoryPO] ⚠️  NO EQUIPMENT WITH GLOBAL PARTS FOUND');
-        console.log('[generateInventoryPO] This means no equipment items are linked to global_parts.');
-        console.log('[generateInventoryPO] Check that equipment has global_part_id set in the database.');
+        console.log('[generateInventoryPO] No equipment found to create inventory PO');
         return null;
       }
 
-      // Log sample of equipment for debugging
-      const sample = equipment.slice(0, 5);
-      console.log('[generateInventoryPO] First 5 equipment items:');
-      sample.forEach(item => {
-        console.log(`  - ${item.part_number || item.name}:`,
-          `global_part_id=${item.global_part?.id || 'NULL'},`,
-          `qty_on_hand=${item.global_part?.quantity_on_hand || 0},`,
-          `planned=${item.planned_quantity || 0}`);
-      });
+      // Map equipment with the quantities provided by caller
+      const quantityMap = new Map(itemsWithQuantities.map(i => [i.equipmentId, i.quantity]));
+      const inventoryItems = equipment.map(item => ({
+        ...item,
+        inventoryQty: quantityMap.get(item.id) || item.planned_quantity || 1,
+        onHand: item.global_part?.quantity_on_hand || 0
+      }));
 
-      // Calculate submitted PO quantities (only submitted/confirmed/received POs)
-      const { data: pos } = await supabase
-        .from('purchase_orders')
-        .select(`
-          id,
-          status,
-          items:purchase_order_items(
-            project_equipment_id,
-            quantity_ordered
-          )
-        `)
-        .eq('project_id', projectId);
-
-      // Map of equipment_id -> total ordered from submitted POs
-      const submittedPOMap = new Map();
-      (pos || []).forEach(po => {
-        if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
-          (po.items || []).forEach(item => {
-            const existing = submittedPOMap.get(item.project_equipment_id) || 0;
-            submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
-          });
-        }
-      });
-
-      // Calculate items available from inventory with detailed logging
-      console.log('[generateInventoryPO] === Inventory Calculation Details ===');
-      const allCalculations = (equipment || [])
-        .map(item => {
-          const plannedQty = item.planned_quantity || 0;
-          const orderedQty = submittedPOMap.get(item.id) || 0;
-          const onHand = item.global_part?.quantity_on_hand || 0;
-          const needed = Math.max(0, plannedQty - orderedQty);
-
-          // Calculate inventory allocation: min(planned - ordered, on_hand)
-          const inventoryQty = Math.min(needed, onHand);
-
-          return {
-            ...item,
-            inventoryQty,
-            orderedQty,
-            onHand,
-            needed,
-            plannedQty
-          };
-        });
-
-      // Log ALL items with their calculations
-      console.log('[generateInventoryPO] Calculations for ALL equipment items:');
-      allCalculations.forEach(item => {
-        const status = item.inventoryQty > 0 ? '✅ ALLOCATE' : '❌ SKIP';
-        const reason = item.inventoryQty === 0
-          ? (item.onHand === 0 ? '(no stock)' : item.needed === 0 ? '(already ordered)' : '(unknown)')
-          : '';
-        console.log(`  ${status} ${item.part_number || item.name}:`,
-          `planned=${item.plannedQty}, ordered=${item.orderedQty},`,
-          `on_hand=${item.onHand}, needed=${item.needed},`,
-          `allocated=${item.inventoryQty} ${reason}`);
-      });
-
-      const inventoryItems = allCalculations.filter(item => item.inventoryQty > 0);
-
-      if (inventoryItems.length === 0) {
-        console.log('[generateInventoryPO] ===================================');
-        console.log('[generateInventoryPO] ⚠️  NO ITEMS TO ALLOCATE FROM INVENTORY');
-        console.log('[generateInventoryPO] Reasons:');
-        const noStock = allCalculations.filter(i => i.onHand === 0).length;
-        const alreadyOrdered = allCalculations.filter(i => i.onHand > 0 && i.needed === 0).length;
-        console.log(`  - ${noStock} items have no stock (quantity_on_hand = 0)`);
-        console.log(`  - ${alreadyOrdered} items are already fully ordered`);
-        return null;
-      }
-
-      console.log('[generateInventoryPO] ===================================');
-      console.log('[generateInventoryPO] Summary: Found', inventoryItems.length, 'items available from inventory');
+      console.log('[generateInventoryPO] Creating PO for', inventoryItems.length, 'items');
       console.log('[generateInventoryPO] Total units to allocate:', inventoryItems.reduce((sum, item) => sum + item.inventoryQty, 0));
 
       // Determine milestone_stage based on items (prewire vs trim)
@@ -930,9 +842,6 @@ class PurchaseOrderService {
       const trimCount = inventoryItems.length - prewireCount;
       const milestoneStage = prewireCount >= trimCount ? 'prewire_prep' : 'trim_prep';
       console.log('[generateInventoryPO] Milestone determination:', { prewireCount, trimCount, milestoneStage });
-
-      // Ensure inventory supplier exists
-      const inventorySupplier = await this.ensureInventorySupplier();
 
       // Create inventory PO
       const poData = {
@@ -944,7 +853,7 @@ class PurchaseOrderService {
         ship_to_address: null,
         ship_to_contact: null,
         ship_to_phone: null,
-        internal_notes: 'Auto-generated inventory pull from warehouse',
+        internal_notes: 'Inventory pull from warehouse',
         supplier_notes: 'Items to be pulled from internal inventory'
       };
 
@@ -952,7 +861,7 @@ class PurchaseOrderService {
         project_equipment_id: item.id,
         quantity_ordered: item.inventoryQty,
         unit_cost: item.unit_cost || 0,
-        notes: `From warehouse inventory: ${item.inventoryQty} units allocated (${item.onHand} available, ${item.needed} needed)`
+        notes: `From warehouse inventory: ${item.inventoryQty} units`
       }));
 
       // Create the PO

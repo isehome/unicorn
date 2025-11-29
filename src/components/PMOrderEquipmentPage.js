@@ -9,6 +9,7 @@ import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
 import { purchaseOrderService } from '../services/purchaseOrderService';
 import { trackingService } from '../services/trackingService';
+import { supplierService } from '../services/supplierService';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
 import POGenerationModal from './procurement/POGenerationModal';
@@ -32,7 +33,9 @@ import {
   Building2,
   Calendar,
   DollarSign as DollarSignIcon,
-  Settings
+  Settings,
+  Edit2,
+  X
 } from 'lucide-react';
 
 const PMOrderEquipmentPageEnhanced = () => {
@@ -80,6 +83,11 @@ const PMOrderEquipmentPageEnhanced = () => {
   // Receiving issues state
   const [receivingIssues, setReceivingIssues] = useState([]);
   const [openIssuesByPO, setOpenIssuesByPO] = useState({}); // Map PO number to issue count
+
+  // Equipment editing state
+  const [editingEquipmentId, setEditingEquipmentId] = useState(null);
+  const [allSuppliers, setAllSuppliers] = useState([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
 
   // Map phase to milestone_stage
   const getMilestoneStage = (phase) => {
@@ -366,6 +374,51 @@ const PMOrderEquipmentPageEnhanced = () => {
     }));
   };
 
+  // Load all suppliers for the edit dropdown
+  const loadAllSuppliers = async () => {
+    if (allSuppliers.length > 0) return; // Already loaded
+    try {
+      setLoadingSuppliers(true);
+      const suppliers = await supplierService.getAllSuppliers(true); // Only active suppliers
+      setAllSuppliers(suppliers);
+    } catch (err) {
+      console.error('Failed to load suppliers:', err);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  };
+
+  // Update equipment supplier
+  const handleUpdateEquipmentSupplier = async (equipmentIds, supplierId, supplierName) => {
+    try {
+      setSaving(true);
+      setError(null);
+
+      // Update all equipment items with this part number
+      for (const equipmentId of equipmentIds) {
+        await projectEquipmentService.updateEquipment(equipmentId, {
+          supplier_id: supplierId,
+          supplier: supplierName // Also update the text field
+        });
+      }
+
+      setSuccessMessage(`Supplier updated to "${supplierName}" for ${equipmentIds.length} item(s)`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+
+      // Close the edit dropdown
+      setEditingEquipmentId(null);
+
+      // Reload equipment to show updated data
+      await loadEquipment();
+    } catch (err) {
+      console.error('Failed to update equipment supplier:', err);
+      setError(err.message || 'Failed to update supplier');
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Handle checkbox selection by part number
   const handleItemSelectionByPartNumber = (partNumber, isChecked, defaultQuantity, group) => {
     setSelectedItems(prev => {
@@ -396,17 +449,21 @@ const PMOrderEquipmentPageEnhanced = () => {
     }));
   };
 
-  // Select all available part numbers
-  const handleSelectAllByPartNumber = (groupedEquipment) => {
-    const availableGroups = groupedEquipment.filter(group => group.quantity_needed > 0);
+  // Select all available part numbers (both supplier and inventory items)
+  const handleSelectAllByPartNumber = (groups) => {
     const newSelection = {};
-    availableGroups.forEach(group => {
-      const partNumber = group.part_number || 'NO_PART_NUMBER';
-      newSelection[partNumber] = {
-        selected: true,
-        quantity: group.quantity_needed,
-        group: group
-      };
+    groups.forEach(group => {
+      // For inventory groups, use quantity_needed (which was set to quantity_from_inventory)
+      // For supplier groups, use quantity_needed
+      const quantityToOrder = group.quantity_needed || group.quantity_from_inventory || 0;
+      if (quantityToOrder > 0) {
+        const partNumber = group.part_number || 'NO_PART_NUMBER';
+        newSelection[partNumber] = {
+          selected: true,
+          quantity: quantityToOrder,
+          group: group
+        };
+      }
     });
     setSelectedItems(newSelection);
   };
@@ -446,8 +503,13 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   // Generate POs from selected items (now works with part number groups)
   const handleGeneratePOsFromSelection = async (groupedEquipment) => {
+    console.log('🚀 handleGeneratePOsFromSelection called');
+    console.log('📋 Selected items:', selectedItems);
+    console.log('📋 Selected count:', Object.keys(selectedItems).length);
+
     const selectedCount = Object.keys(selectedItems).length;
     if (selectedCount === 0) {
+      console.log('❌ No items selected');
       setError('Please select at least one item to generate POs');
       setTimeout(() => setError(null), 3000);
       return;
@@ -456,26 +518,43 @@ const PMOrderEquipmentPageEnhanced = () => {
     try {
       setSaving(true);
       setError(null);
+      console.log('✅ Starting PO generation process...');
 
       // Expand part number selections back to individual equipment items
       const expandedEquipment = [];
       Object.entries(selectedItems).forEach(([partNumber, selection]) => {
         const group = selection.group;
         const quantityToOrder = selection.quantity;
+        const isInventoryGroup = group.isInventory || group.supplier === 'Internal Inventory';
+
+        console.log(`📦 Processing group: ${partNumber}, isInventory: ${isInventoryGroup}, quantityToOrder: ${quantityToOrder}`);
+        console.log(`📦 Group details:`, { supplier: group.supplier, isInventory: group.isInventory, itemCount: group.items?.length });
 
         // Distribute quantity across individual items in the group
         // For simplicity, we'll order from items proportionally based on their remaining quantity
         let remainingToOrder = quantityToOrder;
 
         group.items.forEach((item, index) => {
-          const itemNeeded = item.quantity_needed || 0; // FIXED: Use new field name
+          // For inventory groups, use quantity_from_inventory; for supplier groups, use quantity_needed
+          const itemNeeded = isInventoryGroup
+            ? (item.quantity_from_inventory || item.quantity_needed || 0)
+            : (item.quantity_needed || 0);
+
+          console.log(`  📦 Item ${index}: ${item.name}, itemNeeded: ${itemNeeded}, quantity_from_inventory: ${item.quantity_from_inventory}, quantity_needed: ${item.quantity_needed}`);
+
           if (itemNeeded > 0 && remainingToOrder > 0) {
             const quantityForThisItem = Math.min(itemNeeded, remainingToOrder);
             expandedEquipment.push({
               ...item,
-              quantity_to_order: quantityForThisItem
+              quantity_to_order: quantityForThisItem,
+              // Preserve inventory flag for later filtering
+              supplier: isInventoryGroup ? 'Internal Inventory' : item.supplier,
+              quantity_from_inventory: isInventoryGroup ? quantityForThisItem : 0
             });
             remainingToOrder -= quantityForThisItem;
+            console.log(`  ✅ Added item with quantity_to_order: ${quantityForThisItem}`);
+          } else {
+            console.log(`  ❌ Skipped item: itemNeeded=${itemNeeded}, remainingToOrder=${remainingToOrder}`);
           }
         });
       });
@@ -498,7 +577,14 @@ const PMOrderEquipmentPageEnhanced = () => {
         !(item.quantity_from_inventory > 0) && item.supplier !== 'Internal Inventory'
       );
 
-      console.log('🔍 Inventory items:', inventoryItems);
+      console.log('🔍 Inventory items count:', inventoryItems.length);
+      console.log('🔍 Inventory items details:', inventoryItems.map(i => ({
+        id: i.id,
+        name: i.name,
+        supplier: i.supplier,
+        quantity_from_inventory: i.quantity_from_inventory,
+        quantity_to_order: i.quantity_to_order
+      })));
       console.log('🔍 Supplier items:', supplierItems);
 
       // Group supplier items by supplier
@@ -582,11 +668,17 @@ const PMOrderEquipmentPageEnhanced = () => {
         const supplier = items[0].supplier_id; // Already validated above
 
         try {
-          // Step 1: Generate PO number
+          // Step 1: Generate PO number (includes project name prefix)
           const { data: poNumber, error: poNumberError } = await supabase
-            .rpc('generate_po_number', { p_supplier_id: supplier });
+            .rpc('generate_po_number', {
+              p_supplier_id: supplier,
+              p_project_id: projectId
+            });
 
-          if (poNumberError) throw poNumberError;
+          if (poNumberError) {
+            console.error('PO number generation failed:', poNumberError);
+            throw poNumberError;
+          }
 
           // Step 2: Calculate totals using quantity_to_order
           const subtotal = items.reduce((sum, item) => {
@@ -665,6 +757,128 @@ const PMOrderEquipmentPageEnhanced = () => {
         }
       }
 
+      // Create Internal Inventory PO for inventory items that were selected
+      // Using inline logic to avoid hot-reload issues with service imports
+      if (inventoryItems.length > 0) {
+        try {
+          console.log('[PMOrderEquipment] Creating Internal Inventory PO for', inventoryItems.length, 'items');
+
+          // Step 1: Ensure Internal Inventory supplier exists
+          let { data: inventorySupplier, error: supplierError } = await supabase
+            .from('suppliers')
+            .select('*')
+            .eq('name', 'Internal Inventory')
+            .maybeSingle();
+
+          if (supplierError && supplierError.code !== 'PGRST116') {
+            throw supplierError;
+          }
+
+          // Create if doesn't exist
+          if (!inventorySupplier) {
+            const { data: newSupplier, error: createSupplierError } = await supabase
+              .from('suppliers')
+              .insert([{
+                name: 'Internal Inventory',
+                short_code: 'INV',
+                contact_name: 'Warehouse',
+                email: 'inventory@internal',
+                is_active: true,
+                notes: 'System-generated supplier for internal inventory pulls'
+              }])
+              .select()
+              .single();
+
+            if (createSupplierError) throw createSupplierError;
+            inventorySupplier = newSupplier;
+          }
+
+          console.log('[PMOrderEquipment] Using inventory supplier:', inventorySupplier.id);
+
+          // Step 2: Generate PO number
+          const { data: poNumber, error: poNumberError } = await supabase
+            .rpc('generate_po_number', {
+              p_supplier_id: inventorySupplier.id,
+              p_project_id: projectId
+            });
+
+          if (poNumberError) {
+            console.error('PO number generation failed:', poNumberError);
+            throw poNumberError;
+          }
+
+          console.log('[PMOrderEquipment] Generated inventory PO number:', poNumber);
+
+          // Step 3: Calculate totals
+          const subtotal = inventoryItems.reduce((sum, item) => {
+            return sum + ((item.unit_cost || 0) * item.quantity_to_order);
+          }, 0);
+
+          // Step 4: Create PO record
+          const poRecord = {
+            project_id: projectId,
+            supplier_id: inventorySupplier.id,
+            po_number: poNumber,
+            milestone_stage: getMilestoneStage(tab),
+            status: 'draft',
+            order_date: new Date().toISOString().split('T')[0],
+            subtotal: subtotal,
+            tax_amount: 0,
+            shipping_cost: 0,
+            total_amount: subtotal,
+            created_by: user?.id,
+            internal_notes: 'Inventory pull from warehouse'
+          };
+
+          const { data: newPO, error: createError } = await supabase
+            .from('purchase_orders')
+            .insert([poRecord])
+            .select()
+            .single();
+
+          if (createError) throw createError;
+
+          // Step 5: Create line items
+          const lineItems = inventoryItems.map((item, index) => ({
+            po_id: newPO.id,
+            project_equipment_id: item.id,
+            line_number: index + 1,
+            quantity_ordered: item.quantity_to_order,
+            unit_cost: item.unit_cost || 0,
+            notes: `From warehouse inventory: ${item.quantity_to_order} units`
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('purchase_order_items')
+            .insert(lineItems);
+
+          if (itemsError) throw itemsError;
+
+          // Step 6: Auto-submit the inventory PO (so inventory gets decremented)
+          const { error: submitError } = await supabase
+            .from('purchase_orders')
+            .update({
+              status: 'submitted',
+              submitted_by: user?.id,
+              submitted_at: new Date().toISOString()
+            })
+            .eq('id', newPO.id);
+
+          if (submitError) throw submitError;
+
+          console.log('[PMOrderEquipment] ✅ Created and submitted Internal Inventory PO:', poNumber);
+          createdPOs.push({
+            po: { ...newPO, po_number: poNumber },
+            items: inventoryItems,
+            supplier: 'Internal Inventory'
+          });
+        } catch (invErr) {
+          console.error('[PMOrderEquipment] Failed to generate inventory PO:', invErr);
+          failedSuppliers.push(`Internal Inventory (${invErr.message})`);
+        }
+      }
+
+      // Show results
       if (createdPOs.length > 0) {
         setSuccessMessage(`Successfully created ${createdPOs.length} purchase order(s)!`);
         setTimeout(() => setSuccessMessage(null), 5000);
@@ -675,40 +889,25 @@ const PMOrderEquipmentPageEnhanced = () => {
         setTimeout(() => setError(null), 8000);
       }
 
-      if (createdPOs.length === 0) {
+      if (createdPOs.length === 0 && failedSuppliers.length === 0) {
         setError('No POs were created. Check console for details.');
         setTimeout(() => setError(null), 5000);
       }
 
-      // Auto-generate inventory PO if items available from warehouse
-      if (createdPOs.length > 0) {
-        try {
-          console.log('[PMOrderEquipment] Checking for inventory items to create PO...');
-          const inventoryPO = await purchaseOrderService.generateInventoryPO(projectId, null);
-          if (inventoryPO) {
-            console.log('[PMOrderEquipment] ✅ Auto-generated inventory PO:', inventoryPO.po_number);
-            setSuccessMessage(prev =>
-              prev + ` Plus 1 inventory PO (${inventoryPO.po_number}) for items from warehouse.`
-            );
-          } else {
-            console.log('[PMOrderEquipment] No inventory items available for PO generation');
-          }
-        } catch (invErr) {
-          console.error('[PMOrderEquipment] Failed to generate inventory PO:', invErr);
-          // Don't fail the whole operation if inventory PO generation fails
-        }
-      }
-
       // Clear selections and reload
+      console.log('✅ PO generation complete, clearing selections and reloading...');
       setSelectedItems({});
       await loadEquipment();
       await loadPurchaseOrders();
+      console.log('✅ Data reloaded successfully');
     } catch (err) {
-      console.error('Failed to generate POs:', err);
+      console.error('❌ Failed to generate POs:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
       setError(err.message || 'Failed to generate purchase orders');
       setTimeout(() => setError(null), 5000);
     } finally {
       setSaving(false);
+      console.log('🏁 PO generation process finished');
     }
   };
 
@@ -899,7 +1098,14 @@ const PMOrderEquipmentPageEnhanced = () => {
         supplier: 'Internal Inventory',
         supplier_id: 'inventory', // Special marker for inventory
         isInventory: true,
-        quantity_needed: group.quantity_from_inventory // For inventory, "needed" = what comes from inventory
+        quantity_needed: group.quantity_from_inventory, // For inventory, "needed" = what comes from inventory
+        // Copy items but ensure each item has quantity_from_inventory set
+        // This allows the expansion loop to find items to include
+        items: group.items.map((item, idx) => ({
+          ...item,
+          // Distribute the inventory quantity across items (first item gets all for simplicity)
+          quantity_from_inventory: idx === 0 ? group.quantity_from_inventory : 0
+        }))
       }));
 
     // Combine both for display
@@ -992,11 +1198,25 @@ const PMOrderEquipmentPageEnhanced = () => {
         {/* Equipment List with Checkboxes - Grouped by Part Number */}
         <div style={sectionStyles.card}>
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">
-            Available Equipment ({groupedEquipment.length} part numbers, {equipment.length} total items)
+            Available Equipment ({availableGroups.length} available, {groupedEquipment.length} total part numbers)
           </h3>
           <div className="space-y-2">
-            {groupedEquipment.map((group) => renderCheckboxItem(group))}
+            {availableGroups.map((group) => renderCheckboxItem(group))}
           </div>
+
+          {/* Show greyed out items that are fully ordered */}
+          {groupedEquipment.filter(g => g.quantity_needed === 0 && g.quantity_from_inventory === 0).length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
+                Fully Ordered ({groupedEquipment.filter(g => g.quantity_needed === 0 && g.quantity_from_inventory === 0).length})
+              </h4>
+              <div className="space-y-2">
+                {groupedEquipment
+                  .filter(g => g.quantity_needed === 0 && g.quantity_from_inventory === 0)
+                  .map((group) => renderCheckboxItem(group))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1051,9 +1271,60 @@ const PMOrderEquipmentPageEnhanced = () => {
                   </p>
                 )}
                 {group.supplier && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Supplier: {group.supplier}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Supplier: {group.supplier}
+                    </p>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        loadAllSuppliers();
+                        setEditingEquipmentId(partNumberKey + '_edit');
+                      }}
+                      className="p-1 text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 rounded"
+                      title="Change supplier"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+                {/* Inline supplier editor when editing existing supplier */}
+                {editingEquipmentId === partNumberKey + '_edit' && (
+                  <div className="mt-2 p-2 bg-violet-50 dark:bg-violet-900/20 border border-violet-300 dark:border-violet-600 rounded-lg">
+                    <label className="block text-xs font-medium text-violet-900 dark:text-violet-100 mb-1">
+                      Change supplier:
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        className="flex-1 px-3 py-2 text-sm border border-violet-300 dark:border-violet-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                        defaultValue={group.supplier_id || ''}
+                        onChange={(e) => {
+                          const selectedSupplier = allSuppliers.find(s => s.id === e.target.value);
+                          if (selectedSupplier) {
+                            const equipmentIds = group.items.map(item => item.id);
+                            handleUpdateEquipmentSupplier(equipmentIds, selectedSupplier.id, selectedSupplier.name);
+                          }
+                        }}
+                        disabled={saving || loadingSuppliers}
+                      >
+                        <option value="" disabled>
+                          {loadingSuppliers ? 'Loading suppliers...' : '-- Select Supplier --'}
+                        </option>
+                        {allSuppliers.map(supplier => (
+                          <option key={supplier.id} value={supplier.id}>
+                            {supplier.name} ({supplier.short_code})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => setEditingEquipmentId(null)}
+                        className="px-3 py-2 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-800 rounded-lg"
+                        title="Cancel"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 )}
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Used in {locationCount} location{locationCount !== 1 ? 's' : ''}
@@ -1116,7 +1387,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               </div>
             )}
 
-            {/* Warning Banner for Missing Supplier */}
+            {/* Warning Banner for Missing Supplier - with inline edit */}
             {hasMissingSupplier && (
               <div className="mb-3 p-3 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 rounded-lg">
                 <div className="flex items-start gap-2">
@@ -1125,10 +1396,59 @@ const PMOrderEquipmentPageEnhanced = () => {
                     <p className="text-sm font-semibold text-red-900 dark:text-red-100">
                       ⚠️ Missing Supplier Information
                     </p>
-                    <p className="text-xs text-red-800 dark:text-red-200 mt-1">
-                      This item has no supplier assigned. You cannot generate a PO for it until a supplier is linked.
-                      Please go to <button onClick={() => navigate('/vendors')} className="underline font-bold">Manage Vendors</button> to fix this.
-                    </p>
+                    {editingEquipmentId === partNumberKey ? (
+                      <div className="mt-2">
+                        <label className="block text-xs font-medium text-red-900 dark:text-red-100 mb-1">
+                          Select a supplier:
+                        </label>
+                        <div className="flex gap-2">
+                          <select
+                            className="flex-1 px-3 py-2 text-sm border border-red-300 dark:border-red-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500"
+                            defaultValue=""
+                            onChange={(e) => {
+                              const selectedSupplier = allSuppliers.find(s => s.id === e.target.value);
+                              if (selectedSupplier) {
+                                const equipmentIds = group.items.map(item => item.id);
+                                handleUpdateEquipmentSupplier(equipmentIds, selectedSupplier.id, selectedSupplier.name);
+                              }
+                            }}
+                            disabled={saving || loadingSuppliers}
+                          >
+                            <option value="" disabled>
+                              {loadingSuppliers ? 'Loading suppliers...' : '-- Select Supplier --'}
+                            </option>
+                            {allSuppliers.map(supplier => (
+                              <option key={supplier.id} value={supplier.id}>
+                                {supplier.name} ({supplier.short_code})
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => setEditingEquipmentId(null)}
+                            className="px-3 py-2 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 rounded-lg"
+                            title="Cancel"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-red-800 dark:text-red-200">
+                          This item has no supplier assigned. Assign a supplier to generate a PO.
+                        </p>
+                        <button
+                          onClick={() => {
+                            loadAllSuppliers();
+                            setEditingEquipmentId(partNumberKey);
+                          }}
+                          className="ml-2 px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          Assign Supplier
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
