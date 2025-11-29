@@ -325,12 +325,12 @@ const PublicIssuePortal = () => {
                     return (
                       <div key={entry.id} className="rounded-xl border px-3 py-2">
                         <div className="text-sm text-gray-900 dark:text-gray-100">{entry.text}</div>
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div className="text-[11px] text-gray-500 mt-1">
                           by{' '}
                           <span className="font-medium" style={{ color: isFromExternalStakeholder ? palette.success : palette.accent }}>
                             {entry.author || 'Team'}
                           </span>
-                          {' '}• <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} />
+                          {' '}• <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} className="text-[11px]" />
                         </div>
                       </div>
                     );

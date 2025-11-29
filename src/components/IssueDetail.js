@@ -1710,19 +1710,20 @@ const IssueDetail = () => {
                 (s) => (s.email || '').toLowerCase().trim() === authorEmail
               );
               return (
-                <div key={c.id} className="rounded-xl border px-3 py-2">
+                <div
+                  key={c.id}
+                  className={`rounded-xl border px-3 py-2 ${c.is_internal === false
+                      ? 'border-amber-300 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-900/10'
+                      : ''
+                    }`}
+                >
                   <div className="text-sm">{c.comment_text}</div>
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-[11px] text-gray-500 mt-1">
                     by{' '}
                     <span className="font-medium" style={{ color: isFromExternalStakeholder ? (palette?.success || '#10B981') : (palette?.accent || '#8B5CF6') }}>
                       {c.author_name || 'Unknown'}
                     </span>
-                    {c.is_internal === false && (
-                      <span className="ml-2 text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-700/50">
-                        Public
-                      </span>
-                    )}
-                    {' '}• <DateField date={c.created_at} showTime={true} variant="inline" colorMode="timestamp" className="text-xs" />
+                    {' '}• <DateField date={c.created_at} showTime={true} variant="inline" colorMode="timestamp" className="text-[11px]" />
                   </div>
                 </div>
               );
@@ -1730,7 +1731,7 @@ const IssueDetail = () => {
           </div>
         )}
         <div className="flex items-center justify-between mb-2">
-          <h3 className={`text-lg font-semibold ${palette?.text?.primary || 'text-zinc-900'}`}>Discussion</h3>
+          <h3 className="text-lg font-semibold" style={{ color: palette.textPrimary }}>Discussion</h3>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
               <input
