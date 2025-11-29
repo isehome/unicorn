@@ -146,9 +146,10 @@ const mapEquipmentRecord = (item) => {
     receivedAt: item.received_date || null,
     quantityReceived, // Track actual quantity received
     fullyReceived: isFullyReceived,
-    onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by onsite checkbox
-    onsiteAt: item.onsite_confirmed_at || null,
-    onsiteBy: item.onsite_confirmed_by || null,
+    // "Delivered" - renamed from "onsite" - manual checkbox for technician to confirm item is at job site
+    delivered: Boolean(item.delivered_confirmed || item.onsite_confirmed), // Support both old and new column names
+    deliveredAt: item.delivered_confirmed_at || item.onsite_confirmed_at || null,
+    deliveredBy: item.delivered_confirmed_by || item.onsite_confirmed_by || null,
     installed: Boolean(item.installed), // INSTALLED: Auto-set when linked to wire drop, or manual for wireless items
     installedAt: item.installed_at || null,
     installedBy: item.installed_by || null,
@@ -421,8 +422,8 @@ const EquipmentListPage = () => {
 
       setStatusUpdating(equipmentId);
 
-      if (field === 'onsite') {
-        const payload = { onsite: value };
+      if (field === 'delivered') {
+        const payload = { delivered: value };
         const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
         setEquipment((prev) =>
           prev.map((item) => (item.id === equipmentId ? { ...mapEquipmentRecord(updated), wireDrops: item.wireDrops } : item))
@@ -497,28 +498,36 @@ const EquipmentListPage = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
               )}
             </div>
-            {/* Compact status indicators */}
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {item.installed && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
-                  Installed
-                </span>
-              )}
-              {!item.installed && item.onsite && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
-                  Onsite
-                </span>
-              )}
-              {!item.installed && !item.onsite && item.received && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                  Received
-                </span>
-              )}
-              {!item.installed && !item.onsite && !item.received && item.ordered && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                  Ordered
-                </span>
-              )}
+            {/* Status badges - all 4 always visible, greyed when incomplete, colored when complete */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                item.ordered
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
+                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+              }`}>
+                Ordered
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                item.received
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+              }`}>
+                Received
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                item.delivered
+                  ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
+                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+              }`}>
+                Delivered
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                item.installed
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
+                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+              }`}>
+                Installed
+              </span>
             </div>
           </div>
         </div>
@@ -606,24 +615,24 @@ const EquipmentListPage = () => {
                 )}
               </div>
 
-              {/* Onsite - Manual toggle */}
+              {/* Delivered - Manual toggle for technician to confirm item is at job site */}
               <div className="flex flex-col gap-1">
-                <label className="inline-flex items-center gap-2 cursor-pointer" title="Mark as onsite">
+                <label className="inline-flex items-center gap-2 cursor-pointer" title="Mark as delivered to job site">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                    checked={item.onsite}
-                    onChange={(e) => toggleStatus(item.id, 'onsite', e.target.checked)}
+                    checked={item.delivered}
+                    onChange={(e) => toggleStatus(item.id, 'delivered', e.target.checked)}
                     disabled={statusUpdating === item.id}
                   />
-                  <span className="font-medium text-gray-700 dark:text-gray-300">Onsite</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Delivered</span>
                 </label>
-                {item.onsite && item.onsiteAt && (
+                {item.delivered && item.deliveredAt && (
                   <button
-                    onClick={() => setDateModal({ isOpen: true, title: 'Onsite', date: item.onsiteAt, userId: item.onsiteBy })}
+                    onClick={() => setDateModal({ isOpen: true, title: 'Delivered', date: item.deliveredAt, userId: item.deliveredBy })}
                     className="ml-6 text-left text-violet-600 dark:text-violet-400 hover:underline"
                   >
-                    <DateField date={item.onsiteAt} variant="inline" />
+                    <DateField date={item.deliveredAt} variant="inline" />
                   </button>
                 )}
               </div>

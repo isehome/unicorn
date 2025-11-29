@@ -200,6 +200,53 @@ po_sequence
 - `sync_equipment_quantities()` - Sync received quantities
 - `auto_update_po_status()` - Update PO status when items received
 
+## 📦 Internal Inventory Management
+
+### Overview
+The system supports pulling equipment from internal warehouse inventory as an alternative to ordering from external suppliers. This is handled through a special "Internal Inventory" supplier.
+
+### How It Works
+
+1. **Equipment with Available Inventory**: When importing equipment, if a `global_part` has `quantity_on_hand > 0`, the system shows how much can be fulfilled from inventory vs. ordered externally.
+
+2. **Creating Inventory POs**: When a PM selects inventory items and clicks "Generate POs", the system:
+   - Creates an Internal Inventory PO (separate from external supplier POs)
+   - Auto-submits the PO immediately
+   - Triggers inventory decrement via database trigger
+
+3. **Inventory Decrement Timing**:
+   - **When**: On PO **submit** (not on receive)
+   - **Why "on submit" instead of "on receive"?**
+     - **Reservation logic**: Once committed, items are "spoken for"
+     - **Prevents double-allocation**: Other projects can't claim the same stock
+     - **Accurate availability**: Shows true available inventory
+     - **Simplicity**: No separate "reserved but not pulled" tracking needed
+   - This follows the standard "allocate on commit" warehouse management pattern
+
+### Database Trigger Logic
+
+The `trigger_allocate_inventory_on_po_submit` trigger fires when a PO status changes from `draft` to `submitted`:
+
+```sql
+-- For Internal Inventory POs:
+--   Decrements global_parts.quantity_on_hand by quantity_ordered
+-- For External Supplier POs:
+--   Decrements supplementary inventory (planned - ordered)
+```
+
+### Key Files
+- **Trigger**: `database/migrations/fix_inventory_po_decrement.sql`
+- **Component**: `src/components/PMOrderEquipmentPage.js` (inline inventory PO creation)
+- **Service**: `src/services/purchaseOrderService.js` (`generateInventoryPO` method)
+
+### Undo/Restore Inventory
+If an Internal Inventory PO needs to be reverted:
+- Use `purchaseOrderService.undoSubmitPurchaseOrder(poId)`
+- This restores inventory to `global_parts.quantity_on_hand`
+- Changes PO status back to `draft`
+
+---
+
 ## 🔄 How It Works
 
 ### The Complete Workflow

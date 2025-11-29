@@ -1064,6 +1064,9 @@ export const projectEquipmentService = {
         onsite_confirmed,
         onsite_confirmed_at,
         onsite_confirmed_by,
+        delivered_confirmed,
+        delivered_confirmed_at,
+        delivered_confirmed_by,
         installed,
         installed_at,
         installed_by,
@@ -1137,6 +1140,9 @@ export const projectEquipmentService = {
         onsite_confirmed,
         onsite_confirmed_at,
         onsite_confirmed_by,
+        delivered_confirmed,
+        delivered_confirmed_at,
+        delivered_confirmed_by,
         installed,
         installed_at,
         installed_by,
@@ -1200,16 +1206,19 @@ export const projectEquipmentService = {
     const calculateStats = (items) => {
       const total = items.length;
       const ordered = items.filter(item => item.ordered_confirmed).length;
-      const onsite = items.filter(item => item.onsite_confirmed).length;
+      // Support both old (onsite_confirmed) and new (delivered_confirmed) column names
+      const delivered = items.filter(item => item.delivered_confirmed || item.onsite_confirmed).length;
       const totalQuantity = items.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
-      
+
       return {
         total,
         ordered,
-        onsite,
+        delivered,
+        onsite: delivered, // Keep for backwards compatibility
         totalQuantity,
         orderedPercentage: total > 0 ? Math.round((ordered / total) * 100) : 0,
-        onsitePercentage: total > 0 ? Math.round((onsite / total) * 100) : 0
+        deliveredPercentage: total > 0 ? Math.round((delivered / total) * 100) : 0,
+        onsitePercentage: total > 0 ? Math.round((delivered / total) * 100) : 0 // Keep for backwards compatibility
       };
     };
 
@@ -1242,7 +1251,7 @@ export const projectEquipmentService = {
     return data || [];
   },
 
-  async updateProcurementStatus(equipmentId, { ordered, onsite } = {}) {
+  async updateProcurementStatus(equipmentId, { ordered, onsite, delivered } = {}) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!equipmentId) throw new Error('Equipment ID is required');
 
@@ -1257,10 +1266,19 @@ export const projectEquipmentService = {
       updates.ordered_confirmed_by = ordered ? user?.id : null;
     }
 
-    if (typeof onsite === 'boolean') {
-      updates.onsite_confirmed = onsite;
-      updates.onsite_confirmed_at = onsite ? new Date().toISOString() : null;
-      updates.onsite_confirmed_by = onsite ? user?.id : null;
+    // Support both 'onsite' (legacy) and 'delivered' (new) - both map to same columns
+    // The columns will be renamed in database migration, but we support both during transition
+    const deliveredValue = delivered ?? onsite;
+    if (typeof deliveredValue === 'boolean') {
+      // Use new column names (delivered_confirmed) with fallback to old names (onsite_confirmed)
+      // The database migration renames these, so try new names first
+      updates.delivered_confirmed = deliveredValue;
+      updates.delivered_confirmed_at = deliveredValue ? new Date().toISOString() : null;
+      updates.delivered_confirmed_by = deliveredValue ? user?.id : null;
+      // Also set old column names for backwards compatibility until migration is run
+      updates.onsite_confirmed = deliveredValue;
+      updates.onsite_confirmed_at = deliveredValue ? new Date().toISOString() : null;
+      updates.onsite_confirmed_by = deliveredValue ? user?.id : null;
     }
 
     if (Object.keys(updates).length === 0) {

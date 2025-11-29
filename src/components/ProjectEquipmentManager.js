@@ -112,11 +112,13 @@ const ProjectEquipmentManager = ({
 
       if (field === 'ordered') {
         payload.ordered = value;
-        if (!value && currentItem?.onsite_confirmed) {
-          payload.onsite = false;
+        // Support both old (onsite_confirmed) and new (delivered_confirmed) column names
+        if (!value && (currentItem?.delivered_confirmed || currentItem?.onsite_confirmed)) {
+          payload.delivered = false;
         }
-      } else if (field === 'onsite') {
-        payload.onsite = value;
+      } else if (field === 'delivered' || field === 'onsite') {
+        // Support both 'delivered' (new) and 'onsite' (legacy) field names
+        payload.delivered = value;
         if (value && !currentItem?.ordered_confirmed) {
           payload.ordered = true;
         }
@@ -289,15 +291,15 @@ const ProjectEquipmentManager = ({
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                      checked={Boolean(item.onsite_confirmed)}
+                      checked={Boolean(item.delivered_confirmed || item.onsite_confirmed)}
                       onChange={(event) =>
-                        handleStatusToggle(item.id, 'onsite', event.target.checked)
+                        handleStatusToggle(item.id, 'delivered', event.target.checked)
                       }
                     />
-                    <span className="font-medium">Onsite</span>
-                    {item.onsite_confirmed_at && (
+                    <span className="font-medium">Delivered</span>
+                    {(item.delivered_confirmed_at || item.onsite_confirmed_at) && (
                       <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                        {new Date(item.onsite_confirmed_at).toLocaleDateString()}
+                        {new Date(item.delivered_confirmed_at || item.onsite_confirmed_at).toLocaleDateString()}
                       </span>
                     )}
                   </label>

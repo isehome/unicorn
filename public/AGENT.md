@@ -87,7 +87,21 @@ Import from Lucid → Create Wire Drops → Assign Equipment → Complete Stages
 Equipment imported → Group by supplier → Generate PO → Submit → Add tracking → Receive items
 ```
 
-**PO Numbering:** `PO-2025-001-AMZN-001` (Year-Sequence-Supplier-PerSupplierSeq)
+**PO Numbering:** `ProjectName-PO-2025-001-AMZN-001` (ProjectPrefix-Year-Sequence-Supplier-PerSupplierSeq)
+
+#### Internal Inventory POs
+When equipment can be fulfilled from warehouse stock (not ordered from external suppliers), the system creates an **Internal Inventory PO**:
+- Supplier: "Internal Inventory" (auto-created)
+- Auto-submitted immediately after creation
+- Triggers inventory decrement on submit (not on receive)
+
+**Why decrement on submit (not receive)?**
+- **Reservation logic**: Once a PM commits to pulling inventory for a project, those items are "spoken for"
+- **Prevents double-allocation**: Other projects can't claim the same inventory
+- **Accurate availability**: Shows what's truly available vs. what's reserved
+- **Simplicity**: No need to track "reserved but not pulled" state separately
+
+This is the standard "allocate on commit" pattern used in warehouse management systems.
 
 ### 5. Photo Storage (SharePoint)
 
