@@ -28,14 +28,28 @@ module.exports = async (req, res) => {
 
   try {
     const { to, cc, subject, html, text, sendAsUser } = req.body || {};
+
+    console.log('[send-issue-notification] Request received:', {
+      to,
+      cc,
+      subject,
+      sendAsUser,
+      hasAuthHeader: !!req.headers?.authorization,
+      htmlLength: html?.length,
+      textLength: text?.length
+    });
+
     if (!Array.isArray(to) || to.length === 0) {
+      console.error('[send-issue-notification] No recipients provided');
       res.status(400).json({ error: 'No recipients provided' });
       return;
     }
 
     const delegatedToken = getDelegatedTokenFromHeader(req.headers?.authorization || req.headers?.Authorization);
 
-    await sendGraphEmail(
+    console.log('[send-issue-notification] Delegated token present:', !!delegatedToken, 'sendAsUser:', Boolean(sendAsUser));
+
+    const result = await sendGraphEmail(
       {
         to: to.filter(Boolean),
         cc: Array.isArray(cc) ? cc.filter(Boolean) : [],
@@ -46,9 +60,10 @@ module.exports = async (req, res) => {
       { delegatedToken, sendAsUser: Boolean(sendAsUser) }
     );
 
+    console.log('[send-issue-notification] Email sent successfully:', result);
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Failed to send issue notification:', error);
+    console.error('[send-issue-notification] Failed to send:', error.message, error.stack);
     res.status(500).json({ error: error.message || 'Failed to send notification' });
   }
 };

@@ -153,8 +153,19 @@ async function sendGraphEmail({ to, cc, subject, html, text }, options = {}) {
   // For app-only auth, use /users/{email}/sendMail
   const targetPath = useDelegated ? '/me/sendMail' : `/users/${encodeURIComponent(config.senderEmail)}/sendMail`;
 
+  console.log('[GraphMail] Sending email:', {
+    targetPath,
+    useDelegated,
+    sendAsUser,
+    to: to.join(', '),
+    subject,
+    hasDelegatedToken: !!delegatedToken
+  });
+
   try {
-    return await trySend(targetPath);
+    const result = await trySend(targetPath);
+    console.log('[GraphMail] Email sent successfully via', targetPath);
+    return result;
   } catch (userSendError) {
     // If user send fails with ErrorInvalidUser, the senderEmail might be a group/shared mailbox
     // Try sending via group endpoint as a fallback
