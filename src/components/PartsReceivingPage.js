@@ -415,14 +415,20 @@ const PartsReceivingPageNew = () => {
       const po = purchaseOrders.find(p => p.po_number === info.poNumber);
 
       // Create an issue linked to the PO
-      const issueTitle = `Receiving Issue: ${info.partNumber || info.partName} (PO ${info.poNumber})`;
-      const issueBody = `**Problem reported during parts receiving**\n\n` +
+      // Title = "Receiving Issue: [user's description]" (truncated if needed)
+      // Keep PO reference at end for issue tracking/filtering
+      const truncatedDesc = issueDescription.trim().length > 80
+        ? issueDescription.trim().substring(0, 80) + '...'
+        : issueDescription.trim();
+      const issueTitle = `Receiving Issue: ${truncatedDesc} (PO ${info.poNumber})`;
+
+      // Details section contains all the PO/part information
+      const issueBody = `**Receiving Issue Details**\n\n` +
         `**PO Number:** ${info.poNumber}\n` +
         `**Part Number:** ${info.partNumber || 'N/A'}\n` +
         `**Part Name:** ${info.partName || 'N/A'}\n` +
         `**Quantity Ordered:** ${info.ordered}\n` +
         `**Quantity Received:** ${info.received}\n\n` +
-        `**Issue Description:**\n${issueDescription}\n\n` +
         `**Reported by:** ${user.full_name || user.email}`;
 
       // Insert issue into issues table (correct table name)
