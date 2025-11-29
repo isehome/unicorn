@@ -695,7 +695,7 @@ const WireDropsList = () => {
                               color: '#F59E0B'
                             }}
                           >
-                            Install
+                            Installed
                           </span>
                           <span
                             className="px-2 py-0.5 text-xs font-semibold rounded-full uppercase"

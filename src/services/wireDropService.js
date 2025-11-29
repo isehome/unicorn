@@ -386,6 +386,12 @@ class WireDropService {
           .single();
 
         if (error) throw error;
+
+        // When trim_out stage is created and marked complete, also mark linked equipment as installed
+        if (stageType === 'trim_out' && updates.completed) {
+          await this.markLinkedEquipmentInstalled(wireDropId, true, stageData.completed_by);
+        }
+
         return data;
       } else {
         // Update the first matching stage (and handle duplicates if they exist)
@@ -410,11 +416,53 @@ class WireDropService {
           .single();
 
         if (error) throw error;
+
+        // When trim_out stage is marked complete, also mark linked equipment as installed
+        if (stageType === 'trim_out' && updates.completed) {
+          await this.markLinkedEquipmentInstalled(wireDropId, true, stageData.completed_by);
+        }
+        // When trim_out stage is uncompleted, unmark linked equipment (only if not linked to other completed wire drops)
+        if (stageType === 'trim_out' && updates.completed === false) {
+          await this.markLinkedEquipmentInstalled(wireDropId, false, null);
+        }
+
         return data;
       }
     } catch (error) {
       console.error('Failed to update stage:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Mark all equipment linked to a wire drop as installed/not installed
+   * Called when trim_out stage is completed/uncompleted
+   */
+  async markLinkedEquipmentInstalled(wireDropId, installed = true, completedBy = null) {
+    try {
+      // Get all equipment linked to this wire drop
+      const { data: links, error: linksError } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('project_equipment_id')
+        .eq('wire_drop_id', wireDropId);
+
+      if (linksError) {
+        console.error('[wireDropService] Failed to get equipment links:', linksError);
+        return;
+      }
+
+      if (!links || links.length === 0) {
+        console.log('[wireDropService] No equipment linked to wire drop, skipping installed update');
+        return;
+      }
+
+      const equipmentIds = links.map(link => link.project_equipment_id);
+      console.log(`[wireDropService] Marking ${equipmentIds.length} linked equipment as ${installed ? 'installed' : 'not installed'}`);
+
+      await this.markEquipmentInstalled(equipmentIds, installed, completedBy);
+    } catch (error) {
+      console.error('[wireDropService] Failed to mark linked equipment installed:', error);
+      // Don't throw - this is a secondary operation
     }
   }
 
