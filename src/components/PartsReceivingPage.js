@@ -518,7 +518,15 @@ const PartsReceivingPageNew = () => {
                   .single();
 
                 // Acquire auth token to send email as current user
+                // This is REQUIRED for sendAsUser: true to work
+                console.log('[PartsReceiving] Acquiring Graph token for email notification...');
                 const graphToken = await acquireToken();
+
+                if (!graphToken) {
+                  console.error('[PartsReceiving] Failed to acquire Graph token - email will not be sent as user');
+                }
+
+                console.log('[PartsReceiving] Graph token acquired:', graphToken ? 'YES' : 'NO');
 
                 const issueUrl = `${window.location.origin}/project/${projectId}/issues/${issue.id}`;
                 const issueContext = {
@@ -532,6 +540,13 @@ const PartsReceivingPageNew = () => {
                   email: user.email
                 };
 
+                console.log('[PartsReceiving] Sending stakeholder notification:', {
+                  to: ordersStakeholder.email,
+                  actor: actorInfo.name,
+                  issue: issueTitle,
+                  hasToken: !!graphToken
+                });
+
                 await notifyStakeholderAdded(
                   {
                     issue: issueContext,
@@ -543,9 +558,9 @@ const PartsReceivingPageNew = () => {
                   { authToken: graphToken }
                 );
 
-                console.log('[PartsReceiving] Sent notification email to orders stakeholder:', ordersStakeholder.email);
+                console.log('[PartsReceiving] Notification request completed for:', ordersStakeholder.email);
               } catch (emailErr) {
-                console.warn('Failed to send email to orders stakeholder:', emailErr);
+                console.error('[PartsReceiving] Failed to send email to orders stakeholder:', emailErr);
                 // Don't block on email failure
               }
             }
