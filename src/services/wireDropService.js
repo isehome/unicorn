@@ -887,12 +887,24 @@ class WireDropService {
 
       console.log(`[wireDropService] Deleted ${deletedCount} link(s), Inserted ${insertedCount} link(s)`);
 
-      // Mark newly linked equipment as installed
+      // Mark newly linked equipment as installed ONLY if the wire drop's trim_out stage is complete
       if (equipmentIds && equipmentIds.length > 0) {
         const newlyLinked = equipmentIds.filter(id => !previousEquipmentIds.includes(id));
         if (newlyLinked.length > 0) {
-          console.log(`[wireDropService] Marking ${newlyLinked.length} equipment item(s) as installed`);
-          await this.markEquipmentInstalled(newlyLinked, true, userId);
+          // Check if trim_out stage is complete
+          const { data: trimStage } = await supabase
+            .from('wire_drop_stages')
+            .select('completed')
+            .eq('wire_drop_id', wireDropId)
+            .eq('stage_type', 'trim_out')
+            .single();
+
+          if (trimStage?.completed) {
+            console.log(`[wireDropService] Wire drop trim_out is complete - marking ${newlyLinked.length} equipment as installed`);
+            await this.markEquipmentInstalled(newlyLinked, true, userId);
+          } else {
+            console.log(`[wireDropService] Wire drop trim_out not complete - equipment linked but not marked installed`);
+          }
         }
       }
 
