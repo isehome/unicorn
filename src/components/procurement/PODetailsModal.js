@@ -14,6 +14,7 @@ import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_N
 import { companySettingsService } from '../../services/companySettingsService';
 import Button from '../ui/Button';
 import ShippingAddressManager from './ShippingAddressManager';
+import POLineItemsEditor from './POLineItemsEditor';
 import DateField from '../ui/DateField';
 import DateInput from '../ui/DateInput';
 import {
@@ -23,9 +24,6 @@ import {
   FileText,
   Edit3,
   Save,
-  Package,
-  Calendar,
-  DollarSign,
   Loader,
   AlertCircle,
   CheckCircle,
@@ -683,35 +681,6 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     );
   };
 
-  // Group items by part number for display
-  const getGroupedItems = () => {
-    if (!po?.items) return [];
-
-    const grouped = po.items.reduce((acc, item) => {
-      const partNumber = item.equipment?.part_number || 'N/A';
-
-      if (!acc[partNumber]) {
-        acc[partNumber] = {
-          id: item.id, // Use first item's ID as key
-          line_number: Object.keys(acc).length + 1,
-          part_number: partNumber,
-          description: item.equipment?.description || item.equipment?.name || 'N/A',
-          quantity_ordered: 0,
-          unit_cost: item.unit_cost,
-          line_total: 0
-        };
-      }
-
-      acc[partNumber].quantity_ordered += (item.quantity_ordered || 0);
-      acc[partNumber].line_total += (item.line_total || 0);
-
-      return acc;
-    }, {});
-
-    return Object.values(grouped);
-  };
-
-  const displayItems = getGroupedItems();
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -955,48 +924,18 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               )}
             </div>
 
-            {/* Line Items */}
+            {/* Line Items - Use POLineItemsEditor for draft POs */}
             <div>
-              <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-                <Package className="w-5 h-5" />
-                Line Items ({displayItems.length})
-              </h3>
-              <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
-                <table className="w-full text-sm min-w-[600px]">
-                  <thead className="bg-gray-50 dark:bg-gray-800/50">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">#</th>
-                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Part Number</th>
-                      <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Description</th>
-                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Qty</th>
-                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Unit Cost</th>
-                      <th className="px-3 py-2 text-right text-gray-700 dark:text-gray-300 font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {displayItems.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-3 py-2 text-gray-900 dark:text-white">{item.line_number}</td>
-                        <td className="px-3 py-2 text-gray-900 dark:text-white">
-                          {item.part_number}
-                        </td>
-                        <td className="px-3 py-2 text-gray-900 dark:text-white">
-                          {item.description}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
-                          {item.quantity_ordered}
-                        </td>
-                        <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
-                          ${(item.unit_cost || 0).toFixed(2)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-white">
-                          ${(item.line_total || 0).toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <POLineItemsEditor
+                poId={poId}
+                projectId={po.project_id}
+                items={po.items || []}
+                isDraft={po.status === 'draft'}
+                onSave={async () => {
+                  await loadPODetails();
+                  if (onUpdate) onUpdate();
+                }}
+              />
             </div>
 
             {/* Costs */}

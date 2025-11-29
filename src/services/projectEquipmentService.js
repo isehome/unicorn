@@ -1084,12 +1084,16 @@ export const projectEquipmentService = {
           name,
           manufacturer,
           model,
+          description,
           is_wire_drop_visible,
           is_inventory_item,
           required_for_prewire,
           quantity_on_hand,
           reorder_point,
-          warehouse_location
+          warehouse_location,
+          schematic_url,
+          install_manual_urls,
+          technical_manual_urls
         )
       `)
       .eq('project_id', projectId)
@@ -1146,12 +1150,16 @@ export const projectEquipmentService = {
           name,
           manufacturer,
           model,
+          description,
           is_wire_drop_visible,
           is_inventory_item,
           required_for_prewire,
           quantity_on_hand,
           reorder_point,
-          warehouse_location
+          warehouse_location,
+          schematic_url,
+          install_manual_urls,
+          technical_manual_urls
         )
       `)
       .eq('project_id', projectId)
@@ -1523,5 +1531,203 @@ export const projectEquipmentService = {
       console.error('Failed to remove HomeKit QR photo:', error);
       throw error;
     }
+  },
+
+  /**
+   * Add a single part/equipment item to a project
+   * Runs through the same logic as CSV import: creates project_equipment,
+   * syncs to global_parts, and matches/creates supplier
+   *
+   * @param {string} projectId - Project UUID
+   * @param {object} partData - Part data object
+   * @param {string} partData.name - Part name (required)
+   * @param {string} [partData.part_number] - Part number (enables global_parts sync)
+   * @param {string} [partData.description] - Description
+   * @param {string} [partData.manufacturer] - Manufacturer
+   * @param {string} [partData.model] - Model
+   * @param {string} [partData.supplier] - Supplier name (enables supplier matching)
+   * @param {number} [partData.unit_cost] - Unit cost (default: 0)
+   * @param {number} [partData.unit_price] - Unit price (default: 0)
+   * @param {number} [partData.quantity] - Quantity (default: 1)
+   * @param {string} [partData.room_id] - Room UUID (optional)
+   * @param {string} [partData.install_side] - 'head_end' | 'room_end' | 'both' | 'unspecified'
+   * @param {string} [partData.equipment_type] - 'part' | 'labor' | 'service' | 'fee' | 'other'
+   * @param {string} [partData.unit_of_measure] - Unit (default: 'ea')
+   * @param {string} [partData.notes] - Notes
+   * @returns {Promise<object>} Created equipment record with all linked data
+   */
+  async addSinglePart(projectId, partData) {
+    if (!projectId) throw new Error('Project ID is required');
+    if (!partData?.name) throw new Error('Part name is required');
+
+    // Get current authenticated user
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Build equipment record (same logic as buildEquipmentRecords but for single item)
+    const equipmentRecord = {
+      project_id: projectId,
+      room_id: partData.room_id || null,
+      name: normalizeString(partData.name),
+      description: normalizeString(partData.description) || null,
+      manufacturer: normalizeString(partData.manufacturer) || null,
+      model: normalizeString(partData.model) || null,
+      part_number: normalizeString(partData.part_number) || null,
+      install_side: partData.install_side || 'room_end',
+      equipment_type: partData.equipment_type || 'part',
+      planned_quantity: partData.quantity || 1,
+      unit_of_measure: partData.unit_of_measure || 'ea',
+      unit_cost: toNumber(partData.unit_cost),
+      unit_price: toNumber(partData.unit_price),
+      supplier: normalizeString(partData.supplier) || null,
+      notes: normalizeString(partData.notes) || null,
+      is_active: true,
+      metadata: {},
+      created_by: user?.id,
+      // No csv_batch_id since this is a manual addition
+      csv_batch_id: null
+    };
+
+    console.log('[addSinglePart] Creating equipment record:', equipmentRecord);
+
+    // Step 1: Insert into project_equipment
+    const { data: inserted, error: insertError } = await supabase
+      .from('project_equipment')
+      .insert([equipmentRecord])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('[addSinglePart] Failed to insert equipment:', insertError);
+      throw new Error(insertError.message || 'Failed to create equipment');
+    }
+
+    console.log('[addSinglePart] Equipment created with ID:', inserted.id);
+
+    // Step 2: Create inventory record
+    const { error: inventoryError } = await supabase
+      .from('project_equipment_inventory')
+      .insert({
+        project_equipment_id: inserted.id,
+        warehouse: 'fl',
+        quantity_on_hand: 0,
+        quantity_assigned: 0,
+        needs_order: false,
+        rma_required: false
+      });
+
+    if (inventoryError) {
+      console.warn('[addSinglePart] Failed to create inventory record:', inventoryError);
+      // Don't throw - inventory record is not critical
+    }
+
+    // Step 3: Sync to global_parts if part_number provided
+    if (inserted.part_number) {
+      console.log('[addSinglePart] Syncing to global_parts...');
+      await syncGlobalParts([inserted], projectId, null);
+    }
+
+    // Step 4: Match and link supplier if supplier name provided
+    if (inserted.supplier) {
+      console.log('[addSinglePart] Matching supplier...');
+      const supplierMap = await matchAndCreateSuppliers([inserted]);
+      if (supplierMap.size > 0) {
+        await linkEquipmentToSuppliers([inserted], supplierMap, projectId);
+      }
+    }
+
+    // Step 5: Fetch the complete record with all linked data
+    const { data: completeRecord, error: fetchError } = await supabase
+      .from('project_equipment')
+      .select(`
+        *,
+        project_rooms(name, is_headend),
+        global_part:global_part_id (
+          id,
+          part_number,
+          name,
+          manufacturer,
+          model,
+          is_wire_drop_visible,
+          is_inventory_item,
+          required_for_prewire
+        ),
+        suppliers:supplier_id (
+          id,
+          name,
+          short_code
+        )
+      `)
+      .eq('id', inserted.id)
+      .single();
+
+    if (fetchError) {
+      console.warn('[addSinglePart] Failed to fetch complete record:', fetchError);
+      return inserted; // Return basic record if full fetch fails
+    }
+
+    console.log('[addSinglePart] Successfully created equipment:', completeRecord.id);
+    return completeRecord;
+  },
+
+  /**
+   * Update an existing equipment record
+   * @param {string} equipmentId - Equipment UUID
+   * @param {object} updates - Fields to update
+   * @returns {Promise<object>} Updated equipment record
+   */
+  async updateEquipment(equipmentId, updates) {
+    if (!equipmentId) throw new Error('Equipment ID is required');
+
+    // Normalize string fields
+    const cleanUpdates = {};
+
+    if (updates.name !== undefined) cleanUpdates.name = normalizeString(updates.name);
+    if (updates.description !== undefined) cleanUpdates.description = normalizeString(updates.description);
+    if (updates.manufacturer !== undefined) cleanUpdates.manufacturer = normalizeString(updates.manufacturer);
+    if (updates.model !== undefined) cleanUpdates.model = normalizeString(updates.model);
+    if (updates.part_number !== undefined) cleanUpdates.part_number = normalizeString(updates.part_number);
+    if (updates.supplier !== undefined) cleanUpdates.supplier = normalizeString(updates.supplier);
+    if (updates.notes !== undefined) cleanUpdates.notes = normalizeString(updates.notes);
+    if (updates.unit_cost !== undefined) cleanUpdates.unit_cost = toNumber(updates.unit_cost);
+    if (updates.unit_price !== undefined) cleanUpdates.unit_price = toNumber(updates.unit_price);
+    if (updates.planned_quantity !== undefined) cleanUpdates.planned_quantity = toNumber(updates.planned_quantity);
+    if (updates.room_id !== undefined) cleanUpdates.room_id = updates.room_id || null;
+    if (updates.install_side !== undefined) cleanUpdates.install_side = updates.install_side;
+    if (updates.equipment_type !== undefined) cleanUpdates.equipment_type = updates.equipment_type;
+    if (updates.unit_of_measure !== undefined) cleanUpdates.unit_of_measure = updates.unit_of_measure;
+
+    cleanUpdates.updated_at = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('project_equipment')
+      .update(cleanUpdates)
+      .eq('id', equipmentId)
+      .select(`
+        *,
+        project_rooms(name, is_headend),
+        global_part:global_part_id (id, part_number, name),
+        suppliers:supplier_id (id, name, short_code)
+      `)
+      .single();
+
+    if (error) {
+      console.error('[updateEquipment] Failed:', error);
+      throw new Error(error.message || 'Failed to update equipment');
+    }
+
+    // If part_number changed, re-sync to global_parts
+    if (cleanUpdates.part_number && data.project_id) {
+      await syncGlobalParts([data], data.project_id, null);
+    }
+
+    // If supplier changed, re-match
+    if (cleanUpdates.supplier && data.project_id) {
+      const supplierMap = await matchAndCreateSuppliers([data]);
+      if (supplierMap.size > 0) {
+        await linkEquipmentToSuppliers([data], supplierMap, data.project_id);
+      }
+    }
+
+    return data;
   }
 };

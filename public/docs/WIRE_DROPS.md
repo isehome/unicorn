@@ -557,6 +557,64 @@ Bottom Nav | `/src/components/BottomNavigation.js` | 1-45 | Navigation to Parts 
 
 ---
 
+## 13. Prewire Mode Feature
+
+### Overview
+**Changed:** 2025-11-29
+**Files:**
+- `src/components/PrewireMode.js` - Main prewire mode view
+- `src/components/PrewirePhotoModal.js` - Quick photo capture modal
+- `src/components/WireDropsHub.js` - Navigation to prewire mode
+- `src/services/wireDropService.js` - markLabelsPrinted() method
+- `database/migrations/2025-11-29_add_labels_printed.sql` - Database migration
+
+### Purpose
+Dedicated technician workflow for the prewire phase. Allows technicians to:
+1. Print 2x QR wire labels for each drop
+2. Capture prewire completion photos
+3. Track which labels have been printed
+4. Filter by floor and room
+
+### Database Fields Added to `wire_drops`
+| Column | Type | Purpose |
+|--------|------|---------|
+| `labels_printed` | BOOLEAN DEFAULT false | Whether labels have been printed |
+| `labels_printed_at` | TIMESTAMPTZ | When labels were printed |
+| `labels_printed_by` | TEXT | User who printed the labels |
+
+### UI Features
+- **Entry Point:** WireDropsHub → "Prewire Mode" button
+- **Filters:** Floor dropdown, Room dropdown
+- **Sorting:** Room name (A-Z), then labels_printed (unprinted first)
+- **Per-drop actions:**
+  - Print Wire Labels button (violet = unprinted, emerald = printed)
+  - Camera icon for quick prewire photo capture
+  - Prewire completion status indicator
+
+### Print Flow
+1. User taps "Print Labels" button
+2. System generates label bitmap via labelRenderService
+3. Prints 2x copies to connected Brady printer
+4. Updates `labels_printed`, `labels_printed_at`, `labels_printed_by` in database
+5. Button changes to emerald (green) to indicate printed
+6. Drop moves to bottom of its room group in the list
+
+### Photo Capture Flow
+1. User taps camera icon
+2. Modal opens with wire drop info
+3. User captures photo (opens camera directly)
+4. User can preview and retake
+5. On "Save Photo", photo is uploaded to SharePoint
+6. Prewire stage marked complete
+7. Camera icon changes to checkmark
+
+### Access Requirements
+- Technician role (not PM-only)
+- Project context required (via ?project=UUID query param)
+- Printer connection required for label printing
+
+---
+
 ## Conclusion
 
 The current implementation has a **solid foundation** for equipment management with:

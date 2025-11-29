@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -48,7 +48,9 @@ import {
   Upload,
   Package,
   ShoppingCart,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  FileBarChart2
 } from 'lucide-react';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
@@ -282,6 +284,7 @@ const buildShapeMetadataPayload = (shape, extras = {}) => {
 const PMProjectViewEnhanced = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { mode } = useTheme();
   const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
@@ -348,6 +351,9 @@ const PMProjectViewEnhanced = () => {
   const [showLucidSection, setShowLucidSection] = useState(false);
   const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(true);
   const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
+  const [procurementIssueCount, setProcurementIssueCount] = useState(0);
+  const [issues, setIssues] = useState([]);
+  const [showResolvedIssues, setShowResolvedIssues] = useState(false);
   const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
   const [folderInitializing, setFolderInitializing] = useState(false);
   const [folderInitSuccess, setFolderInitSuccess] = useState(null);
@@ -389,6 +395,8 @@ const PMProjectViewEnhanced = () => {
     lucidData: true,
     procurement: true,
     permits: true,
+    issues: true,           // Issues section
+    reports: true,          // Reports section placeholder
     phaseMilestones: false, // Start expanded for easy access
     buildingPermits: true   // Start collapsed
   });
@@ -981,6 +989,51 @@ const PMProjectViewEnhanced = () => {
     [projectId]
   );
 
+  // Load open procurement/receiving issues count for visual indicator
+  const loadProcurementIssues = useCallback(async () => {
+    if (!projectId) {
+      setProcurementIssueCount(0);
+      return;
+    }
+
+    try {
+      const { count, error } = await supabase
+        .from('issues')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', projectId)
+        .like('title', 'Receiving Issue:%')
+        .in('status', ['open', 'blocked']);
+
+      if (error) throw error;
+      setProcurementIssueCount(count || 0);
+    } catch (error) {
+      console.error('Failed to load procurement issues:', error);
+      setProcurementIssueCount(0);
+    }
+  }, [projectId]);
+
+  // Load all project issues for Issues section
+  const loadIssues = useCallback(async () => {
+    if (!projectId) {
+      setIssues([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('issues')
+        .select('id, title, description, status, priority, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setIssues(data || []);
+    } catch (error) {
+      console.error('Failed to load issues:', error);
+      setIssues([]);
+    }
+  }, [projectId]);
+
   const loadLaborSummary = useCallback(async () => {
     if (!projectId) {
       setLaborSummary({ totalHours: 0, totalMinutes: 0, entries: [] });
@@ -1494,6 +1547,8 @@ const PMProjectViewEnhanced = () => {
     loadProgress();
     loadProjectOwners();
     loadMilestoneDates();
+    loadProcurementIssues();
+    loadIssues();
 
     // Always attempt to load milestones - ensure section stays visible even on errors
     loadProjectMilestones().catch(error => {
@@ -1545,6 +1600,18 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     loadEquipmentStats();
   }, [loadEquipmentStats]);
+
+  // Handle URL parameters to auto-expand sections (e.g., from procurement issues link)
+  useEffect(() => {
+    const section = searchParams.get('section');
+    if (section === 'issues') {
+      // Auto-expand the issues section
+      setSectionsCollapsed(prev => ({
+        ...prev,
+        issues: false
+      }));
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadLaborSummary();
@@ -2520,11 +2587,12 @@ const PMProjectViewEnhanced = () => {
         <div className="flex flex-wrap gap-3">
           <Button
             onClick={() => navigate(`/projects/${projectId}/procurement`)}
-            variant="primary"
-            icon={ShoppingCart}
+            variant={procurementIssueCount > 0 ? 'danger' : 'primary'}
+            icon={procurementIssueCount > 0 ? AlertCircle : ShoppingCart}
             size="md"
+            className={procurementIssueCount > 0 ? 'animate-pulse' : ''}
           >
-            Procurement
+            Procurement {procurementIssueCount > 0 && `(${procurementIssueCount} Issue${procurementIssueCount > 1 ? 's' : ''})`}
           </Button>
         </div>
 
@@ -3174,6 +3242,110 @@ const PMProjectViewEnhanced = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Issues Section */}
+      <div>
+        <button
+          onClick={() => toggleSection('issues')}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
+        >
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Issues</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {issues.filter(i => i.status !== 'resolved').length > 0 && (
+              <span className="px-2 py-0.5 text-xs rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400">
+                {issues.filter(i => i.status !== 'resolved').length}
+              </span>
+            )}
+            <ChevronRight
+              className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+              style={{ transform: sectionsCollapsed.issues ? 'none' : 'rotate(90deg)' }}
+            />
+          </div>
+        </button>
+        {!sectionsCollapsed.issues && (
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+            <div className="flex items-center justify-between text-xs mb-4">
+              <div className="text-zinc-500 dark:text-zinc-400">
+                {showResolvedIssues ? 'Showing resolved' : 'Hiding resolved'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowResolvedIssues((prev) => !prev)}
+                  className="text-xs underline text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                >
+                  {showResolvedIssues ? 'Hide resolved' : 'Show resolved'}
+                </button>
+                <Button size="sm" variant="ghost" icon={Plus} onClick={() => navigate(`/project/${projectId}/issues/new`)}>
+                  New Issue
+                </Button>
+              </div>
+            </div>
+            {issues.length === 0 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">No issues logged for this project.</p>
+            ) : (
+              <div className="space-y-3">
+                {issues
+                  .filter((issue) => showResolvedIssues || (issue.status || '').toLowerCase() !== 'resolved')
+                  .map((issue) => (
+                    <button
+                      key={issue.id}
+                      onClick={() => navigate(`/project/${projectId}/issues/${issue.id}`)}
+                      className="w-full text-left px-3 py-3 rounded-xl border transition-transform duration-200 hover:-translate-y-0.5 bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-zinc-900 dark:text-white">{issue.title}</h4>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          issue.status === 'resolved'
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                            : issue.status === 'blocked'
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                            : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                        }`}>
+                          {(issue.status || 'open').replace(/\b\w/g, (c) => c.toUpperCase())}
+                        </span>
+                      </div>
+                      <p className="text-xs mt-1 text-zinc-500 dark:text-zinc-400">
+                        {new Date(issue.created_at).toLocaleDateString()}
+                      </p>
+                      {issue.description && (
+                        <p className="text-sm mt-1 line-clamp-2 text-zinc-600 dark:text-zinc-300">
+                          {issue.description}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Reports Section */}
+      <div>
+        <button
+          onClick={() => toggleSection('reports')}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
+        >
+          <div className="flex items-center gap-3">
+            <FileBarChart2 className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Reports</span>
+          </div>
+          <ChevronRight
+            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+            style={{ transform: sectionsCollapsed.reports ? 'none' : 'rotate(90deg)' }}
+          />
+        </button>
+        {!sectionsCollapsed.reports && (
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Reports section coming soon.</p>
+          </div>
+        )}
       </div>
 
       {/* Phase Milestones */}

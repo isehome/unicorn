@@ -317,7 +317,8 @@ export const notifyIssueComment = async ({ issue, project, comment, stakeholders
 
   const { issueTitle, projectName } = formatIssueContext(issue, project);
   const rawProjectName = project?.name || '';
-  const actorName = actor?.name || comment?.author || 'System';
+  // Actor name should always be available - use email as fallback, then ID for debugging
+  const actorName = actor?.name || actor?.email || comment?.author || comment?.author_email || (actor?.id ? `User (${actor.id})` : 'Team Member');
   const safeActorName = escapeHtml(actorName);
   const safeIssueTitle = escapeHtml(issueTitle);
   const safeProjectName = escapeHtml(projectName);

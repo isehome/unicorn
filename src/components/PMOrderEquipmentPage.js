@@ -77,6 +77,10 @@ const PMOrderEquipmentPageEnhanced = () => {
   // Format: { itemId: { selected: boolean, quantity: number } }
   const [selectedItems, setSelectedItems] = useState({});
 
+  // Receiving issues state
+  const [receivingIssues, setReceivingIssues] = useState([]);
+  const [openIssuesByPO, setOpenIssuesByPO] = useState({}); // Map PO number to issue count
+
   // Map phase to milestone_stage
   const getMilestoneStage = (phase) => {
     return phase === 'prewire' ? 'prewire_prep' : 'trim_prep';
@@ -90,11 +94,17 @@ const PMOrderEquipmentPageEnhanced = () => {
   useEffect(() => {
     if (tab === 'prewire' || tab === 'trim') {
       loadEquipment();
-    } else if (tab === 'pos') {
+    } else if (tab === 'pos' || tab === 'issues') {
       loadPurchaseOrders();
+      loadReceivingIssues();
     }
     // No data loading needed for 'inventory' tab
   }, [projectId, tab]);
+
+  // Also load issues on initial mount to show/hide Issues tab
+  useEffect(() => {
+    loadReceivingIssues();
+  }, [projectId]);
 
   // No longer need to load vendor grouping - checkbox view uses equipment directly
 
@@ -311,6 +321,41 @@ const PMOrderEquipmentPageEnhanced = () => {
       setError('Failed to load purchase orders');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load receiving issues for this project
+  const loadReceivingIssues = async () => {
+    try {
+      const { data: issues, error: issuesError } = await supabase
+        .from('issues')
+        .select('id, title, status, created_at, priority')
+        .eq('project_id', projectId)
+        .like('title', 'Receiving Issue:%')
+        .in('status', ['open', 'blocked'])
+        .order('created_at', { ascending: false });
+
+      if (issuesError) throw issuesError;
+
+      setReceivingIssues(issues || []);
+
+      // Build a map of PO numbers to issue counts
+      const poIssueMap = {};
+      (issues || []).forEach(issue => {
+        // Extract PO number from title: "Receiving Issue: ... (PO XXXXX)"
+        // PO number format can be "PO-00123" or just "00123" - extract the full value in parentheses
+        const poMatch = issue.title.match(/\(PO\s+([^)]+)\)/);
+        if (poMatch) {
+          const poNumber = poMatch[1].trim();
+          poIssueMap[poNumber] = (poIssueMap[poNumber] || 0) + 1;
+        }
+      });
+      setOpenIssuesByPO(poIssueMap);
+      console.log('[PMOrderEquipment] Loaded receiving issues:', issues?.length, 'Issues by PO:', poIssueMap);
+    } catch (err) {
+      console.error('Failed to load receiving issues:', err);
+      setReceivingIssues([]);
+      setOpenIssuesByPO({});
     }
   };
 
@@ -1392,6 +1437,19 @@ const PMOrderEquipmentPageEnhanced = () => {
             >
               Active POs
             </button>
+            {/* Issues tab - only visible when there are open receiving issues */}
+            {receivingIssues.length > 0 && (
+              <button
+                onClick={() => setTab('issues')}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${tab === 'issues'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 border-2 border-red-500'
+                  }`}
+              >
+                <AlertCircle className="w-4 h-4" />
+                Issues ({receivingIssues.length})
+              </button>
+            )}
           </div>
         </div>
 
@@ -1539,11 +1597,23 @@ const PMOrderEquipmentPageEnhanced = () => {
                       </div>
 
                       <div className="space-y-3">
-                        {submittedPOs.map((po) => (
+                        {submittedPOs.map((po) => {
+                          // Check if this PO has open issues - match using full PO number
+                          const hasOpenIssues = po.po_number && openIssuesByPO[po.po_number] > 0;
+                          const issueCount = hasOpenIssues ? openIssuesByPO[po.po_number] : 0;
+
+                          return (
                           <div
                             key={po.id}
-                            style={sectionStyles.card}
-                            className="border-l-4 border-violet-500"
+                            style={{
+                              ...sectionStyles.card,
+                              ...(hasOpenIssues ? {
+                                borderColor: '#dc2626',
+                                borderWidth: '2px',
+                                boxShadow: '0 0 0 1px rgba(220, 38, 38, 0.3)'
+                              } : {})
+                            }}
+                            className={`border-l-4 ${hasOpenIssues ? 'border-l-red-500 bg-red-50 dark:bg-red-900/10' : 'border-violet-500'}`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
@@ -1561,7 +1631,21 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
                                     {po.milestone_stage === 'prewire_prep' ? 'Prewire' : 'Trim'}
                                   </span>
+                                  {hasOpenIssues && (
+                                    <span className="px-2 py-1 text-xs font-medium rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 flex items-center gap-1">
+                                      <AlertCircle className="w-3 h-3" />
+                                      {issueCount} Issue{issueCount > 1 ? 's' : ''}
+                                    </span>
+                                  )}
                                 </div>
+
+                                {/* Issue warning banner */}
+                                {hasOpenIssues && (
+                                  <div className="mb-3 p-2 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 rounded text-xs text-red-800 dark:text-red-200 flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                                    <span>This PO has {issueCount} open receiving issue{issueCount > 1 ? 's' : ''} that need attention.</span>
+                                  </div>
+                                )}
 
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                   <div>
@@ -1638,13 +1722,102 @@ const PMOrderEquipmentPageEnhanced = () => {
                               </div>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })()}
               </>
             )}
+          </div>
+        )}
+
+        {/* Issues Tab Content */}
+        {tab === 'issues' && (
+          <div>
+            <div style={sectionStyles.card} className="mb-6">
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Receiving Issues ({receivingIssues.length})
+                </h2>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                These are open issues reported during parts receiving. Each issue is linked to a PO and needs attention before the PO can be considered fully received.
+              </p>
+
+              {receivingIssues.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                  <p className="text-gray-600 dark:text-gray-400">
+                    No open receiving issues. Great job!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {receivingIssues.map((issue) => {
+                    // Extract PO number from title - match full PO number format
+                    const poMatch = issue.title.match(/\(PO\s+([^)]+)\)/);
+                    const poNumber = poMatch ? poMatch[1].trim() : null;
+                    const linkedPO = poNumber ? purchaseOrders.find(po => po.po_number === poNumber) : null;
+
+                    return (
+                      <div
+                        key={issue.id}
+                        className="p-4 border-2 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 rounded-lg"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 dark:text-white">
+                              {issue.title}
+                            </h3>
+                            <div className="flex items-center gap-4 mt-2 text-sm">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                issue.status === 'blocked'
+                                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                              }`}>
+                                {issue.status}
+                              </span>
+                              <span className="text-gray-600 dark:text-gray-400">
+                                Created: {new Date(issue.created_at).toLocaleDateString()}
+                              </span>
+                              {linkedPO && (
+                                <span className="text-gray-600 dark:text-gray-400">
+                                  Supplier: {linkedPO.supplier?.name || 'Unknown'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            {linkedPO && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedPOId(linkedPO.id);
+                                  setPoDetailsModalOpen(true);
+                                }}
+                              >
+                                View PO
+                              </Button>
+                            )}
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => navigate(`/project/${projectId}/issues/${issue.id}`)}
+                            >
+                              View Issue
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

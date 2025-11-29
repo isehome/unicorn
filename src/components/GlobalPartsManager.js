@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, FileText, Package, Edit2, Wrench } from 'lucide-react';
+import { Search, FileText, Package, Edit2, Wrench, ExternalLink } from 'lucide-react';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
@@ -379,47 +379,58 @@ const GlobalPartsManager = () => {
                 )}
               </div>
 
-              {/* Documentation Status */}
-              <div className="flex items-center gap-3 text-xs">
-                <div
-                  className={`flex items-center gap-1 ${
-                    docStatus.hasSchematic
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  <FileText className="h-3 w-3" />
-                  <span>Schematic</span>
-                </div>
-                <div
-                  className={`flex items-center gap-1 ${
-                    docStatus.hasInstall
-                      ? 'text-blue-600 dark:text-blue-400'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  <FileText className="h-3 w-3" />
-                  <span>
-                    Install ({part.install_manual_urls?.length || 0})
-                  </span>
-                </div>
-                <div
-                  className={`flex items-center gap-1 ${
-                    docStatus.hasTechnical
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-400'
-                  }`}
-                >
-                  <FileText className="h-3 w-3" />
-                  <span>
-                    Tech ({part.technical_manual_urls?.length || 0})
-                  </span>
-                </div>
-              </div>
+              {/* Documentation Links - Clickable */}
+              {docStatus.count > 0 ? (
+                <div className="space-y-1.5 border-t border-gray-200 dark:border-gray-700 pt-3">
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Documentation:</p>
 
-              {docStatus.count > 0 && (
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {docStatus.count} of 3 documentation types added
+                  {/* Schematic Link */}
+                  {part.schematic_url && (
+                    <a
+                      href={part.schematic_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 hover:underline"
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span>Schematic</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+
+                  {/* Install Manuals */}
+                  {part.install_manual_urls?.map((url, idx) => (
+                    <a
+                      key={`install-${idx}`}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span>Install Manual {part.install_manual_urls.length > 1 ? `#${idx + 1}` : ''}</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ))}
+
+                  {/* Technical Manuals */}
+                  {part.technical_manual_urls?.map((url, idx) => (
+                    <a
+                      key={`tech-${idx}`}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 text-xs text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 hover:underline"
+                    >
+                      <FileText className="h-3 w-3" />
+                      <span>Technical Manual {part.technical_manual_urls.length > 1 ? `#${idx + 1}` : ''}</span>
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-gray-400 dark:text-gray-500 italic">
+                  No documentation added
                 </div>
               )}
             </div>

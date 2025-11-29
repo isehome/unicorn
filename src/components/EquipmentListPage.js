@@ -3,13 +3,107 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+
+// Date Detail Modal Component
+const DateDetailModal = ({ isOpen, onClose, title, date, userId, mode }) => {
+  const [userName, setUserName] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && userId) {
+      setLoading(true);
+      // Use profiles table (the correct user table in this schema)
+      supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', userId)
+        .single()
+        .then(({ data, error }) => {
+          if (!error && data) {
+            setUserName(data.full_name || data.email || 'User ID: ' + userId);
+          } else {
+            // User exists but profile lookup failed - show ID for debugging
+            setUserName('User ID: ' + userId);
+          }
+          setLoading(false);
+        });
+    } else if (isOpen) {
+      // No user ID means the action occurred before user tracking was implemented
+      // This is historical data - show that tracking was not available at that time
+      setUserName('Tracking unavailable (legacy data)');
+      setLoading(false);
+    }
+  }, [isOpen, userId]);
+
+  if (!isOpen) return null;
+
+  const formattedDate = date ? new Date(date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }) : 'N/A';
+
+  const formattedTime = date ? new Date(date).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }) : '';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative rounded-xl shadow-xl max-w-sm w-full p-5"
+        style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        >
+          <X size={18} className="text-gray-500" />
+        </button>
+
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{title}</h3>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30">
+              <Clock size={18} className="text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Date & Time</p>
+              <p className="font-medium text-gray-900 dark:text-gray-100">{formattedDate}</p>
+              {formattedTime && (
+                <p className="text-sm text-gray-600 dark:text-gray-300">{formattedTime}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+              <User size={18} className="text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Completed By</p>
+              <p className="font-medium text-gray-900 dark:text-gray-100">
+                {loading ? 'Loading...' : userName}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const mapEquipmentRecord = (item) => {
   const name = item.name || item.global_part?.name || 'Unnamed Equipment';
@@ -54,8 +148,12 @@ const mapEquipmentRecord = (item) => {
     fullyReceived: isFullyReceived,
     onsite: Boolean(item.onsite_confirmed), // MANUAL: Controlled by onsite checkbox
     onsiteAt: item.onsite_confirmed_at || null,
+    onsiteBy: item.onsite_confirmed_by || null,
     installed: Boolean(item.installed), // INSTALLED: Auto-set when linked to wire drop, or manual for wireless items
     installedAt: item.installed_at || null,
+    installedBy: item.installed_by || null,
+    receivedBy: item.received_by || null,
+    orderedBy: item.ordered_confirmed_by || null,
     isWireDropVisible, // Used for filtering - only show equipment marked for wire drop selector
     notes: item.notes || '',
     homekitQRUrl,
@@ -63,6 +161,10 @@ const mapEquipmentRecord = (item) => {
     homekitQRItemId: item.homekit_qr_sharepoint_item_id || null,
     // Additional fields for expanded view
     description: item.description || item.global_part?.description || null,
+    // Documentation links from global_part
+    schematicUrl: item.global_part?.schematic_url || null,
+    installManualUrls: item.global_part?.install_manual_urls || [],
+    technicalManualUrls: item.global_part?.technical_manual_urls || [],
     // Network information (UniFi)
     unifiMac: item.unifi_client_mac || null,
     unifiIp: item.unifi_last_ip || null,
@@ -110,6 +212,7 @@ const EquipmentListPage = () => {
   const [installFilter, setInstallFilter] = useState('all');
   const [installedFilter, setInstalledFilter] = useState('all'); // 'all', 'installed', 'not_installed'
   const [expandedItems, setExpandedItems] = useState({}); // Track expanded equipment cards
+  const [dateModal, setDateModal] = useState({ isOpen: false, title: '', date: null, userId: null }); // Date detail modal state
 
   const toggleExpanded = (itemId) => {
     setExpandedItems(prev => ({
@@ -383,7 +486,7 @@ const EquipmentListPage = () => {
           className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
           onClick={() => toggleExpanded(item.id)}
         >
-          {/* Top row: Chevron + Name */}
+          {/* Single row: Chevron + Name + Status indicators */}
           <div className="flex items-center gap-3">
             <button className="flex-shrink-0 text-gray-400">
               {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
@@ -394,53 +497,29 @@ const EquipmentListPage = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
               )}
             </div>
-          </div>
-
-          {/* Bottom row: Status Checkboxes */}
-          <div className="flex items-center gap-4 mt-2 ml-7" onClick={(e) => e.stopPropagation()}>
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-not-allowed" title="Ordered">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 opacity-75 cursor-not-allowed"
-                checked={item.ordered}
-                readOnly
-                disabled
-              />
-              <span className="font-medium">Ordered</span>
-            </label>
-
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-not-allowed" title="Received">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
-                checked={item.received}
-                readOnly
-                disabled
-              />
-              <span className="font-medium">Received</span>
-            </label>
-
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Onsite">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                checked={item.onsite}
-                onChange={(e) => toggleStatus(item.id, 'onsite', e.target.checked)}
-                disabled={statusUpdating === item.id}
-              />
-              <span className="font-medium">Onsite</span>
-            </label>
-
-            <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer" title="Installed">
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                checked={item.installed}
-                onChange={(e) => toggleStatus(item.id, 'installed', e.target.checked)}
-                disabled={statusUpdating === item.id}
-              />
-              <span className="font-medium">Installed</span>
-            </label>
+            {/* Compact status indicators */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {item.installed && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  Installed
+                </span>
+              )}
+              {!item.installed && item.onsite && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                  Onsite
+                </span>
+              )}
+              {!item.installed && !item.onsite && item.received && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                  Received
+                </span>
+              )}
+              {!item.installed && !item.onsite && !item.received && item.ordered && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                  Ordered
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -481,52 +560,158 @@ const EquipmentListPage = () => {
               )}
             </div>
 
-            {/* Status with Dates */}
+            {/* Status Checkboxes with Clickable Dates */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6' }}>
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Ordered</span>
-                <p className={`font-medium ${item.ordered ? 'text-violet-600 dark:text-violet-400' : 'text-gray-400'}`}>
-                  {item.ordered ? (item.orderedAt ? <DateField date={item.orderedAt} variant="inline" /> : 'Yes') : 'No'}
-                </p>
+              {/* Ordered - Read-only (auto-synced with PO system) */}
+              <div className="flex flex-col gap-1">
+                <label className="inline-flex items-center gap-2 cursor-not-allowed" title="Auto-synced with Purchase Orders">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 opacity-75 cursor-not-allowed"
+                    checked={item.ordered}
+                    readOnly
+                    disabled
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Ordered</span>
+                </label>
+                {item.ordered && item.orderedAt && (
+                  <button
+                    onClick={() => setDateModal({ isOpen: true, title: 'Ordered', date: item.orderedAt, userId: item.orderedBy })}
+                    className="ml-6 text-left text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <DateField date={item.orderedAt} variant="inline" />
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Received</span>
-                <p className={`font-medium ${item.received ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
-                  {item.received ? (item.receivedAt ? <DateField date={item.receivedAt} variant="inline" /> : 'Yes') : 'No'}
-                </p>
+
+              {/* Received - Read-only (auto-synced with Parts Receiving) */}
+              <div className="flex flex-col gap-1">
+                <label className="inline-flex items-center gap-2 cursor-not-allowed" title="Auto-synced with Parts Receiving">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
+                    checked={item.received}
+                    readOnly
+                    disabled
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Received</span>
+                </label>
+                {item.received && item.receivedAt && (
+                  <button
+                    onClick={() => setDateModal({ isOpen: true, title: 'Received', date: item.receivedAt, userId: item.receivedBy })}
+                    className="ml-6 text-left text-green-600 dark:text-green-400 hover:underline"
+                  >
+                    <DateField date={item.receivedAt} variant="inline" />
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Onsite</span>
-                <p className={`font-medium ${item.onsite ? 'text-violet-600 dark:text-violet-400' : 'text-gray-400'}`}>
-                  {item.onsite ? (item.onsiteAt ? <DateField date={item.onsiteAt} variant="inline" /> : 'Yes') : 'No'}
-                </p>
+
+              {/* Onsite - Manual toggle */}
+              <div className="flex flex-col gap-1">
+                <label className="inline-flex items-center gap-2 cursor-pointer" title="Mark as onsite">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                    checked={item.onsite}
+                    onChange={(e) => toggleStatus(item.id, 'onsite', e.target.checked)}
+                    disabled={statusUpdating === item.id}
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Onsite</span>
+                </label>
+                {item.onsite && item.onsiteAt && (
+                  <button
+                    onClick={() => setDateModal({ isOpen: true, title: 'Onsite', date: item.onsiteAt, userId: item.onsiteBy })}
+                    className="ml-6 text-left text-violet-600 dark:text-violet-400 hover:underline"
+                  >
+                    <DateField date={item.onsiteAt} variant="inline" />
+                  </button>
+                )}
               </div>
-              <div>
-                <span className="text-gray-500 dark:text-gray-400">Installed</span>
-                <p className={`font-medium ${item.installed ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
-                  {item.installed ? (item.installedAt ? <DateField date={item.installedAt} variant="inline" /> : 'Yes') : 'No'}
-                </p>
+
+              {/* Installed - Manual toggle */}
+              <div className="flex flex-col gap-1">
+                <label className="inline-flex items-center gap-2 cursor-pointer" title="Mark as installed">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    checked={item.installed}
+                    onChange={(e) => toggleStatus(item.id, 'installed', e.target.checked)}
+                    disabled={statusUpdating === item.id}
+                  />
+                  <span className="font-medium text-gray-700 dark:text-gray-300">Installed</span>
+                </label>
+                {item.installed && item.installedAt && (
+                  <button
+                    onClick={() => setDateModal({ isOpen: true, title: 'Installed', date: item.installedAt, userId: item.installedBy })}
+                    className="ml-6 text-left text-emerald-600 dark:text-emerald-400 hover:underline"
+                  >
+                    <DateField date={item.installedAt} variant="inline" />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Documentation Links Placeholder */}
+            {/* Documentation Links */}
             <div className="flex flex-wrap gap-3 mb-4">
-              <button
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
-                title="Manuals (coming soon)"
-                disabled
-              >
-                <BookOpen size={14} />
-                <span>Manuals</span>
-              </button>
-              <button
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700"
-                title="Schematics (coming soon)"
-                disabled
-              >
-                <FileText size={14} />
-                <span>Schematics</span>
-              </button>
+              {/* Schematic Link */}
+              {item.schematicUrl ? (
+                <a
+                  href={item.schematicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                >
+                  <FileText size={14} />
+                  <span>Schematic</span>
+                  <ExternalLink size={12} />
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                  <FileText size={14} />
+                  <span>No Schematic</span>
+                </span>
+              )}
+
+              {/* Install Manuals */}
+              {item.installManualUrls && item.installManualUrls.length > 0 ? (
+                item.installManualUrls.map((url, idx) => (
+                  <a
+                    key={`install-${idx}`}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50"
+                  >
+                    <BookOpen size={14} />
+                    <span>Install Manual{item.installManualUrls.length > 1 ? ` #${idx + 1}` : ''}</span>
+                    <ExternalLink size={12} />
+                  </a>
+                ))
+              ) : (
+                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                  <BookOpen size={14} />
+                  <span>No Install Manual</span>
+                </span>
+              )}
+
+              {/* Technical Manuals */}
+              {item.technicalManualUrls && item.technicalManualUrls.length > 0 && (
+                item.technicalManualUrls.map((url, idx) => (
+                  <a
+                    key={`tech-${idx}`}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+                  >
+                    <FileText size={14} />
+                    <span>Tech Manual{item.technicalManualUrls.length > 1 ? ` #${idx + 1}` : ''}</span>
+                    <ExternalLink size={12} />
+                  </a>
+                ))
+              )}
+
+              {/* HomeKit QR */}
               {item.homekitQRUrl && (
                 <button
                   onClick={() => openHomeKitViewer(item)}
@@ -774,6 +959,16 @@ const EquipmentListPage = () => {
           </div>
         )}
       </section>
+
+      {/* Date Detail Modal */}
+      <DateDetailModal
+        isOpen={dateModal.isOpen}
+        onClose={() => setDateModal({ isOpen: false, title: '', date: null, userId: null })}
+        title={dateModal.title}
+        date={dateModal.date}
+        userId={dateModal.userId}
+        mode={mode}
+      />
     </div>
   );
 };

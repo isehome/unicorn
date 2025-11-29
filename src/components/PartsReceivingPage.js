@@ -34,14 +34,15 @@ import {
   PackageCheck,
   ChevronDown,
   ChevronRight,
-  Truck
+  Truck,
+  AlertTriangle
 } from 'lucide-react';
 
 const PartsReceivingPageNew = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { mode } = useTheme();
-  const { user } = useAuth();
+  const { user, acquireToken } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
 
   const [loading, setLoading] = useState(true);
@@ -51,6 +52,10 @@ const PartsReceivingPageNew = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim'
+  const [issueModal, setIssueModal] = useState({ isOpen: false, itemInfo: null });
+  const [issueDescription, setIssueDescription] = useState('');
+  const [submittingIssue, setSubmittingIssue] = useState(false);
+  const [openIssuesByPO, setOpenIssuesByPO] = useState({}); // Track open issues by PO number
 
   useEffect(() => {
     if (projectId) {
@@ -99,6 +104,28 @@ const PartsReceivingPageNew = () => {
 
       setPurchaseOrders(pos || []);
 
+      // Query for open receiving issues for this project
+      // Issues created from receiving have titles like "Receiving Issue: ... (PO XXXXX)"
+      const { data: openIssues } = await supabase
+        .from('issues')
+        .select('id, title, status')
+        .eq('project_id', projectId)
+        .like('title', 'Receiving Issue:%')
+        .in('status', ['open', 'blocked']);
+
+      // Map issues to their PO numbers
+      const issuesByPO = {};
+      (openIssues || []).forEach(issue => {
+        // Extract PO number from title: "Receiving Issue: ... (PO XXXXX)"
+        const match = issue.title.match(/\(PO\s+([^)]+)\)/);
+        if (match) {
+          const poNum = match[1];
+          if (!issuesByPO[poNum]) issuesByPO[poNum] = [];
+          issuesByPO[poNum].push(issue);
+        }
+      });
+      setOpenIssuesByPO(issuesByPO);
+
       // Auto-expand outstanding POs
       const outstanding = (pos || []).filter(po => {
         const hasUnreceived = (po.items || []).some(item =>
@@ -131,6 +158,12 @@ const PartsReceivingPageNew = () => {
   const handleUpdateReceived = async (lineItemId, projectEquipmentId, newQuantity) => {
     console.log('🚨 [PartsReceiving] handleUpdateReceived CALLED:', { lineItemId, projectEquipmentId, newQuantity, projectId });
 
+    // CRITICAL: User must be authenticated - never allow updates without a real user
+    if (!user?.id) {
+      setError('You must be logged in to receive parts. Please refresh and try again.');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -140,7 +173,7 @@ const PartsReceivingPageNew = () => {
         .from('purchase_order_items')
         .update({
           quantity_received: newQuantity,
-          received_by: user?.id,
+          received_by: user.id,
           received_at: new Date().toISOString()
         })
         .eq('id', lineItemId);
@@ -163,14 +196,28 @@ const PartsReceivingPageNew = () => {
 
       console.log('[PartsReceiving] Calculated total received for equipment:', { projectEquipmentId, totalReceived });
 
+      // Get current equipment to check if this is first receipt
+      const { data: currentEquip } = await supabase
+        .from('project_equipment')
+        .select('received_date')
+        .eq('id', projectEquipmentId)
+        .single();
+
       // Update project_equipment.received_quantity and track who received it
+      // Only set received_date on FIRST receipt (preserve original date)
+      const equipUpdate = {
+        received_quantity: totalReceived,
+        received_by: user.id
+      };
+
+      // Only set received_date if this is the first time receiving (no existing date)
+      if (!currentEquip?.received_date && totalReceived > 0) {
+        equipUpdate.received_date = new Date().toISOString();
+      }
+
       const { error: equipError } = await supabase
         .from('project_equipment')
-        .update({
-          received_quantity: totalReceived,
-          received_date: new Date().toISOString(),
-          received_by: user?.id
-        })
+        .update(equipUpdate)
         .eq('id', projectEquipmentId);
 
       if (equipError) throw equipError;
@@ -210,23 +257,82 @@ const PartsReceivingPageNew = () => {
   const handleReceiveAllPO = async (po) => {
     if (!window.confirm(`Mark all items in PO ${po.po_number} as fully received?`)) return;
 
+    // CRITICAL: User must be authenticated - never allow updates without a real user
+    if (!user?.id) {
+      setError('You must be logged in to receive parts. Please refresh and try again.');
+      return;
+    }
+
     console.log('🚨 [PartsReceiving] handleReceiveAllPO CALLED:', { poNumber: po.po_number, itemCount: po.items?.length, projectId });
 
     try {
       setSaving(true);
       setError(null);
 
-      // Update all line items in this PO
+      // Update all line items in this PO - do database updates directly to avoid nested setSaving calls
       console.log('[PartsReceiving] Processing all items in PO...');
       for (const item of po.items) {
-        await handleUpdateReceived(
-          item.id,
-          item.project_equipment_id,
-          item.quantity_ordered
+        const lineItemId = item.id;
+        const projectEquipmentId = item.project_equipment_id;
+        const newQuantity = item.quantity_ordered;
+
+        // Update purchase_order_items.quantity_received
+        const { error: updateError } = await supabase
+          .from('purchase_order_items')
+          .update({
+            quantity_received: newQuantity,
+            received_by: user.id,
+            received_at: new Date().toISOString()
+          })
+          .eq('id', lineItemId);
+
+        if (updateError) throw updateError;
+
+        // Recalculate total for equipment
+        const { data: allItems, error: sumError } = await supabase
+          .from('purchase_order_items')
+          .select('quantity_received')
+          .eq('project_equipment_id', projectEquipmentId);
+
+        if (sumError) throw sumError;
+
+        const totalReceived = (allItems || []).reduce(
+          (sum, i) => sum + (i.quantity_received || 0),
+          0
         );
+
+        // Get current equipment to check if this is first receipt
+        const { data: currentEquip } = await supabase
+          .from('project_equipment')
+          .select('received_date')
+          .eq('id', projectEquipmentId)
+          .single();
+
+        // Update project_equipment - only set date on first receipt
+        const equipUpdate = {
+          received_quantity: totalReceived,
+          received_by: user.id
+        };
+
+        if (!currentEquip?.received_date && totalReceived > 0) {
+          equipUpdate.received_date = new Date().toISOString();
+        }
+
+        const { error: equipError } = await supabase
+          .from('project_equipment')
+          .update(equipUpdate)
+          .eq('id', projectEquipmentId);
+
+        if (equipError) throw equipError;
       }
 
       console.log('[PartsReceiving] All PO items processed');
+
+      // Reload data once after all updates
+      await loadPurchaseOrders();
+
+      // Invalidate milestone cache
+      milestoneCacheService.invalidate(projectId);
 
       // Check and auto-complete prep milestones if all items are received
       console.log('🚨 [PartsReceiving] About to call autoCompletePrepMilestones for full PO receive, project:', projectId);
@@ -282,6 +388,242 @@ const PartsReceivingPageNew = () => {
       return { label: `${percent}% Received`, color: 'text-yellow-600 dark:text-yellow-400', percent };
     } else {
       return { label: 'Not Received', color: 'text-blue-600 dark:text-blue-400', percent };
+    }
+  };
+
+  // Handler to open issue modal
+  const handleReportIssue = (itemInfo) => {
+    setIssueDescription('');
+    setIssueModal({ isOpen: true, itemInfo });
+  };
+
+  // Handler to submit issue - creates issue on PO and emails the person who entered the order
+  const handleSubmitIssue = async () => {
+    if (!issueDescription.trim() || !issueModal.itemInfo) return;
+
+    // CRITICAL: User must be authenticated - never allow issues without a real user
+    if (!user?.id) {
+      setError('You must be logged in to report issues. Please refresh and try again.');
+      return;
+    }
+
+    try {
+      setSubmittingIssue(true);
+      const info = issueModal.itemInfo;
+
+      // Find the PO to get creator info
+      const po = purchaseOrders.find(p => p.po_number === info.poNumber);
+
+      // Create an issue linked to the PO
+      const issueTitle = `Receiving Issue: ${info.partNumber || info.partName} (PO ${info.poNumber})`;
+      const issueBody = `**Problem reported during parts receiving**\n\n` +
+        `**PO Number:** ${info.poNumber}\n` +
+        `**Part Number:** ${info.partNumber || 'N/A'}\n` +
+        `**Part Name:** ${info.partName || 'N/A'}\n` +
+        `**Quantity Ordered:** ${info.ordered}\n` +
+        `**Quantity Received:** ${info.received}\n\n` +
+        `**Issue Description:**\n${issueDescription}\n\n` +
+        `**Reported by:** ${user.full_name || user.email}`;
+
+      // Insert issue into issues table (correct table name)
+      const { data: issue, error: issueError } = await supabase
+        .from('issues')
+        .insert({
+          project_id: projectId,
+          title: issueTitle,
+          description: issueBody,
+          priority: 'medium',
+          status: 'open',
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (issueError) throw issueError;
+
+      // Add the user's description as the first comment on the issue
+      if (issue?.id && issueDescription.trim()) {
+        try {
+          await supabase
+            .from('issue_comments')
+            .insert({
+              issue_id: issue.id,
+              text: issueDescription.trim(),
+              author_id: user.id
+            });
+        } catch (commentErr) {
+          console.warn('Failed to add initial comment:', commentErr);
+          // Don't block on comment failure
+        }
+      }
+
+      // Auto-tag the "Orders" team as a stakeholder on this issue and notify them
+      if (issue?.id) {
+        try {
+          console.log('[PartsReceiving] Looking for Orders stakeholder for project:', projectId);
+
+          // Find the Orders role stakeholder for this project
+          // Use select('*') and filter in code - the ilike filter may be causing 400 errors
+          const { data: allStakeholders, error: stakeholderError } = await supabase
+            .from('project_stakeholders_detailed')
+            .select('*')
+            .eq('project_id', projectId);
+
+          // Filter for "order" role in code
+          const ordersStakeholder = (allStakeholders || []).find(s =>
+            s.role_name && s.role_name.toLowerCase().includes('order')
+          );
+
+          if (stakeholderError) {
+            console.error('[PartsReceiving] Error finding Orders stakeholder:', stakeholderError);
+          }
+
+          console.log('[PartsReceiving] All stakeholders for project:', allStakeholders);
+          console.log('[PartsReceiving] Orders stakeholder found:', ordersStakeholder);
+
+          if (ordersStakeholder?.assignment_id) {
+            console.log('[PartsReceiving] Tagging stakeholder on issue:', {
+              issueId: issue.id,
+              stakeholderId: ordersStakeholder.assignment_id,
+              stakeholderName: ordersStakeholder.contact_name,
+              stakeholderEmail: ordersStakeholder.email
+            });
+
+            // Tag the stakeholder
+            const { error: tagError } = await supabase
+              .from('issue_stakeholder_tags')
+              .insert({
+                issue_id: issue.id,
+                project_stakeholder_id: ordersStakeholder.assignment_id,
+                tag_type: 'assigned'
+              });
+
+            if (tagError) {
+              console.error('[PartsReceiving] Error inserting stakeholder tag:', tagError);
+            } else {
+              console.log('[PartsReceiving] Successfully tagged Orders stakeholder on issue');
+            }
+
+            // Send email notification using the standard notifyStakeholderAdded function
+            // This sends from the authenticated user's email (sendAsUser: true)
+            if (ordersStakeholder.email) {
+              try {
+                const { notifyStakeholderAdded } = await import('../services/issueNotificationService');
+
+                // Get project name for context
+                const { data: project } = await supabase
+                  .from('projects')
+                  .select('name')
+                  .eq('id', projectId)
+                  .single();
+
+                // Acquire auth token to send email as current user
+                const graphToken = await acquireToken();
+
+                const issueUrl = `${window.location.origin}/project/${projectId}/issues/${issue.id}`;
+                const issueContext = {
+                  id: issue.id,
+                  title: issueTitle,
+                  project_id: projectId
+                };
+                const projectInfo = { name: project?.name };
+                const actorInfo = {
+                  name: user.full_name || user.email,
+                  email: user.email
+                };
+
+                await notifyStakeholderAdded(
+                  {
+                    issue: issueContext,
+                    project: projectInfo,
+                    stakeholder: ordersStakeholder,
+                    actor: actorInfo,
+                    issueUrl
+                  },
+                  { authToken: graphToken }
+                );
+
+                console.log('[PartsReceiving] Sent notification email to orders stakeholder:', ordersStakeholder.email);
+              } catch (emailErr) {
+                console.warn('Failed to send email to orders stakeholder:', emailErr);
+                // Don't block on email failure
+              }
+            }
+          } else {
+            console.warn('[PartsReceiving] No Orders stakeholder found for project. Skipping auto-tag.');
+          }
+        } catch (tagErr) {
+          console.warn('Failed to auto-tag orders stakeholder:', tagErr);
+          // Don't block on tagging failure
+        }
+      }
+
+      // Update the PO to flag it has issues
+      if (po?.id) {
+        await supabase
+          .from('purchase_orders')
+          .update({
+            has_receiving_issues: true,
+            notes: po.notes
+              ? `${po.notes}\n\n[RECEIVING ISSUE] ${new Date().toLocaleDateString()}: ${issueDescription}`
+              : `[RECEIVING ISSUE] ${new Date().toLocaleDateString()}: ${issueDescription}`
+          })
+          .eq('id', po.id);
+
+        // Send email to the person who created the PO
+        if (po.created_by) {
+          // Use profiles table (not users)
+          const { data: creator } = await supabase
+            .from('profiles')
+            .select('email, full_name')
+            .eq('id', po.created_by)
+            .single();
+
+          if (creator?.email) {
+            // Use the notification service to send email
+            try {
+              const { sendNotificationEmail, wrapEmailHtml } = await import('../services/issueNotificationService');
+
+              const emailHtml = wrapEmailHtml(`
+                <h2 style="color: #dc2626; margin-bottom: 16px;">⚠️ Receiving Issue Reported</h2>
+                <p>A receiving issue has been reported for a purchase order you created:</p>
+                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                  <p style="margin: 0 0 8px 0;"><strong>PO Number:</strong> ${info.poNumber}</p>
+                  <p style="margin: 0 0 8px 0;"><strong>Part:</strong> ${info.partNumber || info.partName || 'N/A'}</p>
+                  <p style="margin: 0 0 8px 0;"><strong>Ordered:</strong> ${info.ordered} | <strong>Received:</strong> ${info.received}</p>
+                  <p style="margin: 0;"><strong>Issue:</strong> ${issueDescription}</p>
+                </div>
+                <p><strong>Reported by:</strong> ${user.full_name || user.email}</p>
+                <p style="color: #666; font-size: 14px;">Please review this issue and take appropriate action.</p>
+              `);
+
+              await sendNotificationEmail({
+                to: creator.email,
+                subject: `[Receiving Issue] PO ${info.poNumber} - ${info.partNumber || info.partName}`,
+                html: emailHtml,
+                text: `Receiving Issue: PO ${info.poNumber}, Part: ${info.partNumber || info.partName}, Issue: ${issueDescription}`
+              });
+            } catch (emailErr) {
+              console.warn('Failed to send notification email:', emailErr);
+              // Don't block on email failure
+            }
+          }
+        }
+      }
+
+      setSuccessMessage('Issue reported successfully. The PO creator has been notified.');
+      setTimeout(() => setSuccessMessage(null), 5000);
+      setIssueModal({ isOpen: false, itemInfo: null });
+      setIssueDescription('');
+
+      // Reload POs to show updated status
+      await loadPurchaseOrders();
+
+    } catch (err) {
+      console.error('Failed to report issue:', err);
+      setError(err.message || 'Failed to report issue');
+    } finally {
+      setSubmittingIssue(false);
     }
   };
 
@@ -360,11 +702,20 @@ const PartsReceivingPageNew = () => {
               {outstandingPOs.map((po) => {
                 const status = getPOStatus(po);
                 const isExpanded = expandedPOs.has(po.id);
+                const hasOpenIssues = openIssuesByPO[po.po_number]?.length > 0;
+                const openIssueCount = openIssuesByPO[po.po_number]?.length || 0;
 
                 return (
                   <div
                     key={po.id}
-                    style={sectionStyles.card}
+                    style={{
+                      ...sectionStyles.card,
+                      ...(hasOpenIssues ? {
+                        borderColor: '#dc2626',
+                        borderWidth: '2px',
+                        boxShadow: '0 0 0 1px rgba(220, 38, 38, 0.3)'
+                      } : {})
+                    }}
                     className="overflow-hidden"
                   >
                     {/* PO Header */}
@@ -380,6 +731,12 @@ const PartsReceivingPageNew = () => {
                           <span className={`text-xs font-medium ${status.color}`}>
                             {status.label}
                           </span>
+                          {hasOpenIssues && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full">
+                              <AlertTriangle className="w-3 h-3" />
+                              {openIssueCount} Issue{openIssueCount > 1 ? 's' : ''}
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                           {po.supplier?.name} • Ordered: <DateField date={po.order_date} variant="inline" />
@@ -447,6 +804,8 @@ const PartsReceivingPageNew = () => {
                               item={item}
                               onUpdate={handleUpdateReceived}
                               saving={saving}
+                              onReportIssue={handleReportIssue}
+                              poNumber={po.po_number}
                             />
                           ))}
                         </div>
@@ -489,21 +848,38 @@ const PartsReceivingPageNew = () => {
             <div className="space-y-3">
               {completedPOs.map((po) => {
                 const isExpanded = expandedPOs.has(po.id);
+                const hasOpenIssues = openIssuesByPO[po.po_number]?.length > 0;
+                const openIssueCount = openIssuesByPO[po.po_number]?.length || 0;
 
                 return (
                   <div
                     key={po.id}
-                    style={sectionStyles.card}
-                    className="overflow-hidden opacity-75"
+                    style={{
+                      ...sectionStyles.card,
+                      ...(hasOpenIssues ? {
+                        borderColor: '#dc2626',
+                        borderWidth: '2px',
+                        boxShadow: '0 0 0 1px rgba(220, 38, 38, 0.3)'
+                      } : {})
+                    }}
+                    className={`overflow-hidden ${hasOpenIssues ? '' : 'opacity-75'}`}
                   >
                     <button
                       onClick={() => togglePO(po.id)}
                       className="w-full flex items-center justify-between p-4 text-left"
                     >
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 dark:text-white">
-                          {po.po_number}
-                        </h3>
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="font-semibold text-gray-900 dark:text-white">
+                            {po.po_number}
+                          </h3>
+                          {hasOpenIssues && (
+                            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full">
+                              <AlertTriangle className="w-3 h-3" />
+                              {openIssueCount} Issue{openIssueCount > 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                           {po.supplier?.name}
                         </p>
@@ -548,6 +924,8 @@ const PartsReceivingPageNew = () => {
                               item={item}
                               onUpdate={handleUpdateReceived}
                               saving={saving}
+                              onReportIssue={handleReportIssue}
+                              poNumber={po.po_number}
                             />
                           ))}
                         </div>
@@ -579,12 +957,90 @@ const PartsReceivingPageNew = () => {
           </div>
         )}
       </div>
+
+      {/* Issue Report Modal */}
+      {issueModal.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIssueModal({ isOpen: false, itemInfo: null })}>
+          <div
+            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                <AlertTriangle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Report Issue</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  PO {issueModal.itemInfo?.poNumber} - {issueModal.itemInfo?.partNumber || issueModal.itemInfo?.partName}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm">
+              <div className="flex justify-between mb-1">
+                <span className="text-gray-600 dark:text-gray-400">Ordered:</span>
+                <span className="font-medium text-gray-900 dark:text-white">{issueModal.itemInfo?.ordered}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Received so far:</span>
+                <span className="font-medium text-gray-900 dark:text-white">{issueModal.itemInfo?.received}</span>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Describe the issue
+              </label>
+              <textarea
+                value={issueDescription}
+                onChange={(e) => setIssueDescription(e.target.value)}
+                placeholder="e.g., Missing items, wrong part received, damaged packaging, quantity mismatch..."
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                rows={4}
+                autoFocus
+              />
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              This will flag the PO and notify the person who created the order via email.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIssueModal({ isOpen: false, itemInfo: null })}
+                disabled={submittingIssue}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubmitIssue}
+                disabled={submittingIssue || !issueDescription.trim()}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {submittingIssue ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4" />
+                    Report Issue
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // Line Item Component
-const LineItem = ({ item, onUpdate, saving }) => {
+const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
   const [quantity, setQuantity] = useState(item.quantity_received || 0);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -592,6 +1048,18 @@ const LineItem = ({ item, onUpdate, saving }) => {
   const received = item.quantity_received || 0;
   const equipment = item.equipment || {};
   const phase = equipment.global_part?.required_for_prewire ? 'Prewire' : 'Trim';
+
+  const handleReportIssue = () => {
+    const partInfo = equipment.part_number || equipment.name || 'Unknown Part';
+    onReportIssue({
+      lineItemId: item.id,
+      poNumber,
+      partNumber: equipment.part_number,
+      partName: equipment.name || equipment.description,
+      ordered,
+      received
+    });
+  };
 
   const handleStartEdit = () => {
     setQuantity(received);
@@ -754,6 +1222,16 @@ const LineItem = ({ item, onUpdate, saving }) => {
               Adjust Quantity
             </button>
           )}
+          {/* Report Issue Button */}
+          <button
+            onClick={handleReportIssue}
+            disabled={saving}
+            className="px-3 py-2 text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50 flex items-center gap-1"
+            title="Report a problem with this item (missing, damaged, wrong item, etc.)"
+          >
+            <AlertTriangle className="w-3 h-3" />
+            Issue
+          </button>
         </div>
       )}
     </div>

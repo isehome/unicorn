@@ -24,7 +24,10 @@ import {
   Edit3,
   Trash2,
   Settings,
-  MapPin
+  MapPin,
+  AlertTriangle,
+  MessageSquare,
+  CheckCircle
 } from 'lucide-react';
 
 import { useNavigate } from 'react-router-dom';
@@ -50,6 +53,11 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [selectedPO, setSelectedPO] = useState(null);
   const [poDetailsLoading, setPoDetailsLoading] = useState(false);
+  const [receivingIssues, setReceivingIssues] = useState([]);
+  const [selectedIssue, setSelectedIssue] = useState(null);
+  const [issueComments, setIssueComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [submittingComment, setSubmittingComment] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -74,15 +82,17 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
       setLoading(true);
 
       // Load all data in parallel
-      const [suppliersData, posData, projectsData] = await Promise.all([
+      const [suppliersData, posData, projectsData, issuesData] = await Promise.all([
         supplierService.getAllSuppliers(),
         purchaseOrderService.getAllPurchaseOrders(),
-        loadProjects()
+        loadProjects(),
+        loadReceivingIssues()
       ]);
 
       setSuppliers(suppliersData || []);
       setAllPOs(posData || []);
       setProjects(projectsData || []);
+      setReceivingIssues(issuesData || []);
 
       // Calculate stats
       const activeSuppliers = (suppliersData || []).filter(s => s.is_active);
@@ -120,6 +130,115 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
     } catch (error) {
       console.error('Error loading projects:', error);
       return [];
+    }
+  };
+
+  const loadReceivingIssues = async () => {
+    try {
+      // Load all receiving issues with project info and creator info
+      const { data, error } = await supabase
+        .from('issues')
+        .select(`
+          *,
+          project:projects(id, name, project_number),
+          creator:profiles!issues_created_by_fkey(full_name, email)
+        `)
+        .like('title', 'Receiving Issue:%')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error loading receiving issues:', error);
+      return [];
+    }
+  };
+
+  const loadIssueComments = async (issueId) => {
+    try {
+      const { data, error } = await supabase
+        .from('issue_comments')
+        .select(`
+          *,
+          author:profiles!issue_comments_author_id_fkey(full_name, email)
+        `)
+        .eq('issue_id', issueId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Error loading issue comments:', error);
+      return [];
+    }
+  };
+
+  const handleIssueClick = async (issue) => {
+    setSelectedIssue(issue);
+    const comments = await loadIssueComments(issue.id);
+    setIssueComments(comments);
+    setNewComment('');
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim() || !selectedIssue) return;
+
+    try {
+      setSubmittingComment(true);
+
+      // Get current user
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        alert('You must be logged in to comment');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('issue_comments')
+        .insert({
+          issue_id: selectedIssue.id,
+          text: newComment.trim(),
+          author_id: authUser.id
+        })
+        .select(`
+          *,
+          author:profiles!issue_comments_author_id_fkey(full_name, email)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      setIssueComments(prev => [...prev, data]);
+      setNewComment('');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      alert('Failed to add comment');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleResolveIssue = async (issue) => {
+    if (!window.confirm('Mark this issue as resolved?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('issues')
+        .update({ status: 'resolved' })
+        .eq('id', issue.id);
+
+      if (error) throw error;
+
+      // Refresh data
+      const issuesData = await loadReceivingIssues();
+      setReceivingIssues(issuesData);
+
+      if (selectedIssue?.id === issue.id) {
+        setSelectedIssue({ ...selectedIssue, status: 'resolved' });
+      }
+    } catch (error) {
+      console.error('Error resolving issue:', error);
+      alert('Failed to resolve issue');
     }
   };
 
@@ -262,20 +381,34 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                   </div>
                 </div>
 
-                {/* Outstanding Value Card */}
-                <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20
-                          rounded-lg p-4 border border-green-200 dark:border-green-700">
-                  <div className="flex items-center justify-between mb-2">
-                    <TrendingUp className="w-6 h-6 text-green-600 dark:text-green-400" />
-                    <span className="text-[10px] font-medium text-green-600 dark:text-green-400">OUTSTANDING</span>
-                  </div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatCurrency(stats.outstandingValue)}
-                  </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                    Active PO value
-                  </div>
-                </div>
+                {/* Issues Card - CLICKABLE */}
+                {(() => {
+                  const openIssues = receivingIssues.filter(i => i.status === 'open' || i.status === 'blocked');
+                  const hasOpenIssues = openIssues.length > 0;
+                  return (
+                    <div
+                      onClick={() => setShowView('issues')}
+                      className={`bg-gradient-to-br rounded-lg p-4 border cursor-pointer hover:shadow-lg transition-all transform hover:scale-105 ${
+                        hasOpenIssues
+                          ? 'from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20 border-red-300 dark:border-red-700'
+                          : 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <AlertTriangle className={`w-6 h-6 ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`} />
+                        <span className={`text-[10px] font-medium ${hasOpenIssues ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                          ISSUES
+                        </span>
+                      </div>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+                        {openIssues.length}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        {hasOpenIssues ? 'Open issues' : 'All resolved'}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Settings Card - CLICKABLE */}
                 <div
@@ -532,6 +665,182 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                   </p>
                   <SupplierManager />
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Issues View */}
+          {showView === 'issues' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={ArrowLeft}
+                  onClick={() => {
+                    setShowView('overview');
+                    setSelectedIssue(null);
+                  }}
+                >
+                  Back
+                </Button>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  Receiving Issues ({receivingIssues.filter(i => i.status === 'open' || i.status === 'blocked').length} open)
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Issues List */}
+                <div className="space-y-3">
+                  {receivingIssues.length === 0 ? (
+                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                      <p className="text-gray-600 dark:text-gray-400">No receiving issues</p>
+                    </div>
+                  ) : (
+                    receivingIssues.map(issue => {
+                      const isOpen = issue.status === 'open' || issue.status === 'blocked';
+                      const isSelected = selectedIssue?.id === issue.id;
+                      return (
+                        <div
+                          key={issue.id}
+                          onClick={() => handleIssueClick(issue)}
+                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            isSelected
+                              ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                              : isOpen
+                                ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20'
+                                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  isOpen
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                }`}>
+                                  {issue.status}
+                                </span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
+                                  {new Date(issue.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                              <h4 className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                                {issue.title.replace('Receiving Issue: ', '')}
+                              </h4>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                {issue.project?.name || 'Unknown Project'}
+                              </p>
+                            </div>
+                            {isOpen && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleResolveIssue(issue);
+                                }}
+                                className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+                              >
+                                Resolve
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Issue Detail & Comments Panel */}
+                {selectedIssue ? (
+                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[600px]">
+                    {/* Issue Header */}
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
+                            {selectedIssue.title}
+                          </h3>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{selectedIssue.project?.name}</span>
+                            <span>•</span>
+                            <span>Reported by {selectedIssue.creator?.full_name || selectedIssue.creator?.email || 'Unknown'}</span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setSelectedIssue(null)}
+                          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                        >
+                          <X className="w-4 h-4 text-gray-500" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Issue Description */}
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                        {selectedIssue.description}
+                      </div>
+                    </div>
+
+                    {/* Comments */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4" />
+                        Comments ({issueComments.length})
+                      </h4>
+                      {issueComments.length === 0 ? (
+                        <p className="text-sm text-gray-500 dark:text-gray-400 italic">No comments yet</p>
+                      ) : (
+                        issueComments.map(comment => (
+                          <div key={comment.id} className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-xs font-medium text-gray-900 dark:text-white">
+                                {comment.author?.full_name || comment.author?.email || 'Unknown'}
+                              </span>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(comment.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                              {comment.text}
+                            </p>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Add Comment */}
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()}
+                          placeholder="Add a comment..."
+                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                        />
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleAddComment}
+                          disabled={!newComment.trim() || submittingComment}
+                        >
+                          {submittingComment ? <Loader className="w-4 h-4 animate-spin" /> : 'Send'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center p-12">
+                    <p className="text-gray-500 dark:text-gray-400 text-center">
+                      Select an issue to view details and comments
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

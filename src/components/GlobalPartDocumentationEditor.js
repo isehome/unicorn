@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save } from 'lucide-react';
+import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, CheckCircle } from 'lucide-react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -24,6 +24,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
   const [newTechnicalManual, setNewTechnicalManual] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
 
   const handleAddInstallManual = () => {
     if (newInstallManual.trim()) {
@@ -34,6 +35,12 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
 
   const handleRemoveInstallManual = (index) => {
     setInstallManuals(installManuals.filter((_, i) => i !== index));
+  };
+
+  const handleEditInstallManual = (index, newUrl) => {
+    const updated = [...installManuals];
+    updated[index] = newUrl;
+    setInstallManuals(updated);
   };
 
   const handleAddTechnicalManual = () => {
@@ -47,6 +54,12 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setTechnicalManuals(technicalManuals.filter((_, i) => i !== index));
   };
 
+  const handleEditTechnicalManual = (index, newUrl) => {
+    const updated = [...technicalManuals];
+    updated[index] = newUrl;
+    setTechnicalManuals(updated);
+  };
+
   const handleSave = async () => {
     if (!part?.id) {
       setError('No part ID provided');
@@ -55,40 +68,24 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
 
     setSaving(true);
     setError(null);
+    setSuccess(false);
 
     try {
-      const { data, error: updateError } = await supabase
-        .from('global_parts')
-        .update({
-          schematic_url: schematicUrl.trim() || null,
-          install_manual_urls: installManuals,
-          technical_manual_urls: technicalManuals,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', part.id)
-        .select(`
-          id,
-          part_number,
-          name,
-          description,
-          manufacturer,
-          model,
-          category,
-          unit_of_measure,
-          quantity_on_hand,
-          quantity_reserved,
-          is_wire_drop_visible,
-          is_inventory_item,
-          required_for_prewire,
-          schematic_url,
-          install_manual_urls,
-          technical_manual_urls
-        `);
+      // Use RPC function to bypass RLS issues (same pattern as prewire toggle)
+      const { data, error: updateError } = await supabase.rpc('update_part_documentation', {
+        p_part_id: part.id,
+        p_schematic_url: schematicUrl.trim() || null,
+        p_install_manual_urls: installManuals.length > 0 ? installManuals : null,
+        p_technical_manual_urls: technicalManuals.length > 0 ? technicalManuals : null
+      });
 
       if (updateError) throw updateError;
 
-      if (onSave && data && data.length > 0) {
-        onSave(data[0]);
+      // Show success message
+      setSuccess(true);
+
+      if (onSave && data) {
+        onSave(data);
       }
     } catch (err) {
       console.error('Failed to save documentation:', err);
@@ -119,19 +116,39 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
         </div>
       )}
 
+      {success && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400 flex items-center gap-2">
+          <CheckCircle className="h-4 w-4" />
+          Documentation saved successfully! Links are now active.
+        </div>
+      )}
+
       {/* Schematic URL */}
       <div className="space-y-2">
         <label className="flex items-center gap-2 text-sm font-medium">
           <FileText className="h-4 w-4 text-violet-500" />
           Schematic / Wiring Diagram
         </label>
-        <input
-          type="url"
-          value={schematicUrl}
-          onChange={(e) => setSchematicUrl(e.target.value)}
-          placeholder="https://example.com/schematic.pdf"
-          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="url"
+            value={schematicUrl}
+            onChange={(e) => setSchematicUrl(e.target.value)}
+            placeholder="https://example.com/schematic.pdf"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+          />
+          {schematicUrl && (
+            <a
+              href={schematicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 p-2 text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded"
+              title="Open link"
+            >
+              <LinkIcon className="h-4 w-4" />
+            </a>
+          )}
+        </div>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Single URL for the equipment schematic or wiring diagram
         </p>
@@ -144,27 +161,34 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
           Installation Manuals
         </label>
         
-        {/* List of existing manuals */}
+        {/* List of existing manuals - Editable */}
         {installManuals.length > 0 && (
           <div className="space-y-2">
             {installManuals.map((url, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+                className="flex items-center gap-2"
               >
-                <LinkIcon className="h-3 w-3 shrink-0 text-gray-400" />
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => handleEditInstallManual(index, e.target.value)}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+                />
                 <a
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 truncate text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  className="shrink-0 p-2 text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                  title="Open link"
                 >
-                  {url}
+                  <LinkIcon className="h-4 w-4" />
                 </a>
                 <button
                   onClick={() => handleRemoveInstallManual(index)}
-                  className="shrink-0 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                  className="shrink-0 p-2 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                   type="button"
+                  title="Remove"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -210,27 +234,34 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
           Technical Manuals & Datasheets
         </label>
         
-        {/* List of existing manuals */}
+        {/* List of existing manuals - Editable */}
         {technicalManuals.length > 0 && (
           <div className="space-y-2">
             {technicalManuals.map((url, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800"
+                className="flex items-center gap-2"
               >
-                <LinkIcon className="h-3 w-3 shrink-0 text-gray-400" />
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => handleEditTechnicalManual(index, e.target.value)}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+                />
                 <a
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex-1 truncate text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
+                  className="shrink-0 p-2 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                  title="Open link"
                 >
-                  {url}
+                  <LinkIcon className="h-4 w-4" />
                 </a>
                 <button
                   onClick={() => handleRemoveTechnicalManual(index)}
-                  className="shrink-0 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                  className="shrink-0 p-2 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                   type="button"
+                  title="Remove"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
