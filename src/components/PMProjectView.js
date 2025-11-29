@@ -972,8 +972,8 @@ const PMProjectViewEnhanced = () => {
             if (item?.ordered_confirmed) {
               acc.ordered += quantity;
             }
-            // Support both old (onsite_confirmed) and new (delivered_confirmed) column names
-            if (item?.delivered_confirmed || item?.onsite_confirmed) {
+            // Use onsite_confirmed (will be renamed to delivered_confirmed after migration)
+            if (item?.onsite_confirmed) {
               acc.received += quantity;
             }
             return acc;
