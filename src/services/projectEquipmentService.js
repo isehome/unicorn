@@ -789,9 +789,9 @@ export const projectEquipmentService = {
             ordered_confirmed,
             ordered_confirmed_at,
             ordered_confirmed_by,
-            onsite_confirmed,
-            onsite_confirmed_at,
-            onsite_confirmed_by
+            delivered_confirmed,
+            delivered_confirmed_at,
+            delivered_confirmed_by
           `)
           .eq('project_id', projectId);
 
@@ -817,9 +817,9 @@ export const projectEquipmentService = {
               ordered_confirmed: existing.ordered_confirmed,
               ordered_confirmed_at: existing.ordered_confirmed_at,
               ordered_confirmed_by: existing.ordered_confirmed_by,
-              onsite_confirmed: existing.onsite_confirmed,
-              onsite_confirmed_at: existing.onsite_confirmed_at,
-              onsite_confirmed_by: existing.onsite_confirmed_by
+              delivered_confirmed: existing.delivered_confirmed,
+              delivered_confirmed_at: existing.delivered_confirmed_at,
+              delivered_confirmed_by: existing.delivered_confirmed_by
             };
 
             updatePayload.push({
@@ -1336,8 +1336,8 @@ export const projectEquipmentService = {
       }
 
       updates.received_quantity = receivedQty;
-      updates.onsite_confirmed_by = user?.id;
-      updates.onsite_confirmed_at = receivedQty > 0 ? new Date().toISOString() : null;
+      updates.delivered_confirmed_by = user?.id;
+      updates.delivered_confirmed_at = receivedQty > 0 ? new Date().toISOString() : null;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -1403,8 +1403,8 @@ export const projectEquipmentService = {
     const updates = itemsToReceive.map(item => ({
       id: item.id,
       received_quantity: item.ordered_quantity,
-      onsite_confirmed_at: new Date().toISOString(),
-      onsite_confirmed_by: user?.id
+      delivered_confirmed_at: new Date().toISOString(),
+      delivered_confirmed_by: user?.id
     }));
 
     const { data, error } = await supabase
