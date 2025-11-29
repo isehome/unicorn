@@ -313,6 +313,25 @@ const EquipmentListPage = () => {
         console.warn('Failed to load wire drop links:', linksError);
       }
 
+      // Get all wire drop IDs that are linked to equipment
+      const linkedWireDropIds = [...new Set(
+        wireDropLinks?.filter(l => l.wire_drop?.id).map(l => l.wire_drop.id) || []
+      )];
+
+      // Fetch trim_out stage completion status for linked wire drops
+      let wireDropTrimOutStatus = {};
+      if (linkedWireDropIds.length > 0) {
+        const { data: trimStages } = await supabase
+          .from('wire_drop_stages')
+          .select('wire_drop_id, completed')
+          .eq('stage_type', 'trim_out')
+          .in('wire_drop_id', linkedWireDropIds);
+
+        (trimStages || []).forEach(stage => {
+          wireDropTrimOutStatus[stage.wire_drop_id] = stage.completed;
+        });
+      }
+
       // Map wire drop links to equipment
       const wireDropsByEquipment = {};
       wireDropLinks?.forEach(link => {
@@ -324,15 +343,30 @@ const EquipmentListPage = () => {
           wireDropId: link.wire_drop.id,
           wireDropName: link.wire_drop.drop_name,
           wireDropType: link.wire_drop.drop_type,
-          linkSide: link.link_side
+          linkSide: link.link_side,
+          trimOutCompleted: wireDropTrimOutStatus[link.wire_drop.id] || false
         });
       });
 
-      // Add wire drops to mapped equipment
-      const mapped = enrichedData.map(item => ({
-        ...mapEquipmentRecord(item),
-        wireDrops: wireDropsByEquipment[item.id] || []
-      }));
+      // Add wire drops to mapped equipment and derive installed status from wire drop trim_out
+      const mapped = enrichedData.map(item => {
+        const wireDrops = wireDropsByEquipment[item.id] || [];
+        const mappedItem = mapEquipmentRecord(item);
+
+        // If equipment is linked to ANY wire drop with trim_out completed, it's installed
+        // This takes precedence over the stored installed field for equipment with wire drops
+        const hasCompletedTrimOut = wireDrops.some(wd => wd.trimOutCompleted);
+        const installedFromWireDrop = wireDrops.length > 0 && hasCompletedTrimOut;
+
+        return {
+          ...mappedItem,
+          wireDrops,
+          // Installed status: derived from wire drop OR manual field for items without wire drops
+          installed: installedFromWireDrop || (wireDrops.length === 0 && mappedItem.installed),
+          // Track whether this is auto-derived or manual
+          installedViaWireDrop: installedFromWireDrop
+        };
+      });
 
       setEquipment(mapped);
     } catch (err) {
@@ -637,17 +671,27 @@ const EquipmentListPage = () => {
                 )}
               </div>
 
-              {/* Installed - Manual toggle */}
+              {/* Installed - Auto from wire drop OR manual toggle for items without wire drops */}
               <div className="flex flex-col gap-1">
-                <label className="inline-flex items-center gap-2 cursor-pointer" title="Mark as installed">
+                <label
+                  className={`inline-flex items-center gap-2 ${item.installedViaWireDrop ? 'cursor-default' : 'cursor-pointer'}`}
+                  title={item.installedViaWireDrop
+                    ? 'Status synced from linked wire drop'
+                    : item.wireDrops?.length > 0
+                      ? 'Will be marked installed when linked wire drop trim is complete'
+                      : 'Mark as installed'}
+                >
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                    className={`h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 ${item.installedViaWireDrop ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                     checked={item.installed}
                     onChange={(e) => toggleStatus(item.id, 'installed', e.target.checked)}
-                    disabled={statusUpdating === item.id}
+                    disabled={statusUpdating === item.id || item.installedViaWireDrop}
                   />
                   <span className="font-medium text-gray-700 dark:text-gray-300">Installed</span>
+                  {item.installedViaWireDrop && (
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400">(via wire drop)</span>
+                  )}
                 </label>
                 {item.installed && item.installedAt && (
                   <button
