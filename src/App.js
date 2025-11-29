@@ -30,6 +30,7 @@ const WireDropsList = lazy(() => import('./components/WireDropsList'));
 const WireDropNew = lazy(() => import('./components/WireDropNew'));
 const WireDropDetail = lazy(() => import('./components/WireDropDetail'));
 const WireDropsHub = lazy(() => import('./components/WireDropsHub'));
+const PrewireMode = lazy(() => import('./components/PrewireMode'));
 const FloorPlanViewer = lazy(() => import('./pages/FloorPlanViewer'));
 const EquipmentListPage = lazy(() => import('./components/EquipmentListPage'));
 const SecureDataPage = lazy(() => import('./components/SecureDataPage'));
@@ -191,6 +192,16 @@ const AppRoutes = () => {
                 <ProtectedRoute>
                   <OfflineGuard pageName="Wire Drops list">
                     <WireDropsList />
+                  </OfflineGuard>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/prewire-mode"
+              element={
+                <ProtectedRoute>
+                  <OfflineGuard pageName="Prewire Mode">
+                    <PrewireMode />
                   </OfflineGuard>
                 </ProtectedRoute>
               }

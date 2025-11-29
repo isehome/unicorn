@@ -35,7 +35,8 @@ import {
   X,
   Pencil,
   Shield,
-  PackageCheck
+  PackageCheck,
+  Printer
 } from 'lucide-react';
 import {
   projectsService,
@@ -1420,6 +1421,10 @@ const ProjectDetailView = () => {
     navigate(`/wire-drops?project=${id}`);
   };
 
+  const handlePrewireMode = () => {
+    navigate(`/prewire-mode?project=${id}`);
+  };
+
   const handleAddStakeholder = () => {
     setEditingStakeholder(null);
     setPendingContactId('');
@@ -1599,10 +1604,13 @@ const ProjectDetailView = () => {
               </div>
 
               <div className="flex gap-2">
-                <Button variant="primary" icon={Plus} onClick={handleAddWireDrop} style={{ flex: '1 1 50%' }}>
+                <Button variant="primary" icon={Plus} onClick={handleAddWireDrop} style={{ flex: '1 1 33%' }}>
                   Add Wire Drop
                 </Button>
-                <Button variant="secondary" onClick={handleFullWireList} style={{ flex: '1 1 50%' }}>
+                <Button variant="secondary" icon={Printer} onClick={handlePrewireMode} style={{ flex: '1 1 33%' }}>
+                  Prewire Mode
+                </Button>
+                <Button variant="secondary" onClick={handleFullWireList} style={{ flex: '1 1 33%' }}>
                   Full List
                 </Button>
               </div>

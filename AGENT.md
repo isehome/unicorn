@@ -361,6 +361,54 @@ className="text-zinc-900"         // Missing dark!
 </div>
 ```
 
+### AppHeader - Page Title & Back Button
+The AppHeader component (`src/components/AppHeader.js`) handles the top navigation bar globally.
+
+**DO NOT create custom back buttons or page titles in page components.** The AppHeader:
+- Automatically shows a back button for all pages except `/`, `/pm-dashboard`, `/login`
+- Displays the page title based on the current route
+
+**When adding a new page:**
+1. Add a route mapping in `AppHeader.js` inside the `pageTitle` useMemo:
+```jsx
+// In AppHeader.js pageTitle useMemo
+if (p.startsWith('/your-new-page')) return 'Your Page Title';
+```
+
+2. Your page component should NOT include:
+   - Custom back buttons (AppHeader handles this)
+   - Page title headers (AppHeader displays the title)
+
+3. Your page CAN include:
+   - Subtitle/context info (e.g., project name)
+   - Status indicators
+   - Page-specific controls
+
+```jsx
+// ✅ CORRECT - Let AppHeader handle back button and title
+const MyPage = () => {
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 pb-20">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Optional: context info like project name */}
+        <p className="text-zinc-600 dark:text-zinc-400 mb-6">Project: {projectName}</p>
+        {/* Page content */}
+      </div>
+    </div>
+  );
+};
+
+// ❌ WRONG - Don't duplicate back button or page title
+const MyPage = () => {
+  return (
+    <div>
+      <button onClick={() => navigate(-1)}>← Back</button>  {/* NO! */}
+      <h1>My Page Title</h1>  {/* NO! AppHeader shows this */}
+    </div>
+  );
+};
+```
+
 ### Progress Colors
 ```jsx
 const getProgressColor = (pct) => {

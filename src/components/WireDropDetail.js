@@ -40,6 +40,8 @@ import {
   Printer,
   FileText,
   ChevronDown,
+  ChevronRight,
+  QrCode,
   Search as SearchIcon
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
@@ -1068,7 +1070,7 @@ const WireDropDetail = () => {
     if (base === alt) return null;
     return wireDrop.name;
   }, [wireDrop?.name, wireDrop?.drop_name]);
-  const showQrCard = useMemo(() => Boolean(wireDrop && (qrCodeSrc || wireDrop.uid)), [wireDrop, qrCodeSrc]);
+  const showQrCard = useMemo(() => Boolean(wireDrop), [wireDrop]);
 
   const doesEquipmentMatchRoom = useCallback(
     (equipment, room) => {
@@ -1754,84 +1756,90 @@ const WireDropDetail = () => {
                 )}
               </div>
 
+              {/* QR Code & Print Label Section */}
               {showQrCard && !editing && (
-                <div
-                  className="rounded-xl border flex-shrink-0 w-full lg:w-auto"
-                  style={{ ...styles.mutedCard, maxWidth: '100%', lgMaxWidth: '16rem' }}
-                >
+                <div className="flex-shrink-0 w-full lg:w-auto lg:min-w-[280px]">
                   <button
                     onClick={() => setQrSectionCollapsed(!qrSectionCollapsed)}
-                    className="w-full p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors rounded-t-xl"
+                    className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+                    style={styles.card}
                   >
-                    <h4 className="text-sm font-semibold" style={styles.textPrimary}>
-                      Wire Drop QR
-                    </h4>
-                    <ChevronDown
+                    <div className="flex items-center gap-3">
+                      <QrCode size={20} style={styles.textPrimary} />
+                      <span className="font-medium" style={styles.textPrimary}>QR Code & Print</span>
+                    </div>
+                    <ChevronRight
                       size={20}
-                      className={`transform transition-transform ${qrSectionCollapsed ? '' : 'rotate-180'}`}
+                      className={`transition-transform duration-200 ${!qrSectionCollapsed ? 'rotate-90' : ''}`}
                       style={styles.textSecondary}
                     />
                   </button>
 
                   {!qrSectionCollapsed && (
-                    <div className="p-4 pt-0 text-center">
-                      {qrCodeSrc ? (
-                        <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
-                          <img
-                            src={qrCodeSrc}
-                            alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
-                            className="h-40 w-40 object-contain"
-                          />
-                        </div>
-                      ) : (
-                        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
-                          style={styles.subtleText}
-                        >
-                          QR unavailable
-                        </div>
-                      )}
-                      {wireDrop.uid && (
-                        <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
-                          UID: {wireDrop.uid}
-                        </p>
-                      )}
-                      {wireDrop.qr_code_url && (
-                        <a
-                          href={wireDrop.qr_code_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
-                        >
-                          Open QR asset
-                        </a>
-                      )}
+                    <div className="mt-4 rounded-2xl border p-4" style={styles.card}>
+                      {/* QR Code Display */}
+                      <div className="text-center mb-4">
+                        {qrCodeSrc ? (
+                          <div className="mx-auto inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white p-2">
+                            <img
+                              src={qrCodeSrc}
+                              alt={`QR code for ${wireDrop.drop_name || wireDrop.name || 'wire drop'}`}
+                              className="h-40 w-40 object-contain"
+                            />
+                          </div>
+                        ) : (
+                          <div
+                            className="mx-auto flex h-40 w-40 items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs"
+                            style={styles.subtleText}
+                          >
+                            QR unavailable
+                          </div>
+                        )}
+                        {wireDrop.uid && (
+                          <p className="mt-3 text-xs font-mono break-all" style={styles.subtleText}>
+                            UID: {wireDrop.uid}
+                          </p>
+                        )}
+                        {wireDrop.qr_code_url && (
+                          <a
+                            href={wireDrop.qr_code_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center justify-center text-xs font-medium text-violet-600 dark:text-violet-300 hover:underline"
+                          >
+                            Open QR asset
+                          </a>
+                        )}
+                      </div>
 
-                      {/* Print Label - Compact */}
-                      <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
-                        <p className="text-xs font-medium mb-2" style={styles.textPrimary}>Print Label</p>
-                        <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="number"
-                            min="1"
-                            max="10"
-                            value={printCopies}
-                            onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
-                            className="w-16 px-2 py-1 text-sm rounded border"
-                            style={styles.input}
-                          />
-                          <span className="text-xs" style={styles.subtleText}>copies</span>
+                      {/* Print Label Section */}
+                      <div className="pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+                        <p className="text-sm font-medium mb-3" style={styles.textPrimary}>Print Label</p>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min="1"
+                              max="10"
+                              value={printCopies}
+                              onChange={(e) => setPrintCopies(parseInt(e.target.value) || 1)}
+                              className="w-16 px-2 py-2 text-sm rounded-lg border"
+                              style={styles.input}
+                            />
+                            <span className="text-sm" style={styles.subtleText}>copies</span>
+                          </div>
                         </div>
                         <Button
                           onClick={handlePrintLabel}
                           disabled={!printerConnected || printing}
-                          size="sm"
+                          variant="primary"
                           className="w-full"
                         >
-                          <Printer size={14} />
-                          {printing ? 'Printing...' : 'Print'}
+                          <Printer size={16} />
+                          {printing ? 'Printing...' : 'Print Label'}
                         </Button>
                         {!printerConnected && (
-                          <p className="text-[10px] mt-1" style={styles.subtleText}>
+                          <p className="text-xs mt-2" style={styles.subtleText}>
                             Connect printer in{' '}
                             <button
                               onClick={() => navigate('/settings')}

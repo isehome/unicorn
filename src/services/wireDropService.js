@@ -897,6 +897,32 @@ class WireDropService {
   }
 
   /**
+   * Mark wire drop labels as printed
+   * @param {string} wireDropId - Wire drop ID
+   * @param {string} userEmail - Email of user who printed the labels
+   */
+  async markLabelsPrinted(wireDropId, userEmail) {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drops')
+        .update({
+          labels_printed: true,
+          labels_printed_at: new Date().toISOString(),
+          labels_printed_by: userEmail || 'Unknown User'
+        })
+        .eq('id', wireDropId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to mark labels as printed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Check if unlinked equipment has any other wire drop connections
    * If not, unmark them as installed
    * @param {string[]} equipmentIds - Array of equipment UUIDs to check

@@ -34,8 +34,7 @@ const UnifiedProgressGauge = ({
   percentage = 0,
   compact = false,
   itemCount,
-  totalItems,
-  ownerBadge
+  totalItems
 }) => {
   const safePercentage = Math.min(100, Math.max(0, Math.round(Number(percentage) || 0)));
   const barColor = getGradientColor(safePercentage);
@@ -43,14 +42,7 @@ const UnifiedProgressGauge = ({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-gray-700 dark:text-gray-300">{label}</span>
-          {ownerBadge && (
-            <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
-              {ownerBadge}
-            </span>
-          )}
-        </div>
+        <span className="font-medium text-gray-700 dark:text-gray-300">{label}</span>
         {/* Show "x of y" if counts are provided, otherwise show percentage */}
         {itemCount !== undefined && totalItems !== undefined ? (
           <span className="font-semibold text-gray-900 dark:text-gray-100">

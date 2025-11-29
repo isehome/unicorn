@@ -16,7 +16,6 @@ import DateField from './ui/DateField';
  * Always uses 140px circular gauges for consistent sizing across all views.
  *
  * @param {Object} milestonePercentages - Object containing all milestone percentages from milestoneService.getAllPercentagesOptimized()
- * @param {Object} projectOwners - Object with { pm: string, technician: string } names from stakeholders
  * @param {boolean} startCollapsed - Whether to start in collapsed view (dashboard list) or expanded view (detail pages)
  * @param {Array} milestoneDates - Array of milestone date records from project_milestones table
  * @param {boolean} editMode - Whether the parent is in edit mode
@@ -24,7 +23,6 @@ import DateField from './ui/DateField';
  */
 const MilestoneGaugesDisplay = ({
   milestonePercentages = {},
-  projectOwners = { pm: null, technician: null },
   startCollapsed = true,
   milestoneDates = [],
   editMode = false,
@@ -204,19 +202,16 @@ const MilestoneGaugesDisplay = ({
             percentage={milestonePercentages.prewire_orders?.percentage || 0}
             itemCount={milestonePercentages.prewire_orders?.partsAccountedFor}
             totalItems={milestonePercentages.prewire_orders?.totalParts}
-            ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
             label="Prewire Receiving"
             percentage={milestonePercentages.prewire_receiving?.percentage || 0}
             itemCount={milestonePercentages.prewire_receiving?.itemCount}
             totalItems={milestonePercentages.prewire_receiving?.totalItems}
-            ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
             label="Prewire Stages"
             percentage={milestonePercentages.prewire || 0}
-            ownerBadge={projectOwners.technician || 'Technician'}
           />
         </CollapsibleGaugeGroup>
 
@@ -230,19 +225,16 @@ const MilestoneGaugesDisplay = ({
             percentage={milestonePercentages.trim_orders?.percentage || 0}
             itemCount={milestonePercentages.trim_orders?.partsAccountedFor}
             totalItems={milestonePercentages.trim_orders?.totalParts}
-            ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
             label="Trim Receiving"
             percentage={milestonePercentages.trim_receiving?.percentage || 0}
             itemCount={milestonePercentages.trim_receiving?.itemCount}
             totalItems={milestonePercentages.trim_receiving?.totalItems}
-            ownerBadge={projectOwners.pm || 'PM'}
           />
           <UnifiedProgressGauge
             label="Trim Stages"
             percentage={milestonePercentages.trim || 0}
-            ownerBadge={projectOwners.technician || 'Technician'}
           />
         </CollapsibleGaugeGroup>
 
