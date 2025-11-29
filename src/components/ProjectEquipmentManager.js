@@ -112,12 +112,10 @@ const ProjectEquipmentManager = ({
 
       if (field === 'ordered') {
         payload.ordered = value;
-        // Use onsite_confirmed (will be renamed to delivered_confirmed after migration)
-        if (!value && currentItem?.onsite_confirmed) {
+        if (!value && currentItem?.delivered_confirmed) {
           payload.delivered = false;
         }
-      } else if (field === 'delivered' || field === 'onsite') {
-        // Support both 'delivered' (new) and 'onsite' (legacy) field names
+      } else if (field === 'delivered') {
         payload.delivered = value;
         if (value && !currentItem?.ordered_confirmed) {
           payload.ordered = true;
@@ -291,15 +289,15 @@ const ProjectEquipmentManager = ({
                     <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
-                      checked={Boolean(item.onsite_confirmed)}
+                      checked={Boolean(item.delivered_confirmed)}
                       onChange={(event) =>
                         handleStatusToggle(item.id, 'delivered', event.target.checked)
                       }
                     />
                     <span className="font-medium">Delivered</span>
-                    {item.onsite_confirmed_at && (
+                    {item.delivered_confirmed_at && (
                       <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                        {new Date(item.onsite_confirmed_at).toLocaleDateString()}
+                        {new Date(item.delivered_confirmed_at).toLocaleDateString()}
                       </span>
                     )}
                   </label>

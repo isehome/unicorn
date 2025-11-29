@@ -1061,9 +1061,9 @@ export const projectEquipmentService = {
         ordered_confirmed,
         ordered_confirmed_at,
         ordered_confirmed_by,
-        onsite_confirmed,
-        onsite_confirmed_at,
-        onsite_confirmed_by,
+        delivered_confirmed,
+        delivered_confirmed_at,
+        delivered_confirmed_by,
         installed,
         installed_at,
         installed_by,
@@ -1134,9 +1134,9 @@ export const projectEquipmentService = {
         ordered_confirmed,
         ordered_confirmed_at,
         ordered_confirmed_by,
-        onsite_confirmed,
-        onsite_confirmed_at,
-        onsite_confirmed_by,
+        delivered_confirmed,
+        delivered_confirmed_at,
+        delivered_confirmed_by,
         installed,
         installed_at,
         installed_by,
@@ -1200,8 +1200,7 @@ export const projectEquipmentService = {
     const calculateStats = (items) => {
       const total = items.length;
       const ordered = items.filter(item => item.ordered_confirmed).length;
-      // Use onsite_confirmed (will be renamed to delivered_confirmed after migration)
-      const delivered = items.filter(item => item.onsite_confirmed).length;
+      const delivered = items.filter(item => item.delivered_confirmed).length;
       const totalQuantity = items.reduce((sum, item) => sum + (item.planned_quantity || 0), 0);
 
       return {
@@ -1260,14 +1259,12 @@ export const projectEquipmentService = {
       updates.ordered_confirmed_by = ordered ? user?.id : null;
     }
 
-    // Support both 'onsite' (legacy) and 'delivered' (new) - both map to onsite_confirmed columns
-    // When database migration is run, these columns will be renamed to delivered_confirmed
+    // Handle delivered status (formerly called "onsite")
     const deliveredValue = delivered ?? onsite;
     if (typeof deliveredValue === 'boolean') {
-      // Use onsite_confirmed columns (will be renamed to delivered_confirmed after migration)
-      updates.onsite_confirmed = deliveredValue;
-      updates.onsite_confirmed_at = deliveredValue ? new Date().toISOString() : null;
-      updates.onsite_confirmed_by = deliveredValue ? user?.id : null;
+      updates.delivered_confirmed = deliveredValue;
+      updates.delivered_confirmed_at = deliveredValue ? new Date().toISOString() : null;
+      updates.delivered_confirmed_by = deliveredValue ? user?.id : null;
     }
 
     if (Object.keys(updates).length === 0) {

@@ -1146,7 +1146,7 @@ export const projectProgressService = {
 
       const { data: equipment, error: equipmentError } = await supabase
         .from('project_equipment')
-        .select('id, equipment_type, is_active, ordered_confirmed, onsite_confirmed')
+        .select('id, equipment_type, is_active, ordered_confirmed, delivered_confirmed')
         .eq('project_id', projectId);
 
       if (!equipmentError && Array.isArray(equipment) && equipment.length > 0) {
@@ -1160,12 +1160,10 @@ export const projectProgressService = {
 
         if (denominator > 0) {
           const orderedCount = trackable.filter((item) => item.ordered_confirmed).length;
-          // Use onsite_confirmed (will be renamed to delivered_confirmed after migration)
-          const deliveredCount = trackable.filter((item) => item.onsite_confirmed).length;
+          const deliveredCount = trackable.filter((item) => item.delivered_confirmed).length;
 
           baseProgress.ordered = Math.round((orderedCount / denominator) * 100);
           baseProgress.delivered = Math.round((deliveredCount / denominator) * 100);
-          baseProgress.onsite = baseProgress.delivered; // Keep for backwards compatibility
         }
       }
 

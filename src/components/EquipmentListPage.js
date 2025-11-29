@@ -146,11 +146,10 @@ const mapEquipmentRecord = (item) => {
     receivedAt: item.received_date || null,
     quantityReceived, // Track actual quantity received
     fullyReceived: isFullyReceived,
-    // "Delivered" - renamed from "onsite" - manual checkbox for technician to confirm item is at job site
-    // Uses onsite_confirmed columns (will be renamed to delivered_confirmed after migration)
-    delivered: Boolean(item.onsite_confirmed),
-    deliveredAt: item.onsite_confirmed_at || null,
-    deliveredBy: item.onsite_confirmed_by || null,
+    // "Delivered" - manual checkbox for technician to confirm item is at job site
+    delivered: Boolean(item.delivered_confirmed),
+    deliveredAt: item.delivered_confirmed_at || null,
+    deliveredBy: item.delivered_confirmed_by || null,
     installed: Boolean(item.installed), // INSTALLED: Auto-set when linked to wire drop, or manual for wireless items
     installedAt: item.installed_at || null,
     installedBy: item.installed_by || null,

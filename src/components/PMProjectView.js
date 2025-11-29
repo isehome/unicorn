@@ -972,8 +972,7 @@ const PMProjectViewEnhanced = () => {
             if (item?.ordered_confirmed) {
               acc.ordered += quantity;
             }
-            // Use onsite_confirmed (will be renamed to delivered_confirmed after migration)
-            if (item?.onsite_confirmed) {
+            if (item?.delivered_confirmed) {
               acc.received += quantity;
             }
             return acc;
