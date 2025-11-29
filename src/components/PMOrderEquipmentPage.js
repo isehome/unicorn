@@ -1492,7 +1492,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                   return pendingPOs.length > 0 && (
                     <div style={sectionStyles.card} className="mb-6">
                       <div className="flex items-center gap-2 mb-4">
-                        <div className="text-orange-600 dark:text-orange-400 text-lg font-bold">⚠️</div>
+                        <div className="text-amber-600 dark:text-amber-400 text-lg font-bold">⚠️</div>
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                           Pending POs ({pendingPOs.length})
                         </h2>
@@ -1506,7 +1506,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                           <div
                             key={po.id}
                             style={sectionStyles.card}
-                            className="border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-900/20"
+                            className="border-l-4 border-amber-500 bg-amber-50 dark:bg-amber-900/20"
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
@@ -1514,7 +1514,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <h3 className="font-semibold text-gray-900 dark:text-white">
                                     {po.po_number}
                                   </h3>
-                                  <span className="px-2 py-1 text-xs font-medium rounded bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300">
+                                  <span className="px-2 py-1 text-xs font-medium rounded bg-amber-100 dark:bg-amber-800 text-amber-700 dark:text-amber-300">
                                     Draft
                                   </span>
                                   <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
@@ -1522,7 +1522,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   </span>
                                 </div>
 
-                                <div className="mb-3 p-2 bg-orange-100 dark:bg-orange-900/30 rounded text-xs text-orange-800 dark:text-orange-200 font-medium">
+                                <div className="mb-3 p-2 bg-amber-100 dark:bg-amber-900/30 rounded text-xs text-amber-800 dark:text-amber-200 font-medium">
                                   ⚠️ Draft PO - Not yet submitted to supplier. Click to review and submit.
                                 </div>
 

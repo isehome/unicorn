@@ -17,7 +17,14 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  const from = location.state?.from?.pathname || '/';
+  // Get the default workspace from localStorage, or use '/' for technician
+  const getDefaultHome = () => {
+    const defaultWorkspace = localStorage.getItem('default-workspace-mode');
+    return defaultWorkspace === 'pm' ? '/pm-dashboard' : '/';
+  };
+
+  // If user was trying to access a specific page, go there; otherwise use their default workspace
+  const from = location.state?.from?.pathname || getDefaultHome();
   const useMobileFlow = isMobile();
 
   const getErrorMessage = useCallback((errorCode) => {
@@ -66,27 +73,40 @@ const Login = () => {
     try {
       setError('');
       setLocalLoading(true);
-      
+
       console.log('[Login] Starting login flow, mobile:', useMobileFlow);
-      
+
       if (useMobileFlow) {
         console.log('[Login] Using redirect flow for mobile');
         await loginRedirect();
         // Note: On redirect, browser will navigate away, so code below won't execute
       } else {
         console.log('[Login] Using popup flow for desktop');
-        await login();
-        console.log('[Login] Login flow completed');
+        try {
+          await login();
+          console.log('[Login] Login flow completed');
+        } catch (popupError) {
+          // If popup fails (blocked, window error), fall back to redirect flow
+          if (popupError.errorCode === 'popup_window_error' ||
+              popupError.errorCode === 'empty_window_error' ||
+              popupError.message?.includes('popup')) {
+            console.log('[Login] Popup failed, falling back to redirect flow');
+            setError('');
+            await loginRedirect();
+            return; // Browser will redirect away
+          }
+          throw popupError; // Re-throw other errors
+        }
       }
-      
+
     } catch (error) {
       console.error('[Login] Login error:', error);
       setLocalLoading(false);
-      
+
       // Handle interaction_in_progress error
       if (error.errorCode === 'interaction_in_progress') {
         setError('Authentication is already in progress. Please reload the page and try again.');
-        
+
         // Offer to clear the stuck state
         setTimeout(() => {
           if (window.confirm('Would you like to reset the authentication state?')) {
@@ -95,6 +115,9 @@ const Login = () => {
             window.location.reload();
           }
         }, 2000);
+      } else if (error.errorCode === 'popup_window_error' || error.errorCode === 'empty_window_error') {
+        // This shouldn't happen since we handle it above, but just in case
+        setError('Pop-up was blocked. Click the button again to sign in via redirect.');
       } else {
         setError(error.message || 'Failed to sign in. Please try again.');
       }

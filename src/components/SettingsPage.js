@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,11 +6,11 @@ import { usePrinter } from '../contexts/PrinterContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone } from 'lucide-react';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut } from 'lucide-react';
 
 const SettingsPage = () => {
   const { mode } = useTheme();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
   const {
@@ -24,9 +24,33 @@ const SettingsPage = () => {
     disconnectPrinter
   } = usePrinter();
 
+  // Default workspace mode - stored in localStorage
+  const [defaultWorkspace, setDefaultWorkspace] = useState(() => {
+    return localStorage.getItem('default-workspace-mode') || 'technician';
+  });
+  const [loggingOut, setLoggingOut] = useState(false);
+
   const displayName = user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || 'demo@example.com';
   const initials = useMemo(() => (displayName?.[0] || 'U').toUpperCase(), [displayName]);
+
+  // Handle default workspace change
+  const handleDefaultWorkspaceChange = (workspace) => {
+    setDefaultWorkspace(workspace);
+    localStorage.setItem('default-workspace-mode', workspace);
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      setLoggingOut(true);
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      setLoggingOut(false);
+    }
+  };
 
   const handleConnectPrinter = async () => {
     await connectPrinter();
@@ -178,27 +202,83 @@ const SettingsPage = () => {
       </section>
 
       <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Workspace Mode</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Jump to technician or project manager views.</p>
-          </div>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Default Workspace</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Choose which dashboard to show when you log in and tap Home.</p>
         </div>
         <div className="flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-slate-900/70 shadow-inner p-1">
           <button
             type="button"
-            onClick={() => navigate('/')}
-            className="flex-1 px-4 py-1.5 text-xs font-medium rounded-full transition text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800"
+            onClick={() => handleDefaultWorkspaceChange('technician')}
+            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${
+              defaultWorkspace === 'technician'
+                ? 'bg-violet-500 text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+            }`}
           >
             Technician
           </button>
           <button
             type="button"
-            onClick={() => navigate('/pm-dashboard')}
-            className="flex-1 px-4 py-1.5 text-xs font-medium rounded-full transition text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800"
+            onClick={() => handleDefaultWorkspaceChange('pm')}
+            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${
+              defaultWorkspace === 'pm'
+                ? 'bg-violet-500 text-white shadow-md'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+            }`}
           >
             Project Manager
           </button>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {defaultWorkspace === 'pm'
+            ? 'You will be directed to the Project Manager dashboard on login.'
+            : 'You will be directed to the Technician dashboard on login.'}
+        </p>
+      </section>
+
+      {/* Quick Navigation */}
+      <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Quick Navigation</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Jump to a specific workspace view.</p>
+        </div>
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/')}
+            className="flex-1"
+          >
+            Go to Technician
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => navigate('/pm-dashboard')}
+            className="flex-1"
+          >
+            Go to PM Dashboard
+          </Button>
+        </div>
+      </section>
+
+      {/* Logout Section */}
+      <section className="rounded-2xl border p-4" style={sectionStyles.card}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Sign Out</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Sign out of your Microsoft 365 account.</p>
+          </div>
+          <Button
+            variant="danger"
+            size="sm"
+            icon={LogOut}
+            onClick={handleLogout}
+            disabled={loggingOut}
+          >
+            {loggingOut ? 'Signing out...' : 'Sign Out'}
+          </Button>
         </div>
       </section>
     </div>
