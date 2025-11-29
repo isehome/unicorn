@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 const CollapsibleModule = ({
   title,
@@ -8,32 +8,34 @@ const CollapsibleModule = ({
   onToggle,
   children,
   actions,
-  count
+  count,
+  styles = {}
 }) => {
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-      <div
-        className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
+    <div>
+      <button
         onClick={onToggle}
+        className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+        style={styles.card}
       >
-        <div className="flex items-center gap-2">
-          {isOpen ? (
-            <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-          )}
-          {Icon && <Icon className="w-5 h-5 text-gray-600 dark:text-gray-300" />}
-          <h3 className="font-semibold text-gray-800 dark:text-gray-200">{title}</h3>
-          {count !== undefined && (
-            <span className="ml-2 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-full text-sm">
+        <div className="flex items-center gap-3">
+          {Icon && <Icon className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />}
+          <span className="font-medium text-zinc-900 dark:text-zinc-100">{title}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {count !== undefined && count > 0 && (
+            <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
               {count}
             </span>
           )}
+          {actions && <div onClick={e => e.stopPropagation()}>{actions}</div>}
+          <ChevronRight
+            className={`w-5 h-5 text-zinc-500 transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
+          />
         </div>
-        {actions && <div onClick={e => e.stopPropagation()}>{actions}</div>}
-      </div>
+      </button>
       {isOpen && (
-        <div className="px-4 pb-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="mt-4 rounded-2xl border p-4" style={styles.card}>
           {children}
         </div>
       )}

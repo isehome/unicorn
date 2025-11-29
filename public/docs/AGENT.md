@@ -259,11 +259,40 @@ className="text-zinc-900"         // Missing dark!
 
 ### Collapsible Sections
 ```jsx
-// Chevron ALWAYS on LEFT, use Right→Down icons
-<button className="flex items-center gap-2">
-  {open ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-  <span>Title</span>
+// Layout: [Icon][Title] .............. [Badge][gap][Chevron]
+// - Title only, NO descriptions
+// - No gray backgrounds - use style={styles.card}
+// - Badge (if any) on RIGHT, before chevron
+// - ChevronRight rotates 90° when open
+<button
+  onClick={() => toggleSection('sectionName')}
+  className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+  style={styles.card}
+>
+  <div className="flex items-center gap-3">
+    <Icon size={20} style={styles.textPrimary} />
+    <span className="font-medium" style={styles.textPrimary}>Title</span>
+  </div>
+  <div className="flex items-center gap-3">
+    {count > 0 && (
+      <span className="px-2 py-0.5 text-xs rounded-full" style={styles.badge}>
+        {count}
+      </span>
+    )}
+    <ChevronRight
+      size={20}
+      className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+      style={styles.textSecondary}
+    />
+  </div>
 </button>
+
+{/* Expanded content */}
+{isExpanded && (
+  <div className="mt-4 rounded-2xl border p-4" style={styles.card}>
+    {/* content */}
+  </div>
+)}
 ```
 
 ### Progress Colors

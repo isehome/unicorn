@@ -390,7 +390,7 @@ const PMProjectViewEnhanced = () => {
     procurement: true,
     permits: true,
     phaseMilestones: false, // Start expanded for easy access
-    buildingPermits: false  // Start expanded for easy access
+    buildingPermits: true   // Start collapsed
   });
 
   const toggleSection = (section) => {
@@ -2551,30 +2551,31 @@ const PMProjectViewEnhanced = () => {
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
             {/* Project Info - Consolidated Section */}
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+            <div>
               <button
                 onClick={() => toggleSection('projectInfo')}
-                className="w-full px-5 py-3 flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50
-                         hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+                style={sectionStyles.card}
               >
-                {sectionsCollapsed.projectInfo ? (
-                  <ChevronRight className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                )}
-                <FileText className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                  Project Info
-                </h2>
-                {editMode && (
-                  <span className="text-xs font-medium text-violet-600 dark:text-violet-400 ml-2">
-                    Editing
-                  </span>
-                )}
+                <div className="flex items-center gap-3">
+                  <FileText className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Project Info</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {editMode && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400">
+                      Editing
+                    </span>
+                  )}
+                  <ChevronRight
+                    className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                    style={{ transform: sectionsCollapsed.projectInfo ? 'none' : 'rotate(90deg)' }}
+                  />
+                </div>
               </button>
 
               {!sectionsCollapsed.projectInfo && (
-                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+                <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
                   <div className="space-y-6">
                     {/* Project Basics Section */}
                     <div className="space-y-4">
@@ -2926,25 +2927,24 @@ const PMProjectViewEnhanced = () => {
 
           <div className="space-y-4">
             {/* Linked Resources - Collapsible */}
-            <div className="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900 overflow-hidden">
+            <div>
               <button
                 onClick={() => toggleSection('linkedResources')}
-                className="w-full px-5 py-3 flex items-center gap-2 bg-gray-50 dark:bg-gray-800
-                         hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+                style={sectionStyles.card}
               >
-                {sectionsCollapsed.linkedResources ? (
-                  <ChevronRight className="w-5 h-5 text-gray-500" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-500" />
-                )}
-                <Link className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-900 dark:text-white">
-                  Linked Resources
-                </h2>
+                <div className="flex items-center gap-3">
+                  <Link className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Linked Resources</span>
+                </div>
+                <ChevronRight
+                  className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                  style={{ transform: sectionsCollapsed.linkedResources ? 'none' : 'rotate(90deg)' }}
+                />
               </button>
 
               {!sectionsCollapsed.linkedResources && (
-                <div className="p-5 border-t border-gray-200 dark:border-gray-700">
+                <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
                   <div className="space-y-4">
                     {editMode ? (
                       <div className="space-y-4">
@@ -3176,172 +3176,144 @@ const PMProjectViewEnhanced = () => {
         </div>
       </div>
 
-      {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
-      {formData.wiring_diagram_url && (
-        <LucidChartCarousel
-          documentUrl={formData.wiring_diagram_url}
-          projectName={project?.name || 'Project'}
-        />
-      )}
-
       {/* Phase Milestones */}
-      <div style={sectionStyles.card} className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <button
-            onClick={() => toggleSection('phaseMilestones')}
-            className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
-          >
-            {sectionsCollapsed.phaseMilestones ? (
-              <ChevronRight className="w-5 h-5" />
-            ) : (
-              <ChevronDown className="w-5 h-5" />
-            )}
-            <Calendar className="w-5 h-5" />
-            <span>Phase Milestones</span>
-          </button>
-          {!sectionsCollapsed.phaseMilestones && (
-            <button
-              onClick={() => setPhaseMilestonesEditMode(!phaseMilestonesEditMode)}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-md transition-colors"
-            >
-              {phaseMilestonesEditMode ? (
-                <>
-                  <CheckCircle className="w-4 h-4" />
-                  Done Editing
-                </>
-              ) : (
-                <>
-                  <Edit className="w-4 h-4" />
-                  Edit Dates
-                </>
-              )}
-            </button>
-          )}
-        </div>
-
-        {!sectionsCollapsed.phaseMilestones && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Phase</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Target Date</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Actual Date</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Status</th>
-                  <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700 dark:text-gray-300">Completed By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { type: 'planning_design', label: 'Planning & Design', color: '#8b5cf6' },
-                  { type: 'prewire_prep', label: 'Prewire Prep', color: '#06b6d4' },
-                  { type: 'prewire', label: 'Prewire', color: '#8b5cf6' },
-                  { type: 'rough_in_inspection', label: 'Rough-In Inspection', color: '#ec4899' },
-                  { type: 'trim_prep', label: 'Trim Prep', color: '#f59e0b' },
-                  { type: 'trim', label: 'Trim', color: '#f59e0b' },
-                  { type: 'final_inspection', label: 'Final Inspection', color: '#ec4899' },
-                  { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
-                  { type: 'handoff_training', label: 'Handoff / Training', color: '#94AF32' }
-                ].map(({ type, label, color }) => {
-                  const milestone = milestoneDates.find(m => m.milestone_type === type);
-                  return (
-                    <tr key={type} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: color }}
-                          />
-                          <span className="text-sm text-gray-900 dark:text-white">{label}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        {phaseMilestonesEditMode ? (
-                          <DateInput
-                            value={milestone?.target_date || ''}
-                            onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
-                            className="text-sm"
-                          />
-                        ) : (
-                          <DateField
-                            date={milestone?.target_date}
-                            isCompleted={!!milestone?.actual_date}
-                            showIcon={false}
-                            showBadge={!milestone?.actual_date}
-                            showDescription={false}
-                            variant="inline"
-                          />
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {phaseMilestonesEditMode ? (
-                          <DateInput
-                            value={milestone?.actual_date || ''}
-                            onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
-                            className="text-sm"
-                          />
-                        ) : (
-                          <DateField
-                            date={milestone?.actual_date}
-                            isCompleted={!!milestone?.completed_manually}
-                            showIcon={false}
-                            showBadge={false}
-                            showDescription={false}
-                            variant="inline"
-                          />
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {phaseMilestonesEditMode ? (
-                          <select
-                            value={milestone?.completed_manually ? 'completed' : 'not_set'}
-                            onChange={(e) => handleMilestoneUpdate(type, 'completed_manually', e.target.value === 'completed')}
-                            className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-gray-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                          >
-                            <option value="not_set">Not set</option>
-                            <option value="completed">Completed</option>
-                          </select>
-                        ) : milestone?.completed_manually ? (
-                          <span className="text-sm" style={{ color: '#94AF32' }}>Completed</span>
-                        ) : (
-                          <span className="text-sm text-gray-400 dark:text-gray-500">Not set</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-xs text-gray-600 dark:text-gray-400">
-                          {milestone?.completed_manually && milestone?.updated_by_user
-                            ? formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)
-                            : '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Building Permits Section */}
-      <div style={sectionStyles.card} className="p-6">
+      <div>
         <button
-          onClick={() => toggleSection('buildingPermits')}
-          className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors mb-4"
+          onClick={() => toggleSection('phaseMilestones')}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
         >
-          {sectionsCollapsed.buildingPermits ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronDown className="w-5 h-5" />
-          )}
-          <FileText className="w-5 h-5" />
-          <span>Building Permits</span>
-        </button>
-        {!sectionsCollapsed.buildingPermits && (
-          <ProjectPermits
-            projectId={projectId}
-            onMilestoneChange={loadMilestoneDates}
+          <div className="flex items-center gap-3">
+            <Calendar className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Phase Milestones</span>
+          </div>
+          <ChevronRight
+            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+            style={{ transform: sectionsCollapsed.phaseMilestones ? 'none' : 'rotate(90deg)' }}
           />
+        </button>
+        {!sectionsCollapsed.phaseMilestones && (
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+            <div className="flex items-center justify-end mb-4">
+              <button
+                onClick={() => setPhaseMilestonesEditMode(!phaseMilestonesEditMode)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-violet-600 hover:bg-violet-700 text-white rounded-md transition-colors"
+              >
+                {phaseMilestonesEditMode ? (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Done Editing
+                  </>
+                ) : (
+                  <>
+                    <Edit className="w-4 h-4" />
+                    Edit Dates
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-zinc-200 dark:border-zinc-700">
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Phase</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Target Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Actual Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Status</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300">Completed By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { type: 'planning_design', label: 'Planning & Design', color: '#8b5cf6' },
+                    { type: 'prewire_prep', label: 'Prewire Prep', color: '#06b6d4' },
+                    { type: 'prewire', label: 'Prewire', color: '#8b5cf6' },
+                    { type: 'rough_in_inspection', label: 'Rough-In Inspection', color: '#ec4899' },
+                    { type: 'trim_prep', label: 'Trim Prep', color: '#f59e0b' },
+                    { type: 'trim', label: 'Trim', color: '#f59e0b' },
+                    { type: 'final_inspection', label: 'Final Inspection', color: '#ec4899' },
+                    { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
+                    { type: 'handoff_training', label: 'Handoff / Training', color: '#94AF32' }
+                  ].map(({ type, label, color }) => {
+                    const milestone = milestoneDates.find(m => m.milestone_type === type);
+                    return (
+                      <tr key={type} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: color }}
+                            />
+                            <span className="text-sm text-zinc-900 dark:text-white">{label}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {phaseMilestonesEditMode ? (
+                            <DateInput
+                              value={milestone?.target_date || ''}
+                              onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <DateField
+                              date={milestone?.target_date}
+                              isCompleted={!!milestone?.actual_date}
+                              showIcon={false}
+                              showBadge={!milestone?.actual_date}
+                              showDescription={false}
+                              variant="inline"
+                            />
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {phaseMilestonesEditMode ? (
+                            <DateInput
+                              value={milestone?.actual_date || ''}
+                              onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <DateField
+                              date={milestone?.actual_date}
+                              isCompleted={!!milestone?.completed_manually}
+                              showIcon={false}
+                              showBadge={false}
+                              showDescription={false}
+                              variant="inline"
+                            />
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {phaseMilestonesEditMode ? (
+                            <select
+                              value={milestone?.completed_manually ? 'completed' : 'not_set'}
+                              onChange={(e) => handleMilestoneUpdate(type, 'completed_manually', e.target.value === 'completed')}
+                              className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-1.5 text-sm text-zinc-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                            >
+                              <option value="not_set">Not set</option>
+                              <option value="completed">Completed</option>
+                            </select>
+                          ) : milestone?.completed_manually ? (
+                            <span className="text-sm" style={{ color: '#94AF32' }}>Completed</span>
+                          ) : (
+                            <span className="text-sm text-zinc-400 dark:text-zinc-500">Not set</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                            {milestone?.completed_manually && milestone?.updated_by_user
+                              ? formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)
+                              : '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
       </div>
 
@@ -3363,22 +3335,24 @@ const PMProjectViewEnhanced = () => {
       </div>
 
       {/* Time Tracking Section - Collapsible */}
-      <div style={sectionStyles.card} className="p-6">
+      <div>
         <button
           onClick={() => toggleSection('timeTracking')}
-          className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors mb-4"
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
         >
-          {sectionsCollapsed.timeTracking ? (
-            <ChevronRight className="w-5 h-5" />
-          ) : (
-            <ChevronDown className="w-5 h-5" />
-          )}
-          <Clock className="w-5 h-5" />
-          <span>Time Tracking & Progress</span>
+          <div className="flex items-center gap-3">
+            <Clock className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Time Tracking</span>
+          </div>
+          <ChevronRight
+            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+            style={{ transform: sectionsCollapsed.timeTracking ? 'none' : 'rotate(90deg)' }}
+          />
         </button>
 
         {!sectionsCollapsed.timeTracking && (
-          <>
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
             <div className="flex flex-wrap items-end gap-6 mb-4">
               <div className="text-right">
                 <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -3606,68 +3580,40 @@ const PMProjectViewEnhanced = () => {
                 </div>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
       {/* Project Data Import & Setup - Unified Section */}
-      <div style={sectionStyles.card} className="p-6">
-        <div className="flex items-center gap-3 mb-6">
-          <Upload className="w-6 h-6 text-violet-600 dark:text-violet-400" />
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Project Data Import & Setup
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              One-time setup: Import portal data and sync with Lucid diagrams
-            </p>
-          </div>
-        </div>
+      <div className="space-y-4">
 
         {/* Step 1: Lucid Wire Drops Import - GREEN */}
         {formData.wiring_diagram_url && (
-          <div className="mb-6 flex gap-3">
-            {/* Step Number Badge */}
-            <div className="flex-shrink-0">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-sm" style={{ backgroundColor: '#94AF32' }}>
-                <span className="text-lg font-bold text-white">1</span>
+          <div className="mb-4">
+            <button
+              onClick={() => toggleSection('lucidData')}
+              className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+              style={sectionStyles.card}
+            >
+              <div className="flex items-center gap-3">
+                <Link className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">Import Lucid Wire Drops</span>
               </div>
-            </div>
-
-            {/* Section Content */}
-            <div className="flex-1">
-              <button
-                onClick={() => toggleSection('lucidData')}
-                className="flex w-full items-center gap-2 rounded-lg border-2 px-4 py-4 shadow-sm transition-colors"
-                style={{
-                  borderColor: 'rgba(148, 175, 50, 0.5)',
-                  backgroundColor: 'rgba(148, 175, 50, 0.1)'
-                }}
-              >
-                {sectionsCollapsed.lucidData ? (
-                  <ChevronRight className="w-5 h-5" style={{ color: '#94AF32' }} />
-                ) : (
-                  <ChevronDown className="w-5 h-5" style={{ color: '#94AF32' }} />
+              <div className="flex items-center gap-3">
+                {existingWireDrops.length > 0 && (
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                    {existingWireDrops.length}
+                  </span>
                 )}
-                <div className="flex-1 text-left">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Link className="w-4 h-4" style={{ color: '#94AF32' }} />
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Import Lucid Wire Drops</p>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs" style={{ color: '#94AF32' }}>
-                    <span className="font-medium">{existingWireDrops.length} wire drops</span>
-                    <span>•</span>
-                    <span>{linkedDropCount} linked to Lucid</span>
-                    <span>•</span>
-                    <span>{droppableShapes.length > 0
-                      ? `${droppableShapes.length} shapes found`
-                      : 'No shapes fetched yet'}</span>
-                  </div>
-                </div>
-              </button>
+                <ChevronRight
+                  className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                  style={{ transform: sectionsCollapsed.lucidData ? 'none' : 'rotate(90deg)' }}
+                />
+              </div>
+            </button>
 
-              {!sectionsCollapsed.lucidData && (
-                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+            {!sectionsCollapsed.lucidData && (
+              <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
                   <div className="flex justify-between items-center mb-3">
                     <Button
                       variant="primary"
@@ -3784,94 +3730,70 @@ const PMProjectViewEnhanced = () => {
                   )}
                 </div>
               )}
-            </div>
-          </div>
+        </div>
         )}
 
-        {/* Step 2: Portal CSV Upload (Procurement) - PURPLE */}
-        <div className="mb-6 flex gap-3">
-          {/* Step Number Badge */}
-          <div className="flex-shrink-0">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-500 dark:bg-purple-600 shadow-sm">
-              <span className="text-lg font-bold text-white">2</span>
+        {/* Step 2: Upload Portal CSV */}
+        <div className="mb-4">
+          <button
+            onClick={() => toggleSection('procurement')}
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+            style={sectionStyles.card}
+          >
+            <div className="flex items-center gap-3">
+              <Package className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">Upload Portal CSV</span>
             </div>
-          </div>
-
-          {/* Section Content */}
-          <div className="flex-1">
-            <button
-              onClick={() => toggleSection('procurement')}
-              className="flex w-full items-center gap-2 rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 px-4 py-4 shadow-sm hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
-            >
-              {sectionsCollapsed.procurement ? (
-                <ChevronRight className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              ) : (
-                <ChevronDown className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+            <div className="flex items-center gap-3">
+              {totalEquipmentPieces > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                  {totalEquipmentPieces}
+                </span>
               )}
-              <div className="flex-1 text-left">
-                <div className="flex items-center gap-2 mb-1">
-                  <Package className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">Upload Portal CSV</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-purple-700 dark:text-purple-300">
-                  <span className="font-medium">{totalEquipmentPieces} items</span>
-                  <span>•</span>
-                  <span>{orderedPieces} ordered</span>
-                  <span>•</span>
-                  <span>{receivedPieces} received</span>
-                </div>
-              </div>
-            </button>
+              <ChevronRight
+                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                style={{ transform: sectionsCollapsed.procurement ? 'none' : 'rotate(90deg)' }}
+              />
+            </div>
+          </button>
 
-            {!sectionsCollapsed.procurement && (
-              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
-                <ProjectEquipmentManager
-                  projectId={projectId}
-                  embedded
-                  onEquipmentChange={handleEquipmentChange}
-                />
-              </div>
-            )}
-          </div>
+          {!sectionsCollapsed.procurement && (
+            <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+              <ProjectEquipmentManager
+                projectId={projectId}
+                embedded
+                onEquipmentChange={handleEquipmentChange}
+              />
+            </div>
+          )}
         </div>
 
-        {/* Step 3: Room Alignment - BLUE */}
-        <div className="mb-6 flex gap-3">
-          {/* Step Number Badge */}
-          <div className="flex-shrink-0">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 dark:bg-blue-600 shadow-sm">
-              <span className="text-lg font-bold text-white">3</span>
+        {/* Step 3: Room Alignment */}
+        <div className="mb-4">
+          <button
+            onClick={() => toggleSection('roomMatching')}
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+            style={sectionStyles.card}
+          >
+            <div className="flex items-center gap-3">
+              <FolderOpen className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">Room Alignment</span>
             </div>
-          </div>
-
-          {/* Section Content */}
-          <div className="flex-1">
-            <button
-              onClick={() => toggleSection('roomMatching')}
-              className="flex w-full items-center justify-between rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-4 shadow-sm hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-            >
-              <div className="flex-1 text-left">
-                <div className="flex items-center gap-2 mb-1">
-                  <FolderOpen className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Room Alignment: Match Lucid ↔ Portal CSV</p>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-blue-700 dark:text-blue-300">
-                  <span className="font-medium">{projectRooms.length} rooms</span>
-                  <span>•</span>
-                  <span>{unmatchedRoomEntries.length > 0
-                    ? `${unmatchedRoomEntries.length} need alignment`
-                    : droppableShapes.length > 0 ? 'All aligned ✓' : 'Fetch Lucid data first'}</span>
-                </div>
-              </div>
-              {sectionsCollapsed.roomMatching ? (
-                <ChevronDown className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              ) : (
-                <ChevronUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="flex items-center gap-3">
+              {projectRooms.length > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                  {projectRooms.length}
+                </span>
               )}
-            </button>
+              <ChevronRight
+                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                style={{ transform: sectionsCollapsed.roomMatching ? 'none' : 'rotate(90deg)' }}
+              />
+            </div>
+          </button>
 
-            {!sectionsCollapsed.roomMatching && (
-              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+          {!sectionsCollapsed.roomMatching && (
+            <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
                 <h3 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-2">
                   Room Alignment Tool
                 </h3>
@@ -4266,11 +4188,44 @@ const PMProjectViewEnhanced = () => {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Building Permits Section */}
+      <div>
+        <button
+          onClick={() => toggleSection('buildingPermits')}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
+        >
+          <div className="flex items-center gap-3">
+            <FileText className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Building Permits</span>
+          </div>
+          <ChevronRight
+            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+            style={{ transform: sectionsCollapsed.buildingPermits ? 'none' : 'rotate(90deg)' }}
+          />
+        </button>
+        {!sectionsCollapsed.buildingPermits && (
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+            <ProjectPermits
+              projectId={projectId}
+              onMilestoneChange={loadMilestoneDates}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Lucid Chart Carousel - Show when there's a wiring diagram URL */}
+      {formData.wiring_diagram_url && (
+        <LucidChartCarousel
+          documentUrl={formData.wiring_diagram_url}
+          projectName={project?.name || 'Project'}
+        />
+      )}
 
       {/* Action Buttons */}
       <div className="flex flex-wrap gap-4">

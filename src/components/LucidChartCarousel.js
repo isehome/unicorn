@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  FileText,
+  Compass,
   Loader,
   AlertCircle,
   ExternalLink,
   Maximize2,
-  X
+  X,
+  ChevronRight
 } from 'lucide-react';
 import {
   fetchDocumentMetadata,
@@ -100,17 +101,21 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
   const [thumbnailsLoading, setThumbnailsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false); // Default to collapsed
+  const [hasLoaded, setHasLoaded] = useState(false); // Track if data has been fetched
   const [embedState, setEmbedState] = useState({
     open: false,
     page: null
   });
 
+  // Only load data when section is expanded AND we haven't loaded yet
   useEffect(() => {
-    if (!documentUrl) {
+    if (!documentUrl || !isExpanded || hasLoaded) {
       return;
     }
 
     const load = async () => {
+      setHasLoaded(true); // Mark as loaded to prevent re-fetching
       setLoading(true);
       setError(null);
       setThumbnails({});
@@ -167,7 +172,7 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     };
 
     load();
-  }, [documentUrl]);
+  }, [documentUrl, isExpanded, hasLoaded]);
 
   const loadThumbnails = async (docId, pageData, version) => {
     if (!pageData.length) {
@@ -271,118 +276,127 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     return null;
   }
 
-  if (loading) {
-    return (
-      <div style={sectionStyles.card} className="p-6 mb-6">
-        <div className="flex items-center justify-center py-12">
-          <Loader className="h-7 w-7 animate-spin text-violet-600" />
-          <span className="ml-3 text-gray-600 dark:text-gray-400">Loading Lucid pages…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={sectionStyles.card} className="p-6 mb-6">
-        <div className="flex items-center justify-center gap-2 py-8">
-          <AlertCircle className="h-5 w-5 text-red-500" />
-          <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!pages.length) {
-    return null;
-  }
-
   return (
     <>
-      <div style={sectionStyles.card} className="p-6 mb-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-gray-900 dark:text-white">
-            <FileText className="h-5 w-5" />
-            <div>
-              <p className="text-sm font-semibold">Wiring Diagram Overview</p>
-              {projectName && (
-                <p className="text-xs text-gray-500 dark:text-gray-400">{projectName}</p>
-              )}
-            </div>
+      <div className="mb-4">
+        {/* Collapsible Header - matches other sections */}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
+        >
+          <div className="flex items-center gap-3">
+            <Compass size={20} className={mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'} />
+            <span className={`font-medium ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
+              Wiring Diagram
+            </span>
           </div>
-
-          <div className="flex gap-2">
-            {documentVersion && (
-              <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                v{documentVersion}
+          <div className="flex items-center gap-3">
+            {pages.length > 0 && (
+              <span className={`px-2 py-0.5 text-xs rounded-full ${mode === 'dark' ? 'bg-zinc-800 text-zinc-300' : 'bg-zinc-100 text-zinc-600'}`}>
+                {pages.length}
               </span>
             )}
-            <button
-              onClick={openInLucidChart}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-violet-600 transition hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open in Lucid
-            </button>
+            <ChevronRight
+              size={20}
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+              style={{ color: mode === 'dark' ? '#a1a1aa' : '#71717a' }}
+            />
           </div>
-        </div>
+        </button>
 
-        <div className="overflow-x-auto pb-2">
-          <div className="flex gap-4">
-            {pages.map((page) => {
-              const thumbnail = thumbnails[page.index];
-              const isSelected = selectedIndex === page.index && embedState.open;
+        {/* Collapsible Content - only renders when expanded */}
+        {isExpanded && (
+          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+            {/* Loading state */}
+            {loading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader className="h-6 w-6 animate-spin text-violet-600" />
+                <span className="ml-3 text-zinc-600 dark:text-zinc-400">Loading diagrams…</span>
+              </div>
+            )}
 
-              return (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => handleOpenPage(page)}
-                  className={`group relative w-48 shrink-0 rounded-xl border p-2 text-left transition ${
-                    isSelected
-                      ? 'border-violet-500 shadow-lg shadow-violet-500/10'
-                      : mode === 'dark'
-                        ? 'border-gray-800 bg-gray-900 hover:border-violet-500'
-                        : 'border-gray-200 bg-white hover:border-violet-500'
-                  }`}
-                >
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
-                    {thumbnail ? (
-                      <img
-                        src={thumbnail}
-                        alt={page.title}
-                        className="h-full w-full object-contain"
-                        draggable={false}
-                      />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-400">
-                        <FileText className="h-8 w-8" />
-                        <span className="text-xs">Loading…</span>
-                      </div>
-                    )}
+            {/* Error state */}
+            {error && !loading && (
+              <div className="flex items-center justify-center gap-2 py-8">
+                <AlertCircle className="h-5 w-5 text-red-500" />
+                <span className="text-sm text-red-600 dark:text-red-400">{error}</span>
+              </div>
+            )}
 
-                    <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
-                      <Maximize2 className="h-3 w-3" />
-                      View
-                    </span>
+            {/* Content when loaded */}
+            {!loading && !error && pages.length > 0 && (
+              <>
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={openInLucidChart}
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-violet-600 transition hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-900/20"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open in Lucid
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto pb-2">
+                  <div className="flex gap-4">
+                    {pages.map((page) => {
+                      const thumbnail = thumbnails[page.index];
+                      const isSelected = selectedIndex === page.index && embedState.open;
+
+                      return (
+                        <button
+                          key={page.id}
+                          type="button"
+                          onClick={() => handleOpenPage(page)}
+                          className={`group relative w-48 shrink-0 rounded-xl border p-2 text-left transition ${
+                            isSelected
+                              ? 'border-violet-500 shadow-lg shadow-violet-500/10'
+                              : mode === 'dark'
+                                ? 'border-zinc-800 bg-zinc-900 hover:border-violet-500'
+                                : 'border-zinc-200 bg-white hover:border-violet-500'
+                          }`}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                            {thumbnail ? (
+                              <img
+                                src={thumbnail}
+                                alt={page.title}
+                                className="h-full w-full object-contain"
+                                draggable={false}
+                              />
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-zinc-400">
+                                <Compass className="h-8 w-8" />
+                                <span className="text-xs">Loading…</span>
+                              </div>
+                            )}
+
+                            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover:opacity-100">
+                              <Maximize2 className="h-3 w-3" />
+                              View
+                            </span>
+                          </div>
+
+                          <div className="mt-2">
+                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                              {page.title}
+                            </p>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">Page {page.index + 1}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
 
-                  <div className="mt-2">
-                    <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {page.title}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Page {page.index + 1}</p>
+                {thumbnailsLoading && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300">
+                    <Loader className="h-3 w-3 animate-spin" />
+                    Updating thumbnails…
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {thumbnailsLoading && (
-          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-300">
-            <Loader className="h-3 w-3 animate-spin" />
-            Updating thumbnails…
+                )}
+              </>
+            )}
           </div>
         )}
       </div>

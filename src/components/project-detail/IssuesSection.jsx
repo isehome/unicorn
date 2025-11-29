@@ -37,23 +37,25 @@ const IssuesSection = ({
     <div>
       <button
         onClick={() => toggleSection('issues')}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5"
+        className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
         style={styles.card}
       >
         <div className="flex items-center gap-3">
-          <AlertTriangle size={20} style={styles.textSecondary} />
+          <AlertTriangle size={20} style={styles.textPrimary} />
           <span className="font-medium" style={styles.textPrimary}>Issues</span>
+        </div>
+        <div className="flex items-center gap-3">
           {openIssues.length > 0 && (
             <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.danger, 0.18), color: palette.danger }}>
               {openIssues.length}
             </span>
           )}
+          <ChevronRight
+            size={20}
+            className={`transition-transform duration-200 ${expandedSection === 'issues' ? 'rotate-90' : ''}`}
+            style={styles.textSecondary}
+          />
         </div>
-        <ChevronRight
-          size={20}
-          className="transition-transform"
-          style={{ ...styles.textSecondary, transform: expandedSection === 'issues' ? 'rotate(90deg)' : 'none' }}
-        />
       </button>
 
       {expandedSection === 'issues' && (

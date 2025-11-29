@@ -1485,14 +1485,7 @@ const ProjectDetailView = () => {
           >
             <div className="flex items-center gap-3">
               <FileText size={20} style={styles.textPrimary} />
-              <div className="text-left">
-                <h2 className="text-base font-semibold" style={styles.textPrimary}>
-                  Project Details
-                </h2>
-                <p className="text-xs" style={styles.textSecondary}>
-                  General information and permits
-                </p>
-              </div>
+              <span className="font-medium" style={styles.textPrimary}>Project Details</span>
             </div>
             <ChevronRight
               className={`transition-transform duration-200 ${expandedSection === 'details' ? 'rotate-90' : ''}`}
@@ -1572,19 +1565,23 @@ const ProjectDetailView = () => {
         <div>
           <button
             onClick={() => toggleSection('wireDrops')}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5"
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
             style={styles.card}
           >
             <div className="flex items-center gap-3">
-              <Zap size={20} style={styles.textSecondary} />
+              <Zap size={20} style={styles.textPrimary} />
               <span className="font-medium" style={styles.textPrimary}>Wire Drops</span>
-              <span className="px-2 py-0.5 text-xs rounded-full" style={styles.badge}>{wireDrops.length}</span>
             </div>
-            <ChevronRight
-              size={20}
-              className="transition-transform"
-              style={{ ...styles.textSecondary, transform: expandedSection === 'wireDrops' ? 'rotate(90deg)' : 'none' }}
-            />
+            <div className="flex items-center gap-3">
+              {wireDrops.length > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full" style={styles.badge}>{wireDrops.length}</span>
+              )}
+              <ChevronRight
+                size={20}
+                className={`transition-transform duration-200 ${expandedSection === 'wireDrops' ? 'rotate-90' : ''}`}
+                style={styles.textSecondary}
+              />
+            </div>
           </button>
 
           {expandedSection === 'wireDrops' && (
@@ -1792,23 +1789,25 @@ const ProjectDetailView = () => {
         <div>
           <button
             onClick={() => toggleSection('todos')}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5"
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
             style={styles.card}
           >
             <div className="flex items-center gap-3">
-              <ListTodo size={20} style={{ color: '#ACB3D1' }} />
+              <ListTodo size={20} style={styles.textPrimary} />
               <span className="font-medium" style={styles.textPrimary}>To-do List</span>
+            </div>
+            <div className="flex items-center gap-3">
               {openTodos.length > 0 && (
                 <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.warning, 0.18), color: palette.warning }}>
-                  {openTodos.length} open
+                  {openTodos.length}
                 </span>
               )}
+              <ChevronRight
+                size={20}
+                className={`transition-transform duration-200 ${expandedSection === 'todos' ? 'rotate-90' : ''}`}
+                style={styles.textSecondary}
+              />
             </div>
-            <ChevronRight
-              size={20}
-              className="transition-transform"
-              style={{ ...styles.textSecondary, transform: expandedSection === 'todos' ? 'rotate(90deg)' : 'none' }}
-            />
           </button>
 
           {expandedSection === 'todos' && (
@@ -2001,21 +2000,25 @@ const ProjectDetailView = () => {
         <div>
           <button
             onClick={() => toggleSection('people')}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5"
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
             style={styles.card}
           >
             <div className="flex items-center gap-3">
-              <Users size={20} style={styles.textSecondary} />
+              <Users size={20} style={styles.textPrimary} />
               <span className="font-medium" style={styles.textPrimary}>Stakeholders</span>
-              <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.info, 0.18), color: palette.info }}>
-                {peopleCount}
-              </span>
             </div>
-            <ChevronRight
-              size={20}
-              className="transition-transform"
-              style={{ ...styles.textSecondary, transform: expandedSection === 'people' ? 'rotate(90deg)' : 'none' }}
-            />
+            <div className="flex items-center gap-3">
+              {peopleCount > 0 && (
+                <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: withAlpha(palette.info, 0.18), color: palette.info }}>
+                  {peopleCount}
+                </span>
+              )}
+              <ChevronRight
+                size={20}
+                className={`transition-transform duration-200 ${expandedSection === 'people' ? 'rotate-90' : ''}`}
+                style={styles.textSecondary}
+              />
+            </div>
           </button>
 
           {expandedSection === 'people' && (

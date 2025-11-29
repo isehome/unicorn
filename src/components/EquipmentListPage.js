@@ -380,10 +380,11 @@ const EquipmentListPage = () => {
       >
         {/* Collapsed Header - Always Visible */}
         <div
-          className="flex items-center justify-between gap-3 px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
+          className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
           onClick={() => toggleExpanded(item.id)}
         >
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+          {/* Top row: Chevron + Name */}
+          <div className="flex items-center gap-3">
             <button className="flex-shrink-0 text-gray-400">
               {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
             </button>
@@ -395,8 +396,8 @@ const EquipmentListPage = () => {
             </div>
           </div>
 
-          {/* Status Checkboxes with Labels */}
-          <div className="flex items-center gap-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          {/* Bottom row: Status Checkboxes */}
+          <div className="flex items-center gap-4 mt-2 ml-7" onClick={(e) => e.stopPropagation()}>
             <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-not-allowed" title="Ordered">
               <input
                 type="checkbox"

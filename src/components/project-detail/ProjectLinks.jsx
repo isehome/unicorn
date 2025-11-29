@@ -37,60 +37,36 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           onClick={() => navigate(`/projects/${projectId}/equipment`)}
-          className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+          className="flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md group"
           style={styles.card}
         >
           <div className="flex items-center gap-3">
-            <div
-              className="p-2 rounded-lg transition-colors"
-              style={{ backgroundColor: withAlpha(palette.info, 0.1) }}
-            >
-              <Package size={20} style={{ color: palette.info }} />
-            </div>
-            <div className="text-left">
-              <p className="font-medium" style={styles.textPrimary}>Equipment List</p>
-              <p className="text-xs" style={styles.textSecondary}>Manage project equipment</p>
-            </div>
+            <Package size={20} style={styles.textPrimary} />
+            <span className="font-medium" style={styles.textPrimary}>Equipment List</span>
           </div>
           <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
         </button>
 
         <button
           onClick={() => navigate(`/projects/${projectId}/receiving`)}
-          className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+          className="flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md group"
           style={styles.card}
         >
           <div className="flex items-center gap-3">
-            <div
-              className="p-2 rounded-lg transition-colors"
-              style={{ backgroundColor: withAlpha(palette.success, 0.1) }}
-            >
-              <PackageCheck size={20} style={{ color: palette.success }} />
-            </div>
-            <div className="text-left">
-              <p className="font-medium" style={styles.textPrimary}>Receive Items</p>
-              <p className="text-xs" style={styles.textSecondary}>Log incoming shipments</p>
-            </div>
+            <PackageCheck size={20} style={styles.textPrimary} />
+            <span className="font-medium" style={styles.textPrimary}>Receive Items</span>
           </div>
           <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
         </button>
 
         <button
           onClick={() => navigate(`/projects/${projectId}/secure-data`)}
-          className="flex items-center justify-between px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg group"
+          className="flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md group"
           style={styles.card}
         >
           <div className="flex items-center gap-3">
-            <div
-              className="p-2 rounded-lg transition-colors"
-              style={{ backgroundColor: withAlpha(palette.danger, 0.1) }}
-            >
-              <Shield size={20} style={{ color: palette.danger }} />
-            </div>
-            <div className="text-left">
-              <p className="font-medium" style={styles.textPrimary}>Secure Data</p>
-              <p className="text-xs" style={styles.textSecondary}>Protected credentials</p>
-            </div>
+            <Shield size={20} style={styles.textPrimary} />
+            <span className="font-medium" style={styles.textPrimary}>Secure Data</span>
           </div>
           <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
         </button>
@@ -101,7 +77,7 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
         <button
           disabled={!photosUrl}
           onClick={() => photosUrl && openLink(photosUrl)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-all duration-200 hover:shadow-md disabled:opacity-50"
           style={styles.card}
         >
           <Image size={18} style={styles.textSecondary} />
@@ -110,7 +86,7 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
         <button
           disabled={!filesUrl}
           onClick={() => filesUrl && openLink(filesUrl)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-all duration-200 hover:shadow-md disabled:opacity-50"
           style={styles.card}
         >
           <Folder size={18} style={styles.textSecondary} />
@@ -119,7 +95,7 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
         <button
           disabled={!procurementUrl}
           onClick={() => procurementUrl && openLink(procurementUrl)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-all duration-200 hover:shadow-md disabled:opacity-50"
           style={styles.card}
         >
           <Package size={18} style={styles.textSecondary} />
@@ -127,7 +103,7 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
         </button>
         <button
           onClick={() => openLink(project.portal_proposal_url)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+          className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border transition-all duration-200 hover:shadow-md"
           style={styles.card}
         >
           <FileText size={18} style={styles.textSecondary} />
