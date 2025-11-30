@@ -6,12 +6,46 @@ const PUBLIC_UPLOAD_BUCKET = 'public-issue-uploads';
 const OTP_TTL_DAYS = 365; // Effectively never expire (until issue closed)
 
 class IssuePublicAccessService {
-  async ensureLink({ issueId, projectId, stakeholderTagId, stakeholder }) {
+  /**
+   * Get or create a public access link for a stakeholder.
+   * If a valid (non-revoked) link already exists, returns { linkExists: true } without regenerating.
+   * Only creates a new link if none exists, to prevent invalidating existing portal URLs.
+   * Links persist until the issue is resolved.
+   */
+  async ensureLink({ issueId, projectId, stakeholderTagId, stakeholder, forceRegenerate = false }) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!issueId || !projectId || !stakeholderTagId) {
       throw new Error('Missing issue context for public link');
     }
 
+    // First, check if a valid (non-revoked) link already exists
+    if (!forceRegenerate) {
+      const { data: existingLink, error: fetchError } = await supabase
+        .from('issue_public_access_links')
+        .select('id, token_hash, contact_email')
+        .eq('issue_stakeholder_tag_id', stakeholderTagId)
+        .is('revoked_at', null)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.warn('[IssuePublicAccessService] Error checking for existing link:', fetchError);
+      }
+
+      // If a valid link already exists, don't regenerate - just return a flag
+      if (existingLink?.id) {
+        console.log('[IssuePublicAccessService] Existing valid link found, not regenerating:', {
+          linkId: existingLink.id,
+          stakeholderTagId
+        });
+        return {
+          linkId: existingLink.id,
+          linkExists: true,
+          contactEmail: existingLink.contact_email
+        };
+      }
+    }
+
+    // No existing link or force regenerate - create a new one
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id || null;
 
@@ -64,7 +98,7 @@ class IssuePublicAccessService {
       .eq('id', data.id)
       .single();
 
-    console.log('[IssuePublicAccessService] Link created/updated:', {
+    console.log('[IssuePublicAccessService] Link created:', {
       linkId: data.id,
       stakeholderTagId,
       expectedHash: tokenHash.substring(0, 16) + '...',
@@ -227,6 +261,39 @@ class IssuePublicAccessService {
       await supabase.storage.from(PUBLIC_UPLOAD_BUCKET).remove([upload.storage_path]);
     } catch (cleanupError) {
       console.warn('Failed to remove rejected upload:', cleanupError);
+    }
+  }
+
+  /**
+   * Revoke all public access links for an issue.
+   * Call this when an issue is marked as resolved to invalidate all external portal access.
+   */
+  async revokeLinksForIssue(issueId) {
+    if (!supabase || !issueId) return { revoked: 0 };
+
+    try {
+      const { data, error } = await supabase
+        .from('issue_public_access_links')
+        .update({ revoked_at: new Date().toISOString() })
+        .eq('issue_id', issueId)
+        .is('revoked_at', null)
+        .select('id');
+
+      if (error) {
+        console.error('[IssuePublicAccessService] Failed to revoke links for issue:', error);
+        throw error;
+      }
+
+      const revokedCount = data?.length || 0;
+      console.log('[IssuePublicAccessService] Revoked portal links for issue:', {
+        issueId,
+        revokedCount
+      });
+
+      return { revoked: revokedCount };
+    } catch (err) {
+      console.error('[IssuePublicAccessService] Error revoking links:', err);
+      return { revoked: 0, error: err.message };
     }
   }
 

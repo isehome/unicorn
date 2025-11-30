@@ -11,36 +11,195 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-// Date Detail Modal Component
-const DateDetailModal = ({ isOpen, onClose, title, date, userId, mode }) => {
+// Date Detail Modal Component - supports fallback lookups from related records
+const DateDetailModal = ({ isOpen, onClose, title, date, userId, equipmentId, mode, currentUser }) => {
   const [userName, setUserName] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [lookupSource, setLookupSource] = useState(null); // Track where we found the user
 
   useEffect(() => {
-    if (isOpen && userId) {
+    const lookupUser = async () => {
       setLoading(true);
-      // Use profiles table (the correct user table in this schema)
-      supabase
-        .from('profiles')
-        .select('full_name, email')
-        .eq('id', userId)
-        .single()
-        .then(({ data, error }) => {
-          if (!error && data) {
-            setUserName(data.full_name || data.email || 'User ID: ' + userId);
-          } else {
-            // User exists but profile lookup failed - show ID for debugging
-            setUserName('User ID: ' + userId);
+      setLookupSource(null);
+
+      // Helper to fetch user name - first check if it's the current user, then try profiles table
+      // Returns { name, found } to indicate if lookup was successful
+      const fetchUserName = async (uid) => {
+        if (!uid) return { name: null, found: false };
+
+        // If this is the current logged-in user, use their display name directly
+        // This avoids needing to look up profiles table (which may not have synced yet)
+        if (currentUser?.id === uid && currentUser?.displayName) {
+          console.log('[DateDetailModal] Using current user display name:', currentUser.displayName);
+          return { name: currentUser.displayName, found: true };
+        }
+
+        // Try to look up from profiles table
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', uid)
+          .single();
+        if (!error && data) {
+          const resolvedName = data.full_name || data.email;
+          if (resolvedName) {
+            return { name: resolvedName, found: true };
           }
+        }
+
+        // Profile lookup failed - if it's the current user, still use their name
+        if (currentUser?.id === uid) {
+          return { name: currentUser.displayName || currentUser.email || 'Current User', found: true };
+        }
+
+        // Last resort - user not found in profiles
+        console.warn('[DateDetailModal] Could not resolve user name for ID:', uid);
+        return { name: null, found: false };
+      };
+
+      // 1. Direct lookup - use passed userId if available
+      if (userId) {
+        const result = await fetchUserName(userId);
+        if (result.found && result.name) {
+          setUserName(result.name);
+          setLookupSource('direct');
           setLoading(false);
-        });
-    } else if (isOpen) {
-      // No user ID means the action occurred before user tracking was implemented
-      // This is historical data - show that tracking was not available at that time
+          return;
+        }
+        // userId was passed but couldn't be resolved - continue to fallback lookups
+        console.log('[DateDetailModal] Direct userId lookup failed, trying fallback for:', title);
+      }
+
+      // 2. Fallback lookups based on action type (title)
+      if (equipmentId) {
+        try {
+          // ORDERED: Look up submitted_by from purchase_orders via purchase_order_items
+          if (title === 'Ordered') {
+            const { data: poItems } = await supabase
+              .from('purchase_order_items')
+              .select(`
+                po_id,
+                purchase_order:po_id (
+                  submitted_by
+                )
+              `)
+              .eq('project_equipment_id', equipmentId)
+              .not('purchase_order.submitted_by', 'is', null)
+              .limit(1);
+
+            const submittedBy = poItems?.[0]?.purchase_order?.submitted_by;
+            if (submittedBy) {
+              const result = await fetchUserName(submittedBy);
+              if (result.found && result.name) {
+                setUserName(result.name);
+                setLookupSource('purchase_order');
+                setLoading(false);
+                return;
+              }
+            }
+          }
+
+          // RECEIVED: Look up received_by from purchase_order_items
+          if (title === 'Received') {
+            const { data: poItems } = await supabase
+              .from('purchase_order_items')
+              .select('received_by')
+              .eq('project_equipment_id', equipmentId)
+              .not('received_by', 'is', null)
+              .limit(1);
+
+            const receivedBy = poItems?.[0]?.received_by;
+            if (receivedBy) {
+              const result = await fetchUserName(receivedBy);
+              if (result.found && result.name) {
+                setUserName(result.name);
+                setLookupSource('purchase_order_item');
+                setLoading(false);
+                return;
+              }
+            }
+          }
+
+          // INSTALLED: Look up completed_by from wire_drop_stages (trim_out) via wire_drop_equipment_links
+          // NOTE: wire_drop_stages.completed_by stores the display NAME directly (not a UUID)
+          if (title === 'Installed') {
+            // First get linked wire drops for this equipment
+            const { data: links } = await supabase
+              .from('wire_drop_equipment_links')
+              .select('wire_drop_id')
+              .eq('project_equipment_id', equipmentId);
+
+            if (links?.length > 0) {
+              const wireDropIds = links.map(l => l.wire_drop_id);
+              // Find completed trim_out stages
+              const { data: stages } = await supabase
+                .from('wire_drop_stages')
+                .select('completed_by, completed_at')
+                .eq('stage_type', 'trim_out')
+                .eq('completed', true)
+                .in('wire_drop_id', wireDropIds)
+                .order('completed_at', { ascending: false })
+                .limit(1);
+
+              const completedBy = stages?.[0]?.completed_by;
+              if (completedBy) {
+                // completed_by in wire_drop_stages is already the display name (not a UUID)
+                // Check if it looks like a UUID (36 chars with dashes) or a display name
+                const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(completedBy);
+
+                if (isUUID) {
+                  // It's a UUID - try to resolve via profiles
+                  const result = await fetchUserName(completedBy);
+                  if (result.found && result.name) {
+                    setUserName(result.name);
+                    setLookupSource('wire_drop_trim');
+                    setLoading(false);
+                    return;
+                  }
+                } else {
+                  // It's already a display name - use it directly
+                  setUserName(completedBy);
+                  setLookupSource('wire_drop_trim');
+                  setLoading(false);
+                  return;
+                }
+              }
+            }
+          }
+
+          // DELIVERED: Look up delivered_confirmed_by directly from project_equipment
+          if (title === 'Delivered') {
+            const { data: equipment } = await supabase
+              .from('project_equipment')
+              .select('delivered_confirmed_by')
+              .eq('id', equipmentId)
+              .single();
+
+            const deliveredBy = equipment?.delivered_confirmed_by;
+            if (deliveredBy) {
+              const result = await fetchUserName(deliveredBy);
+              if (result.found && result.name) {
+                setUserName(result.name);
+                setLookupSource('equipment_record');
+                setLoading(false);
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[DateDetailModal] Fallback lookup error:', err);
+        }
+      }
+
+      // No user found through any lookup method
       setUserName('Tracking unavailable (legacy data)');
       setLoading(false);
+    };
+
+    if (isOpen) {
+      lookupUser();
     }
-  }, [isOpen, userId]);
+  }, [isOpen, userId, equipmentId, title, currentUser]);
 
   if (!isOpen) return null;
 
@@ -97,6 +256,14 @@ const DateDetailModal = ({ isOpen, onClose, title, date, userId, mode }) => {
               <p className="font-medium text-gray-900 dark:text-gray-100">
                 {loading ? 'Loading...' : userName}
               </p>
+              {lookupSource && lookupSource !== 'direct' && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {lookupSource === 'purchase_order' && '(from purchase order)'}
+                  {lookupSource === 'purchase_order_item' && '(from receiving record)'}
+                  {lookupSource === 'wire_drop_trim' && '(from wire drop trim)'}
+                  {lookupSource === 'equipment_record' && '(from equipment record)'}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -350,7 +517,7 @@ const EquipmentListPage = () => {
   const [installFilter, setInstallFilter] = useState('all');
   const [installedFilter, setInstalledFilter] = useState('all'); // 'all', 'installed', 'not_installed'
   const [expandedItems, setExpandedItems] = useState({}); // Track expanded equipment cards
-  const [dateModal, setDateModal] = useState({ isOpen: false, title: '', date: null, userId: null }); // Date detail modal state
+  const [dateModal, setDateModal] = useState({ isOpen: false, title: '', date: null, userId: null, equipmentId: null }); // Date detail modal state
   const [projectRooms, setProjectRooms] = useState([]); // All rooms for this project
   const [reassignModal, setReassignModal] = useState({ isOpen: false, equipment: null }); // Room reassignment modal state
 
@@ -462,17 +629,21 @@ const EquipmentListPage = () => {
         wireDropLinks?.filter(l => l.wire_drop?.id).map(l => l.wire_drop.id) || []
       )];
 
-      // Fetch trim_out stage completion status for linked wire drops
+      // Fetch trim_out stage completion status and timestamps for linked wire drops
       let wireDropTrimOutStatus = {};
       if (linkedWireDropIds.length > 0) {
         const { data: trimStages } = await supabase
           .from('wire_drop_stages')
-          .select('wire_drop_id, completed')
+          .select('wire_drop_id, completed, completed_at, completed_by')
           .eq('stage_type', 'trim_out')
           .in('wire_drop_id', linkedWireDropIds);
 
         (trimStages || []).forEach(stage => {
-          wireDropTrimOutStatus[stage.wire_drop_id] = stage.completed;
+          wireDropTrimOutStatus[stage.wire_drop_id] = {
+            completed: stage.completed,
+            completedAt: stage.completed_at,
+            completedBy: stage.completed_by
+          };
         });
       }
 
@@ -483,13 +654,16 @@ const EquipmentListPage = () => {
         if (!wireDropsByEquipment[link.project_equipment_id]) {
           wireDropsByEquipment[link.project_equipment_id] = [];
         }
+        const trimStatus = wireDropTrimOutStatus[link.wire_drop.id] || {};
         wireDropsByEquipment[link.project_equipment_id].push({
           wireDropId: link.wire_drop.id,
           wireDropName: link.wire_drop.drop_name,
           wireDropType: link.wire_drop.drop_type,
           wireDropRoom: link.wire_drop.room_name,
           linkSide: link.link_side,
-          trimOutCompleted: wireDropTrimOutStatus[link.wire_drop.id] || false
+          trimOutCompleted: trimStatus.completed || false,
+          trimOutCompletedAt: trimStatus.completedAt || null,
+          trimOutCompletedBy: trimStatus.completedBy || null
         });
       });
 
@@ -500,14 +674,27 @@ const EquipmentListPage = () => {
 
         // If equipment is linked to ANY wire drop with trim_out completed, it's installed
         // This takes precedence over the stored installed field for equipment with wire drops
-        const hasCompletedTrimOut = wireDrops.some(wd => wd.trimOutCompleted);
+        const completedWireDrop = wireDrops.find(wd => wd.trimOutCompleted);
+        const hasCompletedTrimOut = !!completedWireDrop;
         const installedFromWireDrop = wireDrops.length > 0 && hasCompletedTrimOut;
+
+        // Derive installedAt and installedBy from wire drop if installed via wire drop
+        let installedAt = mappedItem.installedAt;
+        let installedBy = mappedItem.installedBy;
+
+        if (installedFromWireDrop && completedWireDrop) {
+          // Use the timestamp and user from the wire drop trim_out stage
+          installedAt = completedWireDrop.trimOutCompletedAt || installedAt;
+          installedBy = completedWireDrop.trimOutCompletedBy || installedBy;
+        }
 
         return {
           ...mappedItem,
           wireDrops,
           // Installed status: derived from wire drop OR manual field for items without wire drops
           installed: installedFromWireDrop || (wireDrops.length === 0 && mappedItem.installed),
+          installedAt,
+          installedBy,
           // Track whether this is auto-derived or manual
           installedViaWireDrop: installedFromWireDrop
         };
@@ -624,8 +811,28 @@ const EquipmentListPage = () => {
       setStatusUpdating(equipmentId);
 
       if (field === 'delivered') {
-        const payload = { delivered: value };
+        // Pass userId from MSAL auth context for user tracking
+        // The user object comes from Microsoft Graph via useAuth() hook
+        const validUserId = user?.id && typeof user.id === 'string' && user.id.trim() ? user.id.trim() : null;
+
+        if (!validUserId && value) {
+          console.warn('[EquipmentListPage] WARNING: No valid user ID found for delivered tracking!', {
+            userExists: !!user,
+            userId: user?.id,
+            userIdType: typeof user?.id
+          });
+        }
+
+        const payload = { delivered: value, userId: validUserId };
         const updated = await projectEquipmentService.updateProcurementStatus(equipmentId, payload);
+
+        // Verify the response contains the user tracking fields
+        console.log('[EquipmentListPage] Update response:', {
+          deliveredConfirmed: updated?.delivered_confirmed,
+          deliveredConfirmedBy: updated?.delivered_confirmed_by,
+          deliveredConfirmedAt: updated?.delivered_confirmed_at
+        });
+
         setEquipment((prev) =>
           prev.map((item) => (item.id === equipmentId ? { ...mapEquipmentRecord(updated), wireDrops: item.wireDrops } : item))
         );
@@ -732,8 +939,19 @@ const EquipmentListPage = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
               )}
             </div>
-            {/* Status badges - all 4 always visible, greyed when incomplete, colored when complete */}
+            {/* Wire drop badge + Status badges - all always visible, greyed when inactive */}
             <div className="flex items-center gap-1 flex-shrink-0">
+              {/* Wire drop badge - always visible, greyed when 0 */}
+              <span
+                className="px-2 py-0.5 text-[9px] font-medium rounded-full flex items-center gap-1"
+                style={item.wireDrops?.length > 0
+                  ? { backgroundColor: mode === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)', color: mode === 'dark' ? '#A78BFA' : '#7C3AED' }
+                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                }
+              >
+                <Cable size={10} />
+                {item.wireDrops?.length || 0}
+              </span>
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
                 item.ordered
                   ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
@@ -741,11 +959,13 @@ const EquipmentListPage = () => {
               }`}>
                 Ordered
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                item.received
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
-              }`}>
+              <span
+                className="px-1.5 py-0.5 rounded text-[9px] font-medium"
+                style={item.received
+                  ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
+                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                }
+              >
                 Received
               </span>
               <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
@@ -755,19 +975,15 @@ const EquipmentListPage = () => {
               }`}>
                 Delivered
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                item.installed
-                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
-              }`}>
+              <span
+                className="px-1.5 py-0.5 rounded text-[9px] font-medium"
+                style={item.installed
+                  ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
+                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                }
+              >
                 Installed
               </span>
-              {item.wireDrops?.length > 0 && (
-                <span className="px-2 py-0.5 text-[9px] font-medium rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400 flex items-center gap-1">
-                  <Cable size={10} />
-                  {item.wireDrops.length}
-                </span>
-              )}
             </div>
           </div>
         </div>
@@ -825,7 +1041,7 @@ const EquipmentListPage = () => {
                 </label>
                 {item.ordered && item.orderedAt && (
                   <button
-                    onClick={() => setDateModal({ isOpen: true, title: 'Ordered', date: item.orderedAt, userId: item.orderedBy })}
+                    onClick={() => setDateModal({ isOpen: true, title: 'Ordered', date: item.orderedAt, userId: item.orderedBy, equipmentId: item.id })}
                     className="ml-6 text-left text-blue-600 dark:text-blue-400 hover:underline"
                   >
                     <DateField date={item.orderedAt} variant="inline" />
@@ -838,7 +1054,8 @@ const EquipmentListPage = () => {
                 <label className="inline-flex items-center gap-2 cursor-not-allowed" title="Auto-synced with Parts Receiving">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 opacity-75 cursor-not-allowed"
+                    className="h-4 w-4 rounded border-gray-300 opacity-75 cursor-not-allowed"
+                    style={{ accentColor: '#94AF32' }}
                     checked={item.received}
                     readOnly
                     disabled
@@ -847,8 +1064,9 @@ const EquipmentListPage = () => {
                 </label>
                 {item.received && item.receivedAt && (
                   <button
-                    onClick={() => setDateModal({ isOpen: true, title: 'Received', date: item.receivedAt, userId: item.receivedBy })}
-                    className="ml-6 text-left text-green-600 dark:text-green-400 hover:underline"
+                    onClick={() => setDateModal({ isOpen: true, title: 'Received', date: item.receivedAt, userId: item.receivedBy, equipmentId: item.id })}
+                    className="ml-6 text-left hover:underline"
+                    style={{ color: '#94AF32' }}
                   >
                     <DateField date={item.receivedAt} variant="inline" />
                   </button>
@@ -869,7 +1087,7 @@ const EquipmentListPage = () => {
                 </label>
                 {item.delivered && item.deliveredAt && (
                   <button
-                    onClick={() => setDateModal({ isOpen: true, title: 'Delivered', date: item.deliveredAt, userId: item.deliveredBy })}
+                    onClick={() => setDateModal({ isOpen: true, title: 'Delivered', date: item.deliveredAt, userId: item.deliveredBy, equipmentId: item.id })}
                     className="ml-6 text-left text-violet-600 dark:text-violet-400 hover:underline"
                   >
                     <DateField date={item.deliveredAt} variant="inline" />
@@ -889,20 +1107,22 @@ const EquipmentListPage = () => {
                 >
                   <input
                     type="checkbox"
-                    className={`h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 ${item.installedViaWireDrop ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                    className={`h-4 w-4 rounded border-gray-300 ${item.installedViaWireDrop ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                    style={{ accentColor: '#94AF32' }}
                     checked={item.installed}
                     onChange={(e) => toggleStatus(item.id, 'installed', e.target.checked)}
                     disabled={statusUpdating === item.id || item.installedViaWireDrop}
                   />
                   <span className="font-medium text-gray-700 dark:text-gray-300">Installed</span>
                   {item.installedViaWireDrop && (
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400">(via wire drop)</span>
+                    <span className="text-xs" style={{ color: '#94AF32' }}>(via wire drop)</span>
                   )}
                 </label>
                 {item.installed && item.installedAt && (
                   <button
-                    onClick={() => setDateModal({ isOpen: true, title: 'Installed', date: item.installedAt, userId: item.installedBy })}
-                    className="ml-6 text-left text-emerald-600 dark:text-emerald-400 hover:underline"
+                    onClick={() => setDateModal({ isOpen: true, title: 'Installed', date: item.installedAt, userId: item.installedBy, equipmentId: item.id })}
+                    className="ml-6 text-left hover:underline"
+                    style={{ color: '#94AF32' }}
                   >
                     <DateField date={item.installedAt} variant="inline" />
                   </button>
@@ -953,7 +1173,7 @@ const EquipmentListPage = () => {
                 </span>
               )}
 
-              {/* Technical Manuals */}
+              {/* Technical Manuals - using brand olive green (#94AF32) */}
               {item.technicalManualUrls && item.technicalManualUrls.length > 0 && (
                 item.technicalManualUrls.map((url, idx) => (
                   <a
@@ -961,7 +1181,11 @@ const EquipmentListPage = () => {
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
+                    style={{
+                      backgroundColor: mode === 'dark' ? 'rgba(148, 175, 50, 0.2)' : 'rgba(148, 175, 50, 0.15)',
+                      color: '#94AF32'
+                    }}
                   >
                     <FileText size={14} />
                     <span>Tech Manual{item.technicalManualUrls.length > 1 ? ` #${idx + 1}` : ''}</span>
@@ -1073,7 +1297,7 @@ const EquipmentListPage = () => {
                         {wd.linkSide === 'head_end' ? 'Head End' : 'Room End'}
                       </span>
                       {wd.trimOutCompleted && (
-                        <CheckCircle2 size={12} className="text-emerald-500" />
+                        <CheckCircle2 size={12} style={{ color: '#94AF32' }} />
                       )}
                     </button>
                   ))}
@@ -1241,11 +1465,13 @@ const EquipmentListPage = () => {
       {/* Date Detail Modal */}
       <DateDetailModal
         isOpen={dateModal.isOpen}
-        onClose={() => setDateModal({ isOpen: false, title: '', date: null, userId: null })}
+        onClose={() => setDateModal({ isOpen: false, title: '', date: null, userId: null, equipmentId: null })}
         title={dateModal.title}
         date={dateModal.date}
         userId={dateModal.userId}
+        equipmentId={dateModal.equipmentId}
         mode={mode}
+        currentUser={user}
       />
 
       {/* Room Reassignment Modal */}

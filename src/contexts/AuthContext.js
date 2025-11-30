@@ -1,17 +1,18 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { 
+import {
   PublicClientApplication,
   InteractionRequiredAuthError,
 } from '@azure/msal-browser';
-import { 
-  msalConfig, 
-  loginRequest, 
+import {
+  msalConfig,
+  loginRequest,
   tokenRequest,
   AUTH_STATES,
   TIMEOUTS,
   TOKEN_CONFIG,
   AUTH_ERRORS
 } from '../config/authConfig';
+import { supabase } from '../lib/supabase';
 
 // Create MSAL instance
 const msalInstance = new PublicClientApplication(msalConfig);
@@ -154,6 +155,55 @@ export function AuthProvider({ children }) {
       };
 
       setUser(enrichedUser);
+
+      // Sync user profile to Supabase profiles table for audit trail lookups
+      if (supabase && enrichedUser.id) {
+        console.log('[Auth] Attempting profile sync for user:', {
+          id: enrichedUser.id,
+          email: enrichedUser.email,
+          displayName: enrichedUser.displayName
+        });
+        try {
+          const { data: upsertData, error: upsertError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: enrichedUser.id,
+              email: enrichedUser.email,
+              full_name: enrichedUser.displayName,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'id',
+              ignoreDuplicates: false
+            })
+            .select()
+            .single();
+
+          if (upsertError) {
+            console.error('[Auth] Failed to sync profile to Supabase:', upsertError);
+            // Try insert instead of upsert as fallback
+            console.log('[Auth] Attempting insert fallback...');
+            const { error: insertError } = await supabase
+              .from('profiles')
+              .insert({
+                id: enrichedUser.id,
+                email: enrichedUser.email,
+                full_name: enrichedUser.displayName,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+            if (insertError) {
+              console.error('[Auth] Insert fallback also failed:', insertError);
+            } else {
+              console.log('[Auth] Profile inserted successfully via fallback');
+            }
+          } else {
+            console.log('[Auth] Profile synced successfully:', upsertData);
+          }
+        } catch (syncError) {
+          console.error('[Auth] Error syncing profile:', syncError);
+        }
+      }
+
       return enrichedUser;
     } catch (error) {
       console.error('[Auth] Failed to load user profile:', error);

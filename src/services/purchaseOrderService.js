@@ -237,9 +237,11 @@ class PurchaseOrderService {
 
   /**
    * Submit purchase order (change status to submitted)
+   * Also updates equipment records to capture who ordered them
    */
   async submitPurchaseOrder(poId, submittedBy) {
     try {
+      // First, update the PO status
       const { data, error } = await supabase
         .from('purchase_orders')
         .update({
@@ -252,6 +254,35 @@ class PurchaseOrderService {
         .single();
 
       if (error) throw error;
+
+      // Update equipment records to track who ordered them
+      // Get all equipment IDs from this PO's line items
+      const { data: lineItems, error: itemsError } = await supabase
+        .from('purchase_order_items')
+        .select('project_equipment_id')
+        .eq('po_id', poId);
+
+      if (!itemsError && lineItems?.length > 0) {
+        const equipmentIds = lineItems.map(item => item.project_equipment_id).filter(Boolean);
+        const timestamp = new Date().toISOString();
+
+        // Update each equipment item to track who ordered it
+        // Only set if not already set (preserve original orderer for items ordered via multiple POs)
+        for (const equipmentId of equipmentIds) {
+          await supabase
+            .from('project_equipment')
+            .update({
+              ordered_confirmed: true,
+              ordered_confirmed_at: timestamp,
+              ordered_confirmed_by: submittedBy
+            })
+            .eq('id', equipmentId)
+            .is('ordered_confirmed_by', null); // Only update if not already set
+        }
+
+        console.log(`[purchaseOrderService] Updated ${equipmentIds.length} equipment items with orderer: ${submittedBy}`);
+      }
+
       return data;
     } catch (error) {
       console.error('Error submitting purchase order:', error);

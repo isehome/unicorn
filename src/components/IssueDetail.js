@@ -22,7 +22,7 @@ import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
-import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff, Share2, ShieldAlert, Paperclip, Download, Loader } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, CheckCircle, Image as ImageIcon, Mail, Phone, Building, Map as MapIcon, ChevronDown, WifiOff, ShieldAlert, Paperclip, Download, Loader } from 'lucide-react';
 
 const formatStatusLabel = (label = '') => {
   if (!label) return '';
@@ -98,7 +98,6 @@ const IssueDetail = () => {
   const [pendingUploads, setPendingUploads] = useState([]);
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [processingUploadId, setProcessingUploadId] = useState(null);
-  const [portalLinkLoading, setPortalLinkLoading] = useState(null);
   const [ackExternalWarning, setAckExternalWarning] = useState(false);
   const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
   const [pendingPublicToggle, setPendingPublicToggle] = useState(false);
@@ -437,6 +436,8 @@ const IssueDetail = () => {
   }, [tags]);
 
   // Generate portal links for external stakeholders (for comment notifications)
+  // Only returns new portal URLs for stakeholders who don't already have links.
+  // Stakeholders with existing links keep their original portal URL (not regenerated).
   const generateExternalPortalLinks = useCallback(async (issueId, stakeholderList) => {
     const portalLinks = {};
     if (!issueId || !Array.isArray(stakeholderList)) return portalLinks;
@@ -451,7 +452,9 @@ const IssueDetail = () => {
       if (!tagId) continue;
 
       try {
-        // ensureLink does an upsert - if a link exists, it regenerates the OTP
+        // ensureLink checks for existing valid links first.
+        // If a link exists, returns { linkExists: true } without regenerating.
+        // Only creates new links for stakeholders who don't have one yet.
         const result = await issuePublicAccessService.ensureLink({
           issueId,
           projectId,
@@ -459,6 +462,8 @@ const IssueDetail = () => {
           stakeholder
         });
 
+        // Only include in notifications if this is a NEW link (has token)
+        // Existing links don't return a token since we can't recover the hashed value
         if (result?.token) {
           const portalUrl = `${window.location.origin}/public/issues/${result.token}`;
           portalLinks[tagId] = {
@@ -637,6 +642,17 @@ const IssueDetail = () => {
           issueSnapshot: updated,
           stakeholdersOverride: options.stakeholdersOverride
         });
+
+        // When issue is resolved, revoke all external portal links
+        if (desiredStatus === 'resolved') {
+          try {
+            await issuePublicAccessService.revokeLinksForIssue(issue.id);
+            console.log('[IssueDetail] Revoked portal links for resolved issue:', issue.id);
+          } catch (revokeErr) {
+            console.warn('[IssueDetail] Failed to revoke portal links:', revokeErr);
+            // Don't fail the status update if link revocation fails
+          }
+        }
       }
     } catch (err) {
       console.error(errorMessage, err);
@@ -1082,48 +1098,6 @@ const IssueDetail = () => {
     }
   }, []);
 
-  const handleGeneratePortalLink = useCallback(async (tag) => {
-    if (!tag || !activeIssueId || !projectId) return;
-    if (!window.confirm('Generate a new public portal link for this contact? Previous links will stop working.')) {
-      return;
-    }
-    try {
-      setPortalLinkLoading(tag.tag_id);
-      const linkDetails = await issuePublicAccessService.ensureLink({
-        issueId: activeIssueId,
-        projectId,
-        stakeholderTagId: tag.tag_id,
-        stakeholder: tag
-      });
-      const shareUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/public/issues/${linkDetails.token}`
-        : linkDetails.token;
-      const formatted = `${shareUrl}\nOne-time code: ${linkDetails.otp}`;
-      let copied = false;
-      if (navigator?.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(formatted);
-          copied = true;
-        } catch (clipboardErr) {
-          console.warn('Clipboard access denied:', clipboardErr);
-        }
-      }
-      if (copied) {
-        setSuccessMessage('Portal link copied to clipboard');
-        setTimeout(() => setSuccessMessage(null), 2500);
-      } else {
-        // Fallback: show prompt with URL only, then alert with OTP
-        window.prompt('Copy this portal link (URL only):', shareUrl); // eslint-disable-line no-alert
-        window.alert(`One-time verification code: ${linkDetails.otp}`); // eslint-disable-line no-alert
-      }
-    } catch (err) {
-      console.error('Failed to generate portal link:', err);
-      setError(err.message || 'Failed to generate portal link');
-    } finally {
-      setPortalLinkLoading(null);
-    }
-  }, [activeIssueId, projectId]);
-
   const handlePreviewPendingUpload = useCallback(async (upload) => {
     if (!upload) return;
     console.log('[IssueDetail] Preview upload clicked:', upload);
@@ -1218,7 +1192,7 @@ const IssueDetail = () => {
 
   if (error && !isNew) {
     return (
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="text-rose-600 text-sm mb-3">{error}</div>
         {/* Error state - user will use app bar back button */}
       </div>
@@ -1859,14 +1833,14 @@ const IssueDetail = () => {
 
   if (isNew) {
     return (
-      <form onSubmit={handleCreate} className="max-w-4xl mx-auto p-4 space-y-4">
+      <form onSubmit={handleCreate} className="max-w-7xl mx-auto px-4 py-6 space-y-4">
         {content}
       </form>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
       {content}
 
       <Modal

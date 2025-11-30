@@ -342,13 +342,25 @@ class WireDropService {
 
   /**
    * Update stage status (complete/incomplete)
+   * @param {string} wireDropId - Wire drop ID
+   * @param {string} stageType - Stage type (prewire, trim_out, commission)
+   * @param {object} updates - Updates to apply
+   * @param {boolean} updates.completed - Whether stage is complete
+   * @param {string} updates.completed_by - User display name for UI display
+   * @param {string} updates.completed_by_user_id - User UUID for equipment installed_by tracking
    */
   async updateStage(wireDropId, stageType, updates) {
     try {
+      // Extract user ID before building stageData (don't save it to the stage table)
+      const userIdForEquipment = updates.completed_by_user_id;
+
       const stageData = {
         ...updates,
         updated_at: new Date().toISOString()
       };
+
+      // Remove the user ID field - it's not a column in wire_drop_stages table
+      delete stageData.completed_by_user_id;
 
       // If marking as complete, add timestamp and user
       if (updates.completed) {
@@ -388,8 +400,9 @@ class WireDropService {
         if (error) throw error;
 
         // When trim_out stage is created and marked complete, also mark linked equipment as installed
+        // Pass the user UUID (not display name) for the installed_by field on equipment
         if (stageType === 'trim_out' && updates.completed) {
-          await this.markLinkedEquipmentInstalled(wireDropId, true, stageData.completed_by);
+          await this.markLinkedEquipmentInstalled(wireDropId, true, userIdForEquipment);
         }
 
         return data;
@@ -418,8 +431,9 @@ class WireDropService {
         if (error) throw error;
 
         // When trim_out stage is marked complete, also mark linked equipment as installed
+        // Pass the user UUID (not display name) for the installed_by field on equipment
         if (stageType === 'trim_out' && updates.completed) {
-          await this.markLinkedEquipmentInstalled(wireDropId, true, stageData.completed_by);
+          await this.markLinkedEquipmentInstalled(wireDropId, true, userIdForEquipment);
         }
         // When trim_out stage is uncompleted, unmark linked equipment (only if not linked to other completed wire drops)
         if (stageType === 'trim_out' && updates.completed === false) {
@@ -491,9 +505,10 @@ class WireDropService {
    * @param {string} wireDropId - Wire drop ID
    * @param {string} stageType - Stage type (prewire or trim_out)
    * @param {File} photoFile - Photo file to upload
-   * @param {string} currentUserName - Current user's display name (should be passed from component)
+   * @param {string} currentUserName - Current user's display name (for completed_by display)
+   * @param {string} currentUserId - Current user's UUID (for installed_by on equipment)
    */
-  async uploadStagePhoto(wireDropId, stageType, photoFile, currentUserName = null) {
+  async uploadStagePhoto(wireDropId, stageType, photoFile, currentUserName = null, currentUserId = null) {
     try {
       // Get wire drop to determine project ID
       const wireDrop = await this.getWireDrop(wireDropId);
@@ -525,13 +540,14 @@ class WireDropService {
       });
 
       // Update stage with photo URL, metadata, and mark as complete
-      // Use provided user name or fall back to 'Unknown User'
+      // Use provided user name for display, and user ID for equipment installed_by tracking
       return await this.updateStage(wireDropId, stageType, {
         photo_url: uploadResult.url,
         sharepoint_drive_id: uploadResult.driveId,
         sharepoint_item_id: uploadResult.itemId,
         completed: true,
-        completed_by: currentUserName || 'Unknown User'
+        completed_by: currentUserName || 'Unknown User',
+        completed_by_user_id: currentUserId  // UUID for equipment installed_by
       });
     } catch (error) {
       console.error('Failed to upload photo:', error);

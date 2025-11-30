@@ -1244,19 +1244,27 @@ export const projectEquipmentService = {
     return data || [];
   },
 
-  async updateProcurementStatus(equipmentId, { ordered, onsite, delivered } = {}) {
+  async updateProcurementStatus(equipmentId, { ordered, onsite, delivered, userId } = {}) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!equipmentId) throw new Error('Equipment ID is required');
 
-    // Get current authenticated user
-    const { data: { user } } = await supabase.auth.getUser();
+    // Use passed userId (from MSAL auth context) - supabase.auth.getUser() won't work with MSAL
+    const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
+
+    console.log('[projectEquipmentService] updateProcurementStatus called:', {
+      equipmentId,
+      delivered,
+      passedUserId: userId,
+      validUserId,
+      userIdType: typeof userId
+    });
 
     const updates = {};
 
     if (typeof ordered === 'boolean') {
       updates.ordered_confirmed = ordered;
       updates.ordered_confirmed_at = ordered ? new Date().toISOString() : null;
-      updates.ordered_confirmed_by = ordered ? user?.id : null;
+      updates.ordered_confirmed_by = ordered ? validUserId : null;
     }
 
     // Handle delivered status (formerly called "onsite")
@@ -1264,19 +1272,43 @@ export const projectEquipmentService = {
     if (typeof deliveredValue === 'boolean') {
       updates.delivered_confirmed = deliveredValue;
       updates.delivered_confirmed_at = deliveredValue ? new Date().toISOString() : null;
-      updates.delivered_confirmed_by = deliveredValue ? user?.id : null;
+      updates.delivered_confirmed_by = deliveredValue ? validUserId : null;
     }
 
     if (Object.keys(updates).length === 0) {
       return null;
     }
 
+    console.log('[projectEquipmentService] Sending updates to database:', updates);
+
     const { data, error } = await supabase
       .from('project_equipment')
       .update(updates)
       .eq('id', equipmentId)
-      .select()
+      .select(`
+        *,
+        project_rooms(name, is_headend),
+        global_part:global_part_id (
+          id,
+          part_number,
+          name,
+          manufacturer,
+          model,
+          description,
+          is_wire_drop_visible,
+          schematic_url,
+          install_manual_urls,
+          technical_manual_urls
+        )
+      `)
       .maybeSingle();
+
+    console.log('[projectEquipmentService] Database response:', {
+      success: !error,
+      delivered_confirmed: data?.delivered_confirmed,
+      delivered_confirmed_by: data?.delivered_confirmed_by,
+      delivered_confirmed_at: data?.delivered_confirmed_at
+    });
 
     if (error) {
       console.error('Failed to update procurement status:', error);
@@ -1293,14 +1325,14 @@ export const projectEquipmentService = {
   /**
    * Update ordered or received quantities for equipment
    * @param {string} equipmentId - The equipment item ID
-   * @param {object} options - { orderedQty, receivedQty }
+   * @param {object} options - { orderedQty, receivedQty, userId }
    */
-  async updateProcurementQuantities(equipmentId, { orderedQty, receivedQty } = {}) {
+  async updateProcurementQuantities(equipmentId, { orderedQty, receivedQty, userId } = {}) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!equipmentId) throw new Error('Equipment ID is required');
 
-    // Get current authenticated user
-    const { data: { user } } = await supabase.auth.getUser();
+    // Use passed userId (from MSAL auth context) - supabase.auth.getUser() won't work with MSAL
+    const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
 
     // First, get current equipment to validate
     const { data: current, error: fetchError } = await supabase
@@ -1317,11 +1349,13 @@ export const projectEquipmentService = {
     // Update ordered quantity
     if (typeof orderedQty === 'number' && orderedQty >= 0) {
       updates.ordered_quantity = orderedQty;
-      updates.ordered_confirmed_by = user?.id;
+      updates.ordered_confirmed_by = validUserId;
       updates.ordered_confirmed_at = orderedQty > 0 ? new Date().toISOString() : null;
     }
 
     // Update received quantity (with validation)
+    // NOTE: This only tracks receiving shipments at office/warehouse.
+    // "Delivered" status is manually set by technicians when they move items to job site.
     if (typeof receivedQty === 'number' && receivedQty >= 0) {
       const maxAllowed = Math.max(
         current.ordered_quantity || 0,
@@ -1336,8 +1370,9 @@ export const projectEquipmentService = {
       }
 
       updates.received_quantity = receivedQty;
-      updates.delivered_confirmed_by = user?.id;
-      updates.delivered_confirmed_at = receivedQty > 0 ? new Date().toISOString() : null;
+      // Track who received the shipment and when
+      updates.received_by = validUserId;
+      updates.received_date = receivedQty > 0 ? new Date().toISOString() : null;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -1400,11 +1435,13 @@ export const projectEquipmentService = {
     const { data: { user } } = await supabase.auth.getUser();
 
     // Update all items to received_quantity = ordered_quantity
+    // NOTE: This only marks items as received at office/warehouse.
+    // "Delivered" status is manually set by technicians when they move items to job site.
     const updates = itemsToReceive.map(item => ({
       id: item.id,
       received_quantity: item.ordered_quantity,
-      delivered_confirmed_at: new Date().toISOString(),
-      delivered_confirmed_by: user?.id
+      received_date: new Date().toISOString(),
+      received_by: user?.id
     }));
 
     const { data, error } = await supabase

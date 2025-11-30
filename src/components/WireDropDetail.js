@@ -121,6 +121,11 @@ const WireDropDetail = () => {
     'Unknown User'
   ), [user]);
 
+  // Get user UUID for database _by fields (installed_by, received_by, etc.)
+  const getCurrentUserId = useCallback(() => (
+    user?.id || user?.sub || null
+  ), [user]);
+
   // UniFi client selector state
   const [showUniFiSelector, setShowUniFiSelector] = useState(false);
 
@@ -594,6 +599,7 @@ const WireDropDetail = () => {
       setUploadingStage(stageType);
       const compressedFile = await compressImage(file);
       const currentUserName = getCurrentUserName();
+      const currentUserId = getCurrentUserId(); // UUID for database _by fields
 
       if (!navigator.onLine) {
         console.log('[WireDropDetail] Offline - queueing photo upload');
@@ -604,7 +610,8 @@ const WireDropDetail = () => {
           metadata: {
             wireDropId: id,
             stage: stageType,
-            uploadedBy: currentUserName
+            uploadedBy: currentUserName,
+            uploadedById: currentUserId // Include user UUID for offline queue
           }
         });
 
@@ -629,7 +636,7 @@ const WireDropDetail = () => {
         return null;
       }
 
-      await wireDropService.uploadStagePhoto(id, stageType, compressedFile, currentUserName);
+      await wireDropService.uploadStagePhoto(id, stageType, compressedFile, currentUserName, currentUserId);
       updatedData = await loadWireDrop();
       if (isReUpload) {
         alert('Photo updated successfully!');
@@ -642,7 +649,7 @@ const WireDropDetail = () => {
     } finally {
       setUploadingStage(null);
     }
-  }, [getCurrentUserName, id, loadWireDrop, wireDrop?.project_id]);
+  }, [getCurrentUserName, getCurrentUserId, id, loadWireDrop, wireDrop?.project_id]);
 
   const promptStagePhotoUpload = (stageType, isReUpload = false) => {
     const input = document.createElement('input');

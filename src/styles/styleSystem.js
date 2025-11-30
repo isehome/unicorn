@@ -16,12 +16,27 @@
  * This ensures a clean, consistent navigation experience throughout the application.
  */
 
+/**
+ * BRAND COLORS - USE THESE INSTEAD OF TAILWIND GREEN/EMERALD
+ *
+ * ⚠️ CRITICAL: For success/completion states, NEVER use Tailwind's green-* or emerald-* classes.
+ * Instead, use brandColors.success (#94AF32) with inline styles:
+ *
+ * ✅ CORRECT:
+ *   style={{ color: brandColors.success }}
+ *   style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
+ *
+ * ❌ WRONG:
+ *   className="text-green-600"
+ *   className="text-emerald-500"
+ *   className="bg-green-100"
+ */
 const brandColors = {
   primary: '#8B5CF6',
   primaryHover: '#7C3AED',
   primaryLight: '#A78BFA',
   secondary: '#ACB3D1', // RGB(172, 179, 209)
-  success: '#94AF32', // RGB(148, 175, 50)
+  success: '#94AF32', // RGB(148, 175, 50) - OLIVE GREEN - USE THIS, NOT TAILWIND GREEN/EMERALD!
   warning: '#F59E0B',
   danger: '#EF4444',
   info: '#3B82F6'
