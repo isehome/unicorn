@@ -46,7 +46,7 @@ class MilestoneService {
     prewire_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     trim_orders: 'Count of items with ordered_quantity > 0',
     trim_receiving: 'Count of items fully received (received >= planned) - includes PO and inventory items',
-    trim: '% = (Equipment marked as installed) / (Total trim-phase equipment)',
+    trim: '% = (Equipment installed via wire drop trim_out OR manual toggle) / (Total trim-phase equipment)',
     trim_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     commissioning: 'Complete when equipment is attached in head end field',
     handoff_training: 'Manual completion checkbox',
@@ -431,7 +431,10 @@ class MilestoneService {
   /**
    * Calculate Trim percentage
    * Based on equipment installed status for trim-phase equipment
-   * (Equipment marked as installed) / (Total trim-phase equipment) × 100
+   * Equipment is considered "installed" if:
+   *   1. It has installed=true in the database (manual toggle for items without wire drops), OR
+   *   2. It's linked to a wire drop that has trim_out stage completed
+   * (Installed equipment) / (Total trim-phase equipment) × 100
    */
   async calculateTrimPercentage(projectId) {
     try {
@@ -450,8 +453,49 @@ class MilestoneService {
       const totalItems = trimEquipment.length;
       if (totalItems === 0) return 0;
 
-      // Count installed equipment
-      const installedCount = trimEquipment.filter(item => item.installed === true).length;
+      // Get equipment IDs that are linked to wire drops with completed trim_out
+      const trimEquipmentIds = trimEquipment.map(e => e.id);
+
+      // Get all wire drop links for this equipment
+      const { data: equipmentLinks } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('project_equipment_id, wire_drop_id')
+        .in('project_equipment_id', trimEquipmentIds);
+
+      // Get unique wire drop IDs
+      const wireDropIds = [...new Set((equipmentLinks || []).map(l => l.wire_drop_id))];
+
+      // Get trim_out stages that are completed for these wire drops
+      let completedWireDropIds = new Set();
+      if (wireDropIds.length > 0) {
+        const { data: trimStages } = await supabase
+          .from('wire_drop_stages')
+          .select('wire_drop_id, completed')
+          .eq('stage_type', 'trim_out')
+          .eq('completed', true)
+          .in('wire_drop_id', wireDropIds);
+
+        completedWireDropIds = new Set((trimStages || []).map(s => s.wire_drop_id));
+      }
+
+      // Build a set of equipment IDs that are linked to completed wire drops
+      const equipmentWithCompletedTrimOut = new Set();
+      (equipmentLinks || []).forEach(link => {
+        if (completedWireDropIds.has(link.wire_drop_id)) {
+          equipmentWithCompletedTrimOut.add(link.project_equipment_id);
+        }
+      });
+
+      // Count installed equipment:
+      // - Has installed=true in DB (manual toggle for wireless items), OR
+      // - Is linked to a wire drop with completed trim_out
+      const installedCount = trimEquipment.filter(item => {
+        // Check if linked to completed wire drop
+        if (equipmentWithCompletedTrimOut.has(item.id)) return true;
+        // Check if manually marked installed (for items without wire drops)
+        if (item.installed === true) return true;
+        return false;
+      }).length;
 
       const percentage = Math.round((installedCount / totalItems) * 100);
       return percentage;
