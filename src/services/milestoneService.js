@@ -46,7 +46,7 @@ class MilestoneService {
     prewire_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     trim_orders: 'Count of items with ordered_quantity > 0',
     trim_receiving: 'Count of items fully received (received >= planned) - includes PO and inventory items',
-    trim: '% = (Wire drops with trim photo & equipment attached) / (Total wire drops)',
+    trim: '% = (Equipment marked as installed) / (Total trim-phase equipment)',
     trim_phase: 'Rollup: Orders 25% + Receiving 25% + Stages 50%',
     commissioning: 'Complete when equipment is attached in head end field',
     handoff_training: 'Manual completion checkbox',
@@ -430,38 +430,30 @@ class MilestoneService {
 
   /**
    * Calculate Trim percentage
-   * (Wire drops with trim stage completed) / (Total wire drops) × 100
+   * Based on equipment installed status for trim-phase equipment
+   * (Equipment marked as installed) / (Total trim-phase equipment) × 100
    */
   async calculateTrimPercentage(projectId) {
     try {
-      // Get all wire drops for this project
-      const { data: wireDrops, error: dropError } = await supabase
-        .from('wire_drops')
-        .select('id')
-        .eq('project_id', projectId);
+      // Get all trim-phase equipment for this project (required_for_prewire = false)
+      const { data: equipment, error: equipError } = await supabase
+        .from('project_equipment')
+        .select('id, installed, required_for_prewire')
+        .eq('project_id', projectId)
+        .eq('is_active', true);
 
-      if (dropError) throw dropError;
+      if (equipError) throw equipError;
 
-      const totalDrops = wireDrops?.length || 0;
-      if (totalDrops === 0) return 0;
+      // Filter for trim-phase equipment (not required for prewire)
+      const trimEquipment = (equipment || []).filter(item => item.required_for_prewire !== true);
 
-      // Get trim_out stages that are completed
-      const { data: stages, error: stageError } = await supabase
-        .from('wire_drop_stages')
-        .select('wire_drop_id, completed, photo_url, equipment_attached, wire_drops!inner(project_id)')
-        .eq('stage_type', 'trim_out')
-        .eq('wire_drops.project_id', projectId);
+      const totalItems = trimEquipment.length;
+      if (totalItems === 0) return 0;
 
-      if (stageError) throw stageError;
+      // Count installed equipment
+      const installedCount = trimEquipment.filter(item => item.installed === true).length;
 
-      // Count completed trim stages (explicitly marked completed OR legacy fallback)
-      const completedStages = (stages || []).filter(stage => {
-        if (stage.completed === true) return true;
-        // Legacy fallback for older records where completed wasn't set but photos exist
-        return Boolean(stage.photo_url) && stage.equipment_attached === true;
-      });
-
-      const percentage = Math.round((completedStages.length / totalDrops) * 100);
+      const percentage = Math.round((installedCount / totalItems) * 100);
       return percentage;
     } catch (error) {
       console.error('Error calculating trim percentage:', error);

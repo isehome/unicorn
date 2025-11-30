@@ -1599,9 +1599,14 @@ const WireDropDetail = () => {
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1 min-w-0">
-                            <h5 className="font-semibold text-base mb-1" style={styles.textPrimary}>
+                            <button
+                              onClick={() => navigate(`/projects/${wireDrop.project_id}/equipment?highlight=${primaryRoomEquipment.id}`)}
+                              className="font-semibold text-base mb-1 text-left hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                              style={styles.textPrimary}
+                              title="View in Equipment List"
+                            >
                               {primaryRoomEquipment.name}
-                            </h5>
+                            </button>
                             {(primaryRoomEquipment.manufacturer || primaryRoomEquipment.model) && (
                               <p className="text-sm mb-1" style={styles.textSecondary}>
                                 {[primaryRoomEquipment.manufacturer, primaryRoomEquipment.model]
@@ -2486,7 +2491,14 @@ const WireDropDetail = () => {
                               key={item.id}
                               className="inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-xs text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
                             >
-                              {item.name}
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/projects/${wireDrop.project_id}/equipment?highlight=${item.id}`)}
+                                className="hover:underline"
+                                title="View in Equipment List"
+                              >
+                                {item.name}
+                              </button>
                               <button
                                 type="button"
                                 onClick={(event) => {

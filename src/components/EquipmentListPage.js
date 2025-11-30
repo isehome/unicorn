@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
@@ -198,11 +198,16 @@ const withAlpha = (hex, alpha) => {
 const EquipmentListPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { theme, mode } = useTheme();
   const { openPhotoViewer } = usePhotoViewer();
   const { user } = useAuth();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
+
+  // Get highlight parameter from URL (for navigating from wire drop detail)
+  const highlightId = searchParams.get('highlight');
+  const highlightedItemRef = useRef(null);
 
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -382,9 +387,31 @@ const EquipmentListPage = () => {
     loadEquipment();
   }, [loadEquipment]);
 
+  // Handle highlight parameter - scroll to and expand the highlighted item
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
+    if (highlightId && equipment.length > 0 && !loading) {
+      // Expand the highlighted item
+      setExpandedItems(prev => ({ ...prev, [highlightId]: true }));
+
+      // Scroll to the item after a short delay to allow rendering
+      setTimeout(() => {
+        if (highlightedItemRef.current) {
+          highlightedItemRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+
+      // Clear the highlight param after scrolling
+      setTimeout(() => {
+        setSearchParams({}, { replace: true });
+      }, 2000);
+    }
+  }, [highlightId, equipment, loading, setSearchParams]);
+
+  useEffect(() => {
+    if (!highlightId) {
+      window.scrollTo(0, 0);
+    }
+  }, [highlightId]);
 
   const rooms = useMemo(() => {
     const uniqueRooms = new Set();
@@ -504,16 +531,20 @@ const EquipmentListPage = () => {
 
   const renderEquipmentRow = (item) => {
     const isExpanded = expandedItems[item.id];
+    const isHighlighted = highlightId === item.id;
 
     return (
       <div
         key={item.id}
-        className="rounded-xl border text-sm transition"
+        ref={isHighlighted ? highlightedItemRef : null}
+        className={`rounded-xl border text-sm transition ${isHighlighted ? 'ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-gray-900' : ''}`}
         style={{
-          borderColor: isExpanded
+          borderColor: isExpanded || isHighlighted
             ? (mode === 'dark' ? '#7C3AED' : '#A78BFA')
             : (mode === 'dark' ? '#374151' : '#E5E7EB'),
-          backgroundColor: mode === 'dark' ? '#111827' : '#F9FAFB'
+          backgroundColor: isHighlighted
+            ? (mode === 'dark' ? '#1E1B4B' : '#F5F3FF')
+            : (mode === 'dark' ? '#111827' : '#F9FAFB')
         }}
       >
         {/* Collapsed Header - Always Visible */}
