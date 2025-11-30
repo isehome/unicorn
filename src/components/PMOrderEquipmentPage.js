@@ -15,6 +15,7 @@ import DateField from './ui/DateField';
 import POGenerationModal from './procurement/POGenerationModal';
 import PODetailsModal from './procurement/PODetailsModal';
 import InventoryManager from './InventoryManager';
+import SupplierManager from './procurement/SupplierManager';
 import ProcurementProgressGauge from './procurement/ProcurementProgressGauge';
 import {
   Package,
@@ -53,7 +54,7 @@ const PMOrderEquipmentPageEnhanced = () => {
   const [vendorStats, setVendorStats] = useState({});
 
   // Tab state (removed viewMode - only Create POs view now)
-  const [tab, setTab] = useState('prewire'); // 'inventory', 'prewire', 'trim', 'pos'
+  const [tab, setTab] = useState('prewire'); // 'inventory', 'prewire', 'trim', 'pos', 'vendors'
 
   // Active POs state
   const [purchaseOrders, setPurchaseOrders] = useState([]);
@@ -1147,16 +1148,6 @@ const PMOrderEquipmentPageEnhanced = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                icon={Settings}
-                onClick={() => navigate('/pm-dashboard?view=suppliers', {
-                  state: { returnTo: `/projects/${projectId}/procurement` }
-                })}
-              >
-                Manage Vendors
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
                 onClick={() => handleSelectAllByPartNumber(groupedEquipment)}
                 disabled={availableGroups.length === 0}
               >
@@ -1757,6 +1748,16 @@ const PMOrderEquipmentPageEnhanced = () => {
             >
               Active POs
             </button>
+            <button
+              onClick={() => setTab('vendors')}
+              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${tab === 'vendors'
+                ? 'bg-violet-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+            >
+              <Settings className="w-4 h-4" />
+              Vendors
+            </button>
             {/* Issues tab - only visible when there are open receiving issues */}
             {receivingIssues.length > 0 && (
               <button
@@ -2139,6 +2140,11 @@ const PMOrderEquipmentPageEnhanced = () => {
               )}
             </div>
           </div>
+        )}
+
+        {/* Vendors Tab Content */}
+        {tab === 'vendors' && (
+          <SupplierManager />
         )}
       </div>
 

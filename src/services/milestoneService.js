@@ -172,8 +172,9 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Receiving percentage
-   * 100% when ALL prewire items are fully received (received_quantity >= planned_quantity)
+   * 100% when ALL prewire parts are fully received (received_quantity >= planned_quantity)
    * Includes items from both POs and inventory
+   * Returns parts count (not line items) to match Orders gauge
    */
   async calculatePrewireReceivingPercentage(projectId) {
     try {
@@ -199,21 +200,30 @@ class MilestoneService {
       );
 
       if (prewireItems.length === 0) {
-        return { percentage: 0, itemCount: 0, totalItems: 0 };
+        return { percentage: 0, partsReceived: 0, totalParts: 0 };
       }
 
-      // Count items where received >= planned (fully received)
-      // This works for both PO items and inventory items
-      const itemsReceived = prewireItems.filter(item =>
-        (item.received_quantity || 0) >= (item.planned_quantity || 0)
-      ).length;
-      const totalItems = prewireItems.length;
-      const percentage = Math.round((itemsReceived / totalItems) * 100);
+      // Calculate parts received vs total parts required (not line items)
+      let totalPartsRequired = 0;
+      let partsReceived = 0;
 
-      return { percentage, itemCount: itemsReceived, totalItems };
+      prewireItems.forEach(item => {
+        const required = item.planned_quantity || 0;
+        const received = item.received_quantity || 0;
+
+        totalPartsRequired += required;
+        // Count parts received (capped at required to not exceed 100%)
+        partsReceived += Math.min(required, received);
+      });
+
+      const percentage = totalPartsRequired > 0
+        ? Math.round((partsReceived / totalPartsRequired) * 100)
+        : 0;
+
+      return { percentage, partsReceived, totalParts: totalPartsRequired };
     } catch (error) {
       console.error('Error calculating prewire receiving percentage:', error);
-      return { percentage: 0, itemCount: 0, totalItems: 0 };
+      return { percentage: 0, partsReceived: 0, totalParts: 0 };
     }
   }
 
@@ -365,8 +375,9 @@ class MilestoneService {
 
   /**
    * Calculate Trim Receiving percentage
-   * 100% when ALL trim items are fully received (received_quantity >= planned_quantity)
+   * 100% when ALL trim parts are fully received (received_quantity >= planned_quantity)
    * Includes items from both POs and inventory
+   * Returns parts count (not line items) to match Orders gauge
    */
   async calculateTrimReceivingPercentage(projectId) {
     try {
@@ -392,21 +403,41 @@ class MilestoneService {
       );
 
       if (trimItems.length === 0) {
-        return { percentage: 0, itemCount: 0, totalItems: 0 };
+        return { percentage: 0, itemCount: 0, totalItems: 0, partsReceived: 0, totalParts: 0 };
       }
 
-      // Count items where received >= planned (fully received)
-      // This works for both PO items and inventory items
+      // Calculate parts received vs total parts required (not line items)
+      let totalPartsRequired = 0;
+      let partsReceived = 0;
+
+      trimItems.forEach(item => {
+        const required = item.planned_quantity || 0;
+        const received = item.received_quantity || 0;
+
+        totalPartsRequired += required;
+        // Count parts received (capped at required to not exceed 100%)
+        partsReceived += Math.min(required, received);
+      });
+
+      const percentage = totalPartsRequired > 0
+        ? Math.round((partsReceived / totalPartsRequired) * 100)
+        : 0;
+
+      // Also include legacy itemCount/totalItems for backwards compatibility
       const itemsReceived = trimItems.filter(item =>
         (item.received_quantity || 0) >= (item.planned_quantity || 0)
       ).length;
-      const totalItems = trimItems.length;
-      const percentage = Math.round((itemsReceived / totalItems) * 100);
 
-      return { percentage, itemCount: itemsReceived, totalItems };
+      return {
+        percentage,
+        itemCount: itemsReceived,
+        totalItems: trimItems.length,
+        partsReceived, // NEW: actual parts count received
+        totalParts: totalPartsRequired // NEW: total parts required
+      };
     } catch (error) {
       console.error('Error calculating trim receiving percentage:', error);
-      return { percentage: 0, itemCount: 0, totalItems: 0 };
+      return { percentage: 0, itemCount: 0, totalItems: 0, partsReceived: 0, totalParts: 0 };
     }
   }
 

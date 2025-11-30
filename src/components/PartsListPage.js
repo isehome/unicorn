@@ -13,6 +13,8 @@ import {
   Building,
   AlertCircle,
   Wrench,
+  ClipboardList,
+  X,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -36,7 +38,9 @@ const PartsListPage = () => {
   const [formData, setFormData] = useState(initialFormState);
   const [formError, setFormError] = useState('');
   const [editMode, setEditMode] = useState(false);
+  const [inventoryMode, setInventoryMode] = useState(false);
   const [editedParts, setEditedParts] = useState({});
+  const [editedInventory, setEditedInventory] = useState({}); // { partId: quantity }
   const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim'
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -82,6 +86,24 @@ const PartsListPage = () => {
     },
     onError: (mutationError) => {
       setFormError(mutationError.message || 'Failed to update parts.');
+    },
+  });
+
+  const updateInventoryMutation = useMutation({
+    mutationFn: async (inventoryUpdates) => {
+      // Update all inventory quantities in parallel
+      const promises = Object.entries(inventoryUpdates).map(([partId, quantity]) =>
+        partsService.update(partId, { quantity_on_hand: quantity })
+      );
+      return Promise.all(promises);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+      setInventoryMode(false);
+      setEditedInventory({});
+    },
+    onError: (mutationError) => {
+      setFormError(mutationError.message || 'Failed to update inventory.');
     },
   });
 
@@ -167,7 +189,9 @@ const PartsListPage = () => {
       setEditedParts({});
       setEditMode(false);
     } else {
-      // Enter edit mode
+      // Enter edit mode (exit inventory mode if active)
+      setInventoryMode(false);
+      setEditedInventory({});
       setEditMode(true);
     }
   }, [editMode]);
@@ -200,6 +224,35 @@ const PartsListPage = () => {
     updatePartsMutation.mutate(editedParts);
   }, [editedParts, updatePartsMutation]);
 
+  const toggleInventoryMode = useCallback(() => {
+    if (inventoryMode) {
+      // Cancel inventory mode
+      setEditedInventory({});
+      setInventoryMode(false);
+    } else {
+      // Enter inventory mode (exit edit mode if active)
+      setEditMode(false);
+      setEditedParts({});
+      setInventoryMode(true);
+    }
+  }, [inventoryMode]);
+
+  const handleInventoryChange = useCallback((partId, quantity) => {
+    const numQty = Math.max(0, parseInt(quantity) || 0);
+    setEditedInventory((prev) => ({
+      ...prev,
+      [partId]: numQty,
+    }));
+  }, []);
+
+  const handleSaveInventory = useCallback(() => {
+    if (Object.keys(editedInventory).length === 0) {
+      setInventoryMode(false);
+      return;
+    }
+    updateInventoryMutation.mutate(editedInventory);
+  }, [editedInventory, updateInventoryMutation]);
+
   const renderPartCard = (part) => {
     const quantity = Number(part.quantity_available ?? part.quantity_on_hand ?? 0);
     const totalOnHand = Number(part.quantity_on_hand ?? 0);
@@ -215,6 +268,98 @@ const PartsListPage = () => {
       : part.required_for_prewire === true;
 
     const isModified = editedParts[part.id] !== undefined;
+
+    // Get current inventory value for this part (edited or original)
+    const currentInventory = editedInventory[part.id] !== undefined
+      ? editedInventory[part.id]
+      : totalOnHand;
+    const inventoryModified = editedInventory[part.id] !== undefined;
+
+    // INVENTORY MODE: Compact list view with editable quantity fields
+    if (inventoryMode) {
+      return (
+        <div
+          key={part.id}
+          className={`p-3 rounded-lg border transition-all flex items-center gap-4 ${
+            inventoryModified ? 'ring-2 ring-green-500 bg-green-50 dark:bg-green-900/20' : ''
+          }`}
+          style={styles.card}
+        >
+          {/* Part Info - Compact */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-violet-500">
+                {part.part_number}
+              </span>
+              {part.required_for_prewire && (
+                <span className="shrink-0 rounded bg-orange-100 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                  Prewire
+                </span>
+              )}
+            </div>
+            <h3 className="text-sm font-medium truncate" style={{ color: styles.textPrimary }}>
+              {part.name || part.model || 'Untitled Part'}
+            </h3>
+            {part.manufacturer && (
+              <p className="text-xs truncate" style={{ color: styles.textSecondary }}>
+                {part.manufacturer} {part.model && `• ${part.model}`}
+              </p>
+            )}
+          </div>
+
+          {/* Quantity Input with +/- buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => handleInventoryChange(part.id, Math.max(0, currentInventory - 1))}
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              title="Decrease quantity"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min="0"
+              value={currentInventory}
+              onChange={(e) => handleInventoryChange(part.id, e.target.value)}
+              className={`w-16 px-2 py-2 text-sm text-center border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
+                inventoryModified
+                  ? 'border-green-500 bg-green-50 dark:bg-green-900/30 font-semibold text-green-700 dark:text-green-300'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
+              }`}
+            />
+            <button
+              onClick={() => handleInventoryChange(part.id, currentInventory + 1)}
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              title="Increase quantity"
+            >
+              +
+            </button>
+            {inventoryModified && (
+              <button
+                onClick={() => {
+                  setEditedInventory((prev) => {
+                    const newState = { ...prev };
+                    delete newState[part.id];
+                    return newState;
+                  });
+                }}
+                className="ml-1 p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                title="Reset to original"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Original value indicator */}
+          {inventoryModified && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              was: {totalOnHand}
+            </span>
+          )}
+        </div>
+      );
+    }
 
     if (editMode) {
       // Edit mode: show as non-clickable card with checkbox
@@ -415,13 +560,32 @@ const PartsListPage = () => {
             Parts Catalog
           </p>
           <p className="text-sm" style={{ color: styles.textSecondary }}>
-            {editMode
-              ? 'Edit mode: Toggle "Show in Wire Drop" for multiple parts, then save.'
-              : 'Master list of parts and equipment with manuals, schematics, and install guidance.'}
+            {inventoryMode
+              ? 'Inventory mode: Update stock quantities, then save all changes.'
+              : editMode
+                ? 'Edit mode: Toggle "Show in Wire Drop" for multiple parts, then save.'
+                : 'Master list of parts and equipment with manuals, schematics, and install guidance.'}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {editMode ? (
+          {inventoryMode ? (
+            <>
+              <Button
+                variant="secondary"
+                onClick={toggleInventoryMode}
+                disabled={updateInventoryMutation.isLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveInventory}
+                loading={updateInventoryMutation.isLoading}
+                disabled={Object.keys(editedInventory).length === 0}
+              >
+                Save Inventory {Object.keys(editedInventory).length > 0 && `(${Object.keys(editedInventory).length})`}
+              </Button>
+            </>
+          ) : editMode ? (
             <>
               <Button
                 variant="secondary"
@@ -440,6 +604,13 @@ const PartsListPage = () => {
             </>
           ) : (
             <>
+              <Button
+                variant="secondary"
+                icon={ClipboardList}
+                onClick={toggleInventoryMode}
+              >
+                Inventory
+              </Button>
               <Button
                 variant="secondary"
                 onClick={toggleEditMode}

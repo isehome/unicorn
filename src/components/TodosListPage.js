@@ -355,7 +355,7 @@ const TodosListPage = () => {
 
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
-      <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
+      <div className="w-full px-3 sm:px-4 py-4 space-y-4">
         <div className="rounded-2xl border p-4" style={styles.card}>
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h1 className="text-xl font-semibold" style={styles.textPrimary}>My To-dos</h1>

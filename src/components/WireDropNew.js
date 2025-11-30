@@ -247,7 +247,7 @@ const WireDropNew = () => {
 
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
-      <div className="px-4 pt-2 pb-8 space-y-6 max-w-3xl mx-auto">
+      <div className="px-3 sm:px-4 pt-2 pb-8 space-y-6 w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
           <Button 

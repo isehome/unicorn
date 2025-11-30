@@ -1389,7 +1389,7 @@ const WireDropDetail = () => {
 
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
-      <div className="px-4 pt-2 pb-8 space-y-6 max-w-6xl mx-auto">
+      <div className="px-3 sm:px-4 pt-2 pb-8 space-y-6 w-full">
         {/* Main Info Card */}
         <div className="rounded-2xl overflow-hidden" style={styles.card}>
           <div className="p-6 space-y-4">

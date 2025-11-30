@@ -122,6 +122,16 @@ module.exports = async (req, res) => {
       driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`)
     } catch (graphError) {
       console.error('Graph API error:', graphError.message)
+      // Provide a clearer error message for common issues
+      if (graphError.message.includes('did not match the expected pattern') || graphError.message.includes('InvalidRequest')) {
+        throw new Error('Could not access the SharePoint folder. Please ensure you are using a valid folder share link (click "Copy link" on the folder in SharePoint).')
+      }
+      if (graphError.message.includes('AccessDenied') || graphError.message.includes('401') || graphError.message.includes('403')) {
+        throw new Error('Access denied to SharePoint folder. Please ensure the folder is shared with the application or use a public share link.')
+      }
+      if (graphError.message.includes('ItemNotFound') || graphError.message.includes('404')) {
+        throw new Error('SharePoint folder not found. Please check that the folder exists and the URL is correct.')
+      }
       throw new Error(`Failed to resolve SharePoint folder. Please check the URL format. Error: ${graphError.message}`)
     }
 

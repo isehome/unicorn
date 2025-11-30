@@ -398,7 +398,8 @@ const PMProjectViewEnhanced = () => {
     issues: true,           // Issues section
     reports: true,          // Reports section placeholder
     phaseMilestones: false, // Start expanded for easy access
-    buildingPermits: true   // Start collapsed
+    buildingPermits: true,  // Start collapsed
+    setupAndEdit: true      // Setup & Configuration section - collapsed by default for existing projects
   });
 
   const toggleSection = (section) => {
@@ -2473,6 +2474,22 @@ const PMProjectViewEnhanced = () => {
   const remainingMinutes = remainingMinutesRaw > 0 ? remainingMinutesRaw : 0;
   const overrunMinutes = remainingMinutesRaw < 0 ? Math.abs(remainingMinutesRaw) : 0;
 
+  // Helper function to get setup status for the collapsible section badge
+  const getSetupStatus = () => {
+    const hasLucid = !!formData.wiring_diagram_url;
+    const hasEquipment = totalEquipmentPieces > 0;
+    const roomsAligned = unmatchedRoomEntries.length === 0 && (existingWireDrops.length > 0 || droppableShapes.length > 0);
+    const complete = [hasLucid, hasEquipment, roomsAligned].filter(Boolean).length;
+
+    if (complete === 3) {
+      return { text: 'Complete', color: 'success' };
+    } else if (complete === 0) {
+      return { text: 'Needs Setup', color: 'warning' };
+    } else {
+      return { text: `${complete}/3 Complete`, color: 'warning' };
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -2534,37 +2551,72 @@ const PMProjectViewEnhanced = () => {
 
         {/* Project Info */}
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-              <Users className="h-3 w-3" />
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600 dark:text-gray-400">
+            {/* Left side - Client badge */}
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+              <Users className="h-4 w-4" />
               {formData.client || 'Client not set'}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-              <Target className="h-3 w-3" />
-              {formData.phase || 'Phase not set'}
-            </span>
-            {editMode && statuses.length > 0 ? (
-              <div className="inline-flex items-center gap-1">
-                <CheckCircle className="h-3 w-3 text-gray-700 dark:text-gray-200" />
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-200 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                >
-                  <option value="">Select status</option>
-                  {statuses.map((status) => (
-                    <option key={status.id} value={status.name}>
-                      {status.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-                <CheckCircle className="h-3 w-3" />
-                {formData.status || 'Status not set'}
-              </span>
-            )}
+
+            {/* Right side - Phase and Status */}
+            <div className="flex items-center gap-3">
+              {/* Phase selector/badge */}
+              {editMode ? (
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-1">
+                  <Target className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                  <select
+                    value={formData.phase}
+                    onChange={(e) => setFormData({ ...formData, phase: e.target.value })}
+                    className="bg-transparent text-sm font-medium text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer pr-1"
+                  >
+                    <option value="">Select phase</option>
+                    {phases.map((phase) => (
+                      <option key={phase.id} value={phase.name}>
+                        {phase.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                  <Target className="h-4 w-4" />
+                  {formData.phase || 'Phase not set'}
+                </span>
+              )}
+
+              {/* Status selector/badge */}
+              {editMode ? (
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-1">
+                  <CheckCircle className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="bg-transparent text-sm font-medium text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer pr-1"
+                  >
+                    <option value="">Select status</option>
+                    {statuses.length > 0 ? (
+                      statuses.map((status) => (
+                        <option key={status.id} value={status.name}>
+                          {status.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="active">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                  <CheckCircle className="h-4 w-4" />
+                  {formData.status || 'Status not set'}
+                </span>
+              )}
+            </div>
           </div>
           {(formData.address || formData.start_date || formData.end_date) && (
             <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
@@ -2596,7 +2648,7 @@ const PMProjectViewEnhanced = () => {
           </Button>
         </div>
 
-        {/* Quick Links - Evenly Spaced */}
+        {/* Quick Links - Evenly Spaced - Always visible */}
         {quickLinks.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {quickLinks.map(({ key, label, url, icon: Icon }) => (
@@ -2614,8 +2666,660 @@ const PMProjectViewEnhanced = () => {
           </div>
         )}
 
+        {/* Setup & Configuration - Only visible in edit mode */}
+        {editMode && (
+        <div>
+          <button
+            onClick={() => toggleSection('setupAndEdit')}
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+            style={sectionStyles.card}
+          >
+            <div className="flex items-center gap-3">
+              <Settings className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">Setup & Configuration</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {(() => {
+                const status = getSetupStatus();
+                return (
+                  <span
+                    className="px-2 py-0.5 text-xs rounded-full"
+                    style={status.color === 'success'
+                      ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
+                      : { backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }
+                    }
+                  >
+                    {status.text}
+                  </span>
+                );
+              })()}
+              <ChevronRight
+                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                style={{ transform: sectionsCollapsed.setupAndEdit ? 'none' : 'rotate(90deg)' }}
+              />
+            </div>
+          </button>
 
-        {/* Project Overview */}
+          {!sectionsCollapsed.setupAndEdit && (
+            <div className="mt-4 space-y-4">
+
+              {/* Step 1: Lucid Wire Drops Import */}
+              {formData.wiring_diagram_url && (
+                <div>
+                  <button
+                    onClick={() => toggleSection('lucidData')}
+                    className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                    style={sectionStyles.card}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Link className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Import Lucid Wire Drops</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {existingWireDrops.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                          {existingWireDrops.length}
+                        </span>
+                      )}
+                      <ChevronRight
+                        className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                        style={{ transform: sectionsCollapsed.lucidData ? 'none' : 'rotate(90deg)' }}
+                      />
+                    </div>
+                  </button>
+
+                  {!sectionsCollapsed.lucidData && (
+                    <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+                      <div className="flex justify-between items-center mb-3">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={lucidLoading ? Loader : RefreshCw}
+                          onClick={handleFetchLucidData}
+                          disabled={lucidLoading}
+                        >
+                          {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
+                        </Button>
+                      </div>
+
+                      {lucidError && (
+                        <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                            <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {droppableShapes.length > 0 && (
+                        <div>
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex gap-2">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handleSelectAll}
+                                disabled={droppableShapes.every(s => isShapeLinked(s.id))}
+                              >
+                                Select All
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handleDeselectAll}
+                                disabled={selectedShapes.size === 0}
+                              >
+                                Deselect All
+                              </Button>
+                            </div>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              icon={batchCreating ? Loader : Plus}
+                              onClick={handleCreateWireDropsFromSelected}
+                              disabled={selectedShapes.size === 0 || batchCreating}
+                            >
+                              {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
+                            </Button>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-100 dark:bg-gray-800">
+                                <tr>
+                                  <th className="px-3 py-2 text-left">
+                                    <input
+                                      type="checkbox"
+                                      onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
+                                      checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
+                                      className="rounded"
+                                    />
+                                  </th>
+                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                                {droppableShapes.map((shape) => {
+                                  const linked = isShapeLinked(shape.id);
+                                  const wireDrop = getLinkedWireDrop(shape.id);
+                                  const roomName = extractShapeRoomName(shape);
+                                  const dropType = extractShapeDropType(shape);
+
+                                  return (
+                                    <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
+                                      <td className="px-3 py-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedShapes.has(shape.id)}
+                                          onChange={() => handleShapeSelection(shape.id)}
+                                          disabled={linked}
+                                          className="rounded disabled:opacity-50"
+                                        />
+                                      </td>
+                                      <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
+                                      <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
+                                      <td className="px-3 py-2">
+                                        {linked ? (
+                                          <span
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                                            style={{
+                                              backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                                              color: '#94AF32'
+                                            }}
+                                          >
+                                            <CheckCircle className="w-3 h-3" />
+                                            Linked
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs text-gray-500">Available</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: Upload Portal CSV */}
+              <div>
+                <button
+                  onClick={() => toggleSection('procurement')}
+                  className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                  style={sectionStyles.card}
+                >
+                  <div className="flex items-center gap-3">
+                    <Package className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload Portal CSV</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {totalEquipmentPieces > 0 && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                        {totalEquipmentPieces}
+                      </span>
+                    )}
+                    <ChevronRight
+                      className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                      style={{ transform: sectionsCollapsed.procurement ? 'none' : 'rotate(90deg)' }}
+                    />
+                  </div>
+                </button>
+
+                {!sectionsCollapsed.procurement && (
+                  <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
+                    <ProjectEquipmentManager
+                      projectId={projectId}
+                      embedded
+                      onEquipmentChange={handleEquipmentChange}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Step 3: Room Alignment */}
+              <div>
+                <button
+                  onClick={() => toggleSection('roomMatching')}
+                  className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                  style={sectionStyles.card}
+                >
+                  <div className="flex items-center gap-3">
+                    <FolderOpen className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Room Alignment</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {unmatchedRoomEntries.length > 0 && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                        {unmatchedRoomEntries.length} unmatched
+                      </span>
+                    )}
+                    {projectRooms.length > 0 && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                        {projectRooms.length}
+                      </span>
+                    )}
+                    <ChevronRight
+                      className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                      style={{ transform: sectionsCollapsed.roomMatching ? 'none' : 'rotate(90deg)' }}
+                    />
+                  </div>
+                </button>
+
+                {!sectionsCollapsed.roomMatching && (
+                  <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
+                    <h3 className="text-sm font-bold text-blue-900 dark:text-blue-100 mb-2">
+                      Room Alignment Tool
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Match room names from your Lucid diagram with rooms from the Portal CSV import.
+                      This ensures wire drops and equipment are correctly organized by room.
+                    </p>
+
+                    {unmatchedRoomEntries.length > 0 ? (
+                      <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
+                              Action Required
+                            </p>
+                            <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                              {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-4">
+                      {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
+                      {(() => {
+                        const roomNameMap = new Map();
+
+                        // First get rooms from existing wire drops (persistent data)
+                        existingWireDrops.forEach((drop) => {
+                          const roomName = drop.room_name;
+                          if (!roomName) return;
+                          const normalized = normalizeRoomName(roomName);
+                          if (!normalized) return;
+                          const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                          if (!entry.samples.includes(roomName)) {
+                            entry.samples.push(roomName);
+                          }
+                          entry.sourceCount.wireDrops++;
+                          roomNameMap.set(normalized, entry);
+                        });
+
+                        // Then add rooms from Lucid shapes (if fetched)
+                        droppableShapes.forEach((shape) => {
+                          const roomName = extractShapeRoomName(shape);
+                          if (!roomName) return;
+                          const normalized = normalizeRoomName(roomName);
+                          if (!normalized) return;
+                          const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                          if (!entry.samples.includes(roomName)) {
+                            entry.samples.push(roomName);
+                          }
+                          entry.sourceCount.lucid++;
+                          roomNameMap.set(normalized, entry);
+                        });
+
+                        const allRoomEntries = Array.from(roomNameMap.values());
+
+                        if (allRoomEntries.length === 0) {
+                          return (
+                            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
+                              <p className="text-sm text-gray-600 dark:text-gray-400">
+                                No rooms found yet. Complete steps 1 & 2 to import room data.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                All Rooms from Wire Drops ({allRoomEntries.length})
+                              </h3>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                CSV Rooms Available: {projectRooms.length}
+                              </p>
+                            </div>
+
+                            {allRoomEntries.map((entry) => {
+                              const resolvedRoom = resolveRoomForName(entry.samples[0]);
+                              const isMatched = !!resolvedRoom?.room;
+                              const suggestion = suggestRoomMatch(entry.normalized);
+
+                              return (
+                                <div
+                                  key={entry.normalized}
+                                  className="p-4 rounded-lg border"
+                                  style={isMatched ? {
+                                    backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                                    borderColor: 'rgba(148, 175, 50, 0.3)'
+                                  } : {}}
+                                >
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        {isMatched && (
+                                          <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
+                                        )}
+                                        <div className="flex-1">
+                                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                            Room: {entry.samples[0]}
+                                          </p>
+                                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                                            {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
+                                            {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
+                                            {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      {isMatched && (
+                                        <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
+                                          ✓ Matched to: {resolvedRoom.room.name}
+                                          {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
+                                        </p>
+                                      )}
+
+                                      {!isMatched && suggestion && suggestion.score >= 0.5 && (
+                                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
+                                          💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
+                                        </p>
+                                      )}
+
+                                      <div className="flex gap-2 items-center">
+                                        <select
+                                          value={
+                                            isMatched
+                                              ? resolvedRoom.room.id
+                                              : roomAssignments[entry.normalized]?.type === 'existing'
+                                                ? roomAssignments[entry.normalized].roomId
+                                                : roomAssignments[entry.normalized]?.type === 'new'
+                                                  ? '__new__'
+                                                  : ''
+                                          }
+                                          onChange={(e) =>
+                                            handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                          }
+                                          disabled={isMatched && !roomAssignments[entry.normalized]}
+                                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                               disabled:opacity-75"
+                                        >
+                                          <option value="">-- Select CSV Room or Create New --</option>
+                                          <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
+                                          <optgroup label="Existing CSV Rooms">
+                                            {projectRooms.map((room) => (
+                                              <option key={room.id} value={room.id}>
+                                                {room.name} {room.is_headend ? '(Head-End)' : ''}
+                                              </option>
+                                            ))}
+                                          </optgroup>
+                                        </select>
+
+                                        {!isMatched && roomAssignments[entry.normalized] && (
+                                          <Button
+                                            variant="primary"
+                                            size="sm"
+                                            onClick={() => handleRoomAliasApply(entry)}
+                                            disabled={roomAliasSaving === entry.normalized}
+                                            loading={roomAliasSaving === entry.normalized}
+                                          >
+                                            {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                          </Button>
+                                        )}
+
+                                        {isMatched && (
+                                          <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => {
+                                              // Allow editing of already matched rooms
+                                              setRoomAssignments(prev => ({
+                                                ...prev,
+                                                [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
+                                              }));
+                                            }}
+                                          >
+                                            Edit
+                                          </Button>
+                                        )}
+                                      </div>
+
+                                      {/* New Room Configuration */}
+                                      {roomAssignments[entry.normalized]?.type === 'new' && (
+                                        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
+                                          <input
+                                            type="text"
+                                            value={roomAssignments[entry.normalized]?.name || ''}
+                                            onChange={(e) =>
+                                              handleNewRoomNameChange(entry.normalized, e.target.value)
+                                            }
+                                            placeholder="Enter room name"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                                 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                          />
+                                          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                            <input
+                                              type="checkbox"
+                                              checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                              onChange={(e) =>
+                                                handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                              }
+                                              className="rounded"
+                                            />
+                                            Mark as Head-End Room
+                                          </label>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+
+                      {/* Unmatched Rooms Section */}
+                      {unmatchedRoomEntries.length > 0 && (
+                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                          <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
+                          </h3>
+                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
+                            These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
+                          </p>
+
+                          <div className="space-y-3">
+                            {unmatchedRoomEntries.map((entry) => (
+                              <div
+                                key={entry.normalized}
+                                className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                                      From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
+                                    </p>
+
+                                    {entry.suggestion && entry.suggestion.score >= 0.72 && (
+                                      <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
+                                        Suggested match: {entry.suggestion.room.name} (
+                                        {Math.round(entry.suggestion.score * 100)}% similar)
+                                      </p>
+                                    )}
+
+                                    <div className="flex gap-2 items-end">
+                                      <div className="flex-1">
+                                        <select
+                                          value={
+                                            roomAssignments[entry.normalized]?.type === 'existing'
+                                              ? roomAssignments[entry.normalized].roomId
+                                              : roomAssignments[entry.normalized]?.type === 'new'
+                                                ? '__new__'
+                                                : ''
+                                          }
+                                          onChange={(e) =>
+                                            handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                          }
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                        >
+                                          <option value="">-- Select Action --</option>
+                                          <option value="__new__">Create New Room</option>
+                                          <optgroup label="Existing Rooms">
+                                            {allRoomOptions.map((opt) => (
+                                              <option key={opt.value} value={opt.value}>
+                                                {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
+                                              </option>
+                                            ))}
+                                          </optgroup>
+                                        </select>
+                                      </div>
+
+                                      <Button
+                                        variant="primary"
+                                        size="sm"
+                                        onClick={() => handleRoomAliasApply(entry)}
+                                        disabled={
+                                          !roomAssignments[entry.normalized] ||
+                                          roomAliasSaving === entry.normalized
+                                        }
+                                        loading={roomAliasSaving === entry.normalized}
+                                      >
+                                        {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                      </Button>
+                                    </div>
+
+                                    {/* New Room Name Input */}
+                                    {roomAssignments[entry.normalized]?.type === 'new' && (
+                                      <div className="mt-2 space-y-2">
+                                        <input
+                                          type="text"
+                                          value={roomAssignments[entry.normalized]?.name || ''}
+                                          onChange={(e) =>
+                                            handleNewRoomNameChange(entry.normalized, e.target.value)
+                                          }
+                                          placeholder="Enter room name"
+                                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                        />
+                                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                          <input
+                                            type="checkbox"
+                                            checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                            onChange={(e) =>
+                                              handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                            }
+                                            className="rounded"
+                                          />
+                                          Mark as Head-End Room
+                                        </label>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Matched Rooms Info */}
+                      {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
+                        <div
+                          className="p-4 rounded-lg"
+                          style={{
+                            backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                            border: '1px solid rgba(148, 175, 50, 0.3)'
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                All Lucid rooms are matched!
+                              </p>
+                              <p className="text-xs" style={{ color: '#94AF32' }}>
+                                All room names from Lucid wire drops have been successfully matched to project rooms.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Show instructions when no data available */}
+                      {droppableShapes.length === 0 && projectRooms.length === 0 && (
+                        <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
+                          <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                          <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                            No Room Data Available Yet
+                          </p>
+                          <p className="text-sm text-blue-700 dark:text-blue-300">
+                            Complete Steps 1 & 2 above to import room data, then return here to align room names.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Summary of aligned rooms */}
+                      {droppableShapes.length > 0 && projectRooms.length > 0 && (
+                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
+                            Summary
+                          </h3>
+                          <div className="grid grid-cols-2 gap-4 text-center mb-3">
+                            <div>
+                              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
+                              <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                                {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
+                              </p>
+                              <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
+                            </div>
+                          </div>
+                          {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
+                            <div
+                              className="flex items-center justify-center gap-2 p-2 rounded"
+                              style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)' }}
+                            >
+                              <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                All rooms successfully aligned
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+        )}
+
+        {/* Project Overview - Only visible in edit mode */}
+        {editMode && (
         <div className="grid gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-4">
             {/* Project Info - Consolidated Section */}
@@ -3242,6 +3946,7 @@ const PMProjectViewEnhanced = () => {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/* Issues Section */}
@@ -3754,615 +4459,6 @@ const PMProjectViewEnhanced = () => {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Project Data Import & Setup - Unified Section */}
-      <div className="space-y-4">
-
-        {/* Step 1: Lucid Wire Drops Import - GREEN */}
-        {formData.wiring_diagram_url && (
-          <div className="mb-4">
-            <button
-              onClick={() => toggleSection('lucidData')}
-              className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-              style={sectionStyles.card}
-            >
-              <div className="flex items-center gap-3">
-                <Link className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-                <span className="font-medium text-zinc-900 dark:text-zinc-100">Import Lucid Wire Drops</span>
-              </div>
-              <div className="flex items-center gap-3">
-                {existingWireDrops.length > 0 && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                    {existingWireDrops.length}
-                  </span>
-                )}
-                <ChevronRight
-                  className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                  style={{ transform: sectionsCollapsed.lucidData ? 'none' : 'rotate(90deg)' }}
-                />
-              </div>
-            </button>
-
-            {!sectionsCollapsed.lucidData && (
-              <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-                  <div className="flex justify-between items-center mb-3">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      icon={lucidLoading ? Loader : RefreshCw}
-                      onClick={handleFetchLucidData}
-                      disabled={lucidLoading}
-                    >
-                      {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
-                    </Button>
-                  </div>
-
-                  {lucidError && (
-                    <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                        <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {droppableShapes.length > 0 && (
-                    <div>
-                      <div className="flex justify-between items-center mb-3">
-                        <div className="flex gap-2">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={handleSelectAll}
-                            disabled={droppableShapes.every(s => isShapeLinked(s.id))}
-                          >
-                            Select All
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={handleDeselectAll}
-                            disabled={selectedShapes.size === 0}
-                          >
-                            Deselect All
-                          </Button>
-                        </div>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          icon={batchCreating ? Loader : Plus}
-                          onClick={handleCreateWireDropsFromSelected}
-                          disabled={selectedShapes.size === 0 || batchCreating}
-                        >
-                          {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
-                        </Button>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-100 dark:bg-gray-800">
-                            <tr>
-                              <th className="px-3 py-2 text-left">
-                                <input
-                                  type="checkbox"
-                                  onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
-                                  checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
-                                  className="rounded"
-                                />
-                              </th>
-                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
-                              <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                            {droppableShapes.map((shape) => {
-                              const linked = isShapeLinked(shape.id);
-                              const wireDrop = getLinkedWireDrop(shape.id);
-                              const roomName = extractShapeRoomName(shape);
-                              const dropType = extractShapeDropType(shape);
-
-                              return (
-                                <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
-                                  <td className="px-3 py-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedShapes.has(shape.id)}
-                                      onChange={() => handleShapeSelection(shape.id)}
-                                      disabled={linked}
-                                      className="rounded disabled:opacity-50"
-                                    />
-                                  </td>
-                                  <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
-                                  <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
-                                  <td className="px-3 py-2">
-                                    {linked ? (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
-                                        style={{
-                                          backgroundColor: 'rgba(148, 175, 50, 0.15)',
-                                          color: '#94AF32'
-                                        }}
-                                      >
-                                        <CheckCircle className="w-3 h-3" />
-                                        Linked
-                                      </span>
-                                    ) : (
-                                      <span className="text-xs text-gray-500">Available</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-        </div>
-        )}
-
-        {/* Step 2: Upload Portal CSV */}
-        <div className="mb-4">
-          <button
-            onClick={() => toggleSection('procurement')}
-            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-            style={sectionStyles.card}
-          >
-            <div className="flex items-center gap-3">
-              <Package className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Upload Portal CSV</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {totalEquipmentPieces > 0 && (
-                <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                  {totalEquipmentPieces}
-                </span>
-              )}
-              <ChevronRight
-                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                style={{ transform: sectionsCollapsed.procurement ? 'none' : 'rotate(90deg)' }}
-              />
-            </div>
-          </button>
-
-          {!sectionsCollapsed.procurement && (
-            <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-              <ProjectEquipmentManager
-                projectId={projectId}
-                embedded
-                onEquipmentChange={handleEquipmentChange}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Step 3: Room Alignment */}
-        <div className="mb-4">
-          <button
-            onClick={() => toggleSection('roomMatching')}
-            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-            style={sectionStyles.card}
-          >
-            <div className="flex items-center gap-3">
-              <FolderOpen className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Room Alignment</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {projectRooms.length > 0 && (
-                <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                  {projectRooms.length}
-                </span>
-              )}
-              <ChevronRight
-                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                style={{ transform: sectionsCollapsed.roomMatching ? 'none' : 'rotate(90deg)' }}
-              />
-            </div>
-          </button>
-
-          {!sectionsCollapsed.roomMatching && (
-            <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-                <h3 className="text-base font-bold text-blue-900 dark:text-blue-100 mb-2">
-                  Room Alignment Tool
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Match room names from your Lucid diagram with rooms from the Portal CSV import.
-                  This ensures wire drops and equipment are correctly organized by room.
-                </p>
-
-                {unmatchedRoomEntries.length > 0 ? (
-                  <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
-                          Action Required
-                        </p>
-                        <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                          {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="space-y-4">
-                  {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
-                  {(() => {
-                    const roomNameMap = new Map();
-
-                    // First get rooms from existing wire drops (persistent data)
-                    existingWireDrops.forEach((drop) => {
-                      const roomName = drop.room_name;
-                      if (!roomName) return;
-                      const normalized = normalizeRoomName(roomName);
-                      if (!normalized) return;
-                      const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                      if (!entry.samples.includes(roomName)) {
-                        entry.samples.push(roomName);
-                      }
-                      entry.sourceCount.wireDrops++;
-                      roomNameMap.set(normalized, entry);
-                    });
-
-                    // Then add rooms from Lucid shapes (if fetched)
-                    droppableShapes.forEach((shape) => {
-                      const roomName = extractShapeRoomName(shape);
-                      if (!roomName) return;
-                      const normalized = normalizeRoomName(roomName);
-                      if (!normalized) return;
-                      const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                      if (!entry.samples.includes(roomName)) {
-                        entry.samples.push(roomName);
-                      }
-                      entry.sourceCount.lucid++;
-                      roomNameMap.set(normalized, entry);
-                    });
-
-                    const allRoomEntries = Array.from(roomNameMap.values());
-
-                    if (allRoomEntries.length === 0) {
-                      return (
-                        <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
-                          <p className="text-sm text-gray-600 dark:text-gray-400">
-                            No rooms found yet. Complete steps 1 & 2 to import room data.
-                          </p>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                            All Rooms from Wire Drops ({allRoomEntries.length})
-                          </h3>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            CSV Rooms Available: {projectRooms.length}
-                          </p>
-                        </div>
-
-                        {allRoomEntries.map((entry) => {
-                          const resolvedRoom = resolveRoomForName(entry.samples[0]);
-                          const isMatched = !!resolvedRoom?.room;
-                          const suggestion = suggestRoomMatch(entry.normalized);
-
-                          return (
-                            <div
-                              key={entry.normalized}
-                              className="p-4 rounded-lg border"
-                              style={isMatched ? {
-                                backgroundColor: 'rgba(148, 175, 50, 0.1)',
-                                borderColor: 'rgba(148, 175, 50, 0.3)'
-                              } : {}}
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    {isMatched && (
-                                      <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
-                                    )}
-                                    <div className="flex-1">
-                                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                        Room: {entry.samples[0]}
-                                      </p>
-                                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
-                                        {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
-                                        {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {isMatched && (
-                                    <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
-                                      ✓ Matched to: {resolvedRoom.room.name}
-                                      {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
-                                    </p>
-                                  )}
-
-                                  {!isMatched && suggestion && suggestion.score >= 0.5 && (
-                                    <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
-                                      💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
-                                    </p>
-                                  )}
-
-                                  <div className="flex gap-2 items-center">
-                                    <select
-                                      value={
-                                        isMatched
-                                          ? resolvedRoom.room.id
-                                          : roomAssignments[entry.normalized]?.type === 'existing'
-                                            ? roomAssignments[entry.normalized].roomId
-                                            : roomAssignments[entry.normalized]?.type === 'new'
-                                              ? '__new__'
-                                              : ''
-                                      }
-                                      onChange={(e) =>
-                                        handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                      }
-                                      disabled={isMatched && !roomAssignments[entry.normalized]}
-                                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white
-                                           disabled:opacity-75"
-                                    >
-                                      <option value="">-- Select CSV Room or Create New --</option>
-                                      <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
-                                      <optgroup label="Existing CSV Rooms">
-                                        {projectRooms.map((room) => (
-                                          <option key={room.id} value={room.id}>
-                                            {room.name} {room.is_headend ? '(Head-End)' : ''}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    </select>
-
-                                    {!isMatched && roomAssignments[entry.normalized] && (
-                                      <Button
-                                        variant="primary"
-                                        size="sm"
-                                        onClick={() => handleRoomAliasApply(entry)}
-                                        disabled={roomAliasSaving === entry.normalized}
-                                        loading={roomAliasSaving === entry.normalized}
-                                      >
-                                        {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
-                                      </Button>
-                                    )}
-
-                                    {isMatched && (
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => {
-                                          // Allow editing of already matched rooms
-                                          setRoomAssignments(prev => ({
-                                            ...prev,
-                                            [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
-                                          }));
-                                        }}
-                                      >
-                                        Edit
-                                      </Button>
-                                    )}
-                                  </div>
-
-                                  {/* New Room Configuration */}
-                                  {roomAssignments[entry.normalized]?.type === 'new' && (
-                                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
-                                      <input
-                                        type="text"
-                                        value={roomAssignments[entry.normalized]?.name || ''}
-                                        onChange={(e) =>
-                                          handleNewRoomNameChange(entry.normalized, e.target.value)
-                                        }
-                                        placeholder="Enter room name"
-                                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                             bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                      />
-                                      <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                        <input
-                                          type="checkbox"
-                                          checked={roomAssignments[entry.normalized]?.isHeadend || false}
-                                          onChange={(e) =>
-                                            handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
-                                          }
-                                          className="rounded"
-                                        />
-                                        Mark as Head-End Room
-                                      </label>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-
-
-                  {/* Unmatched Rooms Section */}
-                  {unmatchedRoomEntries.length > 0 && (
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                      <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4" />
-                        Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
-                      </h3>
-                      <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
-                        These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
-                      </p>
-
-                      <div className="space-y-3">
-                        {unmatchedRoomEntries.map((entry) => (
-                          <div
-                            key={entry.normalized}
-                            className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                                  From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
-                                </p>
-
-                                {entry.suggestion && entry.suggestion.score >= 0.72 && (
-                                  <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
-                                    Suggested match: {entry.suggestion.room.name} (
-                                    {Math.round(entry.suggestion.score * 100)}% similar)
-                                  </p>
-                                )}
-
-                                <div className="flex gap-2 items-end">
-                                  <div className="flex-1">
-                                    <select
-                                      value={
-                                        roomAssignments[entry.normalized]?.type === 'existing'
-                                          ? roomAssignments[entry.normalized].roomId
-                                          : roomAssignments[entry.normalized]?.type === 'new'
-                                            ? '__new__'
-                                            : ''
-                                      }
-                                      onChange={(e) =>
-                                        handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                      }
-                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                    >
-                                      <option value="">-- Select Action --</option>
-                                      <option value="__new__">Create New Room</option>
-                                      <optgroup label="Existing Rooms">
-                                        {allRoomOptions.map((opt) => (
-                                          <option key={opt.value} value={opt.value}>
-                                            {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
-                                          </option>
-                                        ))}
-                                      </optgroup>
-                                    </select>
-                                  </div>
-
-                                  <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={() => handleRoomAliasApply(entry)}
-                                    disabled={
-                                      !roomAssignments[entry.normalized] ||
-                                      roomAliasSaving === entry.normalized
-                                    }
-                                    loading={roomAliasSaving === entry.normalized}
-                                  >
-                                    {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
-                                  </Button>
-                                </div>
-
-                                {/* New Room Name Input */}
-                                {roomAssignments[entry.normalized]?.type === 'new' && (
-                                  <div className="mt-2 space-y-2">
-                                    <input
-                                      type="text"
-                                      value={roomAssignments[entry.normalized]?.name || ''}
-                                      onChange={(e) =>
-                                        handleNewRoomNameChange(entry.normalized, e.target.value)
-                                      }
-                                      placeholder="Enter room name"
-                                      className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded 
-                                           bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                    />
-                                    <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                      <input
-                                        type="checkbox"
-                                        checked={roomAssignments[entry.normalized]?.isHeadend || false}
-                                        onChange={(e) =>
-                                          handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
-                                        }
-                                        className="rounded"
-                                      />
-                                      Mark as Head-End Room
-                                    </label>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Matched Rooms Info */}
-                  {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
-                    <div
-                      className="p-4 rounded-lg"
-                      style={{
-                        backgroundColor: 'rgba(148, 175, 50, 0.1)',
-                        border: '1px solid rgba(148, 175, 50, 0.3)'
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                            All Lucid rooms are matched!
-                          </p>
-                          <p className="text-xs" style={{ color: '#94AF32' }}>
-                            All room names from Lucid wire drops have been successfully matched to project rooms.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Show instructions when no data available */}
-                  {droppableShapes.length === 0 && projectRooms.length === 0 && (
-                    <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
-                      <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
-                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                        No Room Data Available Yet
-                      </p>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        Complete Steps 1 & 2 above to import room data, then return here to align room names.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Summary of aligned rooms */}
-                  {droppableShapes.length > 0 && projectRooms.length > 0 && (
-                    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
-                        Summary
-                      </h3>
-                      <div className="grid grid-cols-2 gap-4 text-center mb-3">
-                        <div>
-                          <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
-                          <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                            {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
-                          </p>
-                          <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
-                        </div>
-                      </div>
-                      {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
-                        <div
-                          className="flex items-center justify-center gap-2 p-2 rounded"
-                          style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)' }}
-                        >
-                          <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
-                          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                            All rooms successfully aligned
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Building Permits Section */}

@@ -90,7 +90,7 @@ const TechnicianDashboardOptimized = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full px-3 sm:px-4 py-6 space-y-6">
       {/* Calendar Section */}
       <CalendarSection
         sectionStyles={sectionStyles}

@@ -1457,7 +1457,7 @@ const ProjectDetailView = () => {
 
   return (
     <div className={`min-h-screen pb-12 transition-colors duration-300 ${pageClasses}`}>
-      <div className="px-4 pt-2 pb-8 space-y-4 max-w-5xl mx-auto">
+      <div className="px-3 sm:px-4 pt-2 pb-8 space-y-4 w-full">
         <div className="rounded-2xl border p-6" style={{ ...styles.card, boxShadow: styles.card.boxShadow }}>
           <div className="mb-4">
             <div className="flex items-center gap-3 mb-2">

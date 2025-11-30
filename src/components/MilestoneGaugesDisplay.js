@@ -206,8 +206,8 @@ const MilestoneGaugesDisplay = ({
           <UnifiedProgressGauge
             label="Prewire Receiving"
             percentage={milestonePercentages.prewire_receiving?.percentage || 0}
-            itemCount={milestonePercentages.prewire_receiving?.itemCount}
-            totalItems={milestonePercentages.prewire_receiving?.totalItems}
+            itemCount={milestonePercentages.prewire_receiving?.partsReceived}
+            totalItems={milestonePercentages.prewire_receiving?.totalParts}
           />
           <UnifiedProgressGauge
             label="Prewire Stages"
@@ -229,8 +229,8 @@ const MilestoneGaugesDisplay = ({
           <UnifiedProgressGauge
             label="Trim Receiving"
             percentage={milestonePercentages.trim_receiving?.percentage || 0}
-            itemCount={milestonePercentages.trim_receiving?.itemCount}
-            totalItems={milestonePercentages.trim_receiving?.totalItems}
+            itemCount={milestonePercentages.trim_receiving?.partsReceived}
+            totalItems={milestonePercentages.trim_receiving?.totalParts}
           />
           <UnifiedProgressGauge
             label="Trim Stages"

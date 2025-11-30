@@ -15,6 +15,39 @@ import {
   Search
 } from 'lucide-react';
 
+// Generate next project number in format YYYY-NNN
+const generateNextProjectNumber = async () => {
+  const currentYear = new Date().getFullYear();
+  const yearPrefix = `${currentYear}-`;
+
+  // Get the highest project number for the current year
+  const { data: projects, error } = await supabase
+    .from('projects')
+    .select('project_number')
+    .like('project_number', `${yearPrefix}%`)
+    .order('project_number', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('Error fetching project numbers:', error);
+    // Fallback to timestamp-based number
+    return `${yearPrefix}${String(Date.now()).slice(-3)}`;
+  }
+
+  let nextNumber = 1;
+
+  if (projects && projects.length > 0 && projects[0].project_number) {
+    const lastNumber = projects[0].project_number;
+    const match = lastNumber.match(new RegExp(`^${currentYear}-(\\d+)$`));
+    if (match) {
+      nextNumber = parseInt(match[1], 10) + 1;
+    }
+  }
+
+  // Pad with zeros to 3 digits (e.g., 001, 012, 123)
+  return `${yearPrefix}${String(nextNumber).padStart(3, '0')}`;
+};
+
 const PMDashboard = () => {
   const { mode } = useTheme();
   const navigate = useNavigate();
@@ -274,9 +307,16 @@ const PMDashboard = () => {
         return;
       }
 
-      // Create project with client_contact_id
+      // Auto-generate project number if not provided
+      let projectNumber = newProject.project_number?.trim();
+      if (!projectNumber) {
+        projectNumber = await generateNextProjectNumber();
+      }
+
+      // Create project with client_contact_id and auto-generated project number
       const projectData = {
         ...newProject,
+        project_number: projectNumber,
         client_contact_id: newProject.client_contact_id || null
       };
       const createdProject = await projectsService.create(projectData);
@@ -418,14 +458,14 @@ const PMDashboard = () => {
 
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Project Number
+                    Project Number <span className="text-gray-400 font-normal">(auto-generated if empty)</span>
                   </label>
                   <input
                     type="text"
                     value={newProject.project_number}
                     onChange={(e) => setNewProject({ ...newProject, project_number: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                    placeholder="Enter project number"
+                    placeholder="e.g., 2025-001"
                   />
                 </div>
 

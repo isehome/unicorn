@@ -449,7 +449,7 @@ const WireDropsList = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-3 sm:px-4 py-6">
         <div style={sectionStyles.card}>
           {/* Bulk actions bar */}
           {selectedDropIds.length > 0 && (

@@ -225,15 +225,54 @@ className="bg-white"              // Missing dark!
 className="text-zinc-900"         // Missing dark!
 ```
 
-### Brand Colors
+### Brand Colors - CRITICAL
 
-| Purpose | Tailwind |
-|---------|----------|
-| Primary | `violet-500`, `violet-600` (hover) |
-| Success | `emerald-500` or `#94AF32` |
-| Warning | `amber-500` |
-| Danger | `red-500` |
-| Info | `blue-500` |
+**⚠️ DO NOT USE Tailwind's green/emerald classes for success states!**
+
+| Purpose | Color | Usage |
+|---------|-------|-------|
+| Primary | `#8B5CF6` | `violet-500`, `violet-600` (hover) |
+| Success | `#94AF32` | **INLINE STYLES ONLY** - see below |
+| Warning | `#F59E0B` | `amber-500` |
+| Danger | `#EF4444` | `red-500` |
+| Info | `#3B82F6` | `blue-500` |
+
+### ⚠️ SUCCESS/GREEN COLOR - MUST USE BRAND OLIVE GREEN
+
+**NEVER use these Tailwind classes:**
+- ❌ `text-green-*` (any shade)
+- ❌ `bg-green-*` (any shade)
+- ❌ `text-emerald-*` (any shade)
+- ❌ `bg-emerald-*` (any shade)
+- ❌ `#10B981`, `#22c55e`, `#16a34a` (emerald/green hex codes)
+
+**ALWAYS use brand olive green `#94AF32`:**
+```jsx
+// ✅ CORRECT - Use inline styles for success/green
+style={{ color: '#94AF32' }}
+style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
+style={{ accentColor: '#94AF32' }}  // for checkboxes
+
+// ✅ CORRECT - Import from styleSystem
+import { brandColors, stakeholderColors } from '../styles/styleSystem';
+style={{ color: brandColors.success }}  // '#94AF32'
+
+// ❌ WRONG - Tailwind green/emerald classes
+className="text-green-600 bg-green-100"
+className="text-emerald-500 bg-emerald-100"
+```
+
+**When to use brand olive green (#94AF32):**
+- Completed/success status badges
+- Received/installed indicators
+- Checkmarks for completion
+- External stakeholder indicators
+- Progress bars at 75-99%
+- Any "positive" state that isn't 100% complete
+
+**Reference:** `src/styles/styleSystem.js` contains:
+- `brandColors.success` = `#94AF32`
+- `stakeholderColors.external.text` = `#94AF32`
 
 ---
 
@@ -261,14 +300,23 @@ className="text-zinc-900"         // Missing dark!
 
 ### Status Badges
 ```jsx
-// Success
-<span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-medium">
+// Success - USE INLINE STYLES with brand olive green (#94AF32)
+<span
+  className="px-2 py-1 rounded-full text-xs font-medium"
+  style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}
+>
+  Completed
+</span>
 
-// Warning
+// Warning - Tailwind amber is OK
 <span className="px-2 py-1 bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium">
 
-// Error
+// Error - Tailwind red is OK
 <span className="px-2 py-1 bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 rounded-full text-xs font-medium">
+
+// ❌ WRONG - Never use emerald/green Tailwind classes!
+<span className="bg-emerald-100 text-emerald-700">  // NO!
+<span className="bg-green-100 text-green-700">     // NO!
 ```
 
 ### Collapsible Sections
@@ -438,6 +486,295 @@ const getProgressColor = (pct) => {
 
 ## Database Rules
 
+### Timestamp + User Tracking - MANDATORY
+
+**⚠️ CRITICAL: Every timestamp field MUST have a corresponding user field!**
+
+When setting any `*_at` timestamp field, you MUST also capture the authenticated user in a corresponding `*_by` field.
+
+---
+
+#### ⚠️ IMPORTANT: MSAL Auth vs Supabase Auth
+
+**This app uses Microsoft MSAL for authentication, NOT Supabase Auth!**
+
+This means:
+- `supabase.auth.getUser()` will ALWAYS return `null`
+- You MUST get the user from React's `useAuth()` hook in components
+- You MUST pass the user ID explicitly from components to services
+
+```javascript
+// ❌ WRONG - This will ALWAYS be null in our app!
+const { data: { user } } = await supabase.auth.getUser();
+// user is null because we use MSAL, not Supabase Auth
+
+// ✅ CORRECT - Get user from MSAL auth context in component
+import { useAuth } from '../contexts/AuthContext';
+
+const MyComponent = () => {
+  const { user } = useAuth();  // MSAL user from Microsoft Graph
+
+  // user.id = Microsoft Graph user ID (UUID)
+  // user.displayName = "Steve Blansette" (display name from Microsoft)
+
+  const handleAction = async () => {
+    // Pass user explicitly to service functions
+    await myService.updateSomething(itemId, user.id);
+  };
+};
+```
+
+---
+
+#### User ID Storage: UUID vs Display Name
+
+**⚠️ CRITICAL: Different tables store user info differently!**
+
+| Table | Field | Stores | Example Value |
+|-------|-------|--------|---------------|
+| `project_equipment` | `*_by` fields | UUID | `abc123-def456-...` |
+| `purchase_orders` | `*_by` fields | UUID | `abc123-def456-...` |
+| `purchase_order_items` | `received_by` | UUID | `abc123-def456-...` |
+| `wire_drop_stages` | `completed_by` | **DISPLAY NAME** | `"Steve Blansette"` |
+| `profiles` | `id` | UUID | `abc123-def456-...` |
+
+**Why does `wire_drop_stages.completed_by` store display name?**
+- Historical design decision for simpler UI display
+- When checking a wire drop stage checkbox, the display name is stored directly
+- This avoids a lookup when displaying "Completed by: Steve Blansette"
+
+**How to detect UUID vs Display Name:**
+```javascript
+// Check if value looks like a UUID (36 chars with dashes in specific positions)
+const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+if (isUUID) {
+  // Look up display name from profiles table
+  const { data } = await supabase
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', value)
+    .single();
+  displayName = data?.full_name || data?.email || 'Unknown User';
+} else {
+  // It's already a display name - use directly
+  displayName = value;
+}
+```
+
+---
+
+#### Fallback User Lookups for Auto-Completed Status
+
+When equipment status is auto-completed by another part of the system (e.g., Installed status derived from wire drop completion), the direct `*_by` field may be null. You MUST implement fallback lookups.
+
+**Example: Equipment Status User Resolution**
+
+```javascript
+// In DateDetailModal or similar component showing "Completed by: ___"
+
+const resolveUserForStatus = async (equipmentId, statusType) => {
+  // 1. First try the direct field on project_equipment
+  const { data: equipment } = await supabase
+    .from('project_equipment')
+    .select(`${statusType}_by`)
+    .eq('id', equipmentId)
+    .single();
+
+  if (equipment?.[`${statusType}_by`]) {
+    return await lookupUserName(equipment[`${statusType}_by`]);
+  }
+
+  // 2. Fallback lookups based on status type
+  switch (statusType) {
+    case 'ordered':
+    case 'received':
+      // Look in purchase_order_items -> purchase_orders
+      const { data: poItems } = await supabase
+        .from('purchase_order_items')
+        .select('purchase_order_id')
+        .eq('project_equipment_id', equipmentId);
+
+      if (poItems?.length > 0) {
+        const { data: po } = await supabase
+          .from('purchase_orders')
+          .select('submitted_by, created_by')
+          .eq('id', poItems[0].purchase_order_id)
+          .single();
+
+        const userId = statusType === 'ordered'
+          ? (po?.submitted_by || po?.created_by)
+          : po?.created_by;
+
+        if (userId) return await lookupUserName(userId);
+      }
+      break;
+
+    case 'installed':
+      // Look in wire_drop_stages via wire_drop_equipment_links
+      const { data: links } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('wire_drop_id')
+        .eq('project_equipment_id', equipmentId);
+
+      if (links?.length > 0) {
+        const wireDropIds = links.map(l => l.wire_drop_id);
+        const { data: stages } = await supabase
+          .from('wire_drop_stages')
+          .select('completed_by, completed_at')
+          .eq('stage_type', 'trim_out')
+          .eq('completed', true)
+          .in('wire_drop_id', wireDropIds)
+          .order('completed_at', { ascending: false })
+          .limit(1);
+
+        const completedBy = stages?.[0]?.completed_by;
+        if (completedBy) {
+          // IMPORTANT: Check if UUID or display name!
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(completedBy);
+          if (isUUID) {
+            return await lookupUserName(completedBy);
+          } else {
+            // Already a display name - return directly
+            return completedBy;
+          }
+        }
+      }
+      break;
+  }
+
+  return null; // No user found
+};
+```
+
+---
+
+#### Profile Sync on Login
+
+When users authenticate via MSAL, their profile is synced to Supabase's `profiles` table for audit trail lookups:
+
+```javascript
+// In AuthContext.js - loadUserProfile function
+// This runs after successful MSAL authentication
+
+const enrichedUser = {
+  id: profile.id,           // Microsoft Graph user ID
+  email: profile.mail,
+  displayName: profile.displayName,
+  // ... other fields
+};
+
+// Sync to Supabase for later lookups
+await supabase
+  .from('profiles')
+  .upsert({
+    id: enrichedUser.id,
+    email: enrichedUser.email,
+    full_name: enrichedUser.displayName,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+```
+
+This ensures that UUID-based user lookups can resolve to display names even for users who haven't logged in recently.
+
+---
+
+#### Standard User Lookup Helper
+
+Use this pattern when looking up user display names:
+
+```javascript
+const fetchUserName = async (uid, currentUser) => {
+  if (!uid) return { name: null, found: false };
+
+  // 1. If this is the current logged-in user, use their display name directly
+  //    (avoids profile table lookup which may not be synced yet)
+  if (currentUser?.id === uid && currentUser?.displayName) {
+    return { name: currentUser.displayName, found: true };
+  }
+
+  // 2. Try to look up from profiles table
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', uid)
+    .single();
+
+  if (!error && data) {
+    const resolvedName = data.full_name || data.email;
+    if (resolvedName) {
+      return { name: resolvedName, found: true };
+    }
+  }
+
+  // 3. Fallback for current user if profile lookup failed
+  if (currentUser?.id === uid) {
+    return {
+      name: currentUser.displayName || currentUser.email || 'Current User',
+      found: true
+    };
+  }
+
+  return { name: null, found: false };
+};
+```
+
+---
+
+#### Service Function Pattern
+
+When writing service functions that update timestamps:
+
+```javascript
+// ✅ CORRECT - Accept userId as parameter
+async updateStatus(equipmentId, status, userId) {
+  if (!userId) {
+    throw new Error('User ID is required for status updates');
+  }
+
+  const updates = {
+    [`${status}_confirmed`]: true,
+    [`${status}_confirmed_at`]: new Date().toISOString(),
+    [`${status}_confirmed_by`]: userId  // Passed from component
+  };
+
+  return await supabase
+    .from('project_equipment')
+    .update(updates)
+    .eq('id', equipmentId);
+}
+
+// ❌ WRONG - Trying to get user in service (will be null!)
+async updateStatus(equipmentId, status) {
+  const { data: { user } } = await supabase.auth.getUser();
+  // user is ALWAYS null because we use MSAL!
+}
+```
+
+---
+
+**Standard field naming pattern:**
+| Action Field | Timestamp Field | User Field |
+|--------------|-----------------|------------|
+| `completed` | `completed_at` | `completed_by` |
+| `submitted` | `submitted_at` | `submitted_by` |
+| `approved` | `approved_at` | `approved_by` |
+| `received` | `received_at` / `received_date` | `received_by` |
+| `delivered_confirmed` | `delivered_confirmed_at` | `delivered_confirmed_by` |
+| `installed` | `installed_at` | `installed_by` |
+| `cancelled` | `cancelled_at` | `cancelled_by` |
+| N/A | `created_at` | `created_by` |
+| N/A | `updated_at` | `updated_by` |
+
+**Rules Summary:**
+1. NEVER use `supabase.auth.getUser()` - it returns null (we use MSAL)
+2. ALWAYS get user from `useAuth()` hook in components
+3. ALWAYS pass userId explicitly from components to services
+4. NEVER set a timestamp without also setting the corresponding user field
+5. When displaying user info, check if value is UUID or display name
+6. Implement fallback lookups for auto-completed statuses
+7. Profile sync on login enables UUID → display name resolution
+
 ### RLS Policies - CRITICAL
 
 We use MSAL (not Supabase Auth). ALL policies MUST include `anon`:
@@ -567,6 +904,11 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 
 - [ ] Used `zinc` (not `gray`)
 - [ ] All colors have `dark:` variants
+- [ ] **NO `green-*` or `emerald-*` Tailwind classes** - use `#94AF32` inline styles
+- [ ] **All timestamps have corresponding user fields** (`*_at` paired with `*_by`)
+- [ ] **User ID comes from `useAuth()` hook, NOT `supabase.auth.getUser()`**
+- [ ] **Service functions accept userId as parameter (don't try to get it internally)**
+- [ ] **UUID vs Display Name handled correctly** (check `wire_drop_stages.completed_by`)
 - [ ] Files in correct locations
 - [ ] Database policies include `anon`
 - [ ] Updated relevant doc in `docs/`

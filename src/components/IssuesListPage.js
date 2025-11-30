@@ -216,7 +216,7 @@ const IssuesListPageOptimized = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
+    <div className="w-full px-3 sm:px-4 py-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-white">My Issues</h1>
         
