@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Plus, X } from 'lucide-react';
 import { getProjectTeam, getIssueAssignments, assignContactToIssue } from '../lib/supabase';
 import Button from './ui/Button';
+import { stakeholderColors } from '../styles/styleSystem';
 
 const IssueAssignments = ({ issueId, projectId }) => {
   const [projectTeam, setProjectTeam] = useState([]);
@@ -108,22 +109,36 @@ const IssueAssignments = ({ issueId, projectId }) => {
                     <button
                       onClick={() => handleAssignToIssue(teamMember.contact_id, 'assignee')}
                       className="block w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                      style={{ borderLeft: `3px solid ${teamMember.contact?.is_internal ? stakeholderColors.internal.border : stakeholderColors.external.border}` }}
                     >
-                      <div className="font-medium text-gray-900 dark:text-white">
-                        {teamMember.contact.first_name} {teamMember.contact.last_name}
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: teamMember.contact?.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text }}
+                        />
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {teamMember.contact.first_name} {teamMember.contact.last_name}
+                        </span>
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 ml-4">
                         {teamMember.stakeholder_slot?.slot_name} • Assign as Assignee
                       </div>
                     </button>
                     <button
                       onClick={() => handleAssignToIssue(teamMember.contact_id, 'watcher')}
                       className="block w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
+                      style={{ borderLeft: `3px solid ${teamMember.contact?.is_internal ? stakeholderColors.internal.border : stakeholderColors.external.border}` }}
                     >
-                      <div className="font-medium text-gray-900 dark:text-white">
-                        {teamMember.contact.first_name} {teamMember.contact.last_name}
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: teamMember.contact?.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text }}
+                        />
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {teamMember.contact.first_name} {teamMember.contact.last_name}
+                        </span>
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                      <div className="text-sm text-gray-500 dark:text-gray-400 ml-4">
                         {teamMember.stakeholder_slot?.slot_name} • Assign as Watcher
                       </div>
                     </button>

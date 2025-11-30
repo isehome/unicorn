@@ -381,7 +381,8 @@ const WireDropDetail = () => {
         floor: data.floor || '',
         qr_code_url: data.qr_code_url || '',
         schematic_reference: data.schematic_reference || '',
-        notes: data.notes || ''
+        notes: data.notes || '',
+        is_auxiliary: data.is_auxiliary || false
       });
 
       // DEBUG: Log raw equipment links to identify data format issues
@@ -568,9 +569,22 @@ const WireDropDetail = () => {
       floor: wireDrop.floor || '',
       qr_code_url: wireDrop.qr_code_url || '',
       schematic_reference: wireDrop.schematic_reference || '',
-      notes: wireDrop.notes || ''
+      notes: wireDrop.notes || '',
+      is_auxiliary: wireDrop.is_auxiliary || false
     });
     setEditing(false);
+  };
+
+  const handleToggleAuxiliary = async () => {
+    const newValue = !wireDrop.is_auxiliary;
+    try {
+      await wireDropService.updateWireDrop(id, { is_auxiliary: newValue });
+      setWireDrop(prev => ({ ...prev, is_auxiliary: newValue }));
+      setEditForm(prev => ({ ...prev, is_auxiliary: newValue }));
+    } catch (err) {
+      console.error('Failed to update auxiliary status:', err);
+      alert('Failed to update auxiliary status');
+    }
   };
 
   const processStagePhotoUpload = useCallback(async (stageType, file, isReUpload = false) => {
@@ -2358,6 +2372,38 @@ const WireDropDetail = () => {
                     >
                       Take/Upload Photo
                     </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Auxiliary Wire Drop Toggle */}
+            <div className="rounded-2xl overflow-hidden" style={sectionStyles.cardBg}>
+              <div className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                      Auxiliary / Spare Wire
+                    </h3>
+                    <p className="text-sm mt-1" style={styles.textSecondary}>
+                      Mark this wire drop as a spare run that doesn't require equipment installation
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-4">
+                    <input
+                      type="checkbox"
+                      checked={wireDrop?.is_auxiliary || false}
+                      onChange={handleToggleAuxiliary}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+                {wireDrop?.is_auxiliary && (
+                  <div className="mt-3 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      This wire drop is marked as auxiliary. It will still require a trim-out photo but won't require equipment to be installed.
+                    </p>
                   </div>
                 )}
               </div>

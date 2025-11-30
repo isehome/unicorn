@@ -48,7 +48,7 @@ import {
 } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
-import { enhancedStyles } from '../styles/styleSystem';
+import { enhancedStyles, stakeholderColors } from '../styles/styleSystem';
 import { projectRoomsService } from '../services/projectRoomsService';
 import { normalizeRoomName } from '../utils/roomUtils';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
@@ -1085,7 +1085,8 @@ const ProjectDetailView = () => {
                           backgroundColor: selectedContactId === contact.id
                             ? withAlpha(palette.accent, 0.12)
                             : 'transparent',
-                          color: styles.textPrimary.color
+                          color: styles.textPrimary.color,
+                          borderLeft: `3px solid ${contact.is_internal ? stakeholderColors.internal.border : stakeholderColors.external.border}`
                         }}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -1101,8 +1102,8 @@ const ProjectDetailView = () => {
                             <span
                               className="px-2 py-1 rounded-full text-xs"
                               style={{
-                                backgroundColor: contact.is_internal ? withAlpha(palette.accent, 0.15) : withAlpha(palette.success, 0.15),
-                                color: contact.is_internal ? palette.accent : palette.success
+                                backgroundColor: contact.is_internal ? stakeholderColors.internal.bg : stakeholderColors.external.bg,
+                                color: contact.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text
                               }}
                             >
                               {contact.is_internal ? 'Internal' : 'External'}

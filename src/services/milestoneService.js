@@ -429,48 +429,38 @@ class MilestoneService {
   }
 
   /**
-   * Calculate Trim percentage
-   * Based on equipment installed status for trim-phase equipment
-   * Equipment is considered "installed" if:
-   *   1. It has installed=true in the database (manual toggle for items without wire drops), OR
-   *   2. It's linked to a wire drop that has trim_out stage completed
-   * (Installed equipment) / (Total trim-phase equipment) × 100
+   * Calculate Trim stages percentage
+   * Combined formula: (completed wire drops + installed equipment) / (total wire drops + total equipment)
+   *
+   * Wire drop completion:
+   *   - is_auxiliary = true: Auto-completes (spare wires don't block progress)
+   *   - trim_out stage completed = true: Completed
+   *
+   * Equipment installation:
+   *   - installed = true (manual toggle), OR
+   *   - Linked to wire drop with completed trim_out
    */
   async calculateTrimPercentage(projectId) {
     try {
-      // Get all trim-phase equipment for this project (required_for_prewire = false)
-      const { data: equipment, error: equipError } = await supabase
-        .from('project_equipment')
-        .select('id, installed, required_for_prewire')
-        .eq('project_id', projectId)
-        .eq('is_active', true);
+      // ===== WIRE DROPS =====
+      // Get all wire drops for this project
+      const { data: wireDrops, error: wdError } = await supabase
+        .from('wire_drops')
+        .select('id, is_auxiliary')
+        .eq('project_id', projectId);
 
-      if (equipError) throw equipError;
+      if (wdError) throw wdError;
 
-      // Filter for trim-phase equipment (not required for prewire)
-      const trimEquipment = (equipment || []).filter(item => item.required_for_prewire !== true);
+      const totalWireDrops = (wireDrops || []).length;
 
-      const totalItems = trimEquipment.length;
-      if (totalItems === 0) return 0;
-
-      // Get equipment IDs that are linked to wire drops with completed trim_out
-      const trimEquipmentIds = trimEquipment.map(e => e.id);
-
-      // Get all wire drop links for this equipment
-      const { data: equipmentLinks } = await supabase
-        .from('wire_drop_equipment_links')
-        .select('project_equipment_id, wire_drop_id')
-        .in('project_equipment_id', trimEquipmentIds);
-
-      // Get unique wire drop IDs
-      const wireDropIds = [...new Set((equipmentLinks || []).map(l => l.wire_drop_id))];
-
-      // Get trim_out stages that are completed for these wire drops
+      // Get completed trim_out stages for wire drops
+      const wireDropIds = (wireDrops || []).map(wd => wd.id);
       let completedWireDropIds = new Set();
+
       if (wireDropIds.length > 0) {
         const { data: trimStages } = await supabase
           .from('wire_drop_stages')
-          .select('wire_drop_id, completed')
+          .select('wire_drop_id')
           .eq('stage_type', 'trim_out')
           .eq('completed', true)
           .in('wire_drop_id', wireDropIds);
@@ -478,26 +468,77 @@ class MilestoneService {
         completedWireDropIds = new Set((trimStages || []).map(s => s.wire_drop_id));
       }
 
-      // Build a set of equipment IDs that are linked to completed wire drops
-      const equipmentWithCompletedTrimOut = new Set();
-      (equipmentLinks || []).forEach(link => {
-        if (completedWireDropIds.has(link.wire_drop_id)) {
-          equipmentWithCompletedTrimOut.add(link.project_equipment_id);
-        }
-      });
+      // Count completed wire drops:
+      // - is_auxiliary = true (spare wires auto-complete), OR
+      // - trim_out stage completed
+      const completedWireDropCount = (wireDrops || []).filter(wd =>
+        wd.is_auxiliary === true || completedWireDropIds.has(wd.id)
+      ).length;
+
+      // ===== EQUIPMENT =====
+      // Get all trim-phase equipment for this project
+      // required_for_prewire is on global_parts, not project_equipment
+      const { data: equipment, error: equipError } = await supabase
+        .from('project_equipment')
+        .select(`
+          id,
+          installed,
+          equipment_type,
+          global_part:global_part_id (required_for_prewire)
+        `)
+        .eq('project_id', projectId)
+        .eq('is_active', true);
+
+      if (equipError) throw equipError;
+
+      // Filter for trim-phase equipment:
+      // - NOT required for prewire (via global_parts), AND
+      // - NOT labor items
+      const trimEquipment = (equipment || []).filter(item =>
+        item.global_part?.required_for_prewire !== true &&
+        item.equipment_type !== 'Labor'
+      );
+
+      const totalEquipment = trimEquipment.length;
+
+      // Get equipment IDs that are linked to wire drops with completed trim_out
+      const trimEquipmentIds = trimEquipment.map(e => e.id);
+
+      // Get room_end wire drop links for this equipment
+      // IMPORTANT: Only room_end links auto-install equipment on trim_out completion
+      // Head-end equipment (many:1) requires manual installation toggle
+      let equipmentWithCompletedTrimOut = new Set();
+      if (trimEquipmentIds.length > 0) {
+        const { data: equipmentLinks } = await supabase
+          .from('wire_drop_equipment_links')
+          .select('project_equipment_id, wire_drop_id, link_side')
+          .in('project_equipment_id', trimEquipmentIds)
+          .eq('link_side', 'room_end');
+
+        // Build a set of equipment IDs that are linked via room_end to completed wire drops
+        (equipmentLinks || []).forEach(link => {
+          if (completedWireDropIds.has(link.wire_drop_id)) {
+            equipmentWithCompletedTrimOut.add(link.project_equipment_id);
+          }
+        });
+      }
 
       // Count installed equipment:
-      // - Has installed=true in DB (manual toggle for wireless items), OR
-      // - Is linked to a wire drop with completed trim_out
-      const installedCount = trimEquipment.filter(item => {
-        // Check if linked to completed wire drop
+      // - Has installed=true in DB (manual toggle for wireless/head-end items), OR
+      // - Is linked via room_end to a wire drop with completed trim_out
+      const installedEquipmentCount = trimEquipment.filter(item => {
         if (equipmentWithCompletedTrimOut.has(item.id)) return true;
-        // Check if manually marked installed (for items without wire drops)
         if (item.installed === true) return true;
         return false;
       }).length;
 
-      const percentage = Math.round((installedCount / totalItems) * 100);
+      // ===== COMBINED CALCULATION =====
+      const totalItems = totalWireDrops + totalEquipment;
+      if (totalItems === 0) return 0;
+
+      const completedItems = completedWireDropCount + installedEquipmentCount;
+      const percentage = Math.round((completedItems / totalItems) * 100);
+
       return percentage;
     } catch (error) {
       console.error('Error calculating trim percentage:', error);
@@ -507,36 +548,45 @@ class MilestoneService {
 
   /**
    * Calculate Commissioning percentage
-   * 100% when equipment is attached to head-end room
+   * Based on wire drops with completed commission stages
+   * (Wire drops with completed commission) / (Total wire drops) × 100
    */
   async calculateCommissioningPercentage(projectId) {
     try {
-      // Get head-end rooms for this project
-      const { data: headEndRooms, error: roomError } = await supabase
-        .from('project_rooms')
+      // Get all wire drops for this project
+      const { data: wireDrops, error: wdError } = await supabase
+        .from('wire_drops')
         .select('id')
-        .eq('project_id', projectId)
-        .eq('is_headend', true);
+        .eq('project_id', projectId);
 
-      if (roomError) throw roomError;
+      if (wdError) throw wdError;
 
-      if (!headEndRooms || headEndRooms.length === 0) return 0;
+      const totalWireDrops = (wireDrops || []).length;
+      if (totalWireDrops === 0) return { percentage: 0, itemCount: 0, totalItems: 0 };
 
-      const headEndRoomIds = headEndRooms.map(r => r.id);
+      // Get wire drops with completed commission stages
+      const wireDropIds = (wireDrops || []).map(wd => wd.id);
 
-      // Check if any equipment is assigned to head-end rooms
-      const { data: equipment, error: equipError } = await supabase
-        .from('project_equipment')
-        .select('id, project_room_id')
-        .eq('project_id', projectId)
-        .in('project_room_id', headEndRoomIds);
+      const { data: commissionStages, error: stageError } = await supabase
+        .from('wire_drop_stages')
+        .select('wire_drop_id')
+        .eq('stage_type', 'commission')
+        .eq('completed', true)
+        .in('wire_drop_id', wireDropIds);
 
-      if (equipError) throw equipError;
+      if (stageError) throw stageError;
 
-      return (equipment && equipment.length > 0) ? 100 : 0;
+      const completedCount = (commissionStages || []).length;
+      const percentage = Math.round((completedCount / totalWireDrops) * 100);
+
+      return {
+        percentage,
+        itemCount: completedCount,
+        totalItems: totalWireDrops
+      };
     } catch (error) {
       console.error('Error calculating commissioning percentage:', error);
-      return 0;
+      return { percentage: 0, itemCount: 0, totalItems: 0 };
     }
   }
 
@@ -961,7 +1011,7 @@ class MilestoneService {
         trim_receiving: { percentage: 0, itemCount: 0, totalItems: 0 },
         trim: 0,
         trim_phase: { percentage: 0, orders: { percentage: 0, itemCount: 0, totalItems: 0 }, receiving: { percentage: 0, itemCount: 0, totalItems: 0 }, stages: 0 },
-        commissioning: 0,
+        commissioning: { percentage: 0, itemCount: 0, totalItems: 0 },
         prewire_prep: 0,
         trim_prep: 0
       };

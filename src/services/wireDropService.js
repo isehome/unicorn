@@ -933,10 +933,13 @@ class WireDropService {
     if (!equipmentIds || equipmentIds.length === 0) return;
 
     try {
+      // Ensure userId is a valid UUID or null, never empty string
+      const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
+
       const updates = {
         installed,
         installed_at: installed ? new Date().toISOString() : null,
-        installed_by: installed ? userId : null
+        installed_by: installed ? validUserId : null
       };
 
       const { error } = await supabase

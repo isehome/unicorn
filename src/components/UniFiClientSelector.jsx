@@ -4,13 +4,44 @@ import { supabase } from '../lib/supabase';
 
 const UniFiClientSelector = ({
   equipment,
-  onClientLinked
+  equipmentId,
+  projectId,
+  wireDropId,
+  onClientLinked,
+  onAssign
 }) => {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [refreshStatus, setRefreshStatus] = useState(null);
+  const [equipmentData, setEquipmentData] = useState(equipment || null);
+
+  // Fetch equipment data if only ID is provided
+  useEffect(() => {
+    const fetchEquipment = async () => {
+      if (equipment) {
+        setEquipmentData(equipment);
+        return;
+      }
+      if (!equipmentId) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('project_equipment')
+          .select('id, name, mac_address, unifi_client_mac')
+          .eq('id', equipmentId)
+          .single();
+
+        if (error) throw error;
+        setEquipmentData(data);
+      } catch (error) {
+        console.error('Error fetching equipment:', error);
+      }
+    };
+
+    fetchEquipment();
+  }, [equipment, equipmentId]);
 
   const fetchUniFiClients = async () => {
     try {
@@ -40,9 +71,9 @@ const UniFiClientSelector = ({
       setRefreshStatus('success');
 
       // Auto-match by MAC address if equipment has one
-      if (equipment.mac_address) {
+      if (equipmentData?.mac_address) {
         const match = data.find(
-          c => c.mac?.toLowerCase() === equipment.mac_address?.toLowerCase()
+          c => c.mac?.toLowerCase() === equipmentData.mac_address?.toLowerCase()
         );
         if (match) {
           setSelectedClient(match);
@@ -85,18 +116,33 @@ const UniFiClientSelector = ({
     };
 
     if (onClientLinked) {
-      await onClientLinked(equipment.id, unifiData);
+      await onClientLinked(equipmentData?.id || equipmentId, unifiData);
+    }
+    if (onAssign) {
+      await onAssign(equipmentData?.id || equipmentId, unifiData);
     }
   };
 
   useEffect(() => {
-    refreshClients();
-  }, []);
+    // Only refresh clients once we have equipment data (or if no equipment is needed)
+    if (equipmentData || (!equipment && !equipmentId)) {
+      refreshClients();
+    }
+  }, [equipmentData]);
 
   const formatMac = (mac) => {
     if (!mac) return 'N/A';
     return mac.toUpperCase().match(/.{1,2}/g)?.join(':') || mac;
   };
+
+  // Show loading while fetching equipment data
+  if (equipmentId && !equipmentData) {
+    return (
+      <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading equipment data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
@@ -170,7 +216,10 @@ const UniFiClientSelector = ({
               onClick={() => {
                 setSelectedClient(null);
                 if (onClientLinked) {
-                  onClientLinked(equipment.id, null);
+                  onClientLinked(equipmentData?.id || equipmentId, null);
+                }
+                if (onAssign) {
+                  onAssign(equipmentData?.id || equipmentId, null);
                 }
               }}
               className="mt-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
@@ -201,9 +250,9 @@ const UniFiClientSelector = ({
               </option>
             ))}
           </select>
-          {equipment.mac_address && (
+          {equipmentData?.mac_address && (
             <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              Looking for MAC: {formatMac(equipment.mac_address)}
+              Looking for MAC: {formatMac(equipmentData.mac_address)}
             </p>
           )}
         </div>

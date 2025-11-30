@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService, contactsService } from '../services/supabaseService';
+import { projectsService, contactsService, projectStakeholdersService, stakeholderRolesService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { supabase } from '../lib/supabase';
@@ -39,6 +39,10 @@ const PMDashboard = () => {
     wiring_diagram_url: '',
     portal_proposal_url: '',
   });
+  const [internalContacts, setInternalContacts] = useState([]);
+  const [stakeholderRoles, setStakeholderRoles] = useState([]);
+  const [selectedPMId, setSelectedPMId] = useState('');
+  const [selectedLeadTechId, setSelectedLeadTechId] = useState('');
 
   // Get query params and state
   const queryParams = new URLSearchParams(location.search);
@@ -49,6 +53,8 @@ const PMDashboard = () => {
   useEffect(() => {
     loadProjects();
     loadContacts();
+    loadInternalContacts();
+    loadStakeholderRoles();
   }, []);
 
   // Load project owners (stakeholders) for all projects
@@ -193,6 +199,24 @@ const PMDashboard = () => {
     }
   };
 
+  const loadInternalContacts = async () => {
+    try {
+      const data = await contactsService.getAll({ isInternal: true });
+      setInternalContacts(data);
+    } catch (error) {
+      console.error('Failed to load internal contacts:', error);
+    }
+  };
+
+  const loadStakeholderRoles = async () => {
+    try {
+      const data = await stakeholderRolesService.getAll();
+      setStakeholderRoles(data);
+    } catch (error) {
+      console.error('Failed to load stakeholder roles:', error);
+    }
+  };
+
   const loadProjects = async () => {
     try {
       setLoading(true);
@@ -205,10 +229,48 @@ const PMDashboard = () => {
     }
   };
 
+  // Filter internal contacts by role for dropdowns
+  const pmContacts = useMemo(() => {
+    return internalContacts.filter(contact =>
+      contact.role?.toLowerCase().includes('project manager') ||
+      contact.role?.toLowerCase() === 'pm'
+    );
+  }, [internalContacts]);
+
+  const techContacts = useMemo(() => {
+    return internalContacts.filter(contact =>
+      contact.role?.toLowerCase().includes('technician') ||
+      contact.role?.toLowerCase().includes('lead tech')
+    );
+  }, [internalContacts]);
+
+  // Get role IDs for stakeholder assignment
+  const pmRoleId = useMemo(() => {
+    return stakeholderRoles.find(r => r.name === 'Project Manager')?.id;
+  }, [stakeholderRoles]);
+
+  const techRoleId = useMemo(() => {
+    return stakeholderRoles.find(r => r.name === 'Lead Technician')?.id ||
+           stakeholderRoles.find(r => r.name === 'Technician')?.id;
+  }, [stakeholderRoles]);
+
   const handleCreateProject = async () => {
     try {
-      if (!newProject.name || !newProject.address) {
-        alert('Please fill in required fields');
+      // Validation
+      if (!newProject.name?.trim()) {
+        alert('Project name is required');
+        return;
+      }
+      if (!newProject.address?.trim() || !newProject.address.includes(',')) {
+        alert('Please enter a valid address (City, State format minimum)');
+        return;
+      }
+      if (!selectedPMId) {
+        alert('Please assign a Project Manager');
+        return;
+      }
+      if (!selectedLeadTechId) {
+        alert('Please assign a Lead Technician');
         return;
       }
 
@@ -217,7 +279,23 @@ const PMDashboard = () => {
         ...newProject,
         client_contact_id: newProject.client_contact_id || null
       };
-      await projectsService.create(projectData);
+      const createdProject = await projectsService.create(projectData);
+
+      // Create stakeholder assignments for PM and Lead Technician
+      if (createdProject?.id) {
+        try {
+          if (pmRoleId) {
+            await projectStakeholdersService.addToProject(createdProject.id, selectedPMId, pmRoleId, { isPrimary: true });
+          }
+          if (techRoleId) {
+            await projectStakeholdersService.addToProject(createdProject.id, selectedLeadTechId, techRoleId, { isPrimary: true });
+          }
+        } catch (stakeholderError) {
+          console.error('Failed to assign stakeholders:', stakeholderError);
+          // Don't fail the whole operation, project is already created
+        }
+      }
+
       setNewProject({
         name: '',
         client: '',
@@ -229,6 +307,8 @@ const PMDashboard = () => {
         wiring_diagram_url: '',
         portal_proposal_url: '',
       });
+      setSelectedPMId('');
+      setSelectedLeadTechId('');
       setShowNewProjectForm(false);
       loadProjects();
     } catch (error) {
@@ -277,7 +357,7 @@ const PMDashboard = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Project Name *
+                    Project Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -322,15 +402,18 @@ const PMDashboard = () => {
 
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Address *
+                    Address <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={newProject.address}
                     onChange={(e) => setNewProject({ ...newProject, address: e.target.value })}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                    placeholder="Enter project address"
+                    placeholder="123 Main St, City, State"
                   />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Must include city and state (e.g., City, State)
+                  </p>
                 </div>
 
                 <div>
@@ -378,6 +461,72 @@ const PMDashboard = () => {
                     <option value="completed">Completed</option>
                     <option value="cancelled">Cancelled</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                    Project Manager <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedPMId}
+                    onChange={(e) => setSelectedPMId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  >
+                    <option value="">Select a Project Manager...</option>
+                    {pmContacts.length > 0 ? (
+                      pmContacts.map(contact => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name || contact.name || 'Unnamed'}
+                          {contact.email && ` (${contact.email})`}
+                        </option>
+                      ))
+                    ) : (
+                      internalContacts.map(contact => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name || contact.name || 'Unnamed'}
+                          {contact.role && ` - ${contact.role}`}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {pmContacts.length === 0 && internalContacts.length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      No internal contacts found. Add contacts with "Project Manager" role.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                    Lead Technician <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={selectedLeadTechId}
+                    onChange={(e) => setSelectedLeadTechId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                  >
+                    <option value="">Select a Lead Technician...</option>
+                    {techContacts.length > 0 ? (
+                      techContacts.map(contact => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name || contact.name || 'Unnamed'}
+                          {contact.email && ` (${contact.email})`}
+                        </option>
+                      ))
+                    ) : (
+                      internalContacts.map(contact => (
+                        <option key={contact.id} value={contact.id}>
+                          {contact.full_name || contact.name || 'Unnamed'}
+                          {contact.role && ` - ${contact.role}`}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  {techContacts.length === 0 && internalContacts.length === 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      No internal contacts found. Add contacts with "Technician" role.
+                    </p>
+                  )}
                 </div>
               </div>
 

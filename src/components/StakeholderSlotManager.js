@@ -1,14 +1,15 @@
 // src/components/StakeholderSlotManager.js
 import React, { useState, useEffect } from 'react';
 import { Plus, User, Trash2 } from 'lucide-react';
-import { 
-  getStakeholderSlots, 
-  getProjectTeam, 
+import {
+  getStakeholderSlots,
+  getProjectTeam,
   getAvailableContactsForProject,
   assignContactToProject,
-  removeProjectAssignment 
+  removeProjectAssignment
 } from '../lib/supabase';
 import Button from './ui/Button';
+import { stakeholderColors } from '../styles/styleSystem';
 
 const StakeholderSlotManager = ({ projectId, theme }) => {
   const [stakeholderSlots, setStakeholderSlots] = useState([]);
@@ -131,17 +132,33 @@ const StakeholderSlotManager = ({ projectId, theme }) => {
                   
                   <div className="space-y-2">
                     {availableContacts.map(contact => (
-                      <div 
+                      <div
                         key={contact.id}
                         className="flex items-center justify-between p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer"
+                        style={{ borderLeft: `3px solid ${contact.is_internal ? stakeholderColors.internal.border : stakeholderColors.external.border}` }}
                         onClick={() => handleAssignContact(contact.id, slot.id)}
                       >
-                        <div>
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {contact.first_name} {contact.last_name}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: contact.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text }}
+                          />
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {contact.first_name} {contact.last_name}
+                            </div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400">{contact.email}</div>
                           </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">{contact.email}</div>
                         </div>
+                        <span
+                          className="px-2 py-0.5 text-xs rounded-full"
+                          style={{
+                            backgroundColor: contact.is_internal ? stakeholderColors.internal.bg : stakeholderColors.external.bg,
+                            color: contact.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text
+                          }}
+                        >
+                          {contact.is_internal ? 'Internal' : 'External'}
+                        </span>
                       </div>
                     ))}
                   </div>

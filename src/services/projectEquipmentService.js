@@ -1734,5 +1734,87 @@ export const projectEquipmentService = {
     }
 
     return data;
+  },
+
+  /**
+   * Reassign equipment to a different room
+   * This will unlink from any wire drops since equipment is being moved
+   * @param {string} equipmentId - The equipment item ID
+   * @param {string} newRoomId - The new room ID to assign to
+   * @param {string} userId - Current user ID (optional)
+   * @returns {object} Updated equipment with new room data
+   */
+  async reassignEquipmentRoom(equipmentId, newRoomId, userId = null) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!equipmentId) throw new Error('Equipment ID is required');
+    if (!newRoomId) throw new Error('New room ID is required');
+
+    // Ensure userId is valid or null
+    const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
+
+    try {
+      // First, unlink from any wire drops (equipment is being moved to a different room)
+      const { data: existingLinks, error: linksError } = await supabase
+        .from('wire_drop_equipment_links')
+        .select('id')
+        .eq('project_equipment_id', equipmentId);
+
+      if (linksError) {
+        console.warn('[reassignEquipmentRoom] Error fetching wire drop links:', linksError);
+      }
+
+      const hadWireDropLinks = existingLinks && existingLinks.length > 0;
+
+      if (hadWireDropLinks) {
+        const { error: deleteError } = await supabase
+          .from('wire_drop_equipment_links')
+          .delete()
+          .eq('project_equipment_id', equipmentId);
+
+        if (deleteError) {
+          console.error('[reassignEquipmentRoom] Failed to unlink wire drops:', deleteError);
+          throw new Error('Failed to unlink equipment from wire drops');
+        }
+        console.log(`[reassignEquipmentRoom] Unlinked ${existingLinks.length} wire drop connections`);
+      }
+
+      // Update room assignment and reset installed status
+      const updates = {
+        room_id: newRoomId,
+        installed: false,
+        installed_at: null,
+        installed_by: null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('project_equipment')
+        .update(updates)
+        .eq('id', equipmentId)
+        .select(`
+          *,
+          project_rooms(id, name, is_headend),
+          global_part:global_part_id (id, part_number, name, manufacturer, model, description, is_wire_drop_visible)
+        `)
+        .single();
+
+      if (error) {
+        console.error('[reassignEquipmentRoom] Failed to update room:', error);
+        throw new Error(error.message || 'Failed to reassign equipment room');
+      }
+
+      console.log(`[reassignEquipmentRoom] Equipment ${equipmentId} reassigned to room ${newRoomId}`, {
+        hadWireDropLinks,
+        newRoomName: data.project_rooms?.name
+      });
+
+      return {
+        ...data,
+        wireDropsUnlinked: hadWireDropLinks ? existingLinks.length : 0
+      };
+    } catch (error) {
+      console.error('[reassignEquipmentRoom] Error:', error);
+      throw error;
+    }
   }
 };

@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -105,6 +105,137 @@ const DateDetailModal = ({ isOpen, onClose, title, date, userId, mode }) => {
   );
 };
 
+// Room Reassignment Modal Component
+const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, onConfirm, mode }) => {
+  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedRoomId('');
+      setIsSubmitting(false);
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !equipment) return null;
+
+  const currentRoom = rooms.find(r => r.id === currentRoomId);
+  const availableRooms = rooms.filter(r => r.id !== currentRoomId);
+  const hasWireDrops = equipment.wireDrops?.length > 0;
+
+  const handleConfirm = async () => {
+    if (!selectedRoomId) return;
+    setIsSubmitting(true);
+    try {
+      await onConfirm(equipment.id, selectedRoomId);
+      onClose();
+    } catch (error) {
+      console.error('Failed to reassign room:', error);
+      alert(error.message || 'Failed to reassign room');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative rounded-xl shadow-xl max-w-md w-full p-5"
+        style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+        >
+          <X size={18} className="text-gray-500" />
+        </button>
+
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+          Reassign Room
+        </h3>
+
+        <div className="space-y-4">
+          {/* Equipment Info */}
+          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+            <p className="font-medium text-gray-900 dark:text-gray-100">{equipment.name}</p>
+            {equipment.partNumber && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">{equipment.partNumber}</p>
+            )}
+          </div>
+
+          {/* Current Room */}
+          <div>
+            <label className="block text-sm text-gray-500 dark:text-gray-400 mb-1">Current Room</label>
+            <p className="font-medium text-gray-900 dark:text-gray-100">
+              {currentRoom?.name || 'Unassigned'}
+              {currentRoom?.is_headend && (
+                <span className="ml-2 text-xs px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                  Head-End
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Warning if has wire drops */}
+          {hasWireDrops && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  This equipment is linked to {equipment.wireDrops.length} wire drop{equipment.wireDrops.length > 1 ? 's' : ''}
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  Reassigning will unlink the equipment from all wire drops and reset its installed status.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* New Room Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              New Room
+            </label>
+            <select
+              value={selectedRoomId}
+              onChange={(e) => setSelectedRoomId(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+            >
+              <option value="">Select a room...</option>
+              {availableRooms.map(room => (
+                <option key={room.id} value={room.id}>
+                  {room.name}
+                  {room.is_headend ? ' (Head-End)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleConfirm}
+              disabled={!selectedRoomId || isSubmitting}
+              className="flex-1 px-4 py-2 rounded-lg bg-violet-600 text-white font-medium hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              {isSubmitting ? 'Reassigning...' : 'Reassign'}
+            </button>
+            <button
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const mapEquipmentRecord = (item) => {
   const name = item.name || item.global_part?.name || 'Unnamed Equipment';
   const partNumber = item.part_number || item.global_part?.part_number || null;
@@ -136,6 +267,7 @@ const mapEquipmentRecord = (item) => {
     manufacturer,
     model,
     room: roomName,
+    roomId: item.room_id || item.project_rooms?.id || null, // For reassignment
     isHeadend: installSide === 'head_end' || Boolean(item.project_rooms?.is_headend),
     installSide,
     plannedQuantity: quantityPlanned,
@@ -219,6 +351,8 @@ const EquipmentListPage = () => {
   const [installedFilter, setInstalledFilter] = useState('all'); // 'all', 'installed', 'not_installed'
   const [expandedItems, setExpandedItems] = useState({}); // Track expanded equipment cards
   const [dateModal, setDateModal] = useState({ isOpen: false, title: '', date: null, userId: null }); // Date detail modal state
+  const [projectRooms, setProjectRooms] = useState([]); // All rooms for this project
+  const [reassignModal, setReassignModal] = useState({ isOpen: false, equipment: null }); // Room reassignment modal state
 
   const toggleExpanded = (itemId) => {
     setExpandedItems(prev => ({
@@ -269,6 +403,10 @@ const EquipmentListPage = () => {
       setError('');
       const data = await projectEquipmentService.fetchProjectEquipment(projectId);
 
+      // Load project rooms for reassignment modal
+      const rooms = await projectEquipmentService.fetchRooms(projectId);
+      setProjectRooms(rooms);
+
       // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
       const { data: pos } = await supabase
         .from('purchase_orders')
@@ -309,7 +447,8 @@ const EquipmentListPage = () => {
           wire_drop:wire_drop_id (
             id,
             drop_name,
-            drop_type
+            drop_type,
+            room_name
           )
         `)
         .in('project_equipment_id', equipmentIds);
@@ -348,6 +487,7 @@ const EquipmentListPage = () => {
           wireDropId: link.wire_drop.id,
           wireDropName: link.wire_drop.drop_name,
           wireDropType: link.wire_drop.drop_type,
+          wireDropRoom: link.wire_drop.room_name,
           linkSide: link.link_side,
           trimOutCompleted: wireDropTrimOutStatus[link.wire_drop.id] || false
         });
@@ -491,10 +631,12 @@ const EquipmentListPage = () => {
         );
       } else if (field === 'installed') {
         // Manual installed toggle (for items without wires like lights, battery devices)
+        // Ensure user.id is a valid value or null, never empty string
+        const validUserId = user?.id && typeof user.id === 'string' && user.id.trim() ? user.id.trim() : null;
         const updates = {
           installed: value,
           installed_at: value ? new Date().toISOString() : null,
-          installed_by: value ? user?.id : null
+          installed_by: value ? validUserId : null
         };
 
         const { data: updated, error } = await supabase
@@ -528,6 +670,33 @@ const EquipmentListPage = () => {
       file_name: `${item.name} HomeKit QR`
     }, { canEdit: false });
   }, [openPhotoViewer]);
+
+  const openReassignModal = useCallback((item) => {
+    setReassignModal({ isOpen: true, equipment: item });
+  }, []);
+
+  const closeReassignModal = useCallback(() => {
+    setReassignModal({ isOpen: false, equipment: null });
+  }, []);
+
+  const handleReassignRoom = useCallback(async (equipmentId, newRoomId) => {
+    try {
+      const result = await projectEquipmentService.reassignEquipmentRoom(equipmentId, newRoomId, user?.id);
+      const newRoomName = result.project_rooms?.name || 'new room';
+
+      // Reload equipment to get fresh data
+      await loadEquipment();
+
+      // Show success message
+      const message = result.wireDropsUnlinked > 0
+        ? `Equipment moved to ${newRoomName}. ${result.wireDropsUnlinked} wire drop link(s) removed.`
+        : `Equipment moved to ${newRoomName}`;
+      alert(message);
+    } catch (error) {
+      console.error('Failed to reassign room:', error);
+      throw error;
+    }
+  }, [user?.id, loadEquipment]);
 
   const renderEquipmentRow = (item) => {
     const isExpanded = expandedItems[item.id];
@@ -593,6 +762,12 @@ const EquipmentListPage = () => {
               }`}>
                 Installed
               </span>
+              {item.wireDrops?.length > 0 && (
+                <span className="px-2 py-0.5 text-[9px] font-medium rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400 flex items-center gap-1">
+                  <Cable size={10} />
+                  {item.wireDrops.length}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -816,6 +991,18 @@ const EquipmentListPage = () => {
                   <span>HomeKit QR</span>
                 </button>
               )}
+
+              {/* Reassign Room Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openReassignModal(item);
+                }}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                <ArrowRightLeft size={14} />
+                <span>Reassign Room</span>
+              </button>
             </div>
 
             {/* Notes */}
@@ -867,19 +1054,26 @@ const EquipmentListPage = () => {
                 <div className="flex items-center gap-2 mb-2">
                   <Cable size={14} className="text-violet-500" />
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-                    Connected Wire Drops
+                    Linked Wire Drops
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-1.5">
                   {item.wireDrops.map(wd => (
                     <button
                       key={wd.wireDropId}
                       onClick={() => navigate(`/wire-drops/${wd.wireDropId}`)}
-                      className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:hover:bg-violet-900/50"
+                      className="flex items-center gap-2 text-sm text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300 hover:underline"
                     >
-                      <span>{wd.wireDropName}</span>
-                      {wd.wireDropType && (
-                        <span className="text-[10px] opacity-75">({wd.wireDropType})</span>
+                      <Cable size={14} />
+                      <span className="font-medium">{wd.wireDropName}</span>
+                      {wd.wireDropRoom && (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">in {wd.wireDropRoom}</span>
+                      )}
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                        {wd.linkSide === 'head_end' ? 'Head End' : 'Room End'}
+                      </span>
+                      {wd.trimOutCompleted && (
+                        <CheckCircle2 size={12} className="text-emerald-500" />
                       )}
                     </button>
                   ))}
@@ -1051,6 +1245,17 @@ const EquipmentListPage = () => {
         title={dateModal.title}
         date={dateModal.date}
         userId={dateModal.userId}
+        mode={mode}
+      />
+
+      {/* Room Reassignment Modal */}
+      <RoomReassignModal
+        isOpen={reassignModal.isOpen}
+        onClose={closeReassignModal}
+        equipment={reassignModal.equipment}
+        rooms={projectRooms}
+        currentRoomId={reassignModal.equipment?.roomId}
+        onConfirm={handleReassignRoom}
         mode={mode}
       />
     </div>

@@ -27,6 +27,34 @@ const brandColors = {
   info: '#3B82F6'
 };
 
+/**
+ * Stakeholder Category Colors
+ *
+ * Use these colors consistently for internal vs external stakeholder distinction.
+ * Import this object instead of hardcoding hex values to prevent color inconsistencies.
+ *
+ * Internal = Company employees (violet/purple)
+ * External = Clients, vendors, contractors (olive green)
+ *
+ * Usage:
+ * import { stakeholderColors } from '../styles/styleSystem';
+ *
+ * style={{ color: stakeholderColors.internal.text }}
+ * style={{ backgroundColor: stakeholderColors.external.bg }}
+ */
+const stakeholderColors = {
+  internal: {
+    text: '#8B5CF6',      // violet-500 (matches brandColors.primary)
+    bg: 'rgba(139, 92, 246, 0.15)',
+    border: '#8B5CF6',
+  },
+  external: {
+    text: '#94AF32',      // olive green (matches brandColors.success)
+    bg: 'rgba(148, 175, 50, 0.15)',
+    border: '#94AF32',
+  }
+};
+
 const paletteByMode = {
   light: {
     page: '#F4F4F5',
@@ -386,4 +414,4 @@ export const getCSSVariables = (mode) => {
   `;
 };
 
-export { paletteByMode, brandColors };
+export { paletteByMode, brandColors, stakeholderColors };

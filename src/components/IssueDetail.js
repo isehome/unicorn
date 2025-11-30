@@ -5,7 +5,7 @@ import Button from './ui/Button';
 import Modal from './ui/Modal';
 import DateField from './ui/DateField';
 import DateInput from './ui/DateInput';
-import { enhancedStyles } from '../styles/styleSystem';
+import { enhancedStyles, stakeholderColors } from '../styles/styleSystem';
 import { useTheme } from '../contexts/ThemeContext';
 import {
   issuesService,
@@ -102,6 +102,8 @@ const IssueDetail = () => {
   const [ackExternalWarning, setAckExternalWarning] = useState(false);
   const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
   const [pendingPublicToggle, setPendingPublicToggle] = useState(false);
+  const [showStakeholderDropdown, setShowStakeholderDropdown] = useState(false);
+  const stakeholderDropdownRef = useRef(null);
   const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
   const currentUserDisplay = useMemo(() => (
     user?.user_metadata?.full_name ||
@@ -276,6 +278,19 @@ const IssueDetail = () => {
       setAckExternalWarning(false);
     }
   }, [hasExternalStakeholders]);
+
+  // Close stakeholder dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (stakeholderDropdownRef.current && !stakeholderDropdownRef.current.contains(event.target)) {
+        setShowStakeholderDropdown(false);
+      }
+    };
+    if (showStakeholderDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showStakeholderDropdown]);
 
   const issueLink = useMemo(() => {
     if (!activeIssueId || !projectId) return '';
@@ -1558,20 +1573,88 @@ const IssueDetail = () => {
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Stakeholders</h3>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <select
+            <div className="relative" ref={stakeholderDropdownRef}>
+              <button
+                type="button"
                 disabled={tagging || !canManageStakeholders}
-                onChange={(e) => { const v = e.target.value; if (v) { handleTagStakeholder(v); e.target.value = ''; } }}
-                className={ui.select}
-                defaultValue=""
+                onClick={() => setShowStakeholderDropdown(!showStakeholderDropdown)}
+                className={`${ui.select} flex items-center gap-2 pr-8`}
+                style={{ minWidth: '160px' }}
               >
-                <option value="" disabled>Add stakeholder…</option>
-                {availableProjectStakeholders.map(p => (
-                  <option key={p.assignment_id} value={p.assignment_id}>
-                    {p.contact_name} ({p.role_name}) {p.category === 'internal' ? '• Internal' : '• External'}
-                  </option>
-                ))}
-              </select>
+                <Plus size={14} className="text-zinc-400" />
+                <span>Add stakeholder…</span>
+                <ChevronDown size={14} className="absolute right-2 text-zinc-400" />
+              </button>
+              {showStakeholderDropdown && availableProjectStakeholders.length > 0 && (
+                <div
+                  className="absolute right-0 mt-1 w-72 rounded-lg border shadow-lg z-50 overflow-hidden"
+                  style={{
+                    backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#374151' : '#E5E7EB'
+                  }}
+                >
+                  <div className="max-h-64 overflow-y-auto">
+                    {availableProjectStakeholders.filter(p => p.category === 'internal').length > 0 && (
+                      <>
+                        <div className="px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800">
+                          Internal Stakeholders
+                        </div>
+                        {availableProjectStakeholders.filter(p => p.category === 'internal').map(p => (
+                          <button
+                            key={p.assignment_id}
+                            type="button"
+                            onClick={() => {
+                              handleTagStakeholder(p.assignment_id);
+                              setShowStakeholderDropdown(false);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-2 transition-colors"
+                          >
+                            <span
+                              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: stakeholderColors.internal.text }}
+                            />
+                            <span className="text-sm text-zinc-900 dark:text-white truncate">
+                              {p.contact_name}
+                            </span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                              ({p.role_name})
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {availableProjectStakeholders.filter(p => p.category !== 'internal').length > 0 && (
+                      <>
+                        <div className="px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800">
+                          External Stakeholders
+                        </div>
+                        {availableProjectStakeholders.filter(p => p.category !== 'internal').map(p => (
+                          <button
+                            key={p.assignment_id}
+                            type="button"
+                            onClick={() => {
+                              handleTagStakeholder(p.assignment_id);
+                              setShowStakeholderDropdown(false);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-2 transition-colors"
+                          >
+                            <span
+                              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: stakeholderColors.external.text }}
+                            />
+                            <span className="text-sm text-zinc-900 dark:text-white truncate">
+                              {p.contact_name}
+                            </span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                              ({p.role_name})
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1592,7 +1675,7 @@ const IssueDetail = () => {
                     <div className="flex items-start gap-2 flex-1">
                       <span
                         className="mt-1 inline-block w-2 h-2 rounded-full"
-                        style={{ backgroundColor: tag.is_internal ? (palette?.accent || '#8B5CF6') : (palette?.success || '#10B981') }}
+                        style={{ backgroundColor: tag.is_internal ? stakeholderColors.internal.text : stakeholderColors.external.text }}
                       />
                       <div className="flex-1">
                         <div className="text-sm font-medium">
@@ -1658,22 +1741,6 @@ const IssueDetail = () => {
                         {!tag.email && !tag.phone && !tag.company && !tag.address && (
                           <div className="text-zinc-500 italic">No contact details available</div>
                         )}
-                        {tag.role_category === 'external' && (
-                          <div className="mt-2 flex items-center justify-between rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 px-3 py-2">
-                            <div className="text-xs text-violet-700 dark:text-violet-200 flex items-center gap-2">
-                              <Share2 size={14} />
-                              External portal link
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={(e) => { e.stopPropagation(); handleGeneratePortalLink(tag); }}
-                              loading={portalLinkLoading === tag.tag_id}
-                            >
-                              {portalLinkLoading === tag.tag_id ? 'Generating…' : 'Copy Link'}
-                            </Button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -1720,7 +1787,7 @@ const IssueDetail = () => {
                   <div className="text-sm">{c.comment_text}</div>
                   <div className="text-[11px] text-gray-500 mt-1">
                     by{' '}
-                    <span className="font-medium" style={{ color: isFromExternalStakeholder ? (palette?.success || '#10B981') : (palette?.accent || '#8B5CF6') }}>
+                    <span className="font-medium" style={{ color: isFromExternalStakeholder ? stakeholderColors.external.text : stakeholderColors.internal.text }}>
                       {c.author_name || 'Unknown'}
                     </span>
                     {' '}• <DateField date={c.created_at} showTime={true} variant="inline" colorMode="timestamp" className="text-[11px]" />
