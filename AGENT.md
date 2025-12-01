@@ -889,6 +889,136 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 
 ---
 
+## Mobile App UX - CRITICAL
+
+**⚠️ This is a MOBILE-FIRST app used by field technicians. It MUST behave like a native app, NOT a web page!**
+
+### Core Principle
+
+The app should feel solid and stable. Pages should NOT:
+- Pan, scroll, or zoom unexpectedly
+- Jump around when inputs receive focus
+- Have double-tap delays
+- Feel "web-like" with browser default behaviors
+
+### Input Elements - Prevent iOS Zoom/Scroll
+
+iOS Safari zooms in when the font size of an input is less than 16px. **Always use minimum 16px font size on inputs:**
+
+```jsx
+// ✅ CORRECT - Prevents iOS auto-zoom
+<input
+  type="number"
+  inputMode="numeric"
+  pattern="[0-9]*"
+  className="..."
+  style={{ fontSize: '16px' }}  // Critical for iOS!
+/>
+
+// ❌ WRONG - Will cause iOS zoom
+<input
+  type="number"
+  className="text-sm"  // 14px - too small, causes zoom!
+/>
+```
+
+### Touch-Friendly Buttons
+
+All buttons must be touch-friendly with proper event handling:
+
+```jsx
+// ✅ CORRECT - Mobile-optimized button
+<button
+  type="button"
+  onTouchEnd={(e) => {
+    e.preventDefault();  // Prevents double-firing
+    handleAction();
+  }}
+  onClick={handleAction}
+  className="min-h-[44px] min-w-[44px] touch-manipulation active:bg-blue-800 transition-colors"
+>
+  Action
+</button>
+
+// ❌ WRONG - Missing touch handling
+<button onClick={handleAction} className="px-2 py-1">
+  Too small, no touch handling
+</button>
+```
+
+**Required Button Attributes:**
+- `type="button"` - Prevents accidental form submission
+- `onTouchEnd` with `e.preventDefault()` - Handles touch events properly
+- `min-h-[44px]` - Apple's minimum touch target (44x44 points)
+- `touch-manipulation` - Disables double-tap zoom
+- `active:` state - Visual feedback on touch
+
+### Number Inputs for Mobile
+
+When receiving quantities or entering numbers:
+
+```jsx
+// ✅ CORRECT - Mobile-optimized number input
+<input
+  type="number"
+  inputMode="numeric"    // Shows number pad on mobile
+  pattern="[0-9]*"       // iOS numeric keyboard
+  min="0"
+  style={{ fontSize: '16px' }}
+  className="..."
+/>
+```
+
+### State Management for Mobile Forms
+
+Mobile keyboards and touch events can cause state issues. Track form values redundantly:
+
+```jsx
+// ✅ CORRECT - Redundant state tracking for mobile
+const [quantity, setQuantity] = useState(0);
+const [pendingQuantity, setPendingQuantity] = useState(null);
+
+const handleChange = (e) => {
+  const val = parseInt(e.target.value, 10) || 0;
+  setQuantity(val);
+  setPendingQuantity(val);  // Backup in case state gets weird
+};
+
+const handleSave = () => {
+  const valueToSave = pendingQuantity !== null ? pendingQuantity : quantity;
+  // Use valueToSave...
+};
+```
+
+### Prevent Page Scrolling/Bouncing
+
+Add to the app's root CSS or index.html:
+
+```css
+/* Prevents overscroll bounce */
+html, body {
+  overscroll-behavior: none;
+}
+
+/* Prevents pull-to-refresh on mobile */
+body {
+  overscroll-behavior-y: contain;
+}
+```
+
+### Mobile Testing Checklist
+
+Before any feature is complete, test on a real phone:
+
+- [ ] Tap buttons - do they respond immediately?
+- [ ] Tap inputs - does the page zoom/scroll unexpectedly?
+- [ ] Enter text - does the keyboard cause layout shifts?
+- [ ] Submit forms - does the page jump around?
+- [ ] Scroll content - is it smooth, no rubber-banding issues?
+- [ ] Use in portrait AND landscape mode
+
+---
+
 ## Common Issues
 
 | Problem | Solution |
@@ -897,6 +1027,9 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 | Photos not loading | Verify SharePoint URL on project |
 | RLS errors | Add `anon` to policy |
 | Wrong milestone % | Check `required_for_prewire` flags |
+| Page zooms on iOS input | Add `style={{ fontSize: '16px' }}` to input |
+| Buttons unresponsive on mobile | Add `onTouchEnd` handler with `e.preventDefault()` |
+| Form resets on mobile | Track state redundantly with pendingValue pattern |
 
 ---
 
@@ -912,7 +1045,15 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 - [ ] Files in correct locations
 - [ ] Database policies include `anon`
 - [ ] Updated relevant doc in `docs/`
-- [ ] Removed console.log statements
+- [ ] Removed console.log statements (except diagnostic ones during development)
+
+### Mobile UX Checklist (CRITICAL for field technician pages)
+- [ ] All inputs have `style={{ fontSize: '16px' }}` to prevent iOS zoom
+- [ ] All buttons have `type="button"` and `onTouchEnd` handlers
+- [ ] All interactive elements are at least 44x44px (`min-h-[44px]`)
+- [ ] Buttons have `touch-manipulation` class to prevent double-tap zoom
+- [ ] Form state is tracked redundantly for mobile reliability
+- [ ] Tested on actual mobile device - no unexpected scrolling/zooming
 
 ---
 

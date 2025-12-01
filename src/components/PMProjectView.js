@@ -4030,10 +4030,10 @@ const PMProjectViewEnhanced = () => {
         )}
       </div>
 
-      {/* Reports Section */}
+      {/* Reports Section - Links to dedicated page */}
       <div>
         <button
-          onClick={() => toggleSection('reports')}
+          onClick={() => navigate(`/projects/${projectId}/reports`)}
           className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
           style={sectionStyles.card}
         >
@@ -4041,16 +4041,8 @@ const PMProjectViewEnhanced = () => {
             <FileBarChart2 className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
             <span className="font-medium text-zinc-900 dark:text-zinc-100">Reports</span>
           </div>
-          <ChevronRight
-            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-            style={{ transform: sectionsCollapsed.reports ? 'none' : 'rotate(90deg)' }}
-          />
+          <ChevronRight className="w-5 h-5 text-zinc-500" />
         </button>
-        {!sectionsCollapsed.reports && (
-          <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Reports section coming soon.</p>
-          </div>
-        )}
       </div>
 
       {/* Phase Milestones */}

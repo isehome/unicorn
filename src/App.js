@@ -50,6 +50,7 @@ const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 const PublicIssuePortal = lazy(() => import('./pages/PublicIssuePortal'));
 const PublicPurchaseOrderPortal = lazy(() => import('./pages/PublicPurchaseOrderPortal'));
+const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -271,6 +272,14 @@ const AppRoutes = () => {
               element={
                 <ProtectedRoute>
                   <SecureDataPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/projects/:projectId/reports"
+              element={
+                <ProtectedRoute>
+                  <ProjectReportsPage />
                 </ProtectedRoute>
               }
             />

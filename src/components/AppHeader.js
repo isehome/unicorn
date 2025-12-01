@@ -51,6 +51,7 @@ const AppHeader = () => {
     if (p.includes('/equipment')) return 'Equipment List';
     if (p.includes('/procurement')) return 'Procurement';
     if (p.includes('/receiving')) return 'Parts Receiving';
+    if (p.includes('/reports')) return 'Project Reports';
     if (p.includes('/secure-data')) return 'Secure Data';
     if (p.startsWith('/unifi-test')) return 'UniFi API Test';
     if (p.startsWith('/settings')) return 'Settings';

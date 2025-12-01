@@ -40,13 +40,37 @@ const MilestoneGaugesDisplay = ({
     return milestoneDates.find(m => m.milestone_type === milestoneType);
   };
 
+  /**
+   * Get the calculated percentage for a milestone phase.
+   * SINGLE SOURCE OF TRUTH: Calculated percentage determines completion, not dates.
+   */
+  const getPhasePercentage = (milestoneType) => {
+    // Map milestone types to their percentage keys
+    const percentageKeyMap = {
+      prewire_phase: 'prewire_phase',
+      trim_phase: 'trim_phase',
+      commissioning: 'commissioning'
+    };
+
+    const key = percentageKeyMap[milestoneType];
+    if (!key || !milestonePercentages) return 0;
+
+    const value = milestonePercentages[key];
+    if (value && typeof value === 'object' && 'percentage' in value) {
+      return value.percentage || 0;
+    }
+    return typeof value === 'number' ? value : 0;
+  };
+
   // Helper to render milestone dates with improved visual hierarchy
   const renderMilestoneDates = (milestoneType, label) => {
     const milestone = getMilestoneDate(milestoneType);
     if (!milestone) return null;
 
-    // Check if milestone is completed (has actual_date)
-    const isCompleted = !!milestone.actual_date;
+    // SINGLE SOURCE OF TRUTH: Use calculated percentage to determine completion
+    // NOT the actual_date field which may be stale or incorrectly set
+    const percentage = getPhasePercentage(milestoneType);
+    const isCompleted = percentage >= 100;
 
     // Only show if at least one date exists
     if (!milestone.target_date && !milestone.actual_date) return null;
@@ -64,7 +88,8 @@ const MilestoneGaugesDisplay = ({
             variant="compact"
           />
         )}
-        {milestone.actual_date && (
+        {/* Only show completion date if the phase is actually 100% complete */}
+        {milestone.actual_date && isCompleted && (
           <DateField
             date={milestone.actual_date}
             label="Completed"
@@ -118,7 +143,7 @@ const MilestoneGaugesDisplay = ({
                 />
               </div>
             </div>
-            {renderMilestoneDates('prewire', 'Prewire')}
+            {renderMilestoneDates('prewire_phase', 'Prewire')}
           </div>
 
           {/* Trim Phase */}
@@ -145,7 +170,7 @@ const MilestoneGaugesDisplay = ({
                 />
               </div>
             </div>
-            {renderMilestoneDates('trim', 'Trim')}
+            {renderMilestoneDates('trim_phase', 'Trim')}
           </div>
 
           {/* Commissioning */}
