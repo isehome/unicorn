@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, X, Mail, Phone, Building, ChevronDown, ChevronRight, Edit2, Trash2, Save, UserPlus } from 'lucide-react';
+import { Users, Plus, X, Mail, Phone, Building, ChevronDown, ChevronRight, Edit2, Trash2, Save, UserPlus, MapPin, ExternalLink } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const PeopleModule = ({ projectId }) => {
@@ -17,8 +17,15 @@ const PeopleModule = ({ projectId }) => {
     name: '',
     email: '',
     phone: '',
-    company: ''
+    company: '',
+    address: ''
   });
+
+  // Helper to generate map URL (works on both iOS and Android)
+  const getMapUrl = (address) => {
+    const encoded = encodeURIComponent(address);
+    return `https://maps.google.com/?q=${encoded}`;
+  };
 
   useEffect(() => {
     if (projectId) {
@@ -74,7 +81,7 @@ const PeopleModule = ({ projectId }) => {
       if (error) throw error;
       
       setContacts([...contacts, data]);
-      setFormData({ name: '', email: '', phone: '', company: '' });
+      setFormData({ name: '', email: '', phone: '', company: '', address: '' });
       setShowAddContact(false);
       
       // If we were selecting for a slot, show the selector again with new contact
@@ -367,6 +374,22 @@ const PeopleModule = ({ projectId }) => {
                         {stakeholder.contact.phone}
                       </div>
                     )}
+                    {stakeholder.contact.address && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <MapPin className="w-3 h-3" />
+                        <span className="truncate max-w-[200px]">{stakeholder.contact.address}</span>
+                        <a
+                          href={getMapUrl(stakeholder.contact.address)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span className="text-xs">Map</span>
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -460,6 +483,13 @@ const PeopleModule = ({ projectId }) => {
                   onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                   className="w-full px-2 py-1 border rounded text-sm"
                 />
+                <input
+                  type="text"
+                  placeholder="Address (for map directions)"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-2 py-1 border rounded text-sm"
+                />
                 <div className="flex gap-2">
                   <button
                     type="submit"
@@ -471,7 +501,7 @@ const PeopleModule = ({ projectId }) => {
                     type="button"
                     onClick={() => {
                       setShowAddContact(false);
-                      setFormData({ name: '', email: '', phone: '', company: '' });
+                      setFormData({ name: '', email: '', phone: '', company: '', address: '' });
                     }}
                     className="flex-1 px-2 py-1 border rounded text-sm hover:bg-gray-100"
                   >

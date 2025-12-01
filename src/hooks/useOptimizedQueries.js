@@ -247,12 +247,20 @@ export const useDashboardData = (userEmail, authContext) => {
     staleTime: 3 * 60 * 1000,
   });
   
+  // Determine if counts query should be considered loading
+  // If the query is disabled (no user projects), it's not loading - it's just idle
+  const countsEnabled = !!userEmail && !!userProjectsQuery.data?.length && !!supabase;
+  const countsIsLoading = countsEnabled && countsQuery.isLoading;
+
+  // Calendar is lazy loaded - only count it as loading if it's actually fetching
+  const calendarIsLoading = calendarQuery.isFetching;
+
   return {
     projects: projectsQuery,
     userProjectIds: userProjectsQuery,
     calendar: calendarQuery,
     counts: countsQuery,
-    isLoading: projectsQuery.isLoading || userProjectsQuery.isLoading || calendarQuery.isLoading || countsQuery.isLoading,
+    isLoading: projectsQuery.isLoading || userProjectsQuery.isLoading || calendarIsLoading || countsIsLoading,
     error: projectsQuery.error || userProjectsQuery.error || calendarQuery.error || countsQuery.error
   };
 };

@@ -154,7 +154,7 @@ REACT_APP_AZURE_TENANT_ID=<Azure Tenant ID>
 ### People & Assignments
 | Table | Purpose |
 |-------|---------|
-| contacts | People (clients, vendors, team members) |
+| contacts | People (clients, vendors, team members) - includes address field for map integration |
 | stakeholder_slots | Role definitions (PM, Lead Tech, etc.) |
 | project_assignments | Who is assigned to which project |
 | issue_assignments | Who is assigned to which issue |
@@ -532,5 +532,18 @@ REACT_APP_LUCID_CLIENT_SECRET=
 
 ---
 
-*Last Updated: November 2025*
+## 📍 Contact Address & Map Integration
+**Changed:** 2025-12-01
+**Files:** `src/components/PeopleManagement.js`, `src/modules/people/index.js`, `database/migrations/2025-12-01_add_address_to_contacts.sql`
+
+Contacts now support an address field that can be opened in Apple Maps or Google Maps:
+- Address field added to contacts table
+- Address input in People Management and inline contact creation forms
+- Map icon with external link appears when viewing contact details
+- Clicking the map link opens the address in Google Maps (works on iOS, Android, and desktop)
+- Address is visible in both the global People Management page and in project stakeholder expanded details
+
+---
+
+*Last Updated: December 2025*
 *Document Version: 1.0*
