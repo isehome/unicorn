@@ -1064,7 +1064,11 @@ const PartsReceivingPageNew = () => {
 const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
   const [quantity, setQuantity] = useState(item.quantity_received || 0);
   const [isEditing, setIsEditing] = useState(false);
-  const [pendingQuantity, setPendingQuantity] = useState(null); // Track quantity to save on mobile
+  const [isSaving, setIsSaving] = useState(false); // Prevent double-save on mobile
+
+  // Use a ref to store the quantity to save - refs persist across re-renders
+  // and don't have the async state update issues
+  const quantityRef = React.useRef(item.quantity_received || 0);
 
   const ordered = item.quantity_ordered || 0;
   const received = item.quantity_received || 0;
@@ -1084,28 +1088,34 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
 
   const handleStartEdit = () => {
     setQuantity(received);
-    setPendingQuantity(received);
+    quantityRef.current = received;
     setIsEditing(true);
   };
 
   const handleStartReceive = () => {
     // Pre-fill with ordered quantity for easy receiving
     setQuantity(ordered);
-    setPendingQuantity(ordered);
+    quantityRef.current = ordered;
     setIsEditing(true);
   };
 
   const handleCancel = () => {
     setQuantity(received);
-    setPendingQuantity(null);
+    quantityRef.current = received;
     setIsEditing(false);
   };
 
   const handleSave = async () => {
-    // Use pendingQuantity if set (for mobile), otherwise use quantity state
-    const quantityToSave = pendingQuantity !== null ? pendingQuantity : quantity;
+    // Prevent double-save from touch + click events
+    if (isSaving) {
+      console.log('[LineItem] handleSave skipped - already saving');
+      return;
+    }
 
-    console.log('[LineItem] handleSave called:', { quantityToSave, received, quantity, pendingQuantity });
+    // Use the ref value which is always current
+    const quantityToSave = quantityRef.current;
+
+    console.log('[LineItem] handleSave called:', { quantityToSave, received, quantity, refValue: quantityRef.current });
 
     if (quantityToSave !== received) {
       // Warn if decreasing quantity
@@ -1134,9 +1144,13 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
         }
       }
 
-      await onUpdate(item.id, item.project_equipment_id, quantityToSave);
+      setIsSaving(true);
+      try {
+        await onUpdate(item.id, item.project_equipment_id, quantityToSave);
+      } finally {
+        setIsSaving(false);
+      }
     }
-    setPendingQuantity(null);
     setIsEditing(false);
   };
 
@@ -1203,7 +1217,7 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10) || 0;
                   setQuantity(val);
-                  setPendingQuantity(val);
+                  quantityRef.current = val;
                 }}
                 className="w-full px-2 py-1 text-lg rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 min="0"
@@ -1219,26 +1233,20 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
               />
               <button
                 type="button"
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  handleSave();
-                }}
                 onClick={handleSave}
-                disabled={saving}
-                className="px-3 py-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-sm font-bold min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+                disabled={saving || isSaving}
+                className="px-3 py-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-sm font-bold min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation select-none"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
                 title="Save"
               >
-                OK
+                {isSaving ? '...' : 'OK'}
               </button>
               <button
                 type="button"
-                onTouchEnd={(e) => {
-                  e.preventDefault();
-                  handleCancel();
-                }}
                 onClick={handleCancel}
-                disabled={saving}
-                className="px-3 py-1 bg-gray-400 hover:bg-gray-500 active:bg-gray-600 text-white rounded text-xs min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation"
+                disabled={saving || isSaving}
+                className="px-3 py-1 bg-gray-400 hover:bg-gray-500 active:bg-gray-600 text-white rounded text-xs min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation select-none"
+                style={{ WebkitTapHighlightColor: 'transparent' }}
                 title="Cancel"
               >
                 ✕
@@ -1258,26 +1266,20 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
           {needsToReceive ? (
             <button
               type="button"
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleStartReceive();
-              }}
               onClick={handleStartReceive}
               disabled={saving}
-              className="flex-1 px-3 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
+              className="flex-1 px-3 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded transition-colors disabled:opacity-50 touch-manipulation min-h-[44px] select-none"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               Receive Line Item
             </button>
           ) : (
             <button
               type="button"
-              onTouchEnd={(e) => {
-                e.preventDefault();
-                handleStartEdit();
-              }}
               onClick={handleStartEdit}
               disabled={saving}
-              className="flex-1 px-3 py-3 text-sm font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50 active:bg-yellow-300 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px]"
+              className="flex-1 px-3 py-3 text-sm font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50 active:bg-yellow-300 transition-colors disabled:opacity-50 touch-manipulation min-h-[44px] select-none"
+              style={{ WebkitTapHighlightColor: 'transparent' }}
             >
               Adjust Quantity
             </button>
@@ -1285,13 +1287,10 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
           {/* Report Issue Button */}
           <button
             type="button"
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              handleReportIssue();
-            }}
             onClick={handleReportIssue}
             disabled={saving}
-            className="px-3 py-3 text-sm font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 active:bg-red-300 transition-colors disabled:opacity-50 flex items-center gap-1 touch-manipulation min-h-[44px]"
+            className="px-3 py-3 text-sm font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 active:bg-red-300 transition-colors disabled:opacity-50 flex items-center gap-1 touch-manipulation min-h-[44px] select-none"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
             title="Report a problem with this item (missing, damaged, wrong item, etc.)"
           >
             <AlertTriangle className="w-3 h-3" />

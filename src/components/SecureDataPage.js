@@ -434,21 +434,26 @@ const SecureDataPage = () => {
             />
           </div>
 
-          {/* Equipment filter */}
-          <div className="flex items-center gap-2">
-            <Package size={16} style={styles.textSecondary} />
-            <select
-              value={selectedEquipment}
-              onChange={(e) => setSelectedEquipment(e.target.value)}
-              className="px-3 py-1.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-              style={styles.input}
-            >
-              <option value="all">All Equipment</option>
-              <option value="unassigned">Unassigned Only</option>
-              {equipment.map(equip => (
-                <option key={equip.id} value={equip.id}>{equip.name}</option>
-              ))}
-            </select>
+          {/* Equipment filter and Add button */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Package size={16} style={styles.textSecondary} />
+              <select
+                value={selectedEquipment}
+                onChange={(e) => setSelectedEquipment(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                style={styles.input}
+              >
+                <option value="all">All Equipment</option>
+                <option value="unassigned">Unassigned Only</option>
+                {equipment.map(equip => (
+                  <option key={equip.id} value={equip.id}>{equip.name}</option>
+                ))}
+              </select>
+            </div>
+            <Button variant="primary" icon={Plus} onClick={handleAddNew}>
+              Add New
+            </Button>
           </div>
         </div>
       </div>
