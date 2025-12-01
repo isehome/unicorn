@@ -302,8 +302,37 @@ export function AuthProvider({ children }) {
         }
       } catch (error) {
         console.error('[Auth] Initialization error:', error);
-        setError(error);
-        setAuthState(AUTH_STATES.ERROR);
+
+        // Handle hash_empty_error gracefully - clear state and treat as unauthenticated
+        if (error?.errorCode === 'hash_empty_error' ||
+            error?.message?.includes('hash_empty_error') ||
+            error?.errorMessage?.includes('Hash value cannot be processed')) {
+          console.warn('[Auth] Hash empty error in main catch, clearing MSAL state');
+          try {
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && (key.startsWith('msal.') || key.includes('login.windows') || key.includes('msal'))) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            // Also clear session storage
+            for (let i = sessionStorage.length - 1; i >= 0; i--) {
+              const key = sessionStorage.key(i);
+              if (key && (key.startsWith('msal.') || key.includes('msal'))) {
+                sessionStorage.removeItem(key);
+              }
+            }
+            console.log('[Auth] Cleared MSAL state, treating as unauthenticated');
+          } catch (storageError) {
+            console.warn('[Auth] Unable to clear MSAL state:', storageError);
+          }
+          setAuthState(AUTH_STATES.UNAUTHENTICATED);
+        } else {
+          setError(error);
+          setAuthState(AUTH_STATES.ERROR);
+        }
       } finally {
         if (mounted) {
           if (timeoutId) clearTimeout(timeoutId);
