@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../lib/queryClient';
 import { projectStakeholdersService } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useDebounce } from '../utils/debounce';
 
 // Memoized Issue Card Component
@@ -73,14 +73,19 @@ const IssueCard = memo(({ issue, project, onClick, sectionStyles, isDark }) => (
 const IssuesListPageOptimized = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
 
+  // Initialize state from URL params (only on first render)
+  const initialProjectParam = searchParams.get('project');
+  const initialSearchParam = searchParams.get('search');
+
   const [filter, setFilter] = useState('open');
-  const [projectFilter, setProjectFilter] = useState('all');
+  const [projectFilter, setProjectFilter] = useState(initialProjectParam || 'all');
   const [blockedOnly, setBlockedOnly] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  
+  const [searchQuery, setSearchQuery] = useState(initialSearchParam || '');
+
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
@@ -141,7 +146,8 @@ const IssuesListPageOptimized = () => {
       return data || [];
     },
     enabled: !!userProjectsQuery.data?.length && !!supabase,
-    staleTime: 3 * 60 * 1000, // Issues change more frequently
+    staleTime: 30 * 1000, // 30 seconds - issues change frequently
+    refetchOnMount: 'always', // Always refetch when navigating back to this page
   });
 
   // Memoized filtered issues

@@ -21,7 +21,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { purchaseOrderService } from '../services/purchaseOrderService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { supabase } from '../lib/supabase';
@@ -29,7 +28,6 @@ import Button from './ui/Button';
 import DateField from './ui/DateField';
 import {
   CheckCircle,
-  ArrowLeft,
   Loader,
   PackageCheck,
   ChevronDown,
@@ -52,8 +50,9 @@ const PartsReceivingPageNew = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim'
-  const [issueModal, setIssueModal] = useState({ isOpen: false, itemInfo: null });
+  const [issueModal, setIssueModal] = useState({ isOpen: false, poInfo: null });
   const [issueDescription, setIssueDescription] = useState('');
+  const [selectedPartId, setSelectedPartId] = useState(''); // Optional part reference for issue
   const [submittingIssue, setSubmittingIssue] = useState(false);
   const [openIssuesByPO, setOpenIssuesByPO] = useState({}); // Track open issues by PO number
 
@@ -391,15 +390,16 @@ const PartsReceivingPageNew = () => {
     }
   };
 
-  // Handler to open issue modal
-  const handleReportIssue = (itemInfo) => {
+  // Handler to open issue modal - now at PO level with optional part selection
+  const handleReportIssue = (po) => {
     setIssueDescription('');
-    setIssueModal({ isOpen: true, itemInfo });
+    setSelectedPartId('');
+    setIssueModal({ isOpen: true, poInfo: po });
   };
 
   // Handler to submit issue - creates issue on PO and emails the person who entered the order
   const handleSubmitIssue = async () => {
-    if (!issueDescription.trim() || !issueModal.itemInfo) return;
+    if (!issueDescription.trim() || !issueModal.poInfo) return;
 
     // CRITICAL: User must be authenticated - never allow issues without a real user
     if (!user?.id) {
@@ -409,10 +409,7 @@ const PartsReceivingPageNew = () => {
 
     try {
       setSubmittingIssue(true);
-      const info = issueModal.itemInfo;
-
-      // Find the PO to get creator info
-      const po = purchaseOrders.find(p => p.po_number === info.poNumber);
+      const po = issueModal.poInfo;
 
       // Create an issue linked to the PO
       // Title = "Receiving Issue: [user's description]" (truncated if needed)
@@ -420,16 +417,26 @@ const PartsReceivingPageNew = () => {
       const truncatedDesc = issueDescription.trim().length > 80
         ? issueDescription.trim().substring(0, 80) + '...'
         : issueDescription.trim();
-      const issueTitle = `Receiving Issue: ${truncatedDesc} (PO ${info.poNumber})`;
+      const issueTitle = `Receiving Issue: ${truncatedDesc} (PO ${po.po_number})`;
 
-      // Details section contains all the PO/part information
-      const issueBody = `**Receiving Issue Details**\n\n` +
-        `**PO Number:** ${info.poNumber}\n` +
-        `**Part Number:** ${info.partNumber || 'N/A'}\n` +
-        `**Part Name:** ${info.partName || 'N/A'}\n` +
-        `**Quantity Ordered:** ${info.ordered}\n` +
-        `**Quantity Received:** ${info.received}\n\n` +
-        `**Reported by:** ${user.full_name || user.email}`;
+      // Build issue body - include part info if a specific part was selected
+      let issueBody = `**Receiving Issue Details**\n\n` +
+        `**PO Number:** ${po.po_number}\n` +
+        `**Supplier:** ${po.supplier?.name || 'N/A'}\n`;
+
+      // If a specific part was selected, include its details
+      if (selectedPartId) {
+        const selectedItem = (po.items || []).find(item => item.id === selectedPartId);
+        if (selectedItem) {
+          const equipment = selectedItem.equipment || {};
+          issueBody += `**Part Number:** ${equipment.part_number || 'N/A'}\n` +
+            `**Part Name:** ${equipment.name || equipment.description || 'N/A'}\n` +
+            `**Quantity Ordered:** ${selectedItem.quantity_ordered || 0}\n` +
+            `**Quantity Received:** ${selectedItem.quantity_received || 0}\n`;
+        }
+      }
+
+      issueBody += `\n**Reported by:** ${user.full_name || user.email}`;
 
       // Insert issue into issues table (correct table name)
       const { data: issue, error: issueError } = await supabase
@@ -605,13 +612,23 @@ const PartsReceivingPageNew = () => {
             try {
               const { sendNotificationEmail, wrapEmailHtml } = await import('../services/issueNotificationService');
 
+              // Get part info for email if a part was selected
+              let partInfo = 'General PO Issue';
+              if (selectedPartId) {
+                const selectedItem = (po.items || []).find(item => item.id === selectedPartId);
+                if (selectedItem) {
+                  const equipment = selectedItem.equipment || {};
+                  partInfo = equipment.part_number || equipment.name || 'Selected Part';
+                }
+              }
+
               const emailHtml = wrapEmailHtml(`
                 <h2 style="color: #dc2626; margin-bottom: 16px;">⚠️ Receiving Issue Reported</h2>
                 <p>A receiving issue has been reported for a purchase order you created:</p>
                 <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                  <p style="margin: 0 0 8px 0;"><strong>PO Number:</strong> ${info.poNumber}</p>
-                  <p style="margin: 0 0 8px 0;"><strong>Part:</strong> ${info.partNumber || info.partName || 'N/A'}</p>
-                  <p style="margin: 0 0 8px 0;"><strong>Ordered:</strong> ${info.ordered} | <strong>Received:</strong> ${info.received}</p>
+                  <p style="margin: 0 0 8px 0;"><strong>PO Number:</strong> ${po.po_number}</p>
+                  <p style="margin: 0 0 8px 0;"><strong>Supplier:</strong> ${po.supplier?.name || 'N/A'}</p>
+                  ${selectedPartId ? `<p style="margin: 0 0 8px 0;"><strong>Related Part:</strong> ${partInfo}</p>` : ''}
                   <p style="margin: 0;"><strong>Issue:</strong> ${issueDescription}</p>
                 </div>
                 <p><strong>Reported by:</strong> ${user.full_name || user.email}</p>
@@ -620,9 +637,9 @@ const PartsReceivingPageNew = () => {
 
               await sendNotificationEmail({
                 to: creator.email,
-                subject: `[Receiving Issue] PO ${info.poNumber} - ${info.partNumber || info.partName}`,
+                subject: `[Receiving Issue] PO ${po.po_number}${selectedPartId ? ` - ${partInfo}` : ''}`,
                 html: emailHtml,
-                text: `Receiving Issue: PO ${info.poNumber}, Part: ${info.partNumber || info.partName}, Issue: ${issueDescription}`
+                text: `Receiving Issue: PO ${po.po_number}, Issue: ${issueDescription}`
               });
             } catch (emailErr) {
               console.warn('Failed to send notification email:', emailErr);
@@ -634,8 +651,9 @@ const PartsReceivingPageNew = () => {
 
       setSuccessMessage('Issue reported successfully. The PO creator has been notified.');
       setTimeout(() => setSuccessMessage(null), 5000);
-      setIssueModal({ isOpen: false, itemInfo: null });
+      setIssueModal({ isOpen: false, poInfo: null });
       setIssueDescription('');
+      setSelectedPartId('');
 
       // Reload POs to show updated status
       await loadPurchaseOrders();
@@ -675,6 +693,26 @@ const PartsReceivingPageNew = () => {
             <p className="text-sm text-green-800 dark:text-green-200">{successMessage}</p>
           </div>
         )}
+
+        {/* Total Issues Badge */}
+        {(() => {
+          const totalIssues = Object.values(openIssuesByPO).reduce((sum, issues) => sum + issues.length, 0);
+          if (totalIssues === 0) return null;
+          return (
+            <button
+              onClick={() => navigate(`/issues?project=${projectId}&search=${encodeURIComponent('Receiving Issue:')}`)}
+              className="mb-4 w-full flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <span className="font-medium text-red-800 dark:text-red-200">
+                  {totalIssues} Open Receiving Issue{totalIssues > 1 ? 's' : ''}
+                </span>
+              </div>
+              <span className="text-sm text-red-600 dark:text-red-400">View All →</span>
+            </button>
+          );
+        })()}
 
         {/* Phase Filter */}
         <div style={sectionStyles.card} className="mb-6">
@@ -753,10 +791,17 @@ const PartsReceivingPageNew = () => {
                             {status.label}
                           </span>
                           {hasOpenIssues && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/issues?project=${projectId}&search=${encodeURIComponent(`PO ${po.po_number}`)}`);
+                              }}
+                              className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                              title="View issues for this PO"
+                            >
                               <AlertTriangle className="w-3 h-3" />
                               {openIssueCount} Issue{openIssueCount > 1 ? 's' : ''}
-                            </span>
+                            </button>
                           )}
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
@@ -798,17 +843,27 @@ const PartsReceivingPageNew = () => {
                     {/* PO Line Items (Expanded) */}
                     {isExpanded && (
                       <div className="border-t border-gray-200 dark:border-gray-700 p-4">
-                        {/* Primary Action: Receive Full PO */}
+                        {/* Primary Actions: Receive Full PO + Report Issue */}
                         <div className="mb-4">
-                          <Button
-                            variant="primary"
-                            icon={PackageCheck}
-                            onClick={() => handleReceiveAllPO(po)}
-                            disabled={saving || status.percent === 100}
-                            className="w-full"
-                          >
-                            {status.percent === 100 ? 'Fully Received' : 'Receive Full PO'}
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="primary"
+                              icon={PackageCheck}
+                              onClick={() => handleReceiveAllPO(po)}
+                              disabled={saving || status.percent === 100}
+                              className="flex-1"
+                            >
+                              {status.percent === 100 ? 'Fully Received' : 'Receive Full PO'}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              icon={AlertTriangle}
+                              onClick={() => handleReportIssue(po)}
+                              disabled={saving}
+                            >
+                              Report Issue
+                            </Button>
+                          </div>
                           <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2">
                             Click to receive all items at ordered quantities. Edit individual items below for partial receives.
                           </p>
@@ -825,8 +880,6 @@ const PartsReceivingPageNew = () => {
                               item={item}
                               onUpdate={handleUpdateReceived}
                               saving={saving}
-                              onReportIssue={handleReportIssue}
-                              poNumber={po.po_number}
                             />
                           ))}
                         </div>
@@ -895,10 +948,17 @@ const PartsReceivingPageNew = () => {
                             {po.po_number}
                           </h3>
                           {hasOpenIssues && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/issues?project=${projectId}&search=${encodeURIComponent(`PO ${po.po_number}`)}`);
+                              }}
+                              className="flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium rounded-full hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                              title="View issues for this PO"
+                            >
                               <AlertTriangle className="w-3 h-3" />
                               {openIssueCount} Issue{openIssueCount > 1 ? 's' : ''}
-                            </span>
+                            </button>
                           )}
                         </div>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -945,8 +1005,6 @@ const PartsReceivingPageNew = () => {
                               item={item}
                               onUpdate={handleUpdateReceived}
                               saving={saving}
-                              onReportIssue={handleReportIssue}
-                              poNumber={po.po_number}
                             />
                           ))}
                         </div>
@@ -980,8 +1038,8 @@ const PartsReceivingPageNew = () => {
       </div>
 
       {/* Issue Report Modal */}
-      {issueModal.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setIssueModal({ isOpen: false, itemInfo: null })}>
+      {issueModal.isOpen && issueModal.poInfo && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setIssueModal({ isOpen: false, poInfo: null }); setSelectedPartId(''); }}>
           <div
             className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
@@ -993,20 +1051,35 @@ const PartsReceivingPageNew = () => {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Report Issue</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  PO {issueModal.itemInfo?.poNumber} - {issueModal.itemInfo?.partNumber || issueModal.itemInfo?.partName}
+                  PO {issueModal.poInfo.po_number} • {issueModal.poInfo.supplier?.name || 'Unknown Supplier'}
                 </p>
               </div>
             </div>
 
-            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm">
-              <div className="flex justify-between mb-1">
-                <span className="text-gray-600 dark:text-gray-400">Ordered:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{issueModal.itemInfo?.ordered}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600 dark:text-gray-400">Received so far:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{issueModal.itemInfo?.received}</span>
-              </div>
+            {/* Optional Part Selector */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Related part (optional)
+              </label>
+              <select
+                value={selectedPartId}
+                onChange={(e) => setSelectedPartId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                style={{ fontSize: '16px' }}
+              >
+                <option value="">General PO issue (no specific part)</option>
+                {(issueModal.poInfo.items || []).map((item) => {
+                  const eq = item.equipment || {};
+                  const label = eq.part_number
+                    ? `${eq.part_number} - ${eq.name || eq.description || 'Unknown'}`
+                    : eq.name || eq.description || 'Unknown Part';
+                  return (
+                    <option key={item.id} value={item.id}>
+                      {label} (Ord: {item.quantity_ordered}, Rcv: {item.quantity_received || 0})
+                    </option>
+                  );
+                })}
+              </select>
             </div>
 
             <div className="mb-4">
@@ -1018,6 +1091,7 @@ const PartsReceivingPageNew = () => {
                 onChange={(e) => setIssueDescription(e.target.value)}
                 placeholder="e.g., Missing items, wrong part received, damaged packaging, quantity mismatch..."
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                style={{ fontSize: '16px' }}
                 rows={4}
                 autoFocus
               />
@@ -1029,16 +1103,16 @@ const PartsReceivingPageNew = () => {
 
             <div className="flex gap-3">
               <button
-                onClick={() => setIssueModal({ isOpen: false, itemInfo: null })}
+                onClick={() => { setIssueModal({ isOpen: false, poInfo: null }); setSelectedPartId(''); }}
                 disabled={submittingIssue}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 min-h-[44px]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmitIssue}
                 disabled={submittingIssue || !issueDescription.trim()}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2 min-h-[44px]"
               >
                 {submittingIssue ? (
                   <>
@@ -1061,7 +1135,7 @@ const PartsReceivingPageNew = () => {
 };
 
 // Line Item Component
-const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
+const LineItem = ({ item, onUpdate, saving }) => {
   const [quantity, setQuantity] = useState(item.quantity_received || 0);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // Prevent double-save on mobile
@@ -1074,17 +1148,6 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
   const received = item.quantity_received || 0;
   const equipment = item.equipment || {};
   const phase = equipment.global_part?.required_for_prewire ? 'Prewire' : 'Trim';
-
-  const handleReportIssue = () => {
-    onReportIssue({
-      lineItemId: item.id,
-      poNumber,
-      partNumber: equipment.part_number,
-      partName: equipment.name || equipment.description,
-      ordered,
-      received
-    });
-  };
 
   const handleStartEdit = () => {
     setQuantity(received);
@@ -1284,18 +1347,6 @@ const LineItem = ({ item, onUpdate, saving, onReportIssue, poNumber }) => {
               Adjust Quantity
             </button>
           )}
-          {/* Report Issue Button */}
-          <button
-            type="button"
-            onClick={handleReportIssue}
-            disabled={saving}
-            className="px-3 py-3 text-sm font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded hover:bg-red-200 dark:hover:bg-red-900/50 active:bg-red-300 transition-colors disabled:opacity-50 flex items-center gap-1 touch-manipulation min-h-[44px] select-none"
-            style={{ WebkitTapHighlightColor: 'transparent' }}
-            title="Report a problem with this item (missing, damaged, wrong item, etc.)"
-          >
-            <AlertTriangle className="w-3 h-3" />
-            Issue
-          </button>
         </div>
       )}
     </div>
