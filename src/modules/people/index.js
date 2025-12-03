@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, X, Mail, Phone, Building, ChevronDown, ChevronRight, Edit2, Trash2, Save, UserPlus, MapPin, ExternalLink } from 'lucide-react';
+import { Users, Plus, X, Building, ChevronDown, ChevronRight, Edit2, Trash2, UserPlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const PeopleModule = ({ projectId }) => {
@@ -25,6 +25,31 @@ const PeopleModule = ({ projectId }) => {
   const getMapUrl = (address) => {
     const encoded = encodeURIComponent(address);
     return `https://maps.google.com/?q=${encoded}`;
+  };
+
+  // Helper to consolidate address components into single line
+  const consolidateAddress = (data) => {
+    const parts = [];
+    if (data.address1) parts.push(data.address1);
+    if (data.address2) parts.push(data.address2);
+
+    if (data.city || data.state || data.zip) {
+      let formatted = '';
+      if (data.city) formatted += data.city;
+      if (data.state) formatted += (formatted ? ', ' : '') + data.state;
+      if (data.zip) formatted += (formatted ? ' ' : '') + data.zip;
+      parts.push(formatted);
+    }
+
+    return parts.join(', ');
+  };
+
+  // Helper to get display address (consolidated or legacy single field)
+  const getDisplayAddress = (contact) => {
+    if (contact.address1 || contact.city || contact.state || contact.zip) {
+      return consolidateAddress(contact);
+    }
+    return contact.address || '';
   };
 
   useEffect(() => {
@@ -354,44 +379,45 @@ const PeopleModule = ({ projectId }) => {
                   </div>
                 </div>
 
-                {expandedSlots[stakeholder.slot_id] && stakeholder.contact && (
-                  <div className="mt-3 pt-3 border-t text-sm text-gray-600">
-                    {stakeholder.contact.company && (
-                      <div className="flex items-center gap-2">
-                        <Building className="w-3 h-3" />
-                        {stakeholder.contact.company}
-                      </div>
-                    )}
-                    {stakeholder.contact.email && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Mail className="w-3 h-3" />
-                        {stakeholder.contact.email}
-                      </div>
-                    )}
-                    {stakeholder.contact.phone && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Phone className="w-3 h-3" />
-                        {stakeholder.contact.phone}
-                      </div>
-                    )}
-                    {stakeholder.contact.address && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <MapPin className="w-3 h-3" />
-                        <span className="truncate max-w-[200px]">{stakeholder.contact.address}</span>
+                {expandedSlots[stakeholder.slot_id] && stakeholder.contact && (() => {
+                  const displayAddress = getDisplayAddress(stakeholder.contact);
+                  return (
+                    <div className="mt-3 pt-3 border-t text-sm space-y-1">
+                      {stakeholder.contact.company && (
+                        <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                          <Building className="w-3 h-3" />
+                          {stakeholder.contact.company}
+                        </div>
+                      )}
+                      {stakeholder.contact.email && (
                         <a
-                          href={getMapUrl(stakeholder.contact.address)}
+                          href={`mailto:${stakeholder.contact.email}`}
+                          className="block text-violet-600 dark:text-violet-400 hover:underline"
+                        >
+                          {stakeholder.contact.email}
+                        </a>
+                      )}
+                      {stakeholder.contact.phone && (
+                        <a
+                          href={`tel:${stakeholder.contact.phone}`}
+                          className="block text-violet-600 dark:text-violet-400 hover:underline"
+                        >
+                          {stakeholder.contact.phone}
+                        </a>
+                      )}
+                      {displayAddress && (
+                        <a
+                          href={getMapUrl(displayAddress)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
+                          className="block text-violet-600 dark:text-violet-400 hover:underline truncate"
                         >
-                          <ExternalLink className="w-3 h-3" />
-                          <span className="text-xs">Map</span>
+                          {displayAddress}
                         </a>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ))

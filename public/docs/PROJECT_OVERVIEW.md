@@ -154,7 +154,7 @@ REACT_APP_AZURE_TENANT_ID=<Azure Tenant ID>
 ### People & Assignments
 | Table | Purpose |
 |-------|---------|
-| contacts | People (clients, vendors, team members) |
+| contacts | People (clients, vendors, team members) - includes address field for map integration |
 | stakeholder_slots | Role definitions (PM, Lead Tech, etc.) |
 | project_assignments | Who is assigned to which project |
 | issue_assignments | Who is assigned to which issue |
@@ -532,5 +532,30 @@ REACT_APP_LUCID_CLIENT_SECRET=
 
 ---
 
-*Last Updated: November 2025*
+## 📍 Contact Address & Map Integration
+**Changed:** 2025-12-02
+**Files:** `src/components/PeopleManagement.js`, `src/modules/people/index.js`, `database/migrations/2025-12-02_expand_address_fields.sql`
+
+Contacts now support full structured address entry with map integration:
+
+**Database fields:**
+- `address1` - Street address line 1
+- `address2` - Apt, Suite, Unit, etc. (optional)
+- `city` - City name
+- `state` - State abbreviation (2 chars)
+- `zip` - ZIP/Postal code
+- `address` - Auto-consolidated single-line display version
+
+**UI Features:**
+- Full address form in People Management modal (Street, Apt/Suite, City, State, ZIP)
+- Addresses automatically consolidated to single line for display
+- Email, phone, and address are clickable inline links (text-width only, no icons)
+- Email opens mail client, phone initiates call, address opens Google Maps
+- Delete button inside edit modal only (clean UI - no delete in list view)
+- Avatar is clickable to open edit (no separate edit button)
+- Client-side search filtering for instant response
+
+---
+
+*Last Updated: December 2025*
 *Document Version: 1.0*

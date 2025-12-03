@@ -51,11 +51,11 @@ export const msalConfig = {
 export const loginRequest = {
   scopes: [
     'openid',
-    'profile', 
+    'profile',
     'email',
     'offline_access',
     'User.Read',
-    'Calendars.Read',
+    'Calendars.ReadWrite',  // Changed from Calendars.Read to support creating events
     'Contacts.Read',
     'Mail.Send'
   ],
@@ -66,7 +66,7 @@ export const loginRequest = {
 export const tokenRequest = {
   scopes: [
     'User.Read',
-    'Calendars.Read', 
+    'Calendars.ReadWrite',  // Changed from Calendars.Read to support creating events
     'Contacts.Read',
     'Mail.Send'
   ],
@@ -76,6 +76,7 @@ export const tokenRequest = {
 export const graphConfig = {
   graphMeEndpoint: 'https://graph.microsoft.com/v1.0/me',
   graphCalendarEndpoint: 'https://graph.microsoft.com/v1.0/me/calendarView',
+  graphEventsEndpoint: 'https://graph.microsoft.com/v1.0/me/events',  // For creating/managing events
   graphContactsEndpoint: 'https://graph.microsoft.com/v1.0/me/contacts',
 };
 

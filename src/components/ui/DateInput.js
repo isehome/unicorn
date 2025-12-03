@@ -25,12 +25,19 @@ const DateInput = ({
 }) => {
   const isEmpty = !value || value === '';
 
+  // Auto-close the date picker after selection
+  const handleChange = (e) => {
+    onChange(e);
+    // Blur the input to close the date picker
+    e.target.blur();
+  };
+
   return (
     <div className="relative">
       <input
         type="date"
         value={value || ''}
-        onChange={onChange}
+        onChange={handleChange}
         className={`
           w-full px-3 py-2 border rounded-lg
           focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500

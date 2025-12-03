@@ -276,6 +276,94 @@ className="text-emerald-500 bg-emerald-100"
 
 ---
 
+## UI/UX Principles
+
+### Clean UI - Hide Destructive Actions
+**Delete buttons should be hidden from list views.** Place them inside edit/detail modals only.
+
+```jsx
+// ✅ CORRECT - Delete button inside edit modal (only visible when editing)
+{showModal && (
+  <div className="modal">
+    <form>
+      {/* form fields */}
+
+      <div className="flex justify-between">
+        {editingItem && (
+          <Button variant="danger" onClick={handleDelete} icon={Trash2}>
+            Delete
+          </Button>
+        )}
+        <div className="flex gap-3 ml-auto">
+          <Button variant="secondary" onClick={handleClose}>Cancel</Button>
+          <Button variant="primary" type="submit">Save</Button>
+        </div>
+      </div>
+    </form>
+  </div>
+)}
+
+// ❌ WRONG - Delete button visible in list view
+<div className="flex gap-2">
+  <button onClick={handleEdit}><Edit /></button>
+  <button onClick={handleDelete}><Trash2 /></button>  {/* NO! Hide this */}
+</div>
+```
+
+### Clickable Avatars for Edit
+Instead of separate edit buttons, make the avatar/icon clickable to open edit mode:
+
+```jsx
+// ✅ CORRECT - Avatar opens edit modal
+<button
+  onClick={() => handleEdit(item)}
+  className="w-16 h-16 rounded-full transition-transform hover:scale-105 active:scale-95"
+>
+  <User className="w-8 h-8" />
+</button>
+
+// ❌ WRONG - Separate edit button clutters UI
+<div className="flex gap-2">
+  <div className="w-12 h-12 rounded-full"><User /></div>
+  <button onClick={handleEdit}><Edit /></button>
+</div>
+```
+
+### Inline Links (Not Block)
+Clickable links should only span the text width, not the full container:
+
+```jsx
+// ✅ CORRECT - Inline link (clickable area = text only)
+<div>
+  <a href={`mailto:${email}`} className="inline text-violet-600 hover:underline">
+    {email}
+  </a>
+</div>
+
+// ❌ WRONG - Block link (entire row is clickable)
+<a href={`mailto:${email}`} className="block text-violet-600">
+  {email}
+</a>
+```
+
+### Client-Side Search Filtering
+For lists under ~500 items, filter client-side for instant response:
+
+```jsx
+// ✅ CORRECT - Fetch once, filter in memory
+const { contacts: allContacts } = useContacts();
+
+const filteredContacts = useMemo(() => {
+  const term = searchTerm.toLowerCase();
+  return allContacts.filter(c => c.name?.toLowerCase().includes(term));
+}, [allContacts, searchTerm]);
+
+// ❌ WRONG - Server query on every keystroke (causes page refresh feel)
+const { contacts } = useContacts({ search: searchTerm });
+```
+
+---
+
 ## Component Patterns
 
 ### Card
@@ -387,6 +475,33 @@ className="text-emerald-500 bg-emerald-100"
   </div>
   <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
 </button>
+```
+
+### List Item with Clickable Avatar (People/Contacts Pattern)
+```jsx
+// Avatar is clickable to open edit modal - NO separate edit button in list
+// Contact info (email, phone, address) are inline clickable links
+<div className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
+  <div className="flex items-start gap-4">
+    <button
+      onClick={() => handleEdit(person)}
+      className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
+      style={{ backgroundColor: `${accentColor}20` }}
+    >
+      <User className="w-8 h-8" style={{ color: accentColor }} />
+    </button>
+    <div className="flex-1 min-w-0">
+      <h3 className="font-semibold text-zinc-900 dark:text-white">{name}</h3>
+      <p className="text-sm" style={{ color: accentColor }}>{role}</p>
+      <div className="mt-2 space-y-1">
+        {/* Links are INLINE - clickable area is only the text width */}
+        <div><a href={`mailto:${email}`} className="inline text-sm text-violet-600 hover:underline">{email}</a></div>
+        <div><a href={`tel:${phone}`} className="inline text-sm text-violet-600 hover:underline">{phone}</a></div>
+        <div><a href={mapUrl} className="inline text-sm text-violet-600 hover:underline">{address}</a></div>
+      </div>
+    </div>
+  </div>
+</div>
 ```
 
 ### Mobile-Responsive List Items

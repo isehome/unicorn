@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectStakeholdersService, projectTodosService } from '../services/supabaseService';
-import { CheckSquare, Square, Trash2, Plus } from 'lucide-react';
+import { fetchTodayEvents } from '../services/microsoftCalendarService';
+import { CheckSquare, Square, Calendar, List } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import TodoDetailModal from './TodoDetailModal';
-import Button from './ui/Button';
-import DateInput from './ui/DateInput';
+import CalendarDayView from './dashboard/CalendarDayView';
 
 const importanceRanking = {
   critical: 0,
@@ -29,7 +29,8 @@ const getImportanceRank = (value) => {
 };
 
 const TodosListPage = () => {
-  const { user } = useAuth();
+  const authContext = useAuth();
+  const { user } = authContext;
   const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
@@ -42,13 +43,35 @@ const TodosListPage = () => {
   const [selectedTodo, setSelectedTodo] = useState(null);
   const [showTodoModal, setShowTodoModal] = useState(false);
   const [updatingTodoId, setUpdatingTodoId] = useState(null);
-  const [deletingTodoId, setDeletingTodoId] = useState(null);
   const dragId = useRef(null);
   const [missingSort, setMissingSort] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
   const [dragOverPos, setDragOverPos] = useState(null); // 'before' | 'after'
   const dragImageEl = useRef(null);
+
+  // Calendar day view state
+  const [viewMode, setViewMode] = useState('calendar'); // 'list' | 'calendar'
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [calendarData, setCalendarData] = useState({ data: null, isFetching: false, error: null });
+
+  // Fetch calendar events
+  const fetchCalendar = useCallback(async () => {
+    setCalendarData(prev => ({ ...prev, isFetching: true }));
+    try {
+      const result = await fetchTodayEvents(authContext);
+      setCalendarData({ data: result, isFetching: false, error: null });
+    } catch (err) {
+      setCalendarData({ data: null, isFetching: false, error: err });
+    }
+  }, [authContext]);
+
+  // Initial calendar fetch
+  useEffect(() => {
+    if (viewMode === 'calendar') {
+      fetchCalendar();
+    }
+  }, [viewMode, fetchCalendar]);
 
   const pageClasses = mode === 'dark'
     ? 'bg-gray-900 text-gray-100'
@@ -145,6 +168,9 @@ const TodosListPage = () => {
           completed: todo.is_complete || false,
           dueBy: todo.due_by,
           doBy: todo.do_by,
+          doByTime: todo.do_by_time,
+          plannedHours: todo.planned_hours,
+          calendarEventId: todo.calendar_event_id,
           sortOrder: todo.sort_order
         }));
         
@@ -192,27 +218,10 @@ const TodosListPage = () => {
   const handleDeleteTodo = async (todoId) => {
     if (!window.confirm('Are you sure you want to delete this todo?')) return;
     try {
-      setDeletingTodoId(todoId);
       await projectTodosService.remove(todoId);
       setTodos((prev) => prev.filter((todo) => todo.id !== todoId));
     } catch (err) {
       setError(err.message || 'Failed to delete to-do');
-    } finally {
-      setDeletingTodoId(null);
-    }
-  };
-
-  const handleUpdateTodoDate = async (todoId, field, value) => {
-    try {
-      const payload = field === 'due_by' ? { due_by: value || null } : { do_by: value || null };
-      await projectTodosService.update(todoId, payload);
-      setTodos(prev => prev.map(t => (
-        t.id === todoId
-          ? { ...t, ...(field === 'due_by' ? { dueBy: value || null } : { doBy: value || null }) }
-          : t
-      )));
-    } catch (e) {
-      console.warn('Failed to update todo date', e);
     }
   };
 
@@ -236,19 +245,26 @@ const TodosListPage = () => {
   const handleSaveTodo = async (todoId, updatedData) => {
     try {
       await projectTodosService.update(todoId, updatedData);
-      setTodos(prev => prev.map(t => 
-        t.id === todoId 
-          ? { 
-              ...t, 
+      setTodos(prev => prev.map(t =>
+        t.id === todoId
+          ? {
+              ...t,
               ...updatedData,
               completed: updatedData.is_complete !== undefined ? updatedData.is_complete : t.completed,
               dueBy: updatedData.due_by !== undefined ? updatedData.due_by : t.dueBy,
-              doBy: updatedData.do_by !== undefined ? updatedData.do_by : t.doBy
+              doBy: updatedData.do_by !== undefined ? updatedData.do_by : t.doBy,
+              doByTime: updatedData.do_by_time !== undefined ? updatedData.do_by_time : t.doByTime,
+              plannedHours: updatedData.planned_hours !== undefined ? updatedData.planned_hours : t.plannedHours,
+              calendarEventId: updatedData.calendar_event_id !== undefined ? updatedData.calendar_event_id : t.calendarEventId
             }
           : t
       ));
       setShowTodoModal(false);
       setSelectedTodo(null);
+      // Refresh calendar to show updated todo
+      if (viewMode === 'calendar') {
+        fetchCalendar();
+      }
     } catch (error) {
       console.error('Failed to save todo:', error);
       alert('Failed to save changes');
@@ -358,11 +374,32 @@ const TodosListPage = () => {
       <div className="w-full px-3 sm:px-4 py-4 space-y-4">
         <div className="rounded-2xl border p-4" style={styles.card}>
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h1 className="text-xl font-semibold" style={styles.textPrimary}>My To-dos</h1>
             <div className="flex items-center gap-3">
-              <select 
-                value={projectFilter} 
-                onChange={(e) => setProjectFilter(e.target.value)} 
+              <h1 className="text-xl font-semibold" style={styles.textPrimary}>My To-dos</h1>
+              {/* View toggle */}
+              <div className="flex items-center rounded-xl border overflow-hidden" style={{ borderColor: styles.card.borderColor }}>
+                <button
+                  onClick={() => setViewMode('calendar')}
+                  className={`px-3 py-1.5 flex items-center gap-1.5 text-sm transition-colors ${viewMode === 'calendar' ? 'bg-violet-500 text-white' : ''}`}
+                  style={viewMode !== 'calendar' ? { color: palette.textSecondary } : {}}
+                >
+                  <Calendar size={16} />
+                  Day
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-1.5 flex items-center gap-1.5 text-sm transition-colors ${viewMode === 'list' ? 'bg-violet-500 text-white' : ''}`}
+                  style={viewMode !== 'list' ? { color: palette.textSecondary } : {}}
+                >
+                  <List size={16} />
+                  List
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
                 className="px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
                 style={styles.input}
               >
@@ -371,13 +408,15 @@ const TodosListPage = () => {
                   <option key={p.id} value={p.id}>{p.name || p.id}</option>
                 ))}
               </select>
-              <button
-                onClick={() => setShowCompleted((prev) => !prev)}
-                className="text-xs underline"
-                style={styles.textSecondary}
-              >
-                {showCompleted ? 'Hide completed' : 'Show completed'}
-              </button>
+              {viewMode === 'list' && (
+                <button
+                  onClick={() => setShowCompleted((prev) => !prev)}
+                  className="text-xs underline"
+                  style={styles.textSecondary}
+                >
+                  {showCompleted ? 'Hide completed' : 'Show completed'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -388,123 +427,134 @@ const TodosListPage = () => {
           </div>
         )}
 
-        <div className="space-y-2">
-          {visible.map((todo) => {
-            const toggling = updatingTodoId === todo.id;
-            const deleting = deletingTodoId === todo.id;
-            const projectName = projects.find(p => p.id === todo.project_id)?.name || 'Unknown Project';
-            
-            return (
-              <div key={todo.id}>
-                {dragOverId === todo.id && dragOverPos === 'before' && (
-                  <div className="h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
-                )}
-                <div
-                  className="p-4 rounded-xl border todo-card cursor-pointer hover:shadow-md transition-shadow"
-                  draggable
-                  onClick={() => handleOpenTodoDetail(todo)}
-                  onDragStart={(e) => onDragStart(e, todo.id)}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const midY = rect.top + rect.height / 2;
-                    setDragOverId(todo.id);
-                    setDragOverPos(e.clientY < midY ? 'before' : 'after');
-                  }}
-                  onDragEnter={() => setDragOverId(todo.id)}
-                  onDragLeave={() => setDragOverId(null)}
-                  onDragEnd={onDragEndCard}
-                  onDrop={(e) => { e.stopPropagation(); onDropOn(todo.id); }}
-                  style={{
-                    ...styles.mutedCard,
-                    opacity: draggingId === todo.id ? 0.6 : 1
-                  }}
-                >
-                  {/* Title row at top */}
-                  <div className="flex items-center mb-3">
-                    <div className="flex items-center gap-2 flex-1">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleToggleTodo(todo); }}
-                        disabled={toggling}
-                        className="p-1"
-                      >
-                        {todo.completed ? (
-                          <CheckSquare size={18} style={{ color: palette.success }} />
-                        ) : (
-                          <Square size={18} style={styles.textSecondary} />
-                        )}
-                      </button>
-                      <span
-                        className="flex-1 text-base font-medium"
+        {/* Calendar Day View */}
+        {viewMode === 'calendar' && (
+          <CalendarDayView
+            sectionStyles={sectionStyles}
+            calendar={{ ...calendarData, refetch: fetchCalendar }}
+            todos={visible}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            onConnectCalendar={() => {
+              if (authContext?.login) {
+                authContext.login();
+              }
+            }}
+            onTodoClick={(todo) => handleOpenTodoDetail(todo)}
+          />
+        )}
+
+        {/* List View */}
+        {viewMode === 'list' && (
+          <div className="space-y-2">
+            {visible.map((todo) => {
+              const toggling = updatingTodoId === todo.id;
+              const projectName = projects.find(p => p.id === todo.project_id)?.name || 'Unknown Project';
+
+              return (
+                <div key={todo.id}>
+                  {dragOverId === todo.id && dragOverPos === 'before' && (
+                    <div className="h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                  )}
+                  <div
+                    className="p-4 rounded-xl border todo-card cursor-pointer hover:shadow-md transition-shadow"
+                    draggable
+                    onClick={() => handleOpenTodoDetail(todo)}
+                    onDragStart={(e) => onDragStart(e, todo.id)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const midY = rect.top + rect.height / 2;
+                      setDragOverId(todo.id);
+                      setDragOverPos(e.clientY < midY ? 'before' : 'after');
+                    }}
+                    onDragEnter={() => setDragOverId(todo.id)}
+                    onDragLeave={() => setDragOverId(null)}
+                    onDragEnd={onDragEndCard}
+                    onDrop={(e) => { e.stopPropagation(); onDropOn(todo.id); }}
+                    style={{
+                      ...styles.mutedCard,
+                      opacity: draggingId === todo.id ? 0.6 : 1
+                    }}
+                  >
+                    {/* Title row at top */}
+                    <div className="flex items-center mb-3">
+                      <div className="flex items-center gap-2 flex-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleToggleTodo(todo); }}
+                          disabled={toggling}
+                          className="p-1"
+                        >
+                          {todo.completed ? (
+                            <CheckSquare size={18} style={{ color: palette.success }} />
+                          ) : (
+                            <Square size={18} style={styles.textSecondary} />
+                          )}
+                        </button>
+                        <span
+                          className="flex-1 text-base font-medium"
+                          style={{
+                            ...styles.textPrimary,
+                            textDecoration: todo.completed ? 'line-through' : 'none',
+                            opacity: todo.completed ? 0.6 : 1
+                          }}
+                        >
+                          {todo.title}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded-lg" style={{
+                          backgroundColor: withAlpha(palette.info, 0.1),
+                          color: palette.info
+                        }}>
+                          {projectName}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Controls row at bottom - only show dates if due date is set */}
+                    <div className="flex items-center gap-2 text-xs">
+                      {todo.dueBy && (
+                        <>
+                          <span style={styles.subtleText}>
+                            Due: {new Date(todo.dueBy).toLocaleDateString()}
+                          </span>
+                          {todo.doBy && (
+                            <span style={styles.subtleText}>
+                              • Do: {new Date(todo.doBy).toLocaleDateString()}
+                            </span>
+                          )}
+                        </>
+                      )}
+                      <select
+                        value={todo.importance || 'normal'}
+                        onChange={(e) => { e.stopPropagation(); handleUpdateTodoImportance(todo.id, e.target.value); }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
                         style={{
-                          ...styles.textPrimary,
-                          textDecoration: todo.completed ? 'line-through' : 'none',
-                          opacity: todo.completed ? 0.6 : 1
+                          ...styles.input,
+                          color: importanceColors[(todo.importance || 'normal').toLowerCase()] || styles.input.color
                         }}
+                        title="Importance"
                       >
-                        {todo.title}
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded-lg" style={{
-                        backgroundColor: withAlpha(palette.info, 0.1),
-                        color: palette.info
-                      }}>
-                        {projectName}
-                      </span>
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                        <option value="critical">Critical</option>
+                      </select>
                     </div>
                   </div>
-                  
-                  {/* Controls row at bottom */}
-                  <div className="flex items-center gap-2 text-xs">
-                    <label className="flex items-center gap-1" title="Due Date">
-                      <span style={styles.subtleText}>Due:</span>
-                      <DateInput
-                        value={todo.dueBy ? String(todo.dueBy).substring(0,10) : ''}
-                        onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'due_by', e.target.value); }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs"
-                        style={{ minWidth: '100px' }}
-                      />
-                    </label>
-                    <label className="flex items-center gap-1" title="Do Date">
-                      <span style={styles.subtleText}>Do:</span>
-                      <DateInput
-                        value={todo.doBy ? String(todo.doBy).substring(0,10) : ''}
-                        onChange={(e) => { e.stopPropagation(); handleUpdateTodoDate(todo.id, 'do_by', e.target.value); }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs"
-                        style={{ minWidth: '100px' }}
-                      />
-                    </label>
-                    <select
-                      value={todo.importance || 'normal'}
-                      onChange={(e) => { e.stopPropagation(); handleUpdateTodoImportance(todo.id, e.target.value); }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="px-2 py-1 rounded-lg border text-xs focus:outline-none focus:ring-1 focus:ring-violet-400"
-                      style={{
-                        ...styles.input,
-                        color: importanceColors[(todo.importance || 'normal').toLowerCase()] || styles.input.color
-                      }}
-                      title="Importance"
-                    >
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
-                    </select>
-                  </div>
+                  {dragOverId === todo.id && dragOverPos === 'after' && (
+                    <div className="h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
+                  )}
                 </div>
-                {dragOverId === todo.id && dragOverPos === 'after' && (
-                  <div className="h-0.5 rounded" style={{ backgroundColor: palette.accent }} />
-                )}
+              );
+            })}
+            {visible.length === 0 && (
+              <div className="text-center py-8 text-sm" style={styles.textSecondary}>
+                {showCompleted ? 'No to-dos match this filter.' : 'All tasks complete.'}
               </div>
-            );
-          })}
-          {visible.length === 0 && (
-            <div className="text-center py-8 text-sm" style={styles.textSecondary}>
-              {showCompleted ? 'No to-dos match this filter.' : 'All tasks complete.'}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
       {showTodoModal && selectedTodo && (

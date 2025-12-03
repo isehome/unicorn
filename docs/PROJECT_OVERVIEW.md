@@ -533,15 +533,27 @@ REACT_APP_LUCID_CLIENT_SECRET=
 ---
 
 ## 📍 Contact Address & Map Integration
-**Changed:** 2025-12-01
-**Files:** `src/components/PeopleManagement.js`, `src/modules/people/index.js`, `database/migrations/2025-12-01_add_address_to_contacts.sql`
+**Changed:** 2025-12-02
+**Files:** `src/components/PeopleManagement.js`, `src/modules/people/index.js`, `database/migrations/2025-12-02_expand_address_fields.sql`
 
-Contacts now support an address field that can be opened in Apple Maps or Google Maps:
-- Address field added to contacts table
-- Address input in People Management and inline contact creation forms
-- Map icon with external link appears when viewing contact details
-- Clicking the map link opens the address in Google Maps (works on iOS, Android, and desktop)
-- Address is visible in both the global People Management page and in project stakeholder expanded details
+Contacts now support full structured address entry with map integration:
+
+**Database fields:**
+- `address1` - Street address line 1
+- `address2` - Apt, Suite, Unit, etc. (optional)
+- `city` - City name
+- `state` - State abbreviation (2 chars)
+- `zip` - ZIP/Postal code
+- `address` - Auto-consolidated single-line display version
+
+**UI Features:**
+- Full address form in People Management modal (Street, Apt/Suite, City, State, ZIP)
+- Addresses automatically consolidated to single line for display
+- Email, phone, and address are clickable inline links (text-width only, no icons)
+- Email opens mail client, phone initiates call, address opens Google Maps
+- Delete button inside edit modal only (clean UI - no delete in list view)
+- Avatar is clickable to open edit (no separate edit button)
+- Client-side search filtering for instant response
 
 ---
 
