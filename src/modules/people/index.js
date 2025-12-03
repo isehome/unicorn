@@ -21,10 +21,12 @@ const PeopleModule = ({ projectId }) => {
     address: ''
   });
 
-  // Helper to generate map URL (works on both iOS and Android)
+  // Helper to generate map URL (opens in user's default maps app)
   const getMapUrl = (address) => {
     const encoded = encodeURIComponent(address);
-    return `https://maps.google.com/?q=${encoded}`;
+    // Use Apple Maps URL which opens in default maps app on iOS/macOS
+    // On other platforms, it redirects to maps.apple.com which works in browser
+    return `https://maps.apple.com/?q=${encoded}`;
   };
 
   // Helper to consolidate address components into single line

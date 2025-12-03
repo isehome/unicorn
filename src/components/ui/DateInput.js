@@ -32,18 +32,31 @@ const DateInput = ({
     e.target.blur();
   };
 
+  // Override Safari/browser native date styling that shows past dates in red
+  const inputStyle = {
+    colorScheme: 'dark light', // Prevent browser from changing colors
+    ...(props.style || {})
+  };
+
   return (
     <div className="relative">
       <input
         type="date"
         value={value || ''}
         onChange={handleChange}
+        style={inputStyle}
         className={`
           w-full px-3 py-2 border rounded-lg
           focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500
+          [&::-webkit-datetime-edit]:text-inherit
+          [&::-webkit-datetime-edit-fields-wrapper]:text-inherit
+          [&::-webkit-datetime-edit-text]:text-inherit
+          [&::-webkit-datetime-edit-month-field]:text-inherit
+          [&::-webkit-datetime-edit-day-field]:text-inherit
+          [&::-webkit-datetime-edit-year-field]:text-inherit
           ${isEmpty
-            ? 'border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 text-gray-500 dark:text-gray-400'
-            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50'
+            ? 'border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500'
+            : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50'
           }
           ${className}
         `}
@@ -51,7 +64,7 @@ const DateInput = ({
       />
       {isEmpty && (
         <div className="absolute inset-0 flex items-center px-3 pointer-events-none">
-          <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
+          <span className="text-sm text-zinc-400 dark:text-zinc-500">—</span>
         </div>
       )}
     </div>

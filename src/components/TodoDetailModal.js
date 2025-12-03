@@ -265,7 +265,7 @@ const TodoDetailModal = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+            className="p-2 rounded-xl transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
             style={{ color: palette.textSecondary }}
           >
             <X size={20} />
@@ -307,8 +307,8 @@ const TodoDetailModal = ({
             />
           </div>
 
-          {/* Dates, Hours, and Importance */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Row 1: Due Date and Importance */}
+          <div className="grid gap-4 grid-cols-2">
             <div>
               <label className="flex items-center gap-2 text-sm font-medium mb-2" style={styles.textPrimary}>
                 <Calendar size={16} />
@@ -323,67 +323,13 @@ const TodoDetailModal = ({
 
             <div>
               <label className="flex items-center gap-2 text-sm font-medium mb-2" style={styles.textPrimary}>
-                <Clock size={16} />
-                Do Date
-                <button
-                  type="button"
-                  onClick={() => setShowDoByInfo(!showDoByInfo)}
-                  className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                  style={{ color: palette.textSecondary }}
-                >
-                  <Info size={14} />
-                </button>
-              </label>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <DateInput
-                    value={doBy}
-                    onChange={(e) => setDoBy(e.target.value)}
-                    disabled={saving}
-                  />
-                </div>
-                <input
-                  type="time"
-                  value={doByTime}
-                  onChange={(e) => setDoByTime(e.target.value)}
-                  disabled={saving || !doBy}
-                  className={`w-24 px-2 py-2 border rounded-lg focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
-                    !doBy
-                      ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-50'
-                  }`}
-                  title={doBy ? 'Start time for calendar event' : 'Set a Do Date first'}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium mb-2" style={styles.textPrimary}>
-                <Clock size={16} />
-                Planned Hours
-              </label>
-              <input
-                type="number"
-                min="0.5"
-                max="24"
-                step="0.5"
-                value={plannedHours}
-                onChange={(e) => setPlannedHours(parseFloat(e.target.value) || 1)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
-                style={styles.input}
-                disabled={saving}
-              />
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 text-sm font-medium mb-2" style={styles.textPrimary}>
                 <AlertCircle size={16} />
                 Importance
               </label>
               <select
                 value={importance}
                 onChange={(e) => setImportance(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
                 style={{
                   ...styles.input,
                   color: importanceColors[importance]?.text || styles.input.color
@@ -395,6 +341,70 @@ const TodoDetailModal = ({
                 <option value="high">High</option>
                 <option value="critical">Critical</option>
               </select>
+            </div>
+          </div>
+
+          {/* Row 2: Do Date, Time, and Planned Hours (for calendar scheduling) */}
+          <div className="p-4 rounded-xl border" style={{ borderColor: styles.card.borderColor, backgroundColor: withAlpha(palette.info || '#3b82f6', 0.05) }}>
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarPlus size={18} style={{ color: palette.info || '#3b82f6' }} />
+              <span className="text-sm font-medium" style={styles.textPrimary}>
+                Calendar Scheduling
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDoByInfo(!showDoByInfo)}
+                className="p-0.5 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                style={{ color: palette.textSecondary }}
+              >
+                <Info size={14} />
+              </button>
+            </div>
+            <div className="grid gap-4 grid-cols-3">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>
+                  Do Date
+                </label>
+                <DateInput
+                  value={doBy}
+                  onChange={(e) => setDoBy(e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>
+                  Start Time
+                </label>
+                <input
+                  type="time"
+                  value={doByTime}
+                  onChange={(e) => setDoByTime(e.target.value)}
+                  disabled={saving || !doBy}
+                  className={`w-full px-3 py-2 border rounded-lg focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
+                    !doBy
+                      ? 'border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                      : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50'
+                  }`}
+                  style={{ fontSize: '16px' }}
+                  title={doBy ? 'Start time for calendar event' : 'Set a Do Date first'}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>
+                  Duration (hrs)
+                </label>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="24"
+                  step="0.5"
+                  value={plannedHours}
+                  onChange={(e) => setPlannedHours(parseFloat(e.target.value) || 1)}
+                  className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  style={{ ...styles.input, fontSize: '16px' }}
+                  disabled={saving}
+                />
+              </div>
             </div>
           </div>
 
