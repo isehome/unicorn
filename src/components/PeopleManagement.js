@@ -115,6 +115,12 @@ const PeopleManagement = () => {
       // Consolidate address before saving
       payload.address = consolidateAddress(payload);
 
+      // Build full_name from first_name and last_name (required by database)
+      const fullName = `${payload.first_name || ''} ${payload.last_name || ''}`.trim();
+      payload.full_name = fullName || payload.name || 'Unknown';
+      // Also set name for compatibility
+      payload.name = payload.name || fullName || 'Unknown';
+
       delete payload.id;
       delete payload.created_at;
       delete payload.updated_at;
@@ -368,11 +374,10 @@ const PeopleManagement = () => {
 
               <input
                 type="text"
-                placeholder="Role/Title"
+                placeholder="Role/Title (optional)"
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
-                required
               />
 
               <div className="flex items-center gap-4">
