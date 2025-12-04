@@ -235,6 +235,8 @@ const PMDashboard = () => {
   const loadInternalContacts = async () => {
     try {
       const data = await contactsService.getAll({ isInternal: true });
+      console.log('[PMDashboard] Loaded internal contacts:', data?.length, 'contacts');
+      console.log('[PMDashboard] Internal contacts roles:', data?.map(c => ({ name: c.full_name || c.name, role: c.role, dept: c.department })));
       setInternalContacts(data);
     } catch (error) {
       console.error('Failed to load internal contacts:', error);
@@ -264,16 +266,25 @@ const PMDashboard = () => {
 
   // Filter internal contacts by role for dropdowns
   const pmContacts = useMemo(() => {
+    const role = (r) => r?.toLowerCase() || '';
     return internalContacts.filter(contact =>
-      contact.role?.toLowerCase().includes('project manager') ||
-      contact.role?.toLowerCase() === 'pm'
+      role(contact.role).includes('project manager') ||
+      role(contact.role).includes('program manager') ||
+      role(contact.role) === 'pm' ||
+      role(contact.role).includes('manager') ||
+      role(contact.department).includes('management')
     );
   }, [internalContacts]);
 
   const techContacts = useMemo(() => {
+    const role = (r) => r?.toLowerCase() || '';
     return internalContacts.filter(contact =>
-      contact.role?.toLowerCase().includes('technician') ||
-      contact.role?.toLowerCase().includes('lead tech')
+      role(contact.role).includes('technician') ||
+      role(contact.role).includes('tech') ||
+      role(contact.role).includes('installer') ||
+      role(contact.role).includes('engineer') ||
+      role(contact.department).includes('technical') ||
+      role(contact.department).includes('operations')
     );
   }, [internalContacts]);
 
