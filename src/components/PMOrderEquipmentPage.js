@@ -526,19 +526,25 @@ const PMOrderEquipmentPageEnhanced = () => {
       Object.entries(selectedItems).forEach(([partNumber, selection]) => {
         const group = selection.group;
         const quantityToOrder = selection.quantity;
+        // Check if this is an inventory group - either explicitly marked or has inventory to allocate
         const isInventoryGroup = group.isInventory || group.supplier === 'Internal Inventory';
+        // Also check if items have inventory available (in case group wasn't marked correctly)
+        const hasInventoryAvailable = group.quantity_from_inventory > 0 ||
+          group.items?.some(item => item.quantity_from_inventory > 0);
+        const shouldUseInventory = isInventoryGroup || (hasInventoryAvailable && group.quantity_needed === 0);
 
-        console.log(`📦 Processing group: ${partNumber}, isInventory: ${isInventoryGroup}, quantityToOrder: ${quantityToOrder}`);
-        console.log(`📦 Group details:`, { supplier: group.supplier, isInventory: group.isInventory, itemCount: group.items?.length });
+        console.log(`📦 Processing group: ${partNumber}, isInventory: ${isInventoryGroup}, shouldUseInventory: ${shouldUseInventory}, quantityToOrder: ${quantityToOrder}`);
+        console.log(`📦 Group details:`, { supplier: group.supplier, isInventory: group.isInventory, hasInventoryAvailable, itemCount: group.items?.length });
 
         // Distribute quantity across individual items in the group
         // For simplicity, we'll order from items proportionally based on their remaining quantity
         let remainingToOrder = quantityToOrder;
 
         group.items.forEach((item, index) => {
-          // For inventory groups, use quantity_from_inventory; for supplier groups, use quantity_needed
-          const itemNeeded = isInventoryGroup
-            ? (item.quantity_from_inventory || item.quantity_needed || 0)
+          // For inventory items, use quantity_from_inventory; for supplier items, use quantity_needed
+          // If shouldUseInventory is true, prefer inventory even if group wasn't explicitly marked
+          const itemNeeded = shouldUseInventory
+            ? (item.quantity_from_inventory || item.quantity_needed || 1) // Default to 1 for inventory items
             : (item.quantity_needed || 0);
 
           console.log(`  📦 Item ${index}: ${item.name}, itemNeeded: ${itemNeeded}, quantity_from_inventory: ${item.quantity_from_inventory}, quantity_needed: ${item.quantity_needed}`);
@@ -549,8 +555,8 @@ const PMOrderEquipmentPageEnhanced = () => {
               ...item,
               quantity_to_order: quantityForThisItem,
               // Preserve inventory flag for later filtering
-              supplier: isInventoryGroup ? 'Internal Inventory' : item.supplier,
-              quantity_from_inventory: isInventoryGroup ? quantityForThisItem : 0
+              supplier: shouldUseInventory ? 'Internal Inventory' : item.supplier,
+              quantity_from_inventory: shouldUseInventory ? quantityForThisItem : 0
             });
             remainingToOrder -= quantityForThisItem;
             console.log(`  ✅ Added item with quantity_to_order: ${quantityForThisItem}`);
@@ -1148,7 +1154,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => handleSelectAllByPartNumber(groupedEquipment)}
+                onClick={() => handleSelectAllByPartNumber(availableGroups)}
                 disabled={availableGroups.length === 0}
               >
                 Select All ({availableGroups.length})
