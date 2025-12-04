@@ -1166,8 +1166,10 @@ const PMProjectViewEnhanced = () => {
         loadEquipmentStats();
       }
       loadLaborSummary();
+      // Reload project rooms since CSV import may have created new rooms
+      loadProjectRooms();
     },
-    [loadEquipmentStats, loadLaborSummary]
+    [loadEquipmentStats, loadLaborSummary, loadProjectRooms]
   );
 
   const fetchUnifiSiteData = async () => {
