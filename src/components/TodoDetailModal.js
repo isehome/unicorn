@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, Calendar, AlertCircle, FileText, Clock, CalendarPlus, Info } from 'lucide-react';
+import { X, Calendar, AlertCircle, FileText, Clock, CalendarPlus, Info, User, Plus, Trash2 } from 'lucide-react';
 import Button from './ui/Button';
 import DateInput from './ui/DateInput';
 import DateField from './ui/DateField';
+import TimeSelectionGrid from './ui/TimeSelectionGrid';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } from '../services/microsoftCalendarService';
+import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, fetchEventsForDate } from '../services/microsoftCalendarService';
+import { projectStakeholdersService, todoStakeholdersService } from '../services/supabaseService';
+import { stakeholderColors } from '../styles/styleSystem';
 
 const TodoDetailModal = ({
   todo,
@@ -21,8 +24,8 @@ const TodoDetailModal = ({
   const authContext = useAuth();
   const [title, setTitle] = useState(todo?.title || '');
   const [description, setDescription] = useState(todo?.description || '');
-  const [dueBy, setDueBy] = useState(todo?.dueBy ? String(todo.dueBy).substring(0,10) : '');
-  const [doBy, setDoBy] = useState(todo?.doBy ? String(todo.doBy).substring(0,10) : '');
+  const [dueBy, setDueBy] = useState(todo?.dueBy ? String(todo.dueBy).substring(0, 10) : '');
+  const [doBy, setDoBy] = useState(todo?.doBy ? String(todo.doBy).substring(0, 10) : '');
   const [doByTime, setDoByTime] = useState(todo?.doByTime || todo?.do_by_time || '09:00');
   const [plannedHours, setPlannedHours] = useState(todo?.plannedHours || todo?.planned_hours || 1);
   const [importance, setImportance] = useState(todo?.importance || 'normal');
@@ -32,11 +35,86 @@ const TodoDetailModal = ({
   const [error, setError] = useState('');
   const [showDoByInfo, setShowDoByInfo] = useState(false);
 
+  // New state for stakeholders and calendar events
+  const [stakeholders, setStakeholders] = useState([]);
+  const [availableStakeholders, setAvailableStakeholders] = useState([]);
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [showStakeholderDropdown, setShowStakeholderDropdown] = useState(false);
+
+  // Load stakeholders
+  useEffect(() => {
+    const loadStakeholders = async () => {
+      const pid = todo?.project_id || todo?.projectId;
+      if (!pid) return;
+
+      try {
+        const [team, assigned] = await Promise.all([
+          projectStakeholdersService.getForProject(pid),
+          todo?.id ? todoStakeholdersService.getForTodo(todo.id) : Promise.resolve([])
+        ]);
+
+        const internal = (team.internal || []).map(p => ({ ...p, category: 'internal' }));
+        const external = (team.external || []).map(p => ({ ...p, category: 'external' }));
+        setAvailableStakeholders([...internal, ...external]);
+        setStakeholders(assigned);
+      } catch (err) {
+        console.error('Failed to load stakeholders', err);
+      }
+    };
+    loadStakeholders();
+  }, [todo?.project_id, todo?.projectId, todo?.id]);
+
+  // Load calendar events when date changes
+  useEffect(() => {
+    const loadEvents = async () => {
+      if (!doBy || !authContext.accessToken) return;
+      setLoadingEvents(true);
+      const result = await fetchEventsForDate(authContext, new Date(doBy));
+      if (result.connected) {
+        setCalendarEvents(result.events);
+      }
+      setLoadingEvents(false);
+    };
+    loadEvents();
+  }, [doBy, authContext.accessToken]);
+
+  const handleSelectSlot = (startTime, duration) => {
+    setDoByTime(startTime);
+    setPlannedHours(duration);
+  };
+
+  const handleAddStakeholder = async (stakeholder) => {
+    if (!todo?.id) return;
+    try {
+      // Use assignment_id (which is the project_stakeholder.id from the view)
+      const projectStakeholderId = stakeholder.assignment_id || stakeholder.id;
+      await todoStakeholdersService.add(todo.id, projectStakeholderId);
+      // Refresh list
+      const updated = await todoStakeholdersService.getForTodo(todo.id);
+      setStakeholders(updated);
+      setShowStakeholderDropdown(false);
+    } catch (err) {
+      console.error('Failed to add stakeholder', err);
+      setError('Failed to add stakeholder');
+    }
+  };
+
+  const handleRemoveStakeholder = async (assignmentId) => {
+    try {
+      await todoStakeholdersService.remove(assignmentId);
+      setStakeholders(prev => prev.filter(s => s.id !== assignmentId));
+    } catch (err) {
+      console.error('Failed to remove stakeholder', err);
+      setError('Failed to remove stakeholder');
+    }
+  };
+
   useEffect(() => {
     setTitle(todo?.title || '');
     setDescription(todo?.description || '');
-    setDueBy(todo?.dueBy ? String(todo.dueBy).substring(0,10) : '');
-    setDoBy(todo?.doBy ? String(todo.doBy).substring(0,10) : '');
+    setDueBy(todo?.dueBy ? String(todo.dueBy).substring(0, 10) : '');
+    setDoBy(todo?.doBy ? String(todo.doBy).substring(0, 10) : '');
     setDoByTime(todo?.doByTime || todo?.do_by_time || '09:00');
     setPlannedHours(todo?.plannedHours || todo?.planned_hours || 1);
     setImportance(todo?.importance || 'normal');
@@ -59,7 +137,7 @@ const TodoDetailModal = ({
       setSaving(true);
       setError('');
 
-      const previousDoBy = todo?.doBy ? String(todo.doBy).substring(0,10) : '';
+      const previousDoBy = todo?.doBy ? String(todo.doBy).substring(0, 10) : '';
       const previousDoByTime = todo?.doByTime || todo?.do_by_time || '09:00';
       const doByChanged = doBy !== previousDoBy;
       const doByTimeChanged = doByTime !== previousDoByTime;
@@ -102,7 +180,7 @@ const TodoDetailModal = ({
             doByTime,
             plannedHours,
             description: description.trim()
-          });
+          }, stakeholders.map(s => ({ email: s.email, name: s.contactName })));
           if (result.success) {
             newCalendarEventId = result.eventId;
             setCalendarEventId(newCalendarEventId);
@@ -164,7 +242,7 @@ const TodoDetailModal = ({
         doBy,
         plannedHours,
         description: description.trim()
-      });
+      }, stakeholders.map(s => ({ email: s.email, name: s.contactName })));
 
       if (result.success) {
         setCalendarEventId(result.eventId);
@@ -241,20 +319,20 @@ const TodoDetailModal = ({
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div
-        className="w-full max-w-2xl rounded-2xl border overflow-hidden"
-        style={{ ...styles.card, boxShadow: '0 24px 65px rgba(15, 23, 42, 0.35)' }}
+        className="w-full max-w-2xl rounded-2xl border overflow-hidden flex flex-col"
+        style={{ ...styles.card, boxShadow: '0 24px 65px rgba(15, 23, 42, 0.35)', maxHeight: 'calc(100vh - 2rem)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b" 
-             style={{ borderColor: styles.card.borderColor }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0"
+          style={{ borderColor: styles.card.borderColor }}>
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-semibold" style={styles.textPrimary}>
               Todo Details
             </h2>
-            <span 
+            <span
               className="px-2 py-1 rounded-full text-xs font-medium"
               style={{
-                backgroundColor: todo?.completed 
+                backgroundColor: todo?.completed
                   ? withAlpha(palette.success, 0.15)
                   : withAlpha(palette.warning, 0.15),
                 color: todo?.completed ? palette.success : palette.warning
@@ -272,8 +350,8 @@ const TodoDetailModal = ({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="px-6 py-5 space-y-4">
+        {/* Content - Scrollable */}
+        <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
           {/* Title */}
           <div>
             <label className="block text-sm font-medium mb-2" style={styles.textPrimary}>
@@ -380,11 +458,10 @@ const TodoDetailModal = ({
                   value={doByTime}
                   onChange={(e) => setDoByTime(e.target.value)}
                   disabled={saving || !doBy}
-                  className={`w-full px-3 py-2 border rounded-lg focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
-                    !doBy
-                      ? 'border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
-                      : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50'
-                  }`}
+                  className={`w-full px-3 py-2 border rounded-lg focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${!doBy
+                    ? 'border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                    : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50'
+                    }`}
                   style={{ fontSize: '16px' }}
                   title={doBy ? 'Start time for calendar event' : 'Set a Do Date first'}
                 />
@@ -405,6 +482,130 @@ const TodoDetailModal = ({
                   disabled={saving}
                 />
               </div>
+            </div>
+          </div>
+
+          {/* Time Selection Grid */}
+          {doBy && (
+            <div className="mt-4">
+              <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>
+                Available Time Slots
+              </label>
+              {loadingEvents ? (
+                <div className="h-32 flex items-center justify-center border rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+                  <span className="text-sm text-zinc-500">Loading calendar...</span>
+                </div>
+              ) : (
+                <TimeSelectionGrid
+                  date={new Date(doBy)}
+                  events={calendarEvents}
+                  selectedStartTime={doByTime}
+                  selectedDuration={plannedHours}
+                  onSelectSlot={handleSelectSlot}
+                  styles={styles}
+                  palette={palette}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Stakeholders Section */}
+          <div className="p-4 rounded-xl border" style={{ borderColor: styles.card.borderColor }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <User size={16} style={{ color: palette.textSecondary }} />
+                <span className="text-sm font-medium" style={styles.textPrimary}>
+                  Stakeholders & Attendees
+                </span>
+                {stakeholders.length > 0 && (
+                  <span
+                    className="px-2 py-0.5 text-xs rounded-full"
+                    style={{ backgroundColor: withAlpha(palette.primary || '#8b5cf6', 0.15), color: palette.primary || '#8b5cf6' }}
+                  >
+                    {stakeholders.length}
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowStakeholderDropdown(!showStakeholderDropdown)}
+                  className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  style={{ color: palette.primary || '#8b5cf6' }}
+                >
+                  <Plus size={18} />
+                </button>
+
+                {showStakeholderDropdown && (
+                  <div className="absolute right-0 top-full mt-1 w-64 max-h-60 overflow-y-auto rounded-xl border shadow-lg z-20 bg-white dark:bg-zinc-800" style={{ borderColor: styles.card.borderColor }}>
+                    {availableStakeholders
+                      .filter(s => !stakeholders.some(assigned => assigned.projectStakeholderId === (s.assignment_id || s.id)))
+                      .map(stakeholder => (
+                        <button
+                          key={stakeholder.assignment_id || stakeholder.id}
+                          onClick={() => handleAddStakeholder(stakeholder)}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-700/50 flex items-center gap-2"
+                          style={{ borderBottom: `1px solid ${styles.card.borderColor}` }}
+                        >
+                          <div
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: stakeholder.category === 'internal' ? stakeholderColors.internal.text : stakeholderColors.external.text }}
+                          />
+                          <div className="truncate">
+                            <div className="font-medium" style={styles.textPrimary}>
+                              {stakeholder.contact_name}
+                            </div>
+                            <div className="text-xs opacity-75" style={styles.textSecondary}>
+                              {stakeholder.role_name}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    {availableStakeholders.filter(s => !stakeholders.some(assigned => assigned.projectStakeholderId === (s.assignment_id || s.id))).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-center opacity-50" style={styles.textSecondary}>
+                        No more stakeholders available
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {stakeholders.length === 0 ? (
+                <div className="text-sm italic opacity-50" style={styles.textSecondary}>
+                  No stakeholders assigned
+                </div>
+              ) : (
+                stakeholders.map(stakeholder => (
+                  <div
+                    key={stakeholder.id}
+                    className="flex items-center justify-between p-2 rounded-lg border bg-zinc-50 dark:bg-zinc-800/30"
+                    style={{ borderColor: styles.card.borderColor }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-2 h-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: stakeholder.isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text }}
+                      />
+                      <div>
+                        <div className="text-sm font-medium" style={styles.textPrimary}>
+                          {stakeholder.contactName}
+                        </div>
+                        <div className="text-xs opacity-75" style={styles.textSecondary}>
+                          {stakeholder.roleName} • {stakeholder.email}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveStakeholder(stakeholder.id)}
+                      className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -464,7 +665,7 @@ const TodoDetailModal = ({
           )}
 
           {/* Importance indicator */}
-          <div 
+          <div
             className="px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
             style={{
               backgroundColor: importanceColors[importance].bg,
@@ -502,17 +703,9 @@ const TodoDetailModal = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex items-center justify-between" 
-             style={{ borderColor: styles.card.borderColor }}>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onToggleComplete(todo)}
-              disabled={saving}
-            >
-              Mark as {todo?.completed ? 'Open' : 'Completed'}
-            </Button>
+        <div className="px-6 py-4 border-t flex items-center justify-between flex-shrink-0"
+          style={{ borderColor: styles.card.borderColor }}>
+          <div>
             <Button
               variant="danger"
               size="sm"
@@ -522,8 +715,16 @@ const TodoDetailModal = ({
               Delete
             </Button>
           </div>
-          
+
           <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => onToggleComplete(todo)}
+              disabled={saving}
+            >
+              {todo?.completed ? 'Mark Open' : 'Mark Complete'}
+            </Button>
             <Button
               variant="secondary"
               size="sm"

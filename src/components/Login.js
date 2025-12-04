@@ -55,10 +55,19 @@ const Login = () => {
     }
   }, [searchParams, navigate, getErrorMessage]);
 
-  // Show error from AuthContext if present
+  // Show error from AuthContext if present (but not hash_empty_error which is handled silently)
   useEffect(() => {
     if (authError) {
-      setError(authError.message || 'An error occurred during authentication.');
+      const errorMsg = authError.message || authError.errorMessage || '';
+      const errorCode = authError.errorCode || '';
+
+      // Don't show hash_empty_error to users - it's handled automatically
+      if (errorCode === 'hash_empty_error' || errorMsg.includes('hash_empty_error') || errorMsg.includes('Hash value cannot be processed')) {
+        console.log('[Login] Ignoring hash_empty_error - handled automatically');
+        return;
+      }
+
+      setError(errorMsg || 'An error occurred during authentication.');
     }
   }, [authError]);
 

@@ -594,8 +594,11 @@ export const projectTodosService = {
       if (updates.sort_order !== undefined) payload.sort_order = updates.sort_order;
       if (updates.due_by !== undefined) payload.due_by = updates.due_by;
       if (updates.do_by !== undefined) payload.do_by = updates.do_by;
+      if (updates.do_by_time !== undefined) payload.do_by_time = updates.do_by_time;
+      if (updates.planned_hours !== undefined) payload.planned_hours = updates.planned_hours;
       if (updates.importance !== undefined) payload.importance = updates.importance;
       if (updates.is_complete !== undefined) payload.is_complete = updates.is_complete;
+      if (updates.calendar_event_id !== undefined) payload.calendar_event_id = updates.calendar_event_id;
       if (Object.keys(payload).length === 0) return null;
       const { data, error } = await supabase
         .from('project_todos')
@@ -644,6 +647,118 @@ export const projectTodosService = {
       if (error) throw error;
     } catch (error) {
       handleError(error, 'Failed to delete project todo');
+    }
+  },
+
+  async getAllForUser(email) {
+    try {
+      if (!supabase || !email) return [];
+
+      // 1. Get all projects where user is an internal stakeholder
+      const projectIds = await projectStakeholdersService.getInternalProjectIdsByEmail(email);
+
+      if (!projectIds.length) return [];
+
+      // 2. Fetch open todos for these projects
+      const { data, error } = await supabase
+        .from('project_todos')
+        .select(`
+          *,
+          project:projects(name)
+        `)
+        .in('project_id', projectIds)
+        .eq('is_complete', false)
+        .order('do_by', { ascending: true });
+
+      if (error) throw error;
+
+      return (data || []).map(todo => ({
+        id: todo.id,
+        projectId: todo.project_id,
+        projectName: todo.project?.name || 'Unknown Project',
+        title: todo.title,
+        completed: Boolean(todo.is_complete),
+        createdAt: todo.created_at,
+        dueBy: todo.due_by || null,
+        doBy: todo.do_by || null,
+        doByTime: todo.do_by_time || null,
+        plannedHours: todo.planned_hours || null,
+        importance: todo.importance || 'normal'
+      }));
+
+    } catch (error) {
+      console.error('Failed to fetch user todos:', error);
+      return [];
+    }
+  }
+};
+
+// ============= TODO STAKEHOLDERS SERVICE =============
+export const todoStakeholdersService = {
+  async getForTodo(todoId) {
+    try {
+      if (!supabase || !todoId) return [];
+
+      const { data, error } = await supabase
+        .from('todo_stakeholders')
+        .select(`
+          id,
+          project_stakeholder_id,
+          project_stakeholder:project_stakeholders(
+            id,
+            contact_id,
+            stakeholder_role_id,
+            contact:contacts(first_name, last_name, email, is_internal),
+            role:stakeholder_roles(name)
+          )
+        `)
+        .eq('todo_id', todoId);
+
+      if (error) throw error;
+
+      return (data || []).map(item => ({
+        id: item.id,
+        projectStakeholderId: item.project_stakeholder_id,
+        contactName: `${item.project_stakeholder?.contact?.first_name || ''} ${item.project_stakeholder?.contact?.last_name || ''}`.trim(),
+        email: item.project_stakeholder?.contact?.email,
+        roleName: item.project_stakeholder?.role?.name,
+        isInternal: item.project_stakeholder?.contact?.is_internal
+      }));
+    } catch (error) {
+      console.error('Failed to fetch todo stakeholders:', error);
+      return [];
+    }
+  },
+
+  async add(todoId, projectStakeholderId) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { data, error } = await supabase
+        .from('todo_stakeholders')
+        .insert([{ todo_id: todoId, project_stakeholder_id: projectStakeholderId }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      handleError(error, 'Failed to add stakeholder to todo');
+    }
+  },
+
+  async remove(assignmentId) {
+    try {
+      if (!supabase) throw new Error('Supabase not configured');
+
+      const { error } = await supabase
+        .from('todo_stakeholders')
+        .delete()
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+    } catch (error) {
+      handleError(error, 'Failed to remove stakeholder from todo');
     }
   }
 };

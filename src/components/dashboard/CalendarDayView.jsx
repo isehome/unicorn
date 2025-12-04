@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Calendar, Clock, ChevronLeft, ChevronRight, Loader } from 'lucide-react';
 import Button from '../ui/Button';
 
@@ -68,22 +68,66 @@ const formatDateHeader = (date) => {
 };
 
 /**
- * Memoized Event Block Component
+ * Convert pixel position to hour (decimal)
  */
-const EventBlock = memo(({ event, type, top, height, onClick }) => {
+const pixelToHour = (pixels) => {
+  return START_HOUR + (pixels / HOUR_HEIGHT);
+};
+
+/**
+ * Convert hour (decimal) to time string (HH:MM)
+ */
+const hourToTimeString = (hour) => {
+  const h = Math.floor(hour);
+  const m = Math.round((hour - h) * 60);
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Snap to 15-minute increments
+ */
+const snapToQuarter = (hour) => {
+  return Math.round(hour * 4) / 4;
+};
+
+/**
+ * Resizable Event Block Component
+ */
+const EventBlock = memo(({
+  event,
+  type,
+  top,
+  height,
+  onClick,
+  onResizeStart,
+  onResizeEnd,
+  isResizing,
+  resizeHeight
+}) => {
   const colors = type === 'calendar' ? calendarEventColor : (importanceColors[event.importance] || importanceColors.normal);
+  const canResize = type === 'todo'; // Only todos can be resized
+  const displayHeight = isResizing ? resizeHeight : height;
+
+  const handleResizeMouseDown = (e) => {
+    if (!canResize) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onResizeStart?.(event, e);
+  };
 
   return (
     <div
-      className="absolute left-12 right-2 rounded-lg border-l-4 px-2 py-1 cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+      className="absolute left-12 right-2 rounded-lg border-l-4 px-2 py-1 cursor-pointer hover:shadow-md transition-shadow overflow-hidden group"
       style={{
         top: `${top}px`,
-        height: `${Math.max(height, 24)}px`,
+        height: `${Math.max(displayHeight, 24)}px`,
         backgroundColor: colors.bg,
         borderLeftColor: colors.border,
-        zIndex: type === 'calendar' ? 10 : 20
+        zIndex: isResizing ? 50 : (type === 'calendar' ? 10 : 20)
       }}
-      onClick={onClick}
+      onClick={(e) => {
+        if (!isResizing) onClick?.(e);
+      }}
     >
       <div className="flex items-center gap-1">
         {type === 'todo' && (
@@ -99,10 +143,21 @@ const EventBlock = memo(({ event, type, top, height, onClick }) => {
           {type === 'todo' ? event.title : event.subject}
         </span>
       </div>
-      {height >= 40 && (
+      {displayHeight >= 40 && (
         <div className="text-xs opacity-70 truncate" style={{ color: type === 'calendar' ? colors.text : colors.border }}>
           {type === 'calendar' && event.location ? event.location : ''}
-          {type === 'todo' && event.plannedHours ? `${event.plannedHours}h` : ''}
+          {type === 'todo' && (isResizing ? `${(displayHeight / HOUR_HEIGHT).toFixed(1)}h` : (event.plannedHours ? `${event.plannedHours}h` : ''))}
+        </div>
+      )}
+
+      {/* Resize handle - only for todos */}
+      {canResize && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-3 cursor-ns-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ backgroundColor: 'rgba(0,0,0,0.1)' }}
+          onMouseDown={handleResizeMouseDown}
+        >
+          <div className="w-8 h-1 rounded-full" style={{ backgroundColor: colors.border }} />
         </div>
       )}
     </div>
@@ -166,8 +221,16 @@ const CalendarDayView = ({
   selectedDate = new Date(),
   onDateChange,
   onConnectCalendar,
-  onTodoClick
+  onTodoClick,
+  onTodoResize,
+  hideHeader = false
 }) => {
+  // Resize state
+  const [resizingEvent, setResizingEvent] = useState(null);
+  const [resizeHeight, setResizeHeight] = useState(0);
+  const gridRef = useRef(null);
+  const resizeStartY = useRef(0);
+  const resizeStartHeight = useRef(0);
   // Memoized events for the selected date
   const { calendarEvents, todoEvents } = useMemo(() => {
     const selectedDateStr = selectedDate.toISOString().split('T')[0];
@@ -264,6 +327,62 @@ const CalendarDayView = ({
     onDateChange?.(new Date());
   };
 
+  // Resize handlers
+  const handleResizeStart = useCallback((event, mouseEvent) => {
+    setResizingEvent(event);
+    setResizeHeight(event.height);
+    resizeStartY.current = mouseEvent.clientY;
+    resizeStartHeight.current = event.height;
+  }, []);
+
+  const handleResizeMove = useCallback((e) => {
+    if (!resizingEvent) return;
+
+    const deltaY = e.clientY - resizeStartY.current;
+    const newHeight = Math.max(
+      HOUR_HEIGHT * 0.25, // Minimum 15 minutes
+      Math.min(
+        resizeStartHeight.current + deltaY,
+        (END_HOUR - START_HOUR - (resizingEvent.top / HOUR_HEIGHT)) * HOUR_HEIGHT // Max to end of day
+      )
+    );
+
+    // Snap to 15-minute increments
+    const snappedHeight = Math.round(newHeight / (HOUR_HEIGHT / 4)) * (HOUR_HEIGHT / 4);
+    setResizeHeight(snappedHeight);
+  }, [resizingEvent]);
+
+  const handleResizeEnd = useCallback(() => {
+    if (!resizingEvent) return;
+
+    // Calculate new duration in hours
+    const newDuration = snapToQuarter(resizeHeight / HOUR_HEIGHT);
+
+    // Only trigger update if duration actually changed
+    if (newDuration !== (resizingEvent.plannedHours || resizingEvent.planned_hours || 1)) {
+      onTodoResize?.(resizingEvent, newDuration);
+    }
+
+    setResizingEvent(null);
+    setResizeHeight(0);
+  }, [resizingEvent, resizeHeight, onTodoResize]);
+
+  // Global mouse event handlers for resize
+  useEffect(() => {
+    if (!resizingEvent) return;
+
+    const handleMouseMove = (e) => handleResizeMove(e);
+    const handleMouseUp = () => handleResizeEnd();
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingEvent, handleResizeMove, handleResizeEnd]);
+
   // Generate hour lines
   const hourLines = useMemo(() => {
     const lines = [];
@@ -276,9 +395,62 @@ const CalendarDayView = ({
   const connected = calendar?.data?.connected || false;
 
   return (
-    <div style={sectionStyles.card} className="space-y-3">
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div style={hideHeader ? {} : sectionStyles.card} className="space-y-3">
+      {/* Header - only show if not hidden */}
+      {!hideHeader && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={goToPreviousDay}
+              className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ChevronLeft size={20} className="text-gray-500" />
+            </button>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white min-w-[160px] text-center">
+              {formatDateHeader(selectedDate)}
+            </h2>
+            <button
+              onClick={goToNextDay}
+              className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ChevronRight size={20} className="text-gray-500" />
+            </button>
+            {!isToday && (
+              <button
+                onClick={goToToday}
+                className="ml-2 text-xs text-violet-600 dark:text-violet-400 hover:underline"
+              >
+                Today
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {connected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Calendar}
+                onClick={() => calendar.refetch()}
+                disabled={calendar.isFetching}
+              >
+                Refresh
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Calendar}
+                onClick={onConnectCalendar}
+              >
+                Connect Calendar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Date navigation for when header is hidden */}
+      {hideHeader && (
         <div className="flex items-center gap-2">
           <button
             onClick={goToPreviousDay}
@@ -286,9 +458,9 @@ const CalendarDayView = ({
           >
             <ChevronLeft size={20} className="text-gray-500" />
           </button>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white min-w-[160px] text-center">
+          <h3 className="text-base font-medium text-gray-900 dark:text-white min-w-[140px] text-center">
             {formatDateHeader(selectedDate)}
-          </h2>
+          </h3>
           <button
             onClick={goToNextDay}
             className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
@@ -304,29 +476,7 @@ const CalendarDayView = ({
             </button>
           )}
         </div>
-        <div className="flex gap-2">
-          {connected ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Calendar}
-              onClick={() => calendar.refetch()}
-              disabled={calendar.isFetching}
-            >
-              Refresh
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Calendar}
-              onClick={onConnectCalendar}
-            >
-              Connect Calendar
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Loading state */}
       {calendar.isFetching && (
@@ -362,8 +512,9 @@ const CalendarDayView = ({
 
       {/* Day View Grid */}
       <div
+        ref={gridRef}
         className="relative overflow-y-auto"
-        style={{ height: `${TOTAL_HOURS * HOUR_HEIGHT + 20}px` }}
+        style={{ height: `${TOTAL_HOURS * HOUR_HEIGHT + 20}px`, userSelect: resizingEvent ? 'none' : 'auto' }}
       >
         {/* Hour labels and lines */}
         {hourLines.map(hour => (
@@ -388,6 +539,9 @@ const CalendarDayView = ({
             top={event.top}
             height={event.height}
             onClick={() => event.type === 'todo' && onTodoClick?.(event)}
+            onResizeStart={handleResizeStart}
+            isResizing={resizingEvent?.id === event.id && event.type === 'todo'}
+            resizeHeight={resizingEvent?.id === event.id ? resizeHeight : event.height}
           />
         ))}
 

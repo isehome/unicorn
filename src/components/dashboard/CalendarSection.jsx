@@ -27,7 +27,7 @@ CalendarEvent.displayName = 'CalendarEvent';
  * - Refresh calendar data
  * - Handles loading and error states
  */
-const CalendarSection = ({ sectionStyles, calendar, onConnectCalendar }) => {
+const CalendarSection = ({ sectionStyles, calendar, onConnectCalendar, hideHeader = false }) => {
   // Memoized event time formatter
   const formatEventTime = useCallback((start, end) => {
     try {
@@ -56,35 +56,37 @@ const CalendarSection = ({ sectionStyles, calendar, onConnectCalendar }) => {
   }, [calendar.data]);
 
   return (
-    <div style={sectionStyles.card} className="space-y-3">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Today's Schedule</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Synced from Microsoft 365</p>
+    <div style={hideHeader ? {} : sectionStyles.card} className="space-y-3">
+      {!hideHeader && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Today's Schedule</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Synced from Microsoft 365</p>
+          </div>
+          <div className="flex gap-2">
+            {calendarData.connected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={Calendar}
+                onClick={() => calendar.refetch()}
+                disabled={calendar.isFetching}
+              >
+                Refresh
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Calendar}
+                onClick={onConnectCalendar}
+              >
+                Connect Calendar
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          {calendarData.connected ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon={Calendar}
-              onClick={() => calendar.refetch()}
-              disabled={calendar.isFetching}
-            >
-              Refresh
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon={Calendar}
-              onClick={onConnectCalendar}
-            >
-              Connect Calendar
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
       {calendar.error && (
         <p className="text-sm text-rose-500">{calendar.error.message}</p>

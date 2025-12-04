@@ -10,10 +10,23 @@ import { graphConfig } from '../config/authConfig';
 const getToday = () => {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  
+
   const end = new Date();
   end.setHours(23, 59, 59, 999);
-  
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+};
+
+const getDateRange = (date) => {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+
   return {
     start: start.toISOString(),
     end: end.toISOString(),
@@ -41,17 +54,64 @@ const mapGraphEvent = (event) => ({
   webLink: event.webLink || null,
 });
 
-export const fetchTodayEvents = async (authContext) => {
+export const fetchEventsForDate = async (authContext, date) => {
   try {
     let token = authContext?.accessToken;
-    
+
     if (!token) {
-      console.log('[Calendar] No access token available, attempting to acquire');
-      
       if (authContext?.acquireToken) {
         token = await authContext.acquireToken(false);
       }
-      
+      if (!token) return { connected: false, events: [], error: 'Not authenticated' };
+    }
+
+    const { start, end } = getDateRange(date);
+    const timezone = getTimeZone();
+
+    const url = new URL(graphConfig.graphCalendarEndpoint);
+    url.searchParams.set('startDateTime', start);
+    url.searchParams.set('endDateTime', end);
+    url.searchParams.set('$orderby', 'start/dateTime');
+    url.searchParams.set('$top', '50');
+    url.searchParams.set('$select', 'id,subject,start,end,location,isAllDay,organizer,responseStatus,webLink');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Prefer': `outlook.timezone="${timezone}"`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Handle token refresh logic if needed, or just fail for now to keep it simple
+        return { connected: false, events: [], error: 'Session expired' };
+      }
+      return { connected: true, events: [], error: 'Failed to fetch events' };
+    }
+
+    const data = await response.json();
+    const events = Array.isArray(data.value) ? data.value.map(mapGraphEvent) : [];
+
+    return { connected: true, events, error: null };
+  } catch (error) {
+    console.error('[Calendar] Fetch error:', error);
+    return { connected: false, events: [], error: error.message };
+  }
+};
+
+export const fetchTodayEvents = async (authContext) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token) {
+      console.log('[Calendar] No access token available, attempting to acquire');
+
+      if (authContext?.acquireToken) {
+        token = await authContext.acquireToken(false);
+      }
+
       if (!token) {
         return {
           connected: false,
@@ -63,7 +123,7 @@ export const fetchTodayEvents = async (authContext) => {
 
     const { start, end } = getToday();
     const timezone = getTimeZone();
-    
+
     const url = new URL(graphConfig.graphCalendarEndpoint);
     url.searchParams.set('startDateTime', start);
     url.searchParams.set('endDateTime', end);
@@ -83,13 +143,13 @@ export const fetchTodayEvents = async (authContext) => {
 
     if (response.status === 401) {
       console.warn('[Calendar] Token expired (401), attempting refresh');
-      
+
       if (authContext?.acquireToken) {
         const newToken = await authContext.acquireToken(false);
-        
+
         if (newToken) {
           console.log('[Calendar] Got new token, retrying request');
-          
+
           const retryResponse = await fetch(url.toString(), {
             headers: {
               'Authorization': `Bearer ${newToken}`,
@@ -97,19 +157,19 @@ export const fetchTodayEvents = async (authContext) => {
               'Content-Type': 'application/json',
             },
           });
-          
+
           if (retryResponse.ok) {
             const data = await retryResponse.json();
-            const events = Array.isArray(data.value) 
+            const events = Array.isArray(data.value)
               ? data.value.map(mapGraphEvent)
               : [];
-            
+
             console.log(`[Calendar] Successfully fetched ${events.length} events after token refresh`);
             return { connected: true, events, error: null };
           }
         }
       }
-      
+
       return {
         connected: false,
         events: [],
@@ -120,9 +180,9 @@ export const fetchTodayEvents = async (authContext) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[Calendar] Graph API error:', response.status, errorText);
-      
+
       let errorMessage = 'Unable to fetch calendar events';
-      
+
       if (response.status === 403) {
         errorMessage = 'Calendar access denied. Please check permissions in Azure AD.';
       } else if (response.status === 429) {
@@ -130,7 +190,7 @@ export const fetchTodayEvents = async (authContext) => {
       } else if (response.status >= 500) {
         errorMessage = 'Microsoft services are temporarily unavailable.';
       }
-      
+
       return {
         connected: true,
         events: [],
@@ -142,18 +202,18 @@ export const fetchTodayEvents = async (authContext) => {
     const events = Array.isArray(data.value)
       ? data.value.map(mapGraphEvent)
       : [];
-    
+
     console.log(`[Calendar] Successfully fetched ${events.length} events`);
-    
+
     return {
       connected: true,
       events,
       error: null,
     };
-    
+
   } catch (error) {
     console.error('[Calendar] Fetch error:', error);
-    
+
     if (error.message?.includes('Failed to fetch') || error.message?.includes('Network')) {
       return {
         connected: false,
@@ -161,7 +221,7 @@ export const fetchTodayEvents = async (authContext) => {
         error: 'Network error. Please check your connection.',
       };
     }
-    
+
     return {
       connected: false,
       events: [],
@@ -177,7 +237,7 @@ export const hasCalendarConnection = (authContext) => {
 export const getCalendarStatus = (authContext) => {
   const connected = hasCalendarConnection(authContext);
   const userEmail = authContext?.user?.email || null;
-  
+
   if (!connected) {
     return {
       connected: false,
@@ -185,7 +245,7 @@ export const getCalendarStatus = (authContext) => {
       error: 'Calendar not connected. Please sign in.',
     };
   }
-  
+
   return {
     connected: true,
     userEmail,
@@ -197,9 +257,10 @@ export const getCalendarStatus = (authContext) => {
  * Create a calendar event from a todo item
  * @param {Object} authContext - Auth context with token
  * @param {Object} todo - Todo item with title, doBy, plannedHours, description
+ * @param {Array} attendees - Optional list of attendees [{ email, name }]
  * @returns {Object} { success: boolean, eventId?: string, error?: string }
  */
-export const createCalendarEvent = async (authContext, todo) => {
+export const createCalendarEvent = async (authContext, todo, attendees = []) => {
   try {
     let token = authContext?.accessToken;
 
@@ -253,6 +314,17 @@ export const createCalendarEvent = async (authContext, todo) => {
       categories: ['Todo'], // Tag as a todo item
       showAs: 'busy',
     };
+
+    // Add attendees if provided
+    if (attendees && attendees.length > 0) {
+      eventBody.attendees = attendees.map(attendee => ({
+        emailAddress: {
+          address: attendee.email,
+          name: attendee.name || attendee.email
+        },
+        type: 'required'
+      }));
+    }
 
     console.log('[Calendar] Creating event:', eventBody);
 
@@ -315,7 +387,7 @@ export const createCalendarEvent = async (authContext, todo) => {
  * Update an existing calendar event
  * @param {Object} authContext - Auth context with token
  * @param {string} eventId - Microsoft Graph event ID
- * @param {Object} updates - Fields to update (title, doBy, plannedHours, etc.)
+ * @param {Object} updates - Fields to update (title, doBy, plannedHours, attendees, etc.)
  * @returns {Object} { success: boolean, error?: string }
  */
 export const updateCalendarEvent = async (authContext, eventId, updates) => {
@@ -369,6 +441,17 @@ export const updateCalendarEvent = async (authContext, eventId, updates) => {
         contentType: 'text',
         content: updates.description,
       };
+    }
+
+    // Update attendees if provided
+    if (updates.attendees) {
+      patchBody.attendees = updates.attendees.map(attendee => ({
+        emailAddress: {
+          address: attendee.email,
+          name: attendee.name || attendee.email
+        },
+        type: 'required'
+      }));
     }
 
     const response = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}`, {
@@ -443,7 +526,7 @@ export const deleteCalendarEvent = async (authContext, eventId) => {
 export const fetchUserProfile = async (authContext) => {
   try {
     const token = authContext?.accessToken;
-    
+
     if (!token) {
       return {
         success: false,
@@ -463,12 +546,12 @@ export const fetchUserProfile = async (authContext) => {
     }
 
     const profile = await response.json();
-    
+
     return {
       success: true,
       profile,
     };
-    
+
   } catch (error) {
     console.error('[Calendar] Failed to fetch user profile:', error);
     return {

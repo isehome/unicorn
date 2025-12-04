@@ -14,6 +14,24 @@ import {
 } from '../config/authConfig';
 import { supabase } from '../lib/supabase';
 
+// Clear stale MSAL state on page load if hash is empty but state exists
+// This prevents the hash_empty_error from occurring
+(() => {
+  const hasAuthHash = window.location.hash &&
+    (window.location.hash.includes('code=') ||
+     window.location.hash.includes('id_token=') ||
+     window.location.hash.includes('access_token='));
+
+  if (!hasAuthHash) {
+    // Check if there's stale interaction state
+    const interactionStatus = localStorage.getItem('msal.interaction.status');
+    if (interactionStatus) {
+      console.log('[Auth] Clearing stale MSAL interaction state');
+      localStorage.removeItem('msal.interaction.status');
+    }
+  }
+})();
+
 // Create MSAL instance
 const msalInstance = new PublicClientApplication(msalConfig);
 

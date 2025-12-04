@@ -6,10 +6,13 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
 import { useTechnicianProjects } from '../hooks/useTechnicianProjects';
 import { useTimeTracking } from '../hooks/useTimeTracking';
-import { Loader } from 'lucide-react';
+import { projectTodosService } from '../services/supabaseService';
+import { Loader, Calendar as CalendarIcon, List } from 'lucide-react';
 import CalendarSection from './dashboard/CalendarSection';
+import CalendarDayView from './dashboard/CalendarDayView';
 import DashboardStats from './dashboard/DashboardStats';
 import ProjectsList from './dashboard/ProjectsList';
+import Button from './ui/Button';
 
 /**
  * TechnicianDashboardOptimized - Main dashboard for technicians
@@ -32,10 +35,16 @@ const TechnicianDashboardOptimized = () => {
   const { login, user } = authContext;
 
   // Fetch dashboard data (projects, calendar, counts)
-  const { projects, userProjectIds, calendar, counts, isLoading, error } = useDashboardData(user?.email, authContext);
+  const { projects, userProjectIds, calendar, counts, userTodos, isLoading, error } = useDashboardData(user?.email, authContext);
 
   // Get user ID for time logs
   const userId = user?.email || 'anonymous';
+
+  // View mode state for calendar (list vs day)
+  const [viewMode, setViewMode] = React.useState('list');
+
+  // Selected date for day view
+  const [selectedDate, setSelectedDate] = React.useState(new Date());
 
   // Custom hook: Project filtering and milestone/owner loading
   const {
@@ -80,6 +89,17 @@ const TechnicianDashboardOptimized = () => {
     navigate(`/project/${projectId}?action=new-issue`);
   }, [navigate]);
 
+  // Handle todo resize from calendar day view
+  const handleTodoResize = useCallback(async (todo, newDuration) => {
+    try {
+      await projectTodosService.update(todo.id, { planned_hours: newDuration });
+      // Refetch todos to update the display
+      userTodos.refetch();
+    } catch (err) {
+      console.error('Failed to update todo duration:', err);
+    }
+  }, [userTodos]);
+
   // Loading state
   if (isLoading) {
     return (
@@ -91,12 +111,92 @@ const TechnicianDashboardOptimized = () => {
 
   return (
     <div className="w-full px-3 sm:px-4 py-6 space-y-6">
-      {/* Calendar Section */}
-      <CalendarSection
-        sectionStyles={sectionStyles}
-        calendar={calendar}
-        onConnectCalendar={handleConnectCalendar}
-      />
+      {/* Calendar Section with Toggle */}
+      <div style={sectionStyles.card} className="space-y-3">
+        {/* Header with title and controls */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {viewMode === 'list' ? "Today's Schedule" : 'Day View'}
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {viewMode === 'list' ? 'Synced from Microsoft 365' : 'Calendar events & todos'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* View Toggle */}
+            <div className="flex bg-zinc-100 dark:bg-zinc-800 rounded-lg p-1 border border-zinc-200 dark:border-zinc-700">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'list'
+                    ? 'bg-white dark:bg-zinc-600 shadow-sm text-violet-600 dark:text-violet-400'
+                    : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
+                  }`}
+                title="List View"
+              >
+                <List size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode('day')}
+                className={`p-1.5 rounded-md transition-colors ${viewMode === 'day'
+                    ? 'bg-white dark:bg-zinc-600 shadow-sm text-violet-600 dark:text-violet-400'
+                    : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
+                  }`}
+                title="Day View"
+              >
+                <CalendarIcon size={16} />
+              </button>
+            </div>
+            {/* Refresh/Connect button */}
+            {calendar?.data?.connected ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={CalendarIcon}
+                onClick={() => calendar.refetch()}
+                disabled={calendar.isFetching}
+              >
+                Refresh
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={CalendarIcon}
+                onClick={handleConnectCalendar}
+              >
+                Connect
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Content */}
+        {viewMode === 'list' ? (
+          <CalendarSection
+            sectionStyles={sectionStyles}
+            calendar={calendar}
+            onConnectCalendar={handleConnectCalendar}
+            hideHeader={true}
+          />
+        ) : (
+          <CalendarDayView
+            sectionStyles={sectionStyles}
+            calendar={calendar}
+            todos={userTodos?.data || []}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            onConnectCalendar={handleConnectCalendar}
+            hideHeader={true}
+            onTodoClick={(todo) => {
+              if (todo.projectId) {
+                navigate(`/project/${todo.projectId}?todo=${todo.id}`);
+              }
+            }}
+            onTodoResize={handleTodoResize}
+          />
+        )}
+      </div>
 
       {/* Stats Cards */}
       <DashboardStats

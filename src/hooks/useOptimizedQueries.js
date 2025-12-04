@@ -3,9 +3,10 @@ import { queryKeys, invalidateRelatedQueries } from '../lib/queryClient';
 import {
   contactsService,
   projectsService,
-  issuesService,
   projectStakeholdersService,
+  issuesService,
   projectTodosService,
+  todoStakeholdersService,
   stakeholderRolesService
 } from '../services/supabaseService';
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
@@ -124,7 +125,7 @@ export const useWireDropsOptimized = (projectId) => {
 // Mutation for updating todos with cache invalidation
 export const useTodoMutation = () => {
   const queryClient = useQueryClient();
-  
+
   return {
     create: useMutation({
       mutationFn: ({ projectId, title }) => projectTodosService.create(projectId, title),
@@ -132,18 +133,18 @@ export const useTodoMutation = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.projectTodos(projectId) });
       },
     }),
-    
+
     toggle: useMutation({
       mutationFn: ({ id, completed }) => projectTodosService.toggleCompletion(id, completed),
       onMutate: async ({ id, completed, projectId }) => {
         // Optimistic update
         await queryClient.cancelQueries({ queryKey: queryKeys.projectTodos(projectId) });
         const previousTodos = queryClient.getQueryData(queryKeys.projectTodos(projectId));
-        
+
         queryClient.setQueryData(queryKeys.projectTodos(projectId), (old = []) =>
           old.map(todo => todo.id === id ? { ...todo, completed } : todo)
         );
-        
+
         return { previousTodos };
       },
       onError: (err, { projectId }, context) => {
@@ -154,7 +155,7 @@ export const useTodoMutation = () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.projectTodos(projectId) });
       },
     }),
-    
+
     delete: useMutation({
       mutationFn: ({ id }) => projectTodosService.remove(id),
       onSuccess: (data, { projectId }) => {
@@ -197,70 +198,106 @@ export const prefetchProjectData = async (queryClient, projectId) => {
       staleTime: 5 * 60 * 1000,
     }),
   ];
-  
+
   await Promise.all(promises);
+};
+
+export const useUserTodosOptimized = (userEmail) => {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['user-todos', userEmail],
+    queryFn: () => projectTodosService.getAllForUser(userEmail),
+    enabled: !!userEmail,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    cacheTime: 1000 * 60 * 30, // 30 minutes
+  });
+
+  return {
+    data: query.data || [],
+    isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch
+  };
+};
+
+export const useTodoStakeholders = (todoId) => {
+  const queryClient = useQueryClient();
+
+  const query = useQuery({
+    queryKey: ['todo-stakeholders', todoId],
+    queryFn: () => todoStakeholdersService.getForTodo(todoId),
+    enabled: !!todoId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  return {
+    data: query.data || [],
+    isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch
+  };
 };
 
 // Combined dashboard data hook for reduced requests
 export const useDashboardData = (userEmail, authContext) => {
-  const projectsQuery = useProjectsOptimized();
-  const userProjectsQuery = useUserProjectsOptimized(userEmail);
-
-  // Load calendar AFTER projects load (lazy loading for faster initial render)
-  const calendarQuery = useCalendarEventsOptimized(authContext, {
-    enabled: !projectsQuery.isLoading && !userProjectsQuery.isLoading
+  const { data: projects, isLoading: projectsLoading } = useQuery({
+    queryKey: ['projects-list'],
+    queryFn: projectsService.getAll,
+    staleTime: 1000 * 60 * 5
   });
-  
-  // Batch load todo and issue counts
-  const countsQuery = useQuery({
+
+  const { data: userProjectIds = [] } = useQuery({
+    queryKey: ['user-project-ids', userEmail],
+    queryFn: () => projectStakeholdersService.getInternalProjectIdsByEmail(userEmail),
+    enabled: !!userEmail,
+    staleTime: 1000 * 60 * 15
+  });
+
+  const calendar = useCalendarEventsOptimized(authContext);
+
+  // Use the new hook for user todos
+  const userTodos = useUserTodosOptimized(userEmail);
+
+  const counts = useQuery({
     queryKey: ['dashboard-counts', userEmail],
     queryFn: async () => {
-      if (!userEmail || !userProjectsQuery.data?.length) {
-        return { todos: { open: 0, total: 0 }, issues: { open: 0, blocked: 0, total: 0 } };
-      }
-      
-      const [todosRes, issuesRes] = await Promise.all([
-        supabase.from('project_todos')
-          .select('id,is_complete,project_id')
-          .in('project_id', userProjectsQuery.data),
-        supabase.from('issues')
-          .select('id,status,project_id')
-          .in('project_id', userProjectsQuery.data)
+      if (!userEmail) return { openIssues: 0, openTodos: 0 };
+
+      // We can now use the length of userTodos if available, or fetch counts separately
+      // For now, keeping the count logic but it could be optimized to use userTodos.data.length
+      const projectIds = await projectStakeholdersService.getInternalProjectIdsByEmail(userEmail);
+
+      if (!projectIds.length) return { openIssues: 0, openTodos: 0 };
+
+      const [issuesCount, todosCount] = await Promise.all([
+        supabase
+          .from('issues')
+          .select('id', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .neq('status', 'resolved')
+          .then(res => res.count || 0),
+        supabase
+          .from('project_todos')
+          .select('id', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .eq('is_complete', false)
+          .then(res => res.count || 0)
       ]);
-      
-      const todos = Array.isArray(todosRes?.data) ? todosRes.data : [];
-      const issuesAll = Array.isArray(issuesRes?.data) ? issuesRes.data : [];
-      
-      return {
-        todos: {
-          open: todos.filter(t => !t.is_complete).length,
-          total: todos.length
-        },
-        issues: {
-          open: issuesAll.filter(i => (i.status || '').toLowerCase() === 'open').length,
-          blocked: issuesAll.filter(i => (i.status || '').toLowerCase() === 'blocked').length,
-          total: issuesAll.length
-        }
-      };
+      return { openIssues: issuesCount, openTodos: todosCount };
     },
-    enabled: !!userEmail && !!userProjectsQuery.data?.length && !!supabase,
+    enabled: !!userEmail,
     staleTime: 3 * 60 * 1000,
   });
-  
-  // Determine if counts query should be considered loading
-  // If the query is disabled (no user projects), it's not loading - it's just idle
-  const countsEnabled = !!userEmail && !!userProjectsQuery.data?.length && !!supabase;
-  const countsIsLoading = countsEnabled && countsQuery.isLoading;
-
-  // Calendar is lazy loaded - only count it as loading if it's actually fetching
-  const calendarIsLoading = calendarQuery.isFetching;
 
   return {
-    projects: projectsQuery,
-    userProjectIds: userProjectsQuery,
-    calendar: calendarQuery,
-    counts: countsQuery,
-    isLoading: projectsQuery.isLoading || userProjectsQuery.isLoading || calendarIsLoading || countsIsLoading,
-    error: projectsQuery.error || userProjectsQuery.error || calendarQuery.error || countsQuery.error
+    projects: { data: projects, isLoading: projectsLoading },
+    userProjectIds: { data: userProjectIds },
+    calendar,
+    userTodos,
+    counts: {
+      data: counts.data,
+      isLoading: counts.isLoading
+    }
   };
 };

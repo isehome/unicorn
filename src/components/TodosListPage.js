@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectStakeholdersService, projectTodosService } from '../services/supabaseService';
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
-import { CheckSquare, Square, Calendar, List } from 'lucide-react';
+import { CheckSquare, Square, Calendar, List, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import TodoDetailModal from './TodoDetailModal';
 import CalendarDayView from './dashboard/CalendarDayView';
@@ -54,6 +54,12 @@ const TodosListPage = () => {
   const [viewMode, setViewMode] = useState('calendar'); // 'list' | 'calendar'
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [calendarData, setCalendarData] = useState({ data: null, isFetching: false, error: null });
+
+  // Add todo state
+  const [showAddTodo, setShowAddTodo] = useState(false);
+  const [newTodoTitle, setNewTodoTitle] = useState('');
+  const [newTodoProject, setNewTodoProject] = useState('');
+  const [addingTodo, setAddingTodo] = useState(false);
 
   // Fetch calendar events
   const fetchCalendar = useCallback(async () => {
@@ -237,6 +243,18 @@ const TodosListPage = () => {
     }
   };
 
+  // Handle todo resize from calendar day view (drag to change duration)
+  const handleTodoResize = async (todo, newDuration) => {
+    try {
+      await projectTodosService.update(todo.id, { planned_hours: newDuration });
+      setTodos(prev => prev.map(t => (
+        t.id === todo.id ? { ...t, plannedHours: newDuration, planned_hours: newDuration } : t
+      )));
+    } catch (e) {
+      console.warn('Failed to update todo duration', e);
+    }
+  };
+
   const handleOpenTodoDetail = (todo) => {
     setSelectedTodo(todo);
     setShowTodoModal(true);
@@ -361,6 +379,34 @@ const TodosListPage = () => {
     }
   };
 
+  const handleAddTodo = async () => {
+    if (!newTodoTitle.trim() || !newTodoProject) return;
+    try {
+      setAddingTodo(true);
+      const created = await projectTodosService.create(newTodoProject, newTodoTitle.trim());
+      if (created) {
+        setTodos(prev => [{
+          ...created,
+          completed: false,
+          dueBy: null,
+          doBy: null,
+          doByTime: null,
+          plannedHours: null,
+          calendarEventId: null,
+          sortOrder: 0,
+          importance: 'normal'
+        }, ...prev]);
+      }
+      setNewTodoTitle('');
+      setNewTodoProject('');
+      setShowAddTodo(false);
+    } catch (err) {
+      setError(err.message || 'Failed to create todo');
+    } finally {
+      setAddingTodo(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${pageClasses}`}>
@@ -417,8 +463,64 @@ const TodosListPage = () => {
                   {showCompleted ? 'Hide completed' : 'Show completed'}
                 </button>
               )}
+              <button
+                onClick={() => setShowAddTodo(true)}
+                className="px-3 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <Plus size={16} />
+                Add Todo
+              </button>
             </div>
           </div>
+
+          {/* Add Todo Form */}
+          {showAddTodo && (
+            <div className="mt-4 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="Todo title..."
+                  value={newTodoTitle}
+                  onChange={(e) => setNewTodoTitle(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddTodo()}
+                  className="flex-1 px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  style={styles.input}
+                  autoFocus
+                />
+                <select
+                  value={newTodoProject}
+                  onChange={(e) => setNewTodoProject(e.target.value)}
+                  className="px-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  style={styles.input}
+                >
+                  <option value="">Select project...</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name || p.id}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddTodo}
+                    disabled={addingTodo || !newTodoTitle.trim() || !newTodoProject}
+                    className="px-4 py-2 rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+                  >
+                    {addingTodo ? 'Adding...' : 'Add'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowAddTodo(false);
+                      setNewTodoTitle('');
+                      setNewTodoProject('');
+                    }}
+                    className="px-4 py-2 rounded-xl border text-sm font-medium transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                    style={{ borderColor: styles.card.borderColor, color: styles.textSecondary.color }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -441,6 +543,7 @@ const TodosListPage = () => {
               }
             }}
             onTodoClick={(todo) => handleOpenTodoDetail(todo)}
+            onTodoResize={handleTodoResize}
           />
         )}
 
