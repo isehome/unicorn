@@ -83,8 +83,8 @@ class MilestoneService {
 
   /**
    * Calculate Prewire Orders percentage
-   * NEW METHOD: Counts parts accounted for (on hand + ordered from submitted POs)
-   * 100% when ALL required prewire parts are accounted for
+   * Counts ONLY parts with submitted POs (NOT inventory on hand)
+   * 100% when ALL required prewire parts have been ordered
    */
   async calculatePrewireOrdersPercentage(projectId) {
     try {
@@ -95,8 +95,7 @@ class MilestoneService {
           id,
           planned_quantity,
           global_part:global_part_id (
-            required_for_prewire,
-            quantity_on_hand
+            required_for_prewire
           )
         `)
         .eq('project_id', projectId)
@@ -142,30 +141,30 @@ class MilestoneService {
         return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
       }
 
-      // Calculate parts accounted for (on hand + ordered from submitted POs)
+      // Calculate parts ORDERED (from submitted POs only - NOT inventory on hand)
+      // The "Orders" gauge should only show actual orders, not inventory
       let totalPartsRequired = 0;
-      let partsAccountedFor = 0;
+      let partsOrdered = 0;
 
       prewireItems.forEach(item => {
         const required = item.planned_quantity || 0;
-        const onHand = item.global_part?.quantity_on_hand || 0;
         const ordered = submittedPOMap.get(item.id) || 0;
 
         totalPartsRequired += required;
-        // Count parts we have OR have ordered (but don't double count)
-        partsAccountedFor += Math.min(required, onHand + ordered);
+        // Only count parts that have been ordered (capped at required)
+        partsOrdered += Math.min(required, ordered);
       });
 
       const percentage = totalPartsRequired > 0
-        ? Math.round((partsAccountedFor / totalPartsRequired) * 100)
+        ? Math.round((partsOrdered / totalPartsRequired) * 100)
         : 0;
 
       return {
         percentage,
         itemCount: prewireItems.length,
         totalItems: prewireItems.length,
-        partsAccountedFor, // NEW: actual parts count
-        totalParts: totalPartsRequired // NEW: total parts required
+        partsAccountedFor: partsOrdered, // Parts with submitted orders
+        totalParts: totalPartsRequired
       };
     } catch (error) {
       console.error('Error calculating prewire orders percentage:', error);
@@ -289,8 +288,8 @@ class MilestoneService {
 
   /**
    * Calculate Trim Orders percentage
-   * NEW METHOD: Counts parts accounted for (on hand + ordered from submitted POs)
-   * 100% when ALL required trim parts are accounted for
+   * Counts ONLY parts with submitted POs (NOT inventory on hand)
+   * 100% when ALL required trim parts have been ordered
    */
   async calculateTrimOrdersPercentage(projectId) {
     try {
@@ -355,41 +354,35 @@ class MilestoneService {
         return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
       }
 
-      // Calculate parts accounted for (on hand + ordered from submitted POs)
+      // Calculate parts ORDERED (from submitted POs only - NOT inventory on hand)
+      // The "Orders" gauge should only show actual orders, not inventory
       let totalPartsRequired = 0;
-      let partsAccountedFor = 0;
-      let totalOnHand = 0;
-      let totalOrdered = 0;
+      let partsOrdered = 0;
 
       trimItems.forEach(item => {
         const required = item.planned_quantity || 0;
-        const onHand = item.global_part?.quantity_on_hand || 0;
         const ordered = submittedPOMap.get(item.id) || 0;
 
         totalPartsRequired += required;
-        totalOnHand += Math.min(required, onHand);
-        totalOrdered += ordered;
-        // Count parts we have OR have ordered (but don't double count)
-        partsAccountedFor += Math.min(required, onHand + ordered);
+        // Only count parts that have been ordered (capped at required)
+        partsOrdered += Math.min(required, ordered);
       });
 
       console.log('[milestoneService] Trim orders breakdown:', {
         totalPartsRequired,
-        totalOnHand,
-        totalOrdered,
-        partsAccountedFor
+        partsOrdered
       });
 
       const percentage = totalPartsRequired > 0
-        ? Math.round((partsAccountedFor / totalPartsRequired) * 100)
+        ? Math.round((partsOrdered / totalPartsRequired) * 100)
         : 0;
 
       return {
         percentage,
         itemCount: trimItems.length,
         totalItems: trimItems.length,
-        partsAccountedFor, // NEW: actual parts count
-        totalParts: totalPartsRequired // NEW: total parts required
+        partsAccountedFor: partsOrdered, // Parts with submitted orders
+        totalParts: totalPartsRequired
       };
     } catch (error) {
       console.error('Error calculating trim orders percentage:', error);
