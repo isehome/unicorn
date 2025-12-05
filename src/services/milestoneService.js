@@ -1206,7 +1206,8 @@ class MilestoneService {
         .eq('milestone_type', 'prewire_prep')
         .maybeSingle();
 
-      const prewireCurrentlyComplete = currentPrewireMilestone?.actual_date !== null;
+      // Check completed_manually since that's what the UI displays as "Completed"
+      const prewireCurrentlyComplete = currentPrewireMilestone?.completed_manually === true;
 
       if (prewireConditionsMet && !prewireCurrentlyComplete) {
         // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
@@ -1278,7 +1279,8 @@ class MilestoneService {
         .eq('milestone_type', 'trim_prep')
         .maybeSingle();
 
-      const trimCurrentlyComplete = currentTrimMilestone?.actual_date !== null;
+      // Check completed_manually since that's what the UI displays as "Completed"
+      const trimCurrentlyComplete = currentTrimMilestone?.completed_manually === true;
 
       if (trimConditionsMet && !trimCurrentlyComplete) {
         // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
