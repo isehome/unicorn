@@ -135,13 +135,13 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
 
   const loadReceivingIssues = async () => {
     try {
-      // Load all receiving issues with project info and creator info
+      // Load all receiving issues with project info
+      // Note: creator join removed - foreign key relationship doesn't exist
       const { data, error } = await supabase
         .from('issues')
         .select(`
           *,
-          project:projects(id, name, project_number),
-          creator:profiles!issues_created_by_fkey(full_name, email)
+          project:projects(id, name, project_number)
         `)
         .like('title', 'Receiving Issue:%')
         .order('created_at', { ascending: false });

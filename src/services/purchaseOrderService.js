@@ -248,14 +248,16 @@ class PurchaseOrderService {
         .select(`
           id,
           supplier_id,
-          supplier:suppliers(name)
+          supplier:suppliers(name, is_internal_inventory)
         `)
         .eq('id', poId)
         .single();
 
       if (poDetailsError) throw poDetailsError;
 
-      const isInventoryPO = poDetails?.supplier?.name === 'Internal Inventory';
+      // Use the is_internal_inventory flag (preferred) or fall back to name matching for backward compatibility
+      const isInventoryPO = poDetails?.supplier?.is_internal_inventory === true ||
+        poDetails?.supplier?.name === 'Internal Inventory';
       console.log(`[purchaseOrderService] Submitting PO ${poId}, isInventoryPO: ${isInventoryPO}`);
 
       // Update the PO status
@@ -798,27 +800,42 @@ class PurchaseOrderService {
   }
 
   /**
-   * Ensure "Inventory" supplier exists, create if not
+   * Ensure internal inventory supplier exists, create if not
    * Returns the inventory supplier record
+   * Looks up by is_internal_inventory flag first, then by name for backward compatibility
    */
   async ensureInventorySupplier() {
     try {
-      // Check if inventory supplier already exists
-      const { data: existing, error: searchError } = await supabase
+      // First, try to find by the is_internal_inventory flag (preferred method)
+      let { data: existing, error: searchError } = await supabase
         .from('suppliers')
         .select('*')
-        .eq('name', 'Internal Inventory')
+        .eq('is_internal_inventory', true)
         .maybeSingle();
 
       if (searchError && searchError.code !== 'PGRST116') {
         throw searchError;
       }
 
+      // Fall back to name matching for backward compatibility (before migration)
+      if (!existing) {
+        const { data: byName, error: nameError } = await supabase
+          .from('suppliers')
+          .select('*')
+          .eq('name', 'Internal Inventory')
+          .maybeSingle();
+
+        if (nameError && nameError.code !== 'PGRST116') {
+          throw nameError;
+        }
+        existing = byName;
+      }
+
       if (existing) {
         return existing;
       }
 
-      // Create inventory supplier
+      // Create inventory supplier with the flag set
       const { data: newSupplier, error: createError } = await supabase
         .from('suppliers')
         .insert([{
@@ -834,6 +851,7 @@ class PurchaseOrderService {
           country: 'USA',
           payment_terms: 'Internal',
           is_active: true,
+          is_internal_inventory: true,
           notes: 'System-generated supplier for internal inventory pulls'
         }])
         .select()

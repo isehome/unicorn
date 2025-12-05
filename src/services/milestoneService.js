@@ -731,148 +731,22 @@ class MilestoneService {
    */
   async getAllPercentagesOptimized(projectId) {
     try {
-      // Try to fetch from materialized view first
-      const { data, error } = await supabase
-        .from('project_milestone_percentages')
-        .select('*')
-        .eq('project_id', projectId)
-        .single();
-
-      if (error) {
-        // View doesn't exist or other error - fall back to calculation
-        console.warn('[Milestone] View not available, falling back to calculation:', error.message);
-        return this.calculateAllPercentages(projectId);
-      }
-
-      if (!data) {
-        // No data in view - fall back to calculation
-        console.warn('[Milestone] No data in view for project, calculating...');
-        return this.calculateAllPercentages(projectId);
-      }
-
-      // Transform view data to match expected format
-      const result = {
-        planning_design: data.planning_design_percentage,
-        prewire_orders: {
-          percentage: data.prewire_orders_percentage,
-          itemCount: data.prewire_orders_count, // Legacy
-          totalItems: data.prewire_orders_total, // Legacy
-          partsAccountedFor: data.prewire_orders_count, // NEW: parts count
-          totalParts: data.prewire_orders_total // NEW: total parts
-        },
-        prewire_receiving: {
-          percentage: data.prewire_receiving_percentage,
-          itemCount: data.prewire_receiving_count,
-          totalItems: data.prewire_receiving_total
-        },
-        prewire: data.prewire_stages_percentage,
-        prewire_phase: {
-          percentage: data.prewire_phase_percentage,
-          orders: {
-            percentage: data.prewire_orders_percentage,
-            itemCount: data.prewire_orders_count,
-            totalItems: data.prewire_orders_total,
-            partsAccountedFor: data.prewire_orders_count,
-            totalParts: data.prewire_orders_total
-          },
-          receiving: {
-            percentage: data.prewire_receiving_percentage,
-            itemCount: data.prewire_receiving_count,
-            totalItems: data.prewire_receiving_total
-          },
-          stages: data.prewire_stages_percentage
-        },
-        trim_orders: {
-          percentage: data.trim_orders_percentage,
-          itemCount: data.trim_orders_count, // Legacy
-          totalItems: data.trim_orders_total, // Legacy
-          partsAccountedFor: data.trim_orders_count, // NEW: parts count
-          totalParts: data.trim_orders_total // NEW: total parts
-        },
-        trim_receiving: {
-          percentage: data.trim_receiving_percentage,
-          itemCount: data.trim_receiving_count,
-          totalItems: data.trim_receiving_total
-        },
-        trim: data.trim_stages_percentage,
-        trim_phase: {
-          percentage: data.trim_phase_percentage,
-          orders: {
-            percentage: data.trim_orders_percentage,
-            itemCount: data.trim_orders_count,
-            totalItems: data.trim_orders_total,
-            partsAccountedFor: data.trim_orders_count,
-            totalParts: data.trim_orders_total
-          },
-          receiving: {
-            percentage: data.trim_receiving_percentage,
-            itemCount: data.trim_receiving_count,
-            totalItems: data.trim_receiving_total
-          },
-          stages: data.trim_stages_percentage
-        },
-        commissioning: {
-          percentage: data.commissioning_percentage,
-          itemCount: data.commissioning_count,
-          totalItems: data.commissioning_total
-        },
-        // Legacy compatibility
-        prewire_prep: Math.round((data.prewire_orders_percentage + data.prewire_receiving_percentage) / 2),
-        trim_prep: Math.round((data.trim_orders_percentage + data.trim_receiving_percentage) / 2),
-        // Metadata
-        _cachedAt: data.last_calculated_at,
-        _fromCache: true
-      };
-
-      // Stage percentages (prewire/trim) can change more frequently than the materialized view refresh.
-      // Recalculate them live so we always show the latest install progress.
-      try {
-        const [freshPrewire, freshTrim] = await Promise.all([
-          this.calculatePrewirePercentage(projectId),
-          this.calculateTrimPercentage(projectId)
-        ]);
-
-        if (typeof freshPrewire === 'number' && result.prewire !== freshPrewire) {
-          result.prewire = freshPrewire;
-          result.prewire_phase = {
-            ...result.prewire_phase,
-            stages: freshPrewire,
-            percentage: Math.round(
-              (result.prewire_phase.orders.percentage * 0.25) +
-              (result.prewire_phase.receiving.percentage * 0.25) +
-              (freshPrewire * 0.50)
-            )
-          };
-          result._fromCache = false;
-        }
-
-        if (typeof freshTrim === 'number' && result.trim !== freshTrim) {
-          result.trim = freshTrim;
-          result.trim_phase = {
-            ...result.trim_phase,
-            stages: freshTrim,
-            percentage: Math.round(
-              (result.trim_phase.orders.percentage * 0.25) +
-              (result.trim_phase.receiving.percentage * 0.25) +
-              (freshTrim * 0.50)
-            )
-          };
-          result._fromCache = false;
-        }
-      } catch (stageError) {
-        console.warn('[Milestone] Failed to refresh stage percentages from live data:', stageError);
-      }
-
-      return result;
+      // IMPORTANT: Always use direct calculation for accuracy
+      // The materialized view has known issues:
+      // 1. It includes inventory in "orders" count (should only count submitted POs)
+      // 2. It doesn't have refresh triggers for PO deletion or status→draft
+      // Direct calculation ensures gauges show real-time accurate data
+      console.log('[Milestone] Using direct calculation for accurate data');
+      return this.calculateAllPercentages(projectId);
     } catch (error) {
-      console.error('[Milestone] Error fetching from view, falling back:', error);
+      console.error('[Milestone] Error calculating percentages:', error);
       return this.calculateAllPercentages(projectId);
     }
   }
 
   /**
    * Get pre-calculated milestones for MULTIPLE projects (batch)
-   * SUPER OPTIMIZED: One query for all projects instead of 10+ per project
+   * Uses direct calculation for accuracy (materialized view has known issues)
    *
    * @param {string[]} projectIds - Array of project UUIDs
    * @returns {Promise<Object>} Map of projectId → milestone percentages
@@ -883,97 +757,15 @@ class MilestoneService {
         return {};
       }
 
-      // Fetch all projects in one query
-      const { data, error } = await supabase
-        .from('project_milestone_percentages')
-        .select('*')
-        .in('project_id', projectIds);
-
-      if (error) {
-        console.warn('[Milestone] Batch view query failed, falling back:', error.message);
-        // Fall back to individual calculations
-        const results = {};
-        await Promise.all(projectIds.map(async (projectId) => {
-          results[projectId] = await this.calculateAllPercentages(projectId);
-        }));
-        return results;
-      }
-
-      // Transform to map
+      // IMPORTANT: Use direct calculation for accuracy
+      // The materialized view has known issues:
+      // 1. It includes inventory in "orders" count (should only count submitted POs)
+      // 2. It doesn't have refresh triggers for PO deletion or status→draft
+      console.log('[Milestone] Batch: Using direct calculation for', projectIds.length, 'projects');
       const results = {};
-      data.forEach(row => {
-        results[row.project_id] = {
-          planning_design: row.planning_design_percentage,
-          prewire_orders: {
-            percentage: row.prewire_orders_percentage,
-            itemCount: row.prewire_orders_count, // Legacy
-            totalItems: row.prewire_orders_total, // Legacy
-            partsAccountedFor: row.prewire_orders_count, // NEW: parts count
-            totalParts: row.prewire_orders_total // NEW: total parts
-          },
-          prewire_receiving: {
-            percentage: row.prewire_receiving_percentage,
-            itemCount: row.prewire_receiving_count,
-            totalItems: row.prewire_receiving_total
-          },
-          prewire: row.prewire_stages_percentage,
-          prewire_phase: {
-            percentage: row.prewire_phase_percentage,
-            orders: {
-              percentage: row.prewire_orders_percentage,
-              itemCount: row.prewire_orders_count,
-              totalItems: row.prewire_orders_total,
-              partsAccountedFor: row.prewire_orders_count,
-              totalParts: row.prewire_orders_total
-            },
-            receiving: {
-              percentage: row.prewire_receiving_percentage,
-              itemCount: row.prewire_receiving_count,
-              totalItems: row.prewire_receiving_total
-            },
-            stages: row.prewire_stages_percentage
-          },
-          trim_orders: {
-            percentage: row.trim_orders_percentage,
-            itemCount: row.trim_orders_count, // Legacy
-            totalItems: row.trim_orders_total, // Legacy
-            partsAccountedFor: row.trim_orders_count, // NEW: parts count
-            totalParts: row.trim_orders_total // NEW: total parts
-          },
-          trim_receiving: {
-            percentage: row.trim_receiving_percentage,
-            itemCount: row.trim_receiving_count,
-            totalItems: row.trim_receiving_total
-          },
-          trim: row.trim_stages_percentage,
-          trim_phase: {
-            percentage: row.trim_phase_percentage,
-            orders: {
-              percentage: row.trim_orders_percentage,
-              itemCount: row.trim_orders_count,
-              totalItems: row.trim_orders_total,
-              partsAccountedFor: row.trim_orders_count,
-              totalParts: row.trim_orders_total
-            },
-            receiving: {
-              percentage: row.trim_receiving_percentage,
-              itemCount: row.trim_receiving_count,
-              totalItems: row.trim_receiving_total
-            },
-            stages: row.trim_stages_percentage
-          },
-          commissioning: {
-            percentage: row.commissioning_percentage,
-            itemCount: row.commissioning_count,
-            totalItems: row.commissioning_total
-          },
-          prewire_prep: Math.round((row.prewire_orders_percentage + row.prewire_receiving_percentage) / 2),
-          trim_prep: Math.round((row.trim_orders_percentage + row.trim_receiving_percentage) / 2),
-          _cachedAt: row.last_calculated_at,
-          _fromCache: true
-        };
-      });
-
+      await Promise.all(projectIds.map(async (projectId) => {
+        results[projectId] = await this.calculateAllPercentages(projectId);
+      }));
       return results;
     } catch (error) {
       console.error('[Milestone] Batch fetch error:', error);

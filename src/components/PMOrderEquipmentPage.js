@@ -530,8 +530,10 @@ const PMOrderEquipmentPageEnhanced = () => {
       Object.entries(selectedItems).forEach(([partNumber, selection]) => {
         const group = selection.group;
         const quantityToOrder = selection.quantity;
-        // Check if this is an inventory group - either explicitly marked or has inventory to allocate
-        const isInventoryGroup = group.isInventory || group.supplier === 'Internal Inventory';
+        // Check if this is an inventory group - check flag first, then name for backward compat
+        const isInventoryGroup = group.isInventory ||
+          group.is_internal_inventory === true ||
+          group.supplier === 'Internal Inventory';
         // Also check if items have inventory available (in case group wasn't marked correctly)
         const hasInventoryAvailable = group.quantity_from_inventory > 0 ||
           group.items?.some(item => item.quantity_from_inventory > 0);
@@ -774,15 +776,29 @@ const PMOrderEquipmentPageEnhanced = () => {
         try {
           console.log('[PMOrderEquipment] Creating Internal Inventory PO for', inventoryItems.length, 'items');
 
-          // Step 1: Ensure Internal Inventory supplier exists
+          // Step 1: Find internal inventory supplier by flag (preferred) or name (backward compat)
           let { data: inventorySupplier, error: supplierError } = await supabase
             .from('suppliers')
             .select('*')
-            .eq('name', 'Internal Inventory')
+            .eq('is_internal_inventory', true)
             .maybeSingle();
 
           if (supplierError && supplierError.code !== 'PGRST116') {
             throw supplierError;
+          }
+
+          // Fall back to name match for backward compatibility (before migration)
+          if (!inventorySupplier) {
+            const { data: byName, error: nameError } = await supabase
+              .from('suppliers')
+              .select('*')
+              .eq('name', 'Internal Inventory')
+              .maybeSingle();
+
+            if (nameError && nameError.code !== 'PGRST116') {
+              throw nameError;
+            }
+            inventorySupplier = byName;
           }
 
           // Create if doesn't exist
@@ -795,6 +811,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                 contact_name: 'Warehouse',
                 email: 'inventory@internal',
                 is_active: true,
+                is_internal_inventory: true,
                 notes: 'System-generated supplier for internal inventory pulls'
               }])
               .select()
@@ -883,6 +900,10 @@ const PMOrderEquipmentPageEnhanced = () => {
       if (createdPOs.length > 0) {
         setSuccessMessage(`Successfully created ${createdPOs.length} purchase order(s)!`);
         setTimeout(() => setSuccessMessage(null), 5000);
+
+        // Invalidate milestone cache so gauges refresh with new data
+        milestoneCacheService.invalidate(projectId);
+        console.log('✅ Invalidated milestone cache for project:', projectId);
       }
 
       if (failedSuppliers.length > 0) {
@@ -971,6 +992,9 @@ const PMOrderEquipmentPageEnhanced = () => {
 
     // Close the modal first
     handleClosePOModal();
+
+    // Invalidate milestone cache so gauges refresh with new data
+    milestoneCacheService.invalidate(projectId);
 
     // Reload equipment to reflect ordered quantities
     await loadEquipment();
@@ -2176,6 +2200,8 @@ const PMOrderEquipmentPageEnhanced = () => {
           loadPurchaseOrders();
           // Always reload equipment to update gauges, regardless of current tab
           loadEquipment();
+          // Invalidate milestone cache so gauges refresh with new data
+          milestoneCacheService.invalidate(projectId);
         }}
         onDelete={(deletedPOId) => {
           setPurchaseOrders(prev => prev.filter(p => p.id !== deletedPOId));
@@ -2185,6 +2211,8 @@ const PMOrderEquipmentPageEnhanced = () => {
           setTimeout(() => setSuccessMessage(null), 3000);
           // Always reload equipment to update ordered quantities and gauges
           loadEquipment();
+          // Invalidate milestone cache so gauges refresh with new data
+          milestoneCacheService.invalidate(projectId);
         }}
       />
     </div>
