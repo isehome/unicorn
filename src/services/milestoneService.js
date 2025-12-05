@@ -344,6 +344,13 @@ class MilestoneService {
         item.global_part?.required_for_prewire !== true
       );
 
+      console.log('[milestoneService] calculateTrimOrdersPercentage:', {
+        totalEquipment: equipment?.length,
+        trimItemsCount: trimItems.length,
+        posLoaded: pos?.length,
+        posWithItems: pos?.filter(p => p.items?.length > 0).length
+      });
+
       if (trimItems.length === 0) {
         return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
       }
@@ -351,6 +358,8 @@ class MilestoneService {
       // Calculate parts accounted for (on hand + ordered from submitted POs)
       let totalPartsRequired = 0;
       let partsAccountedFor = 0;
+      let totalOnHand = 0;
+      let totalOrdered = 0;
 
       trimItems.forEach(item => {
         const required = item.planned_quantity || 0;
@@ -358,8 +367,17 @@ class MilestoneService {
         const ordered = submittedPOMap.get(item.id) || 0;
 
         totalPartsRequired += required;
+        totalOnHand += Math.min(required, onHand);
+        totalOrdered += ordered;
         // Count parts we have OR have ordered (but don't double count)
         partsAccountedFor += Math.min(required, onHand + ordered);
+      });
+
+      console.log('[milestoneService] Trim orders breakdown:', {
+        totalPartsRequired,
+        totalOnHand,
+        totalOrdered,
+        partsAccountedFor
       });
 
       const percentage = totalPartsRequired > 0
