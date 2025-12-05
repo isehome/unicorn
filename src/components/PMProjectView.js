@@ -1133,6 +1133,12 @@ const PMProjectViewEnhanced = () => {
       try {
         await milestoneService.checkAllMilestones(projectId);
 
+        // IMPORTANT: Sync prep milestone completion status with actual gauge percentages
+        // This will auto-complete OR auto-uncomplete prewire_prep and trim_prep
+        // based on whether orders AND receiving are both at 100%
+        console.log('[PMProjectView] Syncing prep milestone completion status...');
+        await milestoneService.autoCompletePrepMilestones(projectId);
+
         // Reload to get updated completion data
         const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
         const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
