@@ -68,12 +68,14 @@ const ensureInternalContact = async (spec) => {
   const email = normalizeEmail(spec.email);
 
   try {
-    const { data: existing } = await supabase
+    // Use .limit(1) instead of maybeSingle() to handle case where duplicates exist
+    const { data: existingList } = await supabase
       .from('contacts')
       .select('id')
       .ilike('email', email)
-      .maybeSingle();
+      .limit(1);
 
+    const existing = existingList?.[0];
     if (existing?.id) {
       return existing.id;
     }
@@ -157,18 +159,24 @@ const ensureDefaultInternalStakeholders = async (projectId) => {
     // Using unified project_stakeholders table
     const expectedRoleNames = DEFAULT_INTERNAL_STAKEHOLDERS.map(s => s.roleName);
 
+    // First get role IDs for expected roles
+    const { data: roles } = await supabase
+      .from('stakeholder_roles')
+      .select('id, name')
+      .in('name', expectedRoleNames);
+
+    const roleIdToName = new Map((roles || []).map(r => [r.id, r.name]));
+    const roleIds = Array.from(roleIdToName.keys());
+
+    // Then check for existing stakeholders with those roles
     const { data: existingStakeholders } = await supabase
       .from('project_stakeholders')
-      .select(`
-        id,
-        stakeholder_role_id,
-        stakeholder_roles!inner(name)
-      `)
+      .select('id, stakeholder_role_id')
       .eq('project_id', projectId)
-      .in('stakeholder_roles.name', expectedRoleNames);
+      .in('stakeholder_role_id', roleIds.length > 0 ? roleIds : ['00000000-0000-0000-0000-000000000000']);
 
     const existingRoleNames = new Set(
-      (existingStakeholders || []).map(s => s.stakeholder_roles?.name).filter(Boolean)
+      (existingStakeholders || []).map(s => roleIdToName.get(s.stakeholder_role_id)).filter(Boolean)
     );
 
     // Only add stakeholders that don't exist yet
