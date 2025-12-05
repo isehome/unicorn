@@ -1164,17 +1164,24 @@ class MilestoneService {
   }
 
   /**
-   * Auto-complete prep milestones when all items are ordered and received
-   * Call this after PO updates to check if prep milestones should be marked complete
+   * Auto-complete OR auto-uncomplete prep milestones based on current status
+   * Call this after PO updates to check if prep milestones should be marked complete/incomplete
    * - Prewire Prep: completes when all prewire items are ORDERED (100%) AND RECEIVED (100%)
    * - Trim Prep: completes when all trim items are ORDERED (100%) AND RECEIVED (100%)
+   *
+   * IMPORTANT: This function is BIDIRECTIONAL - it will:
+   * - Mark milestones COMPLETE when conditions are met
+   * - Mark milestones INCOMPLETE when conditions are no longer met (e.g., PO deleted/undone)
    */
   async autoCompletePrepMilestones(projectId) {
     console.log('🚨 [Milestone] autoCompletePrepMilestones CALLED for project:', projectId);
     try {
       const completionDate = new Date().toISOString().split('T')[0];
-      let prewireCompleted = false;
-      let trimCompleted = false;
+      let prewireStatus = { completed: false, uncompleted: false };
+      let trimStatus = { completed: false, uncompleted: false };
+
+      // Get current authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
 
       console.log('[Milestone] Fetching prewire orders and receiving percentages...');
 
@@ -1189,15 +1196,23 @@ class MilestoneService {
         receiving: prewireReceiving.percentage
       });
 
-      // If BOTH are 100%, auto-complete prewire_prep
-      if (prewireOrders.percentage === 100 && prewireReceiving.percentage === 100) {
+      const prewireConditionsMet = prewireOrders.percentage === 100 && prewireReceiving.percentage === 100;
+
+      // Check current prewire_prep milestone status
+      const { data: currentPrewireMilestone } = await supabase
+        .from('project_milestones')
+        .select('actual_date, completed_manually, percent_complete')
+        .eq('project_id', projectId)
+        .eq('milestone_type', 'prewire_prep')
+        .maybeSingle();
+
+      const prewireCurrentlyComplete = currentPrewireMilestone?.actual_date !== null;
+
+      if (prewireConditionsMet && !prewireCurrentlyComplete) {
+        // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
         console.log('[Milestone] ✓ Prewire prep conditions met - auto-completing...');
 
-        // Get current authenticated user
-        const { data: { user } } = await supabase.auth.getUser();
-
-        // Single atomic update to mark milestone complete
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('project_milestones')
           .upsert({
             project_id: projectId,
@@ -1210,15 +1225,35 @@ class MilestoneService {
           }, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
-          })
-          .select()
-          .single();
+          });
 
         if (error) {
           console.error('[Milestone] ❌ Failed to auto-complete prewire_prep:', error);
         } else {
           console.log('[Milestone] ✅ Auto-completed prewire_prep milestone');
-          prewireCompleted = true;
+          prewireStatus.completed = true;
+        }
+      } else if (!prewireConditionsMet && prewireCurrentlyComplete) {
+        // CONDITIONS NOT MET + CURRENTLY COMPLETE → UNCOMPLETE IT
+        console.log('[Milestone] ✗ Prewire prep conditions NO LONGER met - auto-uncompleting...');
+
+        const { error } = await supabase
+          .from('project_milestones')
+          .update({
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: Math.round((prewireOrders.percentage + prewireReceiving.percentage) / 2),
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('project_id', projectId)
+          .eq('milestone_type', 'prewire_prep');
+
+        if (error) {
+          console.error('[Milestone] ❌ Failed to auto-uncomplete prewire_prep:', error);
+        } else {
+          console.log('[Milestone] ✅ Auto-uncompleted prewire_prep milestone');
+          prewireStatus.uncompleted = true;
         }
       }
 
@@ -1233,15 +1268,23 @@ class MilestoneService {
         receiving: trimReceiving.percentage
       });
 
-      // If BOTH are 100%, auto-complete trim_prep
-      if (trimOrders.percentage === 100 && trimReceiving.percentage === 100) {
+      const trimConditionsMet = trimOrders.percentage === 100 && trimReceiving.percentage === 100;
+
+      // Check current trim_prep milestone status
+      const { data: currentTrimMilestone } = await supabase
+        .from('project_milestones')
+        .select('actual_date, completed_manually, percent_complete')
+        .eq('project_id', projectId)
+        .eq('milestone_type', 'trim_prep')
+        .maybeSingle();
+
+      const trimCurrentlyComplete = currentTrimMilestone?.actual_date !== null;
+
+      if (trimConditionsMet && !trimCurrentlyComplete) {
+        // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
         console.log('[Milestone] ✓ Trim prep conditions met - auto-completing...');
 
-        // Get current authenticated user
-        const { data: { user } } = await supabase.auth.getUser();
-
-        // Single atomic update to mark milestone complete
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('project_milestones')
           .upsert({
             project_id: projectId,
@@ -1254,22 +1297,42 @@ class MilestoneService {
           }, {
             onConflict: 'project_id,milestone_type',
             ignoreDuplicates: false
-          })
-          .select()
-          .single();
+          });
 
         if (error) {
           console.error('[Milestone] ❌ Failed to auto-complete trim_prep:', error);
         } else {
           console.log('[Milestone] ✅ Auto-completed trim_prep milestone');
-          trimCompleted = true;
+          trimStatus.completed = true;
+        }
+      } else if (!trimConditionsMet && trimCurrentlyComplete) {
+        // CONDITIONS NOT MET + CURRENTLY COMPLETE → UNCOMPLETE IT
+        console.log('[Milestone] ✗ Trim prep conditions NO LONGER met - auto-uncompleting...');
+
+        const { error } = await supabase
+          .from('project_milestones')
+          .update({
+            actual_date: null,
+            completed_manually: false,
+            percent_complete: Math.round((trimOrders.percentage + trimReceiving.percentage) / 2),
+            updated_by: user?.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq('project_id', projectId)
+          .eq('milestone_type', 'trim_prep');
+
+        if (error) {
+          console.error('[Milestone] ❌ Failed to auto-uncomplete trim_prep:', error);
+        } else {
+          console.log('[Milestone] ✅ Auto-uncompleted trim_prep milestone');
+          trimStatus.uncompleted = true;
         }
       }
 
       console.log('[Milestone] ✅ autoCompletePrepMilestones completed successfully');
       return {
-        prewirePrep: prewireCompleted,
-        trimPrep: trimCompleted
+        prewirePrep: prewireStatus,
+        trimPrep: trimStatus
       };
     } catch (error) {
       console.error('🚨 [Milestone] ERROR in autoCompletePrepMilestones:', error);

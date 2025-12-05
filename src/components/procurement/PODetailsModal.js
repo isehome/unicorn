@@ -9,6 +9,7 @@ import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
 import { trackingService } from '../../services/trackingService';
 import { milestoneCacheService } from '../../services/milestoneCacheService';
+import { milestoneService } from '../../services/milestoneService';
 import { poPublicAccessService } from '../../services/poPublicAccessService';
 import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml } from '../../services/issueNotificationService';
 import { companySettingsService } from '../../services/companySettingsService';
@@ -202,6 +203,11 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       if (po.project_id) {
         milestoneCacheService.invalidate(po.project_id);
         console.log('[PODetailsModal] Invalidated milestone cache after undo submit');
+
+        // Re-check milestone completion status - may need to auto-uncomplete prep milestones
+        console.log('[PODetailsModal] Re-checking milestone completion status...');
+        await milestoneService.autoCompletePrepMilestones(po.project_id);
+        console.log('[PODetailsModal] Milestone completion status updated');
       }
 
       setSuccess('PO submission has been undone. The PO is now back in draft status.');
@@ -408,7 +414,15 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
     try {
       setLoading(true);
+      const projectId = po.project_id;
       await purchaseOrderService.deletePurchaseOrder(poId);
+
+      // Re-check milestone completion status after PO deletion
+      if (projectId) {
+        milestoneCacheService.invalidate(projectId);
+        console.log('[PODetailsModal] Re-checking milestone completion after PO delete...');
+        await milestoneService.autoCompletePrepMilestones(projectId);
+      }
 
       if (onDelete) {
         onDelete(poId);
