@@ -167,18 +167,22 @@ const PMOrderEquipmentPageEnhanced = () => {
       setError(null);
       const data = await projectEquipmentService.fetchProjectEquipmentByPhase(projectId, tab);
 
-      // Also load ALL purchase orders to check for items already in POs
+      // Load purchase orders FILTERED BY MILESTONE to avoid cross-phase counting
+      // This fixes the bug where prewire PO items were showing as ordered in trim tab
+      const milestoneStage = getMilestoneStage(tab);
       const { data: pos } = await supabase
         .from('purchase_orders')
         .select(`
           id,
           status,
+          milestone_stage,
           items:purchase_order_items(
             project_equipment_id,
             quantity_ordered
           )
         `)
-        .eq('project_id', projectId);
+        .eq('project_id', projectId)
+        .eq('milestone_stage', milestoneStage);
 
       // Create maps for draft and submitted PO quantities
       const draftPOMap = new Map();
@@ -861,19 +865,9 @@ const PMOrderEquipmentPageEnhanced = () => {
 
           if (itemsError) throw itemsError;
 
-          // Step 6: Auto-submit the inventory PO (so inventory gets decremented)
-          const { error: submitError } = await supabase
-            .from('purchase_orders')
-            .update({
-              status: 'submitted',
-              submitted_by: user?.id,
-              submitted_at: new Date().toISOString()
-            })
-            .eq('id', newPO.id);
-
-          if (submitError) throw submitError;
-
-          console.log('[PMOrderEquipment] ✅ Created and submitted Internal Inventory PO:', poNumber);
+          // Internal Inventory PO is now created as DRAFT (same as vendor POs)
+          // PM must manually review and submit, which will trigger inventory decrement
+          console.log('[PMOrderEquipment] ✅ Created Internal Inventory PO as draft:', poNumber);
           createdPOs.push({
             po: { ...newPO, po_number: poNumber },
             items: inventoryItems,

@@ -238,10 +238,27 @@ class PurchaseOrderService {
   /**
    * Submit purchase order (change status to submitted)
    * Also updates equipment records to capture who ordered them
+   * For Internal Inventory POs, decrements global_parts.quantity_on_hand
    */
   async submitPurchaseOrder(poId, submittedBy) {
     try {
-      // First, update the PO status
+      // First, get PO details including supplier to check if it's an inventory PO
+      const { data: poDetails, error: poDetailsError } = await supabase
+        .from('purchase_orders')
+        .select(`
+          id,
+          supplier_id,
+          supplier:suppliers(name)
+        `)
+        .eq('id', poId)
+        .single();
+
+      if (poDetailsError) throw poDetailsError;
+
+      const isInventoryPO = poDetails?.supplier?.name === 'Internal Inventory';
+      console.log(`[purchaseOrderService] Submitting PO ${poId}, isInventoryPO: ${isInventoryPO}`);
+
+      // Update the PO status
       const { data, error } = await supabase
         .from('purchase_orders')
         .update({
@@ -255,20 +272,29 @@ class PurchaseOrderService {
 
       if (error) throw error;
 
-      // Update equipment records to track who ordered them
-      // Get all equipment IDs from this PO's line items
+      // Get all line items with equipment details
       const { data: lineItems, error: itemsError } = await supabase
         .from('purchase_order_items')
-        .select('project_equipment_id')
+        .select(`
+          project_equipment_id,
+          quantity_ordered,
+          equipment:project_equipment(
+            id,
+            global_part_id
+          )
+        `)
         .eq('po_id', poId);
 
       if (!itemsError && lineItems?.length > 0) {
-        const equipmentIds = lineItems.map(item => item.project_equipment_id).filter(Boolean);
         const timestamp = new Date().toISOString();
 
-        // Update each equipment item to track who ordered it
-        // Only set if not already set (preserve original orderer for items ordered via multiple POs)
-        for (const equipmentId of equipmentIds) {
+        for (const item of lineItems) {
+          const equipmentId = item.project_equipment_id;
+          const globalPartId = item.equipment?.global_part_id;
+          const quantityOrdered = item.quantity_ordered || 0;
+
+          // Update equipment item to track who ordered it
+          // Only set if not already set (preserve original orderer for items ordered via multiple POs)
           await supabase
             .from('project_equipment')
             .update({
@@ -277,10 +303,31 @@ class PurchaseOrderService {
               ordered_confirmed_by: submittedBy
             })
             .eq('id', equipmentId)
-            .is('ordered_confirmed_by', null); // Only update if not already set
+            .is('ordered_confirmed_by', null);
+
+          // For Internal Inventory POs, decrement the global_parts inventory
+          if (isInventoryPO && globalPartId && quantityOrdered > 0) {
+            console.log(`[purchaseOrderService] Decrementing inventory for global_part ${globalPartId} by ${quantityOrdered}`);
+
+            // Use RPC to safely decrement inventory (handles negative prevention)
+            const { error: decrementError } = await supabase.rpc('decrement_global_inventory', {
+              p_global_part_id: globalPartId,
+              p_quantity: quantityOrdered
+            });
+
+            if (decrementError) {
+              console.error(`[purchaseOrderService] Failed to decrement inventory for ${globalPartId}:`, decrementError);
+              // Don't throw - continue with other items, log the error
+            } else {
+              console.log(`[purchaseOrderService] Successfully decremented ${quantityOrdered} units from global_part ${globalPartId}`);
+            }
+          }
         }
 
-        console.log(`[purchaseOrderService] Updated ${equipmentIds.length} equipment items with orderer: ${submittedBy}`);
+        console.log(`[purchaseOrderService] Updated ${lineItems.length} equipment items with orderer: ${submittedBy}`);
+        if (isInventoryPO) {
+          console.log(`[purchaseOrderService] Inventory decremented for Internal Inventory PO`);
+        }
       }
 
       return data;
@@ -895,13 +942,10 @@ class PurchaseOrderService {
         notes: `From warehouse inventory: ${item.inventoryQty} units`
       }));
 
-      // Create the PO
+      // Create the PO as draft (same as vendor POs)
+      // PM must manually review and submit, which will trigger inventory decrement
       const po = await this.createPurchaseOrder(poData, lineItems);
-      console.log('[generateInventoryPO] Created inventory PO:', po.po_number);
-
-      // Auto-submit the inventory PO
-      await this.submitPurchaseOrder(po.id, userId);
-      console.log('[generateInventoryPO] Auto-submitted inventory PO:', po.po_number);
+      console.log('[generateInventoryPO] Created inventory PO as draft:', po.po_number);
 
       return po;
     } catch (error) {

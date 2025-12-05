@@ -151,6 +151,9 @@ Photos stored in SharePoint with structure:
 | Style system | `src/styles/styleSystem.js` |
 | Main PM view | `src/components/PMProjectViewEnhanced.js` |
 | Wire drop detail | `src/components/WireDropDetailEnhanced.js` |
+| Date input component | `src/components/ui/DateInput.js` |
+| Todo detail modal | `src/components/TodoDetailModal.js` |
+| Calendar service | `src/services/microsoftCalendarService.js` |
 
 ---
 
@@ -386,6 +389,83 @@ const { contacts } = useContacts({ search: searchTerm });
 <input className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500" />
 ```
 
+### Date Input - Use DateInput Component
+**Always use the `DateInput` component for date fields.** It handles:
+- Empty state: Grey background with "—" dash placeholder
+- Filled state: Normal white/dark background with date value
+- Prevents Safari/browser from showing past dates in red
+- Consistent styling across light/dark modes
+
+```jsx
+import DateInput from './ui/DateInput';
+
+// ✅ CORRECT - Use DateInput component
+<DateInput
+  value={dueDate}
+  onChange={(e) => setDueDate(e.target.value)}
+  disabled={saving}
+/>
+
+// ❌ WRONG - Raw HTML date input (inconsistent styling, browser quirks)
+<input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+```
+
+**DateInput Styling Standards:**
+- Empty: `bg-zinc-100 dark:bg-zinc-800` with grey dash "—"
+- Filled: `bg-white dark:bg-zinc-700` with normal text
+- NO orange/red backgrounds for empty or past dates
+- Overrides WebKit datetime styling to prevent browser color changes
+
+### Time Input
+Time inputs should be wide enough to display the time clearly:
+
+```jsx
+// ✅ CORRECT - Wide enough, 16px font for iOS
+<input
+  type="time"
+  value={startTime}
+  onChange={(e) => setStartTime(e.target.value)}
+  disabled={!dateIsSet}
+  className={`w-32 px-3 py-2 border rounded-lg focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500 ${
+    !dateIsSet
+      ? 'border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
+      : 'border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-50'
+  }`}
+  style={{ fontSize: '16px' }}  // Prevents iOS zoom
+/>
+
+// ❌ WRONG - Too narrow, no iOS zoom prevention
+<input type="time" className="w-24 px-2 py-2" />
+```
+
+### Calendar Scheduling Section (for Todos)
+When displaying calendar-related fields (Do Date, Start Time, Duration), group them in a dedicated section:
+
+```jsx
+<div className="p-4 rounded-xl border" style={{ borderColor: styles.card.borderColor, backgroundColor: withAlpha(palette.info, 0.05) }}>
+  <div className="flex items-center gap-2 mb-3">
+    <CalendarPlus size={18} style={{ color: palette.info }} />
+    <span className="text-sm font-medium" style={styles.textPrimary}>
+      Calendar Scheduling
+    </span>
+  </div>
+  <div className="grid gap-4 grid-cols-3">
+    <div>
+      <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>Do Date</label>
+      <DateInput value={doBy} onChange={(e) => setDoBy(e.target.value)} />
+    </div>
+    <div>
+      <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>Start Time</label>
+      <input type="time" ... />
+    </div>
+    <div>
+      <label className="block text-xs font-medium mb-1.5" style={styles.textSecondary}>Duration (hrs)</label>
+      <input type="number" ... />
+    </div>
+  </div>
+</div>
+```
+
 ### Status Badges
 ```jsx
 // Success - USE INLINE STYLES with brand olive green (#94AF32)
@@ -475,6 +555,23 @@ const { contacts } = useContacts({ search: searchTerm });
   </div>
   <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
 </button>
+```
+
+### Map Links - Use Apple Maps URLs
+**Always use Apple Maps URLs for address links.** They open in the user's default maps app on iOS/macOS (usually Apple Maps), while still working on other platforms via browser.
+
+```jsx
+// ✅ CORRECT - Apple Maps URL (opens in default maps app on iOS/macOS)
+const getMapUrl = (address) => {
+  const encoded = encodeURIComponent(address);
+  return `https://maps.apple.com/?q=${encoded}`;
+};
+
+// ❌ WRONG - Google Maps URL (always opens Google, not user's default)
+const getMapUrl = (address) => {
+  const encoded = encodeURIComponent(address);
+  return `https://maps.google.com/?q=${encoded}`;  // NO!
+};
 ```
 
 ### List Item with Clickable Avatar (People/Contacts Pattern)
@@ -1157,6 +1254,8 @@ Before any feature is complete, test on a real phone:
 - [ ] **User ID comes from `useAuth()` hook, NOT `supabase.auth.getUser()`**
 - [ ] **Service functions accept userId as parameter (don't try to get it internally)**
 - [ ] **UUID vs Display Name handled correctly** (check `wire_drop_stages.completed_by`)
+- [ ] **Date inputs use `DateInput` component** (not raw `<input type="date">`)
+- [ ] **Map/address links use Apple Maps** (`maps.apple.com`, not `maps.google.com`)
 - [ ] Files in correct locations
 - [ ] Database policies include `anon`
 - [ ] Updated relevant doc in `docs/`

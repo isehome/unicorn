@@ -928,22 +928,25 @@ const EquipmentListPage = () => {
           className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
           onClick={() => toggleExpanded(item.id)}
         >
-          {/* Single row: Chevron + Name + Status indicators */}
-          <div className="flex items-center gap-3">
-            <button className="flex-shrink-0 text-gray-400">
-              {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-            </button>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">{item.name}</p>
-              {item.description && (
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.description}</p>
-              )}
+          {/* Two-row layout: Name on top, badges below */}
+          <div className="flex flex-col gap-2">
+            {/* Row 1: Chevron + Full Name */}
+            <div className="flex items-start gap-3">
+              <button className="flex-shrink-0 text-gray-400 mt-0.5">
+                {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 dark:text-gray-100 leading-snug">{item.name}</p>
+                {item.partNumber && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.partNumber}</p>
+                )}
+              </div>
             </div>
-            {/* Wire drop badge + Status badges - all always visible, greyed when inactive */}
-            <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Row 2: Status badges - wrap on small screens */}
+            <div className="flex items-center gap-1.5 flex-wrap ml-7">
               {/* Wire drop badge - always visible, greyed when 0 */}
               <span
-                className="px-2 py-0.5 text-[9px] font-medium rounded-full flex items-center gap-1"
+                className="px-2 py-0.5 text-[10px] font-medium rounded-full flex items-center gap-1"
                 style={item.wireDrops?.length > 0
                   ? { backgroundColor: mode === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)', color: mode === 'dark' ? '#A78BFA' : '#7C3AED' }
                   : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
@@ -952,7 +955,7 @@ const EquipmentListPage = () => {
                 <Cable size={10} />
                 {item.wireDrops?.length || 0}
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 item.ordered
                   ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
                   : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
@@ -960,7 +963,7 @@ const EquipmentListPage = () => {
                 Ordered
               </span>
               <span
-                className="px-1.5 py-0.5 rounded text-[9px] font-medium"
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 style={item.received
                   ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
                   : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
@@ -968,7 +971,7 @@ const EquipmentListPage = () => {
               >
                 Received
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 item.delivered
                   ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
                   : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
@@ -976,7 +979,7 @@ const EquipmentListPage = () => {
                 Delivered
               </span>
               <span
-                className="px-1.5 py-0.5 rounded text-[9px] font-medium"
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 style={item.installed
                   ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
                   : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }

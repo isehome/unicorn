@@ -680,7 +680,7 @@ const PartsReceivingPageNew = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
-      <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="w-full px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
           <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">

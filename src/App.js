@@ -6,6 +6,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrinterProvider } from './contexts/PrinterContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 import AppHeader from './components/AppHeader';
 import BottomNavigation from './components/BottomNavigation';
 import LoadingSpinner from './components/ui/LoadingSpinner';
@@ -71,12 +72,13 @@ const AppRoutes = () => {
         />
       )}
       <main className={`flex-1 ${hideChrome ? '' : 'pt-4 sm:pt-6'} ${hideChrome ? '' : 'pb-24'}`}>
-        <Suspense fallback={
-          <div className="flex items-center justify-center min-h-[50vh]">
-            <LoadingSpinner size="lg" message="Loading page..." />
-          </div>
-        }>
-          <Routes>
+        <ErrorBoundary>
+          <Suspense fallback={
+            <div className="flex items-center justify-center min-h-[50vh]">
+              <LoadingSpinner size="lg" message="Loading page..." />
+            </div>
+          }>
+            <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route
@@ -342,8 +344,9 @@ const AppRoutes = () => {
             <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
             <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
       {!hideChrome && <BottomNavigation />}
     </div>

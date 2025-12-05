@@ -104,18 +104,21 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
+      // Load PREWIRE purchase orders only (filter by milestone_stage)
+      // This prevents prewire POs from being counted in trim and vice versa
       const { data: pos, error: poError } = await supabase
         .from('purchase_orders')
         .select(`
           id,
           status,
+          milestone_stage,
           items:purchase_order_items(
             project_equipment_id,
             quantity_ordered
           )
         `)
-        .eq('project_id', projectId);
+        .eq('project_id', projectId)
+        .eq('milestone_stage', 'prewire_prep');
 
       if (poError) throw poError;
 
@@ -307,18 +310,21 @@ class MilestoneService {
 
       if (error) throw error;
 
-      // Load ALL purchase orders to calculate quantity_ordered (submitted POs only)
+      // Load TRIM purchase orders only (filter by milestone_stage)
+      // This prevents prewire POs from being counted in trim and vice versa
       const { data: pos, error: poError } = await supabase
         .from('purchase_orders')
         .select(`
           id,
           status,
+          milestone_stage,
           items:purchase_order_items(
             project_equipment_id,
             quantity_ordered
           )
         `)
-        .eq('project_id', projectId);
+        .eq('project_id', projectId)
+        .eq('milestone_stage', 'trim_prep');
 
       if (poError) throw poError;
 
