@@ -13,7 +13,8 @@ import {
   Mail,
   Phone,
   MapPin,
-  Trash2
+  Trash2,
+  Warehouse
 } from 'lucide-react';
 
 /**
@@ -197,6 +198,17 @@ const SupplierManager = () => {
                         <h3 className="font-semibold text-gray-900 dark:text-white">
                           {supplier.name}
                         </h3>
+                        {supplier.is_internal_inventory && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-medium rounded-full">
+                            <Warehouse className="w-3 h-3" />
+                            Internal Inventory
+                          </span>
+                        )}
+                        {supplier.is_preferred && !supplier.is_internal_inventory && (
+                          <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium rounded-full">
+                            Preferred
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mt-1">
                         {supplier.contact_name && (
@@ -205,7 +217,17 @@ const SupplierManager = () => {
                         {supplier.email && (
                           <span className="flex items-center gap-1">
                             <Mail className="w-3 h-3" />
-                            {supplier.email}
+                            {/* Show first email, indicate if multiple */}
+                            {supplier.email.includes(',') ? (
+                              <span title={supplier.email}>
+                                {supplier.email.split(',')[0].trim()}
+                                <span className="ml-1 text-xs text-gray-500">
+                                  (+{supplier.email.split(',').length - 1} more)
+                                </span>
+                              </span>
+                            ) : (
+                              supplier.email
+                            )}
                           </span>
                         )}
                       </div>
@@ -255,9 +277,13 @@ const SupplierManager = () => {
                         </div>
                       )}
                       {supplier.email && (
-                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-                          <Mail className="w-4 h-4" />
-                          <span>{supplier.email}</span>
+                        <div className="flex items-start gap-2 text-gray-600 dark:text-gray-400">
+                          <Mail className="w-4 h-4 mt-0.5" />
+                          <div className="flex flex-col">
+                            {supplier.email.split(',').map((email, idx) => (
+                              <span key={idx}>{email.trim()}</span>
+                            ))}
+                          </div>
                         </div>
                       )}
                       {supplier.phone && (

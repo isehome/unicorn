@@ -275,9 +275,15 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       const html = wrapEmailHtml(htmlContent);
       const text = `Hi ${supplierName},\n\nYou have been added to Unicorn, our project management system.\n\nPlease add shipment tracking information for PO ${po.po_number}.\n\n${shareUrl}${WHITELIST_NOTICE_TEXT}`;
 
+      // Parse comma-separated emails into array
+      const toEmails = po.supplier.email
+        .split(',')
+        .map(e => e.trim())
+        .filter(e => e);
+
       await sendNotificationEmail(
         {
-          to: [po.supplier.email],
+          to: toEmails,
           cc: [SYSTEM_EMAIL],
           subject: `Tracking request for PO ${po.po_number}`,
           html,

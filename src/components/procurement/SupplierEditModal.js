@@ -82,7 +82,8 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
     shipping_account: '',
     notes: '',
     is_active: true,
-    is_preferred: false
+    is_preferred: false,
+    is_internal_inventory: false
   });
 
   // Load all suppliers on mount for uniqueness check
@@ -118,7 +119,8 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
         shipping_account: initialSupplier.shipping_account || '',
         notes: initialSupplier.notes || '',
         is_active: initialSupplier.is_active !== false,
-        is_preferred: initialSupplier.is_preferred || false
+        is_preferred: initialSupplier.is_preferred || false,
+        is_internal_inventory: initialSupplier.is_internal_inventory || false
       });
     }
   }, [initialSupplier, isCreateMode]);
@@ -153,7 +155,29 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
     });
   }, [allSuppliers, isCreateMode, supplierId]);
 
+  // Find the current internal inventory supplier (if any, excluding self)
+  const getCurrentInternalInventorySupplier = useCallback(() => {
+    return allSuppliers.find(s => {
+      if (!isCreateMode && s.id === supplierId) return false;
+      return s.is_internal_inventory === true;
+    });
+  }, [allSuppliers, isCreateMode, supplierId]);
+
   const handleChange = (field, value) => {
+    // Special handling for is_internal_inventory toggle
+    if (field === 'is_internal_inventory' && value === true) {
+      const existingInternalSupplier = getCurrentInternalInventorySupplier();
+      if (existingInternalSupplier) {
+        const confirmed = window.confirm(
+          `"${existingInternalSupplier.name}" is currently marked as the internal inventory supplier.\n\nDo you want to switch it to this supplier instead?`
+        );
+        if (!confirmed) {
+          return; // Don't change the toggle
+        }
+        // User confirmed - we'll unset the flag on the other supplier when saving
+      }
+    }
+
     setFormData(prev => {
       const updated = { ...prev, [field]: value };
 
@@ -211,9 +235,15 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       const html = wrapEmailHtml(htmlContent);
       const text = `Hi ${contactName},\n\nYou have been added to Unicorn, our project management system.\n\nYou may receive tracking requests and order updates from this system. When you receive a tracking request, simply click the link to submit your tracking information.${WHITELIST_NOTICE_TEXT}`;
 
+      // Parse comma-separated emails into array
+      const toEmails = supplierEmail
+        .split(',')
+        .map(e => e.trim())
+        .filter(e => e);
+
       await sendNotificationEmail(
         {
-          to: [supplierEmail],
+          to: toEmails,
           cc: [SYSTEM_EMAIL],
           subject: `Welcome to Unicorn - ${supplierName}`,
           html,
@@ -222,7 +252,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
         },
         { authToken: graphToken }
       );
-      console.log('[SupplierEditModal] Welcome email sent to vendor:', supplierEmail);
+      console.log('[SupplierEditModal] Welcome email sent to vendor:', toEmails.join(', '));
     } catch (err) {
       // Don't fail the supplier save if email fails
       console.warn('[SupplierEditModal] Failed to send welcome email:', err);
@@ -253,11 +283,32 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
         throw new Error('A supplier with this short code already exists');
       }
 
+      // Validate email format(s) if provided
+      if (formData.email?.trim()) {
+        const emails = formData.email.split(',').map(e => e.trim()).filter(e => e);
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const invalidEmails = emails.filter(e => !emailRegex.test(e));
+        if (invalidEmails.length > 0) {
+          throw new Error(`Invalid email format: ${invalidEmails.join(', ')}`);
+        }
+      }
+
       // Check if email is new or changed
       const newEmail = formData.email?.trim() || '';
       const emailIsNew = isCreateMode && newEmail;
       const emailChanged = !isCreateMode && newEmail && newEmail.toLowerCase() !== originalEmail.toLowerCase();
       const shouldSendWelcomeEmail = emailIsNew || emailChanged;
+
+      // If marking as internal inventory, unset flag on any existing internal inventory supplier
+      if (formData.is_internal_inventory) {
+        const existingInternalSupplier = getCurrentInternalInventorySupplier();
+        if (existingInternalSupplier) {
+          await supplierService.updateSupplier(existingInternalSupplier.id, {
+            is_internal_inventory: false
+          });
+          console.log(`[SupplierEditModal] Removed internal inventory flag from "${existingInternalSupplier.name}"`);
+        }
+      }
 
       let result;
       if (isCreateMode) {
@@ -382,18 +433,22 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 />
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Email
+                  Email(s)
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={formData.email}
                   onChange={(e) => handleChange('email', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  placeholder="orders@supplier.com, accounting@supplier.com"
                 />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Enter multiple emails separated by commas. All recipients will receive PO emails.
+                </p>
               </div>
-              <div>
+              <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Phone
                 </label>
@@ -526,7 +581,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
           {/* Status Toggles */}
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Status</h3>
-            <div className="space-y-2">
+            <div className="space-y-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -545,6 +600,22 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-300">Preferred Supplier</span>
               </label>
+              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_internal_inventory}
+                    onChange={(e) => handleChange('is_internal_inventory', e.target.checked)}
+                    className="rounded mt-0.5"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Internal Inventory Supplier</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Mark this supplier as your internal warehouse/inventory source. POs to this supplier will decrement your global parts inventory when submitted.
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
         </form>

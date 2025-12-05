@@ -70,7 +70,8 @@ class SupplierService {
           shipping_account: supplierData.shipping_account,
           notes: supplierData.notes,
           is_active: supplierData.is_active !== false,
-          is_preferred: supplierData.is_preferred || false
+          is_preferred: supplierData.is_preferred || false,
+          is_internal_inventory: supplierData.is_internal_inventory || false
         }])
         .select()
         .single();
