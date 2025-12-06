@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink } from 'lucide-react';
+import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink, Mic, MicOff } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
+import { useVoiceMeasurement } from '../../hooks/useVoiceMeasurement';
 
 const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) => {
     const { theme, mode } = useTheme();
@@ -27,6 +28,10 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
         heightCenter: targetShade?.[`${set}_measure_height_center`] || '',
         heightRight: targetShade?.[`${set}_measure_height_right`] || '',
 
+        pocketWidth: targetShade?.[`${set}_pocket_width`] || '',
+        pocketHeight: targetShade?.[`${set}_pocket_height`] || '',
+        pocketDepth: targetShade?.[`${set}_pocket_depth`] || '',
+
         notes: targetShade?.[`${set}_obstruction_notes`] || '',
         photos: targetShade?.[`${set}_photos`] || []
     });
@@ -43,6 +48,18 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
     const handleChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
+
+    // Voice Hook
+    const {
+        isActive: isVoiceActive,
+        status: voiceStatus,
+        transcript,
+        currentStepLabel,
+        startSession: startVoice,
+        stopSession: stopVoice
+    } = useVoiceMeasurement({
+        onFieldUpdate: handleChange
+    });
 
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -93,6 +110,27 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
 
+                {/* Voice Status Banner */}
+                {isVoiceActive && (
+                    <div className="bg-violet-600 text-white p-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-3 h-3 rounded-full ${voiceStatus === 'listening' ? 'bg-red-400 animate-pulse' : 'bg-white/50'}`} />
+                            <span className="font-medium text-sm">
+                                {voiceStatus === 'listening' ? 'Listening...' : voiceStatus === 'speaking' ? 'Speaking...' : 'Processing...'}
+                            </span>
+                            <span className="text-white/80 text-sm border-l border-white/20 pl-3">
+                                {currentStepLabel ? `Asking for: ${currentStepLabel}` : ''}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            {transcript && <span className="text-sm italic opacity-90 max-w-[200px] truncate">"{transcript}"</span>}
+                            <button onClick={stopVoice} className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className={`flex items-center justify-between p-4 border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                     <div>
@@ -103,9 +141,23 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                             {shade?.name} • {shade?.room?.name}
                         </p>
                     </div>
-                    <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
-                        <X size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {!showBlinded && (
+                            <button
+                                onClick={isVoiceActive ? stopVoice : startVoice}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isVoiceActive
+                                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                                        : 'bg-violet-50 text-violet-600 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300'
+                                    }`}
+                            >
+                                {isVoiceActive ? <MicOff size={16} /> : <Mic size={16} />}
+                                {isVoiceActive ? 'Stop Voice' : 'Start Voice Mode'}
+                            </button>
+                        )}
+                        <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
+                            <X size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Tabs */}
@@ -240,6 +292,15 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                                         <InputFinal label="Width" value={formData.width} onChange={v => handleChange('width', v)} mode={mode} />
                                         <InputFinal label="Height" value={formData.height} onChange={v => handleChange('height', v)} mode={mode} />
                                         <InputFinal label="Depth" value={formData.mountDepth} onChange={v => handleChange('mountDepth', v)} mode={mode} />
+                                    </div>
+                                </div>
+
+                                <div className={`p-4 rounded-xl border mt-4 ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                                    <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Mounting & Pockets</h4>
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <InputFinal label="Pocket Width" value={formData.pocketWidth} onChange={v => handleChange('pocketWidth', v)} mode={mode} />
+                                        <InputFinal label="Pocket Height" value={formData.pocketHeight} onChange={v => handleChange('pocketHeight', v)} mode={mode} />
+                                        <InputFinal label="Pocket Depth" value={formData.pocketDepth} onChange={v => handleChange('pocketDepth', v)} mode={mode} />
                                     </div>
                                 </div>
 

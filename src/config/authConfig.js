@@ -18,13 +18,13 @@ export const msalConfig = {
   },
   cache: {
     cacheLocation: 'localStorage',
-    storeAuthStateInCookie: false,
+    storeAuthStateInCookie: true, // Set to true to help with iframe/cookie issues
   },
   system: {
     loggerOptions: {
       loggerCallback: (level, message, containsPii) => {
         if (containsPii) return;
-        
+
         switch (level) {
           case LogLevel.Error:
             console.error('[MSAL]', message);
@@ -39,11 +39,13 @@ export const msalConfig = {
             break;
         }
       },
-      logLevel: LogLevel.Info, // Changed to Info for better debugging
+      logLevel: LogLevel.Warning, // Reduced to Warning to reduce noise
     },
-    windowHashTimeout: 60000,
-    iframeHashTimeout: 6000,
-    loadFrameTimeout: 0,
+    // Increased timeouts to prevent monitor_window_timeout errors
+    windowHashTimeout: 9000,
+    iframeHashTimeout: 9000,
+    loadFrameTimeout: 9000,
+    tokenRenewalOffsetSeconds: 300,
   },
 };
 
@@ -83,7 +85,7 @@ export const graphConfig = {
 // Authentication State Constants
 export const AUTH_STATES = {
   INITIALIZING: 'initializing',
-  AUTHENTICATED: 'authenticated', 
+  AUTHENTICATED: 'authenticated',
   UNAUTHENTICATED: 'unauthenticated',
   ERROR: 'error',
 };

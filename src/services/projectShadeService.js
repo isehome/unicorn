@@ -182,6 +182,11 @@ export const projectShadeService = {
             [`${prefix}_obstruction_notes`]: measurements.notes,
             [`${prefix}_photos`]: measurements.photos, // Array of URLs specific to this measurement set
 
+            // Pocket Dimensions
+            [`${prefix}_pocket_width`]: measurements.pocketWidth,
+            [`${prefix}_pocket_height`]: measurements.pocketHeight,
+            [`${prefix}_pocket_depth`]: measurements.pocketDepth,
+
             // Mark as complete for this set
             [`${prefix}_complete`]: true,
             [`${prefix}_date`]: new Date().toISOString(),
