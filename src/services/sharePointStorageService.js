@@ -39,29 +39,29 @@ class SharePointStorageService {
     try {
       // Get project SharePoint folder context
       const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
-      
+
       // Get wire drop details for naming
       const { data: wireDrop, error: wireDropError } = await supabase
         .from('wire_drops')
         .select('room_name, drop_name')
         .eq('id', wireDropId)
         .single();
-      
+
       if (wireDropError) throw wireDropError;
       if (!wireDrop) throw new Error('Wire drop not found');
-      
+
       const roomName = wireDrop.room_name || 'Unknown';
       const dropName = wireDrop.drop_name || 'Drop';
-      
+
       // Create folder structure: wire_drops/{Room Name}_{Drop Name}/
       const folderName = `${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}`;
       const subPath = `${photosSubPath}wire_drops/${folderName}`;
-      
+
       // Create consistent filename WITHOUT timestamp so it replaces the existing file
       const stagePrefix = stageType.toUpperCase();
       const extension = this.getFileExtension(file.name);
       const filename = `${stagePrefix}_${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(dropName)}.${extension}`;
-      
+
       // Debug logging
       console.log('SharePoint Upload Debug:', {
         rootUrl: uploadRoot,
@@ -71,14 +71,68 @@ class SharePointStorageService {
         sanitizedRoom: this.sanitizeForFileName(roomName),
         sanitizedDrop: this.sanitizeForFileName(dropName)
       });
-      
+
       // Upload to SharePoint
       const url = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
-      
+
       return url;
     } catch (error) {
       console.error('Failed to upload wire drop photo:', error);
       throw new Error(`Wire drop photo upload failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Upload window treatment photo to SharePoint
+   * @param {string} projectId - Project UUID
+   * @param {string} shadeId - Project Shade UUID
+   * @param {string} measurementSet - 'M1' or 'M2'
+   * @param {File} file - Image file
+   * @returns {Promise<string>} SharePoint URL
+   */
+  async uploadShadePhoto(projectId, shadeId, measurementSet, file) {
+    try {
+      // Get project SharePoint folder context
+      const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
+
+      // Get shade details for naming
+      const { data: shade, error: shadeError } = await supabase
+        .from('project_shades')
+        .select('name, room(name)')
+        .eq('id', shadeId)
+        .single();
+
+      if (shadeError) throw shadeError;
+      if (!shade) throw new Error('Shade not found');
+
+      const roomName = shade.room?.name || 'Unknown';
+      const shadeName = shade.name || 'Shade';
+
+      // Structure: Photos/WindowTreatment/{Room}_{Shade}/
+      const folderName = `${this.sanitizeForFileName(roomName)}_${this.sanitizeForFileName(shadeName)}`;
+      const subPath = `${photosSubPath}WindowTreatment/${folderName}`;
+
+      // Filename: {M1|M2}_{Timestamp}.ext
+      const setPrefix = measurementSet.toUpperCase();
+      const timestamp = this.formatTimestamp(new Date());
+      const extension = this.getFileExtension(file.name);
+      const filename = `${setPrefix}_${timestamp}.${extension}`;
+
+      console.log('Shade Photo Upload Debug:', {
+        rootUrl: uploadRoot,
+        subPath,
+        filename
+      });
+
+      // Upload to SharePoint
+      const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
+
+      // Return URL (metadata.url)
+      return metadata.url;
+
+    } catch (error) {
+      console.error('Failed to upload shade photo:', error);
+      throw new Error(`Shade photo upload failed: ${error.message}`);
     }
   }
 
@@ -94,32 +148,32 @@ class SharePointStorageService {
     try {
       // Get project SharePoint folder context
       const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
-      
+
       // Get issue details for naming
       const { data: issue, error: issueError } = await supabase
         .from('issues')
         .select('title')
         .eq('id', issueId)
         .single();
-      
+
       if (issueError) throw issueError;
       if (!issue) throw new Error('Issue not found');
-      
+
       const issueTitle = issue.title || 'Unknown Issue';
-      
+
       // Create folder structure: issues/{Issue Title}/
       const folderName = this.sanitizeForFileName(issueTitle);
       const subPath = `${photosSubPath}issues/${folderName}`;
-      
+
       // Create filename
       const timestamp = this.formatTimestamp(new Date());
       const description = photoDescription ? `_${this.sanitizeForFileName(photoDescription)}` : '';
       const extension = this.getFileExtension(file.name);
       const filename = `ISSUE_${this.sanitizeForFileName(issueTitle)}${description}_${timestamp}.${extension}`;
-      
+
       // Upload to SharePoint - returns metadata object
       const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
-      
+
       return metadata;
     } catch (error) {
       console.error('Failed to upload issue photo:', error);
@@ -190,23 +244,23 @@ class SharePointStorageService {
     try {
       // Get project SharePoint folder context
       const { uploadRoot, photosSubPath } = await this.getPhotosFolderContext(projectId);
-      
+
       const pageTitleSafe = pageTitle || 'Floor Plan';
-      
+
       // Create folder structure: floor_plans/{Page Title}/
       const folderName = this.sanitizeForFileName(pageTitleSafe);
       const subPath = `${photosSubPath}floor_plans/${folderName}`;
-      
+
       // Create filename
       const timestamp = this.formatTimestamp(new Date());
       const filename = `FLOORPLAN_${this.sanitizeForFileName(pageTitleSafe)}_${timestamp}.png`;
-      
+
       // Convert blob to File object for upload
       const file = new File([imageBlob], filename, { type: 'image/png' });
-      
+
       // Upload to SharePoint - returns metadata object
       const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
-      
+
       return metadata;
     } catch (error) {
       console.error('Failed to upload floor plan:', error);
@@ -403,7 +457,7 @@ class SharePointStorageService {
       // If decoding fails, just encode as-is
       var graphSafeRootUrl = encodeURI(cleanedRootUrl);
     }
-    
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         // Convert file to base64
@@ -434,24 +488,24 @@ class SharePointStorageService {
             contentType: file.type || 'application/octet-stream'
           })
         });
-        
+
         if (!response.ok) {
           const error = await response.json();
           throw new Error(error.error || `Upload failed with status ${response.status}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (!result.url) {
           throw new Error('No URL returned from upload');
         }
-        
+
         console.log(`Successfully uploaded ${filename} to SharePoint with metadata:`, {
           url: result.url,
           driveId: result.driveId,
           itemId: result.itemId
         });
-        
+
         // Return complete metadata for thumbnail generation
         return {
           url: result.url,
@@ -461,11 +515,11 @@ class SharePointStorageService {
           webUrl: result.webUrl,
           size: result.size
         };
-        
+
       } catch (error) {
         lastError = error;
         console.error(`Upload attempt ${attempt} failed:`, error);
-        
+
         // Check for rate limiting
         if (error.message?.includes('429') || error.message?.includes('rate limit')) {
           if (attempt < MAX_RETRIES) {
@@ -476,7 +530,7 @@ class SharePointStorageService {
             continue;
           }
         }
-        
+
         // For other errors, retry with shorter delay
         if (attempt < MAX_RETRIES) {
           const delay = INITIAL_RETRY_DELAY;
@@ -485,7 +539,7 @@ class SharePointStorageService {
         }
       }
     }
-    
+
     throw new Error(`Upload failed after ${MAX_RETRIES} attempts: ${lastError?.message || 'Unknown error'}`);
   }
 
@@ -523,9 +577,9 @@ class SharePointStorageService {
    */
   getThumbnailUrl(sharePointUrl, size = 'medium') {
     if (!sharePointUrl) return null;
-    
+
     const sizeConfig = THUMBNAIL_SIZES[size] || THUMBNAIL_SIZES.medium;
-    
+
     // SharePoint thumbnail API pattern
     return `${sharePointUrl}?width=${sizeConfig.width}&height=${sizeConfig.height}`;
   }
@@ -538,7 +592,7 @@ class SharePointStorageService {
    */
   async getCachedThumbnail(sharePointUrl, size = 'medium') {
     if (!sharePointUrl) return null;
-    
+
     try {
       // Check cache first
       const cached = await thumbnailCache.get(sharePointUrl, size);
@@ -549,27 +603,27 @@ class SharePointStorageService {
           cached: true
         };
       }
-      
+
       // Fetch thumbnail
       const thumbnailUrl = this.getThumbnailUrl(sharePointUrl, size);
       const response = await fetch(thumbnailUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch thumbnail: ${response.status}`);
       }
-      
+
       const blob = await response.blob();
       const base64 = await this.blobToBase64(blob);
-      
+
       // Cache it
       await thumbnailCache.set(sharePointUrl, base64, size, blob.type);
-      
+
       return {
         data: base64,
         type: blob.type,
         cached: false
       };
-      
+
     } catch (error) {
       console.error('Failed to get cached thumbnail:', error);
       return null;
@@ -584,21 +638,21 @@ class SharePointStorageService {
    */
   async prefetchThumbnails(urls, size = 'medium') {
     if (!urls || urls.length === 0) return [];
-    
+
     const items = urls.map(url => ({ url, size }));
-    
+
     const fetchFn = async (url, size) => {
       try {
         const thumbnailUrl = this.getThumbnailUrl(url, size);
         const response = await fetch(thumbnailUrl);
-        
+
         if (!response.ok) {
           throw new Error(`Failed to fetch: ${response.status}`);
         }
-        
+
         const blob = await response.blob();
         const base64 = await this.blobToBase64(blob);
-        
+
         return {
           data: base64,
           type: blob.type
@@ -608,7 +662,7 @@ class SharePointStorageService {
         return { data: null, type: null };
       }
     };
-    
+
     return await thumbnailCache.prefetchBatch(items, fetchFn);
   }
 
@@ -686,7 +740,7 @@ class SharePointStorageService {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
-    
+
     return `${year}${month}${day}_${hours}${minutes}${seconds}`;
   }
 

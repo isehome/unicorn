@@ -52,6 +52,7 @@ const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 const PublicIssuePortal = lazy(() => import('./pages/PublicIssuePortal'));
 const PublicPurchaseOrderPortal = lazy(() => import('./pages/PublicPurchaseOrderPortal'));
 const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
+const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -79,271 +80,279 @@ const AppRoutes = () => {
             </div>
           }>
             <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <TechnicianDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pm-dashboard"
-              element={
-                <ProtectedRoute>
-                  <PMDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/project/:id"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Project details">
-                    <ProjectDetailView />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pm/project/:projectId"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="PM Project View">
-                    <PMProjectView />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/pm-project/:projectId"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="PM Project View">
-                    <PMProjectView />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/project/:projectId/pm-issues"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Issues list">
-                    <PMIssuesPage />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/project/:id/issues/:issueId"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Issue details">
-                    <IssueDetail />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/people"
-              element={
-                <ProtectedRoute>
-                  <PeopleManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/parts"
-              element={
-                <ProtectedRoute>
-                  <PartsListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/parts/:partId"
-              element={
-                <ProtectedRoute>
-                  <PartDetailPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/global-parts"
-              element={
-                <ProtectedRoute>
-                  <GlobalPartsManager />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wire-drops"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Wire Drops Hub">
-                    <WireDropsHub />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wire-drops-list"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Wire Drops list">
-                    <WireDropsList />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/prewire-mode"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Prewire Mode">
-                    <PrewireMode />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wire-drops/new"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="New Wire Drop">
-                    <WireDropNew />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wire-drops/:id"
-              element={
-                <ProtectedRoute>
-                  <OfflineGuard pageName="Wire Drop details">
-                    <WireDropDetail />
-                  </OfflineGuard>
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/floor-plan"
-              element={
-                <ProtectedRoute>
-                  <FloorPlanViewer />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/equipment"
-              element={
-                <ProtectedRoute>
-                  <EquipmentListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/inventory"
-              element={
-                <ProtectedRoute>
-                  <InventoryPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/receiving"
-              element={
-                <ProtectedRoute>
-                  <PartsReceivingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/procurement"
-              element={
-                <ProtectedRoute>
-                  <PMProcurementPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/secure-data"
-              element={
-                <ProtectedRoute>
-                  <SecureDataPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/projects/:projectId/reports"
-              element={
-                <ProtectedRoute>
-                  <ProjectReportsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/vendors"
-              element={
-                <ProtectedRoute>
-                  <VendorManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <ProtectedRoute>
-                  <SettingsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/issues"
-              element={
-                <ProtectedRoute>
-                  <IssuesListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/todos"
-              element={
-                <ProtectedRoute>
-                  <TodosListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/lucid-test"
-              element={
-                <ProtectedRoute>
-                  <LucidDiagnostic />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/scan-tag"
-              element={
-                <ProtectedRoute>
-                  <ScanTagPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/unifi-test"
-              element={
-                <ProtectedRoute>
-                  <UnifiTestPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
-            <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <TechnicianDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pm-dashboard"
+                element={
+                  <ProtectedRoute>
+                    <PMDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/project/:id"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Project details">
+                      <ProjectDetailView />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pm/project/:projectId"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="PM Project View">
+                      <PMProjectView />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/pm-project/:projectId"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="PM Project View">
+                      <PMProjectView />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/project/:projectId/pm-issues"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Issues list">
+                      <PMIssuesPage />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/project/:id/issues/:issueId"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Issue details">
+                      <IssueDetail />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/people"
+                element={
+                  <ProtectedRoute>
+                    <PeopleManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/parts"
+                element={
+                  <ProtectedRoute>
+                    <PartsListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/parts/:partId"
+                element={
+                  <ProtectedRoute>
+                    <PartDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/global-parts"
+                element={
+                  <ProtectedRoute>
+                    <GlobalPartsManager />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wire-drops"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Wire Drops Hub">
+                      <WireDropsHub />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wire-drops-list"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Wire Drops list">
+                      <WireDropsList />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/prewire-mode"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Prewire Mode">
+                      <PrewireMode />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wire-drops/new"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="New Wire Drop">
+                      <WireDropNew />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wire-drops/:id"
+                element={
+                  <ProtectedRoute>
+                    <OfflineGuard pageName="Wire Drop details">
+                      <WireDropDetail />
+                    </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/floor-plan"
+                element={
+                  <ProtectedRoute>
+                    <FloorPlanViewer />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/equipment"
+                element={
+                  <ProtectedRoute>
+                    <EquipmentListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/inventory"
+                element={
+                  <ProtectedRoute>
+                    <InventoryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/receiving"
+                element={
+                  <ProtectedRoute>
+                    <PartsReceivingPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/procurement"
+                element={
+                  <ProtectedRoute>
+                    <PMProcurementPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/secure-data"
+                element={
+                  <ProtectedRoute>
+                    <SecureDataPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/reports"
+                element={
+                  <ProtectedRoute>
+                    <ProjectReportsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/shades"
+                element={
+                  <ProtectedRoute>
+                    <ShadeManager />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/vendors"
+                element={
+                  <ProtectedRoute>
+                    <VendorManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings"
+                element={
+                  <ProtectedRoute>
+                    <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/issues"
+                element={
+                  <ProtectedRoute>
+                    <IssuesListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/todos"
+                element={
+                  <ProtectedRoute>
+                    <TodosListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/lucid-test"
+                element={
+                  <ProtectedRoute>
+                    <LucidDiagnostic />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/scan-tag"
+                element={
+                  <ProtectedRoute>
+                    <ScanTagPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/unifi-test"
+                element={
+                  <ProtectedRoute>
+                    <UnifiTestPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
+              <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>

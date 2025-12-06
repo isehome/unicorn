@@ -1,0 +1,391 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+    ArrowLeft,
+    Upload,
+    Download,
+    Ruler,
+    CheckCircle,
+    AlertTriangle,
+    ChevronRight,
+    ChevronDown,
+    Search,
+    Filter
+} from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { projectShadeService } from '../../services/projectShadeService';
+import Button from '../ui/Button';
+import ShadeMeasurementModal from './ShadeMeasurementModal';
+import { brandColors } from '../../styles/styleSystem';
+
+const ShadeManager = () => {
+    const { projectId } = useParams();
+    const navigate = useNavigate();
+    const { theme, mode } = useTheme();
+    const { user } = useAuth(); // MSAL User
+    const palette = theme.palette;
+
+    const [shades, setShades] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [importing, setImporting] = useState(false);
+
+    // Filtering & Search
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all'); // all, pending, verified, approved
+
+    // Component State
+    const [expandedRooms, setExpandedRooms] = useState(new Set());
+    const [selectedShade, setSelectedShade] = useState(null);
+    const [showMeasureModal, setShowMeasureModal] = useState(false);
+
+    const loadShades = useCallback(async () => {
+        try {
+            setLoading(true);
+            const data = await projectShadeService.getShades(projectId);
+            setShades(data || []);
+
+            // Auto-expand all rooms initially
+            const allRooms = new Set(data.map(s => s.room?.name || 'Unassigned'));
+            setExpandedRooms(allRooms);
+        } catch (err) {
+            console.error('Failed to load shades:', err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [projectId]);
+
+    useEffect(() => {
+        loadShades();
+    }, [loadShades]);
+
+    const handleFileUpload = async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        try {
+            setImporting(true);
+            setError(null);
+
+            if (!user?.id) throw new Error('You must be logged in to import shades.');
+
+            const result = await projectShadeService.importShadeCsv(projectId, file, user.id);
+            alert(`Successfully imported ${result.inserted} shades!`);
+            await loadShades();
+        } catch (err) {
+            console.error('Import failed:', err);
+            setError(err.message);
+        } finally {
+            setImporting(false);
+            // Reset input
+            event.target.value = '';
+        }
+    };
+
+    const handleExport = async () => {
+        try {
+            const data = await projectShadeService.getExportData(projectId);
+            if (!data || data.length === 0) {
+                alert('No shades to export');
+                return;
+            }
+
+            // Convert to CSV
+            const Papa = require('papaparse');
+            const csv = Papa.unparse(data);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `Lutron_Order_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error('Export failed:', err);
+            alert('Failed to export CSV: ' + err.message);
+        }
+    };
+
+    const handleOpenMeasurement = (shade) => {
+        setSelectedShade(shade);
+        setShowMeasureModal(true);
+    };
+
+    const handleMeasurementSave = async (measurements, set = 'm1') => {
+        try {
+            if (!user?.id) throw new Error('User required');
+            await projectShadeService.updateMeasurements(selectedShade.id, measurements, user.id, set);
+            setShowMeasureModal(false);
+            // setSelectedShade(null); // Removed as per instruction
+            loadShades(); // Refresh list to show updated status
+        } catch (err) {
+            console.error('Failed to save measurements:', err);
+            alert('Failed to save: ' + err.message);
+        }
+    };
+
+    // Helper to calculate Delta
+    const getDelta = (s) => {
+        if (!s.m1_width || !s.m2_width) return null;
+        const w1 = parseFloat(s.m1_width);
+        const w2 = parseFloat(s.m2_width);
+        const h1 = parseFloat(s.m1_height);
+        const h2 = parseFloat(s.m2_height);
+
+        if (isNaN(w1) || isNaN(w2) || isNaN(h1) || isNaN(h2)) return null;
+
+        const wDelta = Math.abs(w1 - w2);
+        const hDelta = Math.abs(h1 - h2);
+        return Math.max(wDelta, hDelta);
+    };
+
+    // Grouping Logic
+    const groupedShades = useMemo(() => {
+        const filtered = shades.filter(shade => {
+            const matchSearch = (shade.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (shade.room?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+            if (!matchSearch) return false;
+
+            if (statusFilter === 'verified') return shade.field_verified;
+            if (statusFilter === 'approved') return shade.approval_status === 'approved';
+            if (statusFilter === 'pending') return !shade.field_verified || shade.approval_status !== 'approved';
+
+            return true;
+        });
+
+        const groups = {};
+        filtered.forEach(shade => {
+            const roomName = shade.room?.name || 'Unassigned';
+            if (!groups[roomName]) groups[roomName] = [];
+            groups[roomName].push(shade);
+        });
+
+        // Sort rooms alphabetically
+        return Object.keys(groups).sort().reduce((acc, key) => {
+            acc[key] = groups[key];
+            return acc;
+        }, {});
+    }, [shades, searchQuery, statusFilter]);
+
+    const toggleRoom = (roomName) => {
+        setExpandedRooms(prev => {
+            const next = new Set(prev);
+            if (next.has(roomName)) next.delete(roomName);
+            else next.add(roomName);
+            return next;
+        });
+    };
+
+    const getStatusBadge = (shade) => {
+        // 1. Approved (Green)
+        if (shade.approval_status === 'approved') {
+            return (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"
+                    style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: brandColors.success }}>
+                    <CheckCircle size={12} /> Approved
+                </span>
+            );
+        }
+        // 2. Field Verified (Blue)
+        if (shade.field_verified) {
+            return (
+                <span className="px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"
+                    style={{ backgroundColor: 'rgba(59, 130, 246, 0.15)', color: '#3B82F6' }}>
+                    <Ruler size={12} /> Verified
+                </span>
+            );
+        }
+        // 3. Draft/Quote (Yellow)
+        return (
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1"
+                style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }}>
+                <AlertTriangle size={12} /> Quote
+            </span>
+        );
+    };
+
+    return (
+        <div className={`min-h-screen pb-20 ${mode === 'dark' ? 'bg-zinc-900' : 'bg-zinc-50'}`}>
+            <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h1 className={`text-2xl font-bold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                            Window Treatments
+                        </h1>
+                        <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                            Manage measurements, verification, and designer approvals.
+                        </p>
+                    </div>
+                    <div className="flex gap-3">
+                        <Button variant="secondary" icon={Upload} onClick={() => document.getElementById('csv-upload').click()} disabled={importing}>
+                            {importing ? 'Importing...' : 'Import Quote'}
+                        </Button>
+                        <input
+                            id="csv-upload"
+                            type="file"
+                            accept=".csv"
+                            className="hidden"
+                            onChange={handleFileUpload}
+                        />
+                        <Button variant="primary" icon={Download} onClick={handleExport}>
+                            Export Order
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Filters */}
+                <div className={`p-4 rounded-xl border flex flex-col sm:flex-row gap-4 ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'
+                    }`}>
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-2.5 text-zinc-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Search shades or rooms..."
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            className={`w-full pl-10 pr-4 py-2 rounded-lg border focus:ring-2 focus:ring-violet-500 focus:outline-none ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-zinc-50 border-zinc-300 text-zinc-900'
+                                }`}
+                        />
+                    </div>
+                    <select
+                        value={statusFilter}
+                        onChange={e => setStatusFilter(e.target.value)}
+                        className={`px-4 py-2 rounded-lg border focus:ring-2 focus:ring-violet-500 focus:outline-none ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'
+                            }`}
+                    >
+                        <option value="all">All Status</option>
+                        <option value="pending">Pending Action</option>
+                        <option value="verified">Field Verified</option>
+                        <option value="approved">Approved</option>
+                    </select>
+                </div>
+
+                {/* Content */}
+                <div className="space-y-4">
+                    {Object.entries(groupedShades).map(([roomName, roomShades]) => {
+                        const isExpanded = expandedRooms.has(roomName);
+                        return (
+                            <div key={roomName} className={`rounded-xl border overflow-hidden ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'
+                                }`}>
+                                <button
+                                    onClick={() => toggleRoom(roomName)}
+                                    className={`w-full flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-700/50 transition-colors`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className={`font-semibold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                                            {roomName}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded-full text-xs ${mode === 'dark' ? 'bg-zinc-700 text-zinc-300' : 'bg-zinc-100 text-zinc-600'
+                                            }`}>
+                                            {roomShades.length}
+                                        </span>
+                                    </div>
+                                    {isExpanded ? <ChevronDown size={20} className="text-zinc-400" /> : <ChevronRight size={20} className="text-zinc-400" />}
+                                </button>
+
+                                {isExpanded && (
+                                    <div className="border-t border-zinc-200 dark:border-zinc-700">
+                                        {roomShades.map(shade => (
+                                            <div key={shade.id}
+                                                onClick={() => handleOpenMeasurement(shade)}
+                                                className="p-4 border-b last:border-b-0 border-zinc-100 dark:border-zinc-700/50 hover:bg-zinc-50 dark:hover:bg-zinc-700/30 cursor-pointer transition-colors grid grid-cols-12 gap-4 items-center"
+                                            >
+                                                {/* Info Col */}
+                                                <div className="col-span-5 sm:col-span-4">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                                                            {shade.name}
+                                                        </span>
+                                                        {getStatusBadge(shade)}
+                                                    </div>
+                                                    <div className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                                        {shade.technology} • {shade.model}
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-zinc-400">
+                                                        Quote: {shade.quoted_width}" x {shade.quoted_height}"
+                                                    </div>
+                                                </div>
+
+                                                {/* M1 Status */}
+                                                <div className="col-span-2 text-center">
+                                                    <div className="text-xs uppercase text-zinc-400 font-semibold mb-1">M1</div>
+                                                    {shade.m1_complete ? (
+                                                        <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs">
+                                                            <CheckCircle size={12} /> Done
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-zinc-300 text-xs">-</span>
+                                                    )}
+                                                </div>
+
+                                                {/* M2 Status */}
+                                                <div className="col-span-2 text-center">
+                                                    <div className="text-xs uppercase text-zinc-400 font-semibold mb-1">M2</div>
+                                                    {shade.m2_complete ? (
+                                                        <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs">
+                                                            <CheckCircle size={12} /> Done
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-zinc-300 text-xs">-</span>
+                                                    )}
+                                                </div>
+
+                                                {/* Delta */}
+                                                <div className="col-span-2 text-center">
+                                                    <div className="text-xs uppercase text-zinc-400 font-semibold mb-1">Delta</div>
+                                                    {(() => {
+                                                        const delta = getDelta(shade);
+                                                        if (delta === null) return <span className="text-zinc-300 text-xs">-</span>;
+                                                        const isHigh = delta > 0.125;
+                                                        return (
+                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${isHigh
+                                                                    ? 'bg-red-100 text-red-700'
+                                                                    : 'bg-green-100 text-green-700'
+                                                                }`}>
+                                                                {delta.toFixed(3)}"
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
+
+                                                <div className="col-span-1 flex justify-end">
+                                                    <ChevronRight size={16} className="text-zinc-300" />
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    {Object.keys(groupedShades).length === 0 && !loading && (
+                        <div className="text-center py-12 text-zinc-400">
+                            No shades found. Import a CSV to get started.
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Measurement Modal */}
+            {selectedShade && (
+                <ShadeMeasurementModal
+                    isOpen={showMeasureModal}
+                    onClose={() => setShowMeasureModal(false)}
+                    shade={selectedShade}
+                    onSave={handleMeasurementSave}
+                    currentUser={user}
+                />
+            )}
+        </div>
+    );
+};
+
+export default ShadeManager;

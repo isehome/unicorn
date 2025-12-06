@@ -178,9 +178,9 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId, userId) => {
     );
     const description = normalizeString(
       row.ShortDescription ??
-        row['Short Description'] ??
-        row.Description ??
-        row['Description']
+      row['Short Description'] ??
+      row.Description ??
+      row['Description']
     );
     const supplier = normalizeString(row.Supplier);
     const itemType = itemTypeRaw.toLowerCase();
@@ -276,6 +276,109 @@ const buildEquipmentRecords = (rows, roomMap, projectId, batchId, userId) => {
     equipmentRecords,
     laborRecords: Array.from(laborMap.values())
   };
+};
+
+const detectLutronCsv = (text) => {
+  if (!text) return false;
+  // New Lutron export has "Technology" and "Product" columns
+  // Also check for "System Mount" to be sure
+  return text.includes('Technology') && text.includes('Product') && text.includes('System Mount');
+};
+
+// Standard parser is sufficient for new Lutron CSV as it follows standard header format (Line 1)
+// We don't need the specialized offset parser anymore for this file type.
+
+const buildLutronEquipmentRecords = (rows, roomMap, projectId, batchId, userId) => {
+  const equipmentRecords = [];
+
+  rows.forEach((row) => {
+    // 1. Basic Validation
+    const name = normalizeString(row.Name);
+    if (!name) return; // Skip empty rows
+
+    const quantity = toNumber(row.Quantity);
+    if (quantity <= 0) return;
+
+    // 2. Room Resolving
+    // "Area" column matches our standard "Area" column, so roomMap should work
+    const roomName = normalizeString(row.Area);
+    let roomId = null;
+    if (roomName) {
+      const roomKey = normalizeRoomKey(roomName);
+      const room = roomMap.get(roomKey);
+      roomId = room?.id || null;
+    }
+
+    // 3. Global Part / Identity Mapping
+    // User Requirement: Combine Technology + Product for Global Part
+    const technology = normalizeString(row.Technology) || '';
+    const product = normalizeString(row.Product) || '';
+
+    // e.g. "Sivoia QS Triathlon Standard Honeycomb"
+    const partNumber = [technology, product].filter(Boolean).join(' ').trim();
+
+    // Use "Product Details" as the specific model if available, else Product
+    const model = normalizeString(row['Product Details']) || product;
+
+    // 4. Metadata Extraction
+    const systemMount = normalizeString(row['System Mount']); // Key field for Portals
+    const fabric = normalizeString(row.Fabric);
+
+    const metadata = {
+      width: normalizeString(row.Width),
+      height: normalizeString(row.Height),
+      system_mount: systemMount, // Exposed in Portal
+      fabric: fabric,            // Exposed in Portal link
+      technology: technology,
+      product_type: normalizeString(row['Product Type']),
+      battery_powered: normalizeString(row['Battery Powered']),
+      top_back_cover: normalizeString(row['Top Back Cover']),
+      // Capture original values for potential round-tripping
+      original_name: name,
+      original_area: roomName,
+    };
+
+    const unitPrice = toNumber(row['List Price']);
+    const category = normalizeString(row['Product Type']);
+
+    // 5. Instance Creation
+    for (let i = 1; i <= quantity; i++) {
+      // Create a unique instance name
+      // Use provided name if unique-ish, else append number
+      const instanceName = quantity > 1 ? `${name} ${i}` : name;
+
+      equipmentRecords.push({
+        project_id: projectId,
+        catalog_id: null,
+        name: instanceName,
+        instance_number: i,
+        instance_name: instanceName,
+        parent_import_group: crypto.randomUUID(),
+        description: model, // Specific model/details as description
+        manufacturer: 'Lutron',
+        model: model,
+        part_number: partNumber, // This links to Global Part "Technology Product"
+        room_id: roomId,
+        install_side: 'room_end',
+        equipment_type: 'part', // Force to 'part' to satisfy DB constraint. Specific type is in metadata.product_type
+        planned_quantity: 1,
+        unit_of_measure: 'ea',
+        unit_cost: 0,
+        unit_price: unitPrice,
+        supplier: 'Lutron',
+        csv_batch_id: batchId,
+        metadata: metadata,
+        notes: null,
+        is_active: true,
+        created_by: userId,
+        // New items are not ordered/delivered yet
+        ordered_confirmed: false,
+        delivered_confirmed: false
+      });
+    }
+  });
+
+  return { equipmentRecords, laborRecords: [] };
 };
 
 const resetPreviousImports = async (projectId) => {
@@ -677,7 +780,26 @@ export const projectEquipmentService = {
     // Get current authenticated user
     const { data: { user } } = await supabase.auth.getUser();
 
-    const parsedRows = await parseCsvFile(file);
+    let parsedRows;
+    let isLutron = false;
+    let roomMap;
+    let equipmentRecords = [];
+    let laborRecords = [];
+    let insertedCount = 0;
+
+    // Read the file as text to detect format
+    const fileText = await file.text();
+
+    if (detectLutronCsv(fileText)) {
+      console.log('[Import] Detected Lutron CSV format (New Version)');
+      isLutron = true;
+      // The new Lutron CSV is just a standard CSV, we just needed to detect it to switch building logic
+      parsedRows = await parseCsvFile(file);
+    } else {
+      console.log('[Import] Using standard CSV parser');
+      parsedRows = await parseCsvFile(file);
+    }
+
     if (!Array.isArray(parsedRows) || parsedRows.length === 0) {
       throw new Error('CSV file did not contain any rows');
     }
@@ -712,14 +834,39 @@ export const projectEquipmentService = {
       preservedWireDropLinks = await resetPreviousImports(projectId);
     }
 
-    const { roomMap, insertedCount } = await ensureRooms(projectId, parsedRows);
-    const { equipmentRecords, laborRecords } = buildEquipmentRecords(
-      parsedRows,
-      roomMap,
-      projectId,
-      batchId,
-      user?.id
-    );
+    if (isLutron) {
+      // Lutron Import
+      // 1. Ensure Rooms (since new CSV has "Area")
+      const lutronResult = await ensureRooms(projectId, parsedRows);
+      roomMap = lutronResult.roomMap;
+      insertedCount = lutronResult.insertedCount;
+
+      // 2. Build Records
+      const built = buildLutronEquipmentRecords(
+        parsedRows,
+        roomMap, // Use the assigned roomMap
+        projectId,
+        batchId,
+        user?.id
+      );
+      equipmentRecords = built.equipmentRecords;
+      laborRecords = built.laborRecords;
+    } else {
+      // Standard Import
+      const roomResult = await ensureRooms(projectId, parsedRows);
+      roomMap = roomResult.roomMap;
+      insertedCount = roomResult.insertedCount;
+
+      const built = buildEquipmentRecords(
+        parsedRows,
+        roomMap,
+        projectId,
+        batchId,
+        user?.id
+      );
+      equipmentRecords = built.equipmentRecords;
+      laborRecords = built.laborRecords;
+    }
 
     let insertedEquipment = [];
     let updatedEquipment = 0;

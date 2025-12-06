@@ -7,7 +7,8 @@ import {
   Image,
   Folder,
   FileText,
-  ChevronRight
+  ChevronRight,
+  AlignJustify
 } from 'lucide-react';
 import { normalizeSharePointRootUrl } from '../../services/sharePointFolderService';
 
@@ -67,6 +68,18 @@ const ProjectLinks = ({ project, projectId, styles, palette, withAlpha, openLink
           <div className="flex items-center gap-3">
             <Shield size={20} style={styles.textPrimary} />
             <span className="font-medium" style={styles.textPrimary}>Secure Data</span>
+          </div>
+          <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
+        </button>
+
+        <button
+          onClick={() => navigate(`/projects/${projectId}/shades`)}
+          className="flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md group"
+          style={styles.card}
+        >
+          <div className="flex items-center gap-3">
+            <AlignJustify size={20} style={styles.textPrimary} />
+            <span className="font-medium" style={styles.textPrimary}>Window Treatments</span>
           </div>
           <ChevronRight size={18} className="transition-transform group-hover:translate-x-1" style={styles.textSecondary} />
         </button>

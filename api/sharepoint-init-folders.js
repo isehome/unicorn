@@ -172,7 +172,16 @@ module.exports = async (req, res) => {
       subfolders: subfolderResults
     })
   } catch (e) {
-    console.error('Folder initialization error:', e.message)
-    res.status(500).json({ error: e.message })
+    console.error('Folder initialization error:', e.message);
+
+    // Catch DOMException from atob/btoa or similar encoding issues
+    if (e.message && e.message.includes('match the expected pattern')) {
+      res.status(400).json({
+        error: 'Invalid URL format. Please ensure the Client Folder URL is a valid SharePoint link.'
+      });
+      return;
+    }
+
+    res.status(500).json({ error: e.message });
   }
-}
+};

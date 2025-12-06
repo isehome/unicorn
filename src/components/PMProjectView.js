@@ -42,6 +42,7 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronRight,
+  AlertTriangle,
   GripVertical,
   RefreshCw,
   Link,
@@ -49,9 +50,10 @@ import {
   Package,
   ShoppingCart,
   Trash2,
-  AlertTriangle,
-  FileBarChart2
+  FileBarChart2,
+  AlignJustify
 } from 'lucide-react';
+import { projectShadeService } from '../services/projectShadeService';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
 
@@ -399,7 +401,8 @@ const PMProjectViewEnhanced = () => {
     reports: true,          // Reports section placeholder
     phaseMilestones: false, // Start expanded for easy access
     buildingPermits: true,  // Start collapsed
-    setupAndEdit: true      // Setup & Configuration section - collapsed by default for existing projects
+    setupAndEdit: true,      // Setup & Configuration section - collapsed by default for existing projects
+    shadesSetup: true       // Window treatments setup
   });
 
   const toggleSection = (section) => {
@@ -2121,6 +2124,26 @@ const PMProjectViewEnhanced = () => {
   };
 
   // Lucid Integration Functions
+  const handleLutronUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      if (!user?.id) throw new Error('You must be logged in to import shades.');
+
+      const result = await projectShadeService.importShadeCsv(projectId, file, user.id);
+      alert(`Successfully imported ${result.inserted} shades!`);
+      // alert('Import disabled temporarily for debugging');
+    } catch (err) {
+      console.error('Import failed:', err);
+      alert('Failed to import Lutron CSV: ' + err.message);
+    } finally {
+      setLoading(false);
+      event.target.value = ''; // Reset input
+    }
+  };
+
   const handleFetchLucidData = async () => {
     if (!formData.wiring_diagram_url) {
       alert('Please enter a Wiring Diagram URL first');
@@ -2676,440 +2699,590 @@ const PMProjectViewEnhanced = () => {
 
         {/* Setup & Configuration - Only visible in edit mode */}
         {editMode && (
-        <div>
-          <button
-            onClick={() => toggleSection('setupAndEdit')}
-            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-            style={sectionStyles.card}
-          >
-            <div className="flex items-center gap-3">
-              <Settings className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Setup & Configuration</span>
-            </div>
-            <div className="flex items-center gap-3">
-              {(() => {
-                const status = getSetupStatus();
-                return (
-                  <span
-                    className="px-2 py-0.5 text-xs rounded-full"
-                    style={status.color === 'success'
-                      ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
-                      : { backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }
-                    }
-                  >
-                    {status.text}
-                  </span>
-                );
-              })()}
-              <ChevronRight
-                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                style={{ transform: sectionsCollapsed.setupAndEdit ? 'none' : 'rotate(90deg)' }}
-              />
-            </div>
-          </button>
+          <div>
+            <button
+              onClick={() => toggleSection('setupAndEdit')}
+              className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+              style={sectionStyles.card}
+            >
+              <div className="flex items-center gap-3">
+                <Settings className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                <span className="font-medium text-zinc-900 dark:text-zinc-100">Setup & Configuration</span>
+              </div>
+              <div className="flex items-center gap-3">
+                {(() => {
+                  const status = getSetupStatus();
+                  return (
+                    <span
+                      className="px-2 py-0.5 text-xs rounded-full"
+                      style={status.color === 'success'
+                        ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
+                        : { backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' }
+                      }
+                    >
+                      {status.text}
+                    </span>
+                  );
+                })()}
+                <ChevronRight
+                  className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                  style={{ transform: sectionsCollapsed.setupAndEdit ? 'none' : 'rotate(90deg)' }}
+                />
+              </div>
+            </button>
 
-          {!sectionsCollapsed.setupAndEdit && (
-            <div className="mt-4 space-y-4">
+            {!sectionsCollapsed.setupAndEdit && (
+              <div className="mt-4 space-y-4">
 
-              {/* Step 1: Lucid Wire Drops Import */}
-              {formData.wiring_diagram_url && (
+                {/* Step 0: Window Treatments Setup */}
                 <div>
                   <button
-                    onClick={() => toggleSection('lucidData')}
+                    onClick={() => toggleSection('shadesSetup')}
                     className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
                     style={sectionStyles.card}
                   >
                     <div className="flex items-center gap-3">
-                      <Link className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Import Lucid Wire Drops</span>
+                      <AlignJustify className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Window Treatments Setup</span>
+                    </div>
+                    <ChevronRight
+                      className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                      style={{ transform: sectionsCollapsed.shadesSetup ? 'none' : 'rotate(90deg)' }}
+                    />
+                  </button>
+
+                  {!sectionsCollapsed.shadesSetup && (
+                    <div className="mt-4 rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
+                      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                        Import the Lutron Quote CSV to initialize window treatments. This creates the 'Project Shades' list for technicians to verify.
+                      </p>
+
+                      <div className="flex flex-wrap gap-3">
+                        <Button variant="primary" size="sm" icon={Upload} onClick={() => document.getElementById('pm-lutron-upload').click()}>
+                          Import Lutron CSV
+                        </Button>
+                        <input
+                          id="pm-lutron-upload"
+                          type="file"
+                          accept=".csv"
+                          className="hidden"
+                          onChange={handleLutronUpload}
+                        />
+                        <Button variant="secondary" size="sm" icon={ExternalLink} onClick={() => navigate(`/projects/${projectId}/shades`)}>
+                          Open Manager
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 1: Lucid Wire Drops Import */}
+                {formData.wiring_diagram_url && (
+                  <div>
+                    <button
+                      onClick={() => toggleSection('lucidData')}
+                      className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                      style={sectionStyles.card}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Link className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Import Lucid Wire Drops</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {existingWireDrops.length > 0 && (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                            {existingWireDrops.length}
+                          </span>
+                        )}
+                        <ChevronRight
+                          className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                          style={{ transform: sectionsCollapsed.lucidData ? 'none' : 'rotate(90deg)' }}
+                        />
+                      </div>
+                    </button>
+
+                    {!sectionsCollapsed.lucidData && (
+                      <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+                        <div className="flex justify-between items-center mb-3">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            icon={lucidLoading ? Loader : RefreshCw}
+                            onClick={handleFetchLucidData}
+                            disabled={lucidLoading}
+                          >
+                            {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
+                          </Button>
+                        </div>
+
+                        {lucidError && (
+                          <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                              <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {droppableShapes.length > 0 && (
+                          <div>
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={handleSelectAll}
+                                  disabled={droppableShapes.every(s => isShapeLinked(s.id))}
+                                >
+                                  Select All
+                                </Button>
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={handleDeselectAll}
+                                  disabled={selectedShapes.size === 0}
+                                >
+                                  Deselect All
+                                </Button>
+                              </div>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                icon={batchCreating ? Loader : Plus}
+                                onClick={handleCreateWireDropsFromSelected}
+                                disabled={selectedShapes.size === 0 || batchCreating}
+                              >
+                                {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
+                              </Button>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead className="bg-gray-100 dark:bg-gray-800">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left">
+                                      <input
+                                        type="checkbox"
+                                        onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
+                                        checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
+                                        className="rounded"
+                                      />
+                                    </th>
+                                    <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
+                                    <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
+                                    <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                                  {droppableShapes.map((shape) => {
+                                    const linked = isShapeLinked(shape.id);
+                                    const wireDrop = getLinkedWireDrop(shape.id);
+                                    const roomName = extractShapeRoomName(shape);
+                                    const dropType = extractShapeDropType(shape);
+
+                                    return (
+                                      <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
+                                        <td className="px-3 py-2">
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedShapes.has(shape.id)}
+                                            onChange={() => handleShapeSelection(shape.id)}
+                                            disabled={linked}
+                                            className="rounded disabled:opacity-50"
+                                          />
+                                        </td>
+                                        <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
+                                        <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
+                                        <td className="px-3 py-2">
+                                          {linked ? (
+                                            <span
+                                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+                                              style={{
+                                                backgroundColor: 'rgba(148, 175, 50, 0.15)',
+                                                color: '#94AF32'
+                                              }}
+                                            >
+                                              <CheckCircle className="w-3 h-3" />
+                                              Linked
+                                            </span>
+                                          ) : (
+                                            <span className="text-xs text-gray-500">Available</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 2: Upload Portal CSV */}
+                <div>
+                  <button
+                    onClick={() => toggleSection('procurement')}
+                    className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                    style={sectionStyles.card}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload Portal CSV</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      {existingWireDrops.length > 0 && (
+                      {totalEquipmentPieces > 0 && (
                         <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                          {existingWireDrops.length}
+                          {totalEquipmentPieces}
                         </span>
                       )}
                       <ChevronRight
                         className="w-4 h-4 text-zinc-500 transition-transform duration-200"
-                        style={{ transform: sectionsCollapsed.lucidData ? 'none' : 'rotate(90deg)' }}
+                        style={{ transform: sectionsCollapsed.procurement ? 'none' : 'rotate(90deg)' }}
                       />
                     </div>
                   </button>
 
-                  {!sectionsCollapsed.lucidData && (
-                    <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-                      <div className="flex justify-between items-center mb-3">
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          icon={lucidLoading ? Loader : RefreshCw}
-                          onClick={handleFetchLucidData}
-                          disabled={lucidLoading}
-                        >
-                          {lucidLoading ? 'Fetching...' : droppableShapes.length > 0 ? 'Refresh' : 'Fetch Data'}
-                        </Button>
-                      </div>
-
-                      {lucidError && (
-                        <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                            <p className="text-sm text-red-700 dark:text-red-300">{lucidError}</p>
-                          </div>
-                        </div>
-                      )}
-
-                      {droppableShapes.length > 0 && (
-                        <div>
-                          <div className="flex justify-between items-center mb-3">
-                            <div className="flex gap-2">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={handleSelectAll}
-                                disabled={droppableShapes.every(s => isShapeLinked(s.id))}
-                              >
-                                Select All
-                              </Button>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={handleDeselectAll}
-                                disabled={selectedShapes.size === 0}
-                              >
-                                Deselect All
-                              </Button>
-                            </div>
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              icon={batchCreating ? Loader : Plus}
-                              onClick={handleCreateWireDropsFromSelected}
-                              disabled={selectedShapes.size === 0 || batchCreating}
-                            >
-                              {batchCreating ? 'Creating...' : `Create ${selectedShapes.size} Drop${selectedShapes.size !== 1 ? 's' : ''}`}
-                            </Button>
-                          </div>
-
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead className="bg-gray-100 dark:bg-gray-800">
-                                <tr>
-                                  <th className="px-3 py-2 text-left">
-                                    <input
-                                      type="checkbox"
-                                      onChange={(e) => e.target.checked ? handleSelectAll() : handleDeselectAll()}
-                                      checked={selectedShapes.size > 0 && selectedShapes.size === droppableShapes.filter(s => !isShapeLinked(s.id)).length}
-                                      className="rounded"
-                                    />
-                                  </th>
-                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
-                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Type</th>
-                                  <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                                {droppableShapes.map((shape) => {
-                                  const linked = isShapeLinked(shape.id);
-                                  const wireDrop = getLinkedWireDrop(shape.id);
-                                  const roomName = extractShapeRoomName(shape);
-                                  const dropType = extractShapeDropType(shape);
-
-                                  return (
-                                    <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
-                                      <td className="px-3 py-2">
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedShapes.has(shape.id)}
-                                          onChange={() => handleShapeSelection(shape.id)}
-                                          disabled={linked}
-                                          className="rounded disabled:opacity-50"
-                                        />
-                                      </td>
-                                      <td className="px-3 py-2 text-gray-900 dark:text-white">{roomName || '—'}</td>
-                                      <td className="px-3 py-2 text-gray-600 dark:text-gray-400">{dropType || '—'}</td>
-                                      <td className="px-3 py-2">
-                                        {linked ? (
-                                          <span
-                                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
-                                            style={{
-                                              backgroundColor: 'rgba(148, 175, 50, 0.15)',
-                                              color: '#94AF32'
-                                            }}
-                                          >
-                                            <CheckCircle className="w-3 h-3" />
-                                            Linked
-                                          </span>
-                                        ) : (
-                                          <span className="text-xs text-gray-500">Available</span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
+                  {!sectionsCollapsed.procurement && (
+                    <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
+                      <ProjectEquipmentManager
+                        projectId={projectId}
+                        embedded
+                        onEquipmentChange={handleEquipmentChange}
+                      />
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Step 2: Upload Portal CSV */}
-              <div>
-                <button
-                  onClick={() => toggleSection('procurement')}
-                  className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
-                  style={sectionStyles.card}
-                >
-                  <div className="flex items-center gap-3">
-                    <Package className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Upload Portal CSV</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {totalEquipmentPieces > 0 && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                        {totalEquipmentPieces}
-                      </span>
-                    )}
-                    <ChevronRight
-                      className="w-4 h-4 text-zinc-500 transition-transform duration-200"
-                      style={{ transform: sectionsCollapsed.procurement ? 'none' : 'rotate(90deg)' }}
-                    />
-                  </div>
-                </button>
+                {/* Step 3: Room Alignment */}
+                <div>
+                  <button
+                    onClick={() => toggleSection('roomMatching')}
+                    className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
+                    style={sectionStyles.card}
+                  >
+                    <div className="flex items-center gap-3">
+                      <FolderOpen className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Room Alignment</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {unmatchedRoomEntries.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                          {unmatchedRoomEntries.length} unmatched
+                        </span>
+                      )}
+                      {projectRooms.length > 0 && (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                          {projectRooms.length}
+                        </span>
+                      )}
+                      <ChevronRight
+                        className="w-4 h-4 text-zinc-500 transition-transform duration-200"
+                        style={{ transform: sectionsCollapsed.roomMatching ? 'none' : 'rotate(90deg)' }}
+                      />
+                    </div>
+                  </button>
 
-                {!sectionsCollapsed.procurement && (
-                  <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
-                    <ProjectEquipmentManager
-                      projectId={projectId}
-                      embedded
-                      onEquipmentChange={handleEquipmentChange}
-                    />
-                  </div>
-                )}
-              </div>
+                  {!sectionsCollapsed.roomMatching && (
+                    <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
+                      <h3 className="text-sm font-bold text-blue-900 dark:text-blue-100 mb-2">
+                        Room Alignment Tool
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Match room names from your Lucid diagram with rooms from the Portal CSV import.
+                        This ensures wire drops and equipment are correctly organized by room.
+                      </p>
 
-              {/* Step 3: Room Alignment */}
-              <div>
-                <button
-                  onClick={() => toggleSection('roomMatching')}
-                  className="w-full flex items-center justify-between rounded-xl border p-3 transition-all duration-200 hover:shadow-sm"
-                  style={sectionStyles.card}
-                >
-                  <div className="flex items-center gap-3">
-                    <FolderOpen className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Room Alignment</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {unmatchedRoomEntries.length > 0 && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
-                        {unmatchedRoomEntries.length} unmatched
-                      </span>
-                    )}
-                    {projectRooms.length > 0 && (
-                      <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                        {projectRooms.length}
-                      </span>
-                    )}
-                    <ChevronRight
-                      className="w-4 h-4 text-zinc-500 transition-transform duration-200"
-                      style={{ transform: sectionsCollapsed.roomMatching ? 'none' : 'rotate(90deg)' }}
-                    />
-                  </div>
-                </button>
-
-                {!sectionsCollapsed.roomMatching && (
-                  <div className="mt-3 rounded-xl border p-3" style={sectionStyles.card}>
-                    <h3 className="text-sm font-bold text-blue-900 dark:text-blue-100 mb-2">
-                      Room Alignment Tool
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Match room names from your Lucid diagram with rooms from the Portal CSV import.
-                      This ensures wire drops and equipment are correctly organized by room.
-                    </p>
-
-                    {unmatchedRoomEntries.length > 0 ? (
-                      <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
-                          <div>
-                            <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
-                              Action Required
-                            </p>
-                            <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                              {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
-                            </p>
+                      {unmatchedRoomEntries.length > 0 ? (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm text-yellow-900 dark:text-yellow-100 font-semibold">
+                                Action Required
+                              </p>
+                              <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                {unmatchedRoomEntries.length} room{unmatchedRoomEntries.length !== 1 ? 's' : ''} from Lucid need to be aligned with CSV rooms
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ) : null}
+                      ) : null}
 
-                    <div className="space-y-4">
-                      {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
-                      {(() => {
-                        const roomNameMap = new Map();
+                      <div className="space-y-4">
+                        {/* Get all unique room names from BOTH wire drops AND Lucid shapes */}
+                        {(() => {
+                          const roomNameMap = new Map();
 
-                        // First get rooms from existing wire drops (persistent data)
-                        existingWireDrops.forEach((drop) => {
-                          const roomName = drop.room_name;
-                          if (!roomName) return;
-                          const normalized = normalizeRoomName(roomName);
-                          if (!normalized) return;
-                          const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                          if (!entry.samples.includes(roomName)) {
-                            entry.samples.push(roomName);
+                          // First get rooms from existing wire drops (persistent data)
+                          existingWireDrops.forEach((drop) => {
+                            const roomName = drop.room_name;
+                            if (!roomName) return;
+                            const normalized = normalizeRoomName(roomName);
+                            if (!normalized) return;
+                            const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                            if (!entry.samples.includes(roomName)) {
+                              entry.samples.push(roomName);
+                            }
+                            entry.sourceCount.wireDrops++;
+                            roomNameMap.set(normalized, entry);
+                          });
+
+                          // Then add rooms from Lucid shapes (if fetched)
+                          droppableShapes.forEach((shape) => {
+                            const roomName = extractShapeRoomName(shape);
+                            if (!roomName) return;
+                            const normalized = normalizeRoomName(roomName);
+                            if (!normalized) return;
+                            const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
+                            if (!entry.samples.includes(roomName)) {
+                              entry.samples.push(roomName);
+                            }
+                            entry.sourceCount.lucid++;
+                            roomNameMap.set(normalized, entry);
+                          });
+
+                          const allRoomEntries = Array.from(roomNameMap.values());
+
+                          if (allRoomEntries.length === 0) {
+                            return (
+                              <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
+                                <p className="text-sm text-gray-600 dark:text-gray-400">
+                                  No rooms found yet. Complete steps 1 & 2 to import room data.
+                                </p>
+                              </div>
+                            );
                           }
-                          entry.sourceCount.wireDrops++;
-                          roomNameMap.set(normalized, entry);
-                        });
 
-                        // Then add rooms from Lucid shapes (if fetched)
-                        droppableShapes.forEach((shape) => {
-                          const roomName = extractShapeRoomName(shape);
-                          if (!roomName) return;
-                          const normalized = normalizeRoomName(roomName);
-                          if (!normalized) return;
-                          const entry = roomNameMap.get(normalized) || { normalized, samples: [], sourceCount: { wireDrops: 0, lucid: 0 } };
-                          if (!entry.samples.includes(roomName)) {
-                            entry.samples.push(roomName);
-                          }
-                          entry.sourceCount.lucid++;
-                          roomNameMap.set(normalized, entry);
-                        });
-
-                        const allRoomEntries = Array.from(roomNameMap.values());
-
-                        if (allRoomEntries.length === 0) {
                           return (
-                            <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
-                              <p className="text-sm text-gray-600 dark:text-gray-400">
-                                No rooms found yet. Complete steps 1 & 2 to import room data.
-                              </p>
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  All Rooms from Wire Drops ({allRoomEntries.length})
+                                </h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  CSV Rooms Available: {projectRooms.length}
+                                </p>
+                              </div>
+
+                              {allRoomEntries.map((entry) => {
+                                const resolvedRoom = resolveRoomForName(entry.samples[0]);
+                                const isMatched = !!resolvedRoom?.room;
+                                const suggestion = suggestRoomMatch(entry.normalized);
+
+                                return (
+                                  <div
+                                    key={entry.normalized}
+                                    className="p-4 rounded-lg border"
+                                    style={isMatched ? {
+                                      backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                                      borderColor: 'rgba(148, 175, 50, 0.3)'
+                                    } : {}}
+                                  >
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-2">
+                                          {isMatched && (
+                                            <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
+                                          )}
+                                          <div className="flex-1">
+                                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                              Room: {entry.samples[0]}
+                                            </p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                              {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
+                                              {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
+                                              {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        {isMatched && (
+                                          <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
+                                            ✓ Matched to: {resolvedRoom.room.name}
+                                            {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
+                                          </p>
+                                        )}
+
+                                        {!isMatched && suggestion && suggestion.score >= 0.5 && (
+                                          <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
+                                            💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
+                                          </p>
+                                        )}
+
+                                        <div className="flex gap-2 items-center">
+                                          <select
+                                            value={
+                                              isMatched
+                                                ? resolvedRoom.room.id
+                                                : roomAssignments[entry.normalized]?.type === 'existing'
+                                                  ? roomAssignments[entry.normalized].roomId
+                                                  : roomAssignments[entry.normalized]?.type === 'new'
+                                                    ? '__new__'
+                                                    : ''
+                                            }
+                                            onChange={(e) =>
+                                              handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                            }
+                                            disabled={isMatched && !roomAssignments[entry.normalized]}
+                                            className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                               disabled:opacity-75"
+                                          >
+                                            <option value="">-- Select CSV Room or Create New --</option>
+                                            <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
+                                            <optgroup label="Existing CSV Rooms">
+                                              {projectRooms.map((room) => (
+                                                <option key={room.id} value={room.id}>
+                                                  {room.name} {room.is_headend ? '(Head-End)' : ''}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          </select>
+
+                                          {!isMatched && roomAssignments[entry.normalized] && (
+                                            <Button
+                                              variant="primary"
+                                              size="sm"
+                                              onClick={() => handleRoomAliasApply(entry)}
+                                              disabled={roomAliasSaving === entry.normalized}
+                                              loading={roomAliasSaving === entry.normalized}
+                                            >
+                                              {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                            </Button>
+                                          )}
+
+                                          {isMatched && (
+                                            <Button
+                                              variant="secondary"
+                                              size="sm"
+                                              onClick={() => {
+                                                // Allow editing of already matched rooms
+                                                setRoomAssignments(prev => ({
+                                                  ...prev,
+                                                  [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
+                                                }));
+                                              }}
+                                            >
+                                              Edit
+                                            </Button>
+                                          )}
+                                        </div>
+
+                                        {/* New Room Configuration */}
+                                        {roomAssignments[entry.normalized]?.type === 'new' && (
+                                          <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
+                                            <input
+                                              type="text"
+                                              value={roomAssignments[entry.normalized]?.name || ''}
+                                              onChange={(e) =>
+                                                handleNewRoomNameChange(entry.normalized, e.target.value)
+                                              }
+                                              placeholder="Enter room name"
+                                              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                                 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                            />
+                                            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                              <input
+                                                type="checkbox"
+                                                checked={roomAssignments[entry.normalized]?.isHeadend || false}
+                                                onChange={(e) =>
+                                                  handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
+                                                }
+                                                className="rounded"
+                                              />
+                                              Mark as Head-End Room
+                                            </label>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
-                        }
+                        })()}
 
-                        return (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                                All Rooms from Wire Drops ({allRoomEntries.length})
-                              </h3>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                CSV Rooms Available: {projectRooms.length}
-                              </p>
-                            </div>
 
-                            {allRoomEntries.map((entry) => {
-                              const resolvedRoom = resolveRoomForName(entry.samples[0]);
-                              const isMatched = !!resolvedRoom?.room;
-                              const suggestion = suggestRoomMatch(entry.normalized);
+                        {/* Unmatched Rooms Section */}
+                        {unmatchedRoomEntries.length > 0 && (
+                          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                            <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4" />
+                              Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
+                            </h3>
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
+                              These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
+                            </p>
 
-                              return (
+                            <div className="space-y-3">
+                              {unmatchedRoomEntries.map((entry) => (
                                 <div
                                   key={entry.normalized}
-                                  className="p-4 rounded-lg border"
-                                  style={isMatched ? {
-                                    backgroundColor: 'rgba(148, 175, 50, 0.1)',
-                                    borderColor: 'rgba(148, 175, 50, 0.3)'
-                                  } : {}}
+                                  className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
                                 >
                                   <div className="flex items-start justify-between gap-4">
                                     <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-2">
-                                        {isMatched && (
-                                          <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
-                                        )}
-                                        <div className="flex-1">
-                                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                            Room: {entry.samples[0]}
-                                          </p>
-                                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                                            {entry.sourceCount.wireDrops > 0 && `${entry.sourceCount.wireDrops} wire drop${entry.sourceCount.wireDrops !== 1 ? 's' : ''}`}
-                                            {entry.sourceCount.wireDrops > 0 && entry.sourceCount.lucid > 0 && ' • '}
-                                            {entry.sourceCount.lucid > 0 && `${entry.sourceCount.lucid} Lucid shape${entry.sourceCount.lucid !== 1 ? 's' : ''}`}
-                                          </p>
-                                        </div>
-                                      </div>
+                                      <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                                        From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
+                                      </p>
 
-                                      {isMatched && (
+                                      {entry.suggestion && entry.suggestion.score >= 0.72 && (
                                         <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
-                                          ✓ Matched to: {resolvedRoom.room.name}
-                                          {resolvedRoom.matchedBy === 'alias' && ' (via alias)'}
+                                          Suggested match: {entry.suggestion.room.name} (
+                                          {Math.round(entry.suggestion.score * 100)}% similar)
                                         </p>
                                       )}
 
-                                      {!isMatched && suggestion && suggestion.score >= 0.5 && (
-                                        <p className="text-xs text-blue-600 dark:text-blue-400 mb-2">
-                                          💡 Suggestion: {suggestion.room.name} ({Math.round(suggestion.score * 100)}% match)
-                                        </p>
-                                      )}
-
-                                      <div className="flex gap-2 items-center">
-                                        <select
-                                          value={
-                                            isMatched
-                                              ? resolvedRoom.room.id
-                                              : roomAssignments[entry.normalized]?.type === 'existing'
+                                      <div className="flex gap-2 items-end">
+                                        <div className="flex-1">
+                                          <select
+                                            value={
+                                              roomAssignments[entry.normalized]?.type === 'existing'
                                                 ? roomAssignments[entry.normalized].roomId
                                                 : roomAssignments[entry.normalized]?.type === 'new'
                                                   ? '__new__'
                                                   : ''
+                                            }
+                                            onChange={(e) =>
+                                              handleRoomSelectionChange(entry.normalized, e.target.value, entry)
+                                            }
+                                            className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                          >
+                                            <option value="">-- Select Action --</option>
+                                            <option value="__new__">Create New Room</option>
+                                            <optgroup label="Existing Rooms">
+                                              {allRoomOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                  {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
+                                                </option>
+                                              ))}
+                                            </optgroup>
+                                          </select>
+                                        </div>
+
+                                        <Button
+                                          variant="primary"
+                                          size="sm"
+                                          onClick={() => handleRoomAliasApply(entry)}
+                                          disabled={
+                                            !roomAssignments[entry.normalized] ||
+                                            roomAliasSaving === entry.normalized
                                           }
-                                          onChange={(e) =>
-                                            handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                          }
-                                          disabled={isMatched && !roomAssignments[entry.normalized]}
-                                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white
-                                               disabled:opacity-75"
+                                          loading={roomAliasSaving === entry.normalized}
                                         >
-                                          <option value="">-- Select CSV Room or Create New --</option>
-                                          <option value="__new__">✨ Create New Room: {entry.samples[0]}</option>
-                                          <optgroup label="Existing CSV Rooms">
-                                            {projectRooms.map((room) => (
-                                              <option key={room.id} value={room.id}>
-                                                {room.name} {room.is_headend ? '(Head-End)' : ''}
-                                              </option>
-                                            ))}
-                                          </optgroup>
-                                        </select>
-
-                                        {!isMatched && roomAssignments[entry.normalized] && (
-                                          <Button
-                                            variant="primary"
-                                            size="sm"
-                                            onClick={() => handleRoomAliasApply(entry)}
-                                            disabled={roomAliasSaving === entry.normalized}
-                                            loading={roomAliasSaving === entry.normalized}
-                                          >
-                                            {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
-                                          </Button>
-                                        )}
-
-                                        {isMatched && (
-                                          <Button
-                                            variant="secondary"
-                                            size="sm"
-                                            onClick={() => {
-                                              // Allow editing of already matched rooms
-                                              setRoomAssignments(prev => ({
-                                                ...prev,
-                                                [entry.normalized]: { type: 'existing', roomId: resolvedRoom.room.id }
-                                              }));
-                                            }}
-                                          >
-                                            Edit
-                                          </Button>
-                                        )}
+                                          {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
+                                        </Button>
                                       </div>
 
-                                      {/* New Room Configuration */}
+                                      {/* New Room Name Input */}
                                       {roomAssignments[entry.normalized]?.type === 'new' && (
-                                        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700 space-y-2">
+                                        <div className="mt-2 space-y-2">
                                           <input
                                             type="text"
                                             value={roomAssignments[entry.normalized]?.name || ''}
@@ -3117,8 +3290,8 @@ const PMProjectViewEnhanced = () => {
                                               handleNewRoomNameChange(entry.normalized, e.target.value)
                                             }
                                             placeholder="Enter room name"
-                                            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                                 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                            className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
+                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
                                           />
                                           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                             <input
@@ -3136,824 +3309,716 @@ const PMProjectViewEnhanced = () => {
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })}
+                              ))}
+                            </div>
                           </div>
-                        );
-                      })()}
+                        )}
 
-
-                      {/* Unmatched Rooms Section */}
-                      {unmatchedRoomEntries.length > 0 && (
-                        <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                          <h3 className="text-sm font-semibold text-yellow-900 dark:text-yellow-200 mb-2 flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4" />
-                            Unmatched Rooms from Lucid ({unmatchedRoomEntries.length})
-                          </h3>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300 mb-4">
-                            These room names from Lucid don't match any existing project rooms. Assign them to create proper links.
-                          </p>
-
-                          <div className="space-y-3">
-                            {unmatchedRoomEntries.map((entry) => (
-                              <div
-                                key={entry.normalized}
-                                className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
-                              >
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
-                                      From Lucid: <span className="font-mono">{entry.samples.join(', ')}</span>
-                                    </p>
-
-                                    {entry.suggestion && entry.suggestion.score >= 0.72 && (
-                                      <p className="text-xs mb-2" style={{ color: '#94AF32' }}>
-                                        Suggested match: {entry.suggestion.room.name} (
-                                        {Math.round(entry.suggestion.score * 100)}% similar)
-                                      </p>
-                                    )}
-
-                                    <div className="flex gap-2 items-end">
-                                      <div className="flex-1">
-                                        <select
-                                          value={
-                                            roomAssignments[entry.normalized]?.type === 'existing'
-                                              ? roomAssignments[entry.normalized].roomId
-                                              : roomAssignments[entry.normalized]?.type === 'new'
-                                                ? '__new__'
-                                                : ''
-                                          }
-                                          onChange={(e) =>
-                                            handleRoomSelectionChange(entry.normalized, e.target.value, entry)
-                                          }
-                                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                        >
-                                          <option value="">-- Select Action --</option>
-                                          <option value="__new__">Create New Room</option>
-                                          <optgroup label="Existing Rooms">
-                                            {allRoomOptions.map((opt) => (
-                                              <option key={opt.value} value={opt.value}>
-                                                {opt.label} {opt.isHeadEnd ? '(Head-End)' : ''}
-                                              </option>
-                                            ))}
-                                          </optgroup>
-                                        </select>
-                                      </div>
-
-                                      <Button
-                                        variant="primary"
-                                        size="sm"
-                                        onClick={() => handleRoomAliasApply(entry)}
-                                        disabled={
-                                          !roomAssignments[entry.normalized] ||
-                                          roomAliasSaving === entry.normalized
-                                        }
-                                        loading={roomAliasSaving === entry.normalized}
-                                      >
-                                        {roomAliasSaving === entry.normalized ? 'Saving...' : 'Apply'}
-                                      </Button>
-                                    </div>
-
-                                    {/* New Room Name Input */}
-                                    {roomAssignments[entry.normalized]?.type === 'new' && (
-                                      <div className="mt-2 space-y-2">
-                                        <input
-                                          type="text"
-                                          value={roomAssignments[entry.normalized]?.name || ''}
-                                          onChange={(e) =>
-                                            handleNewRoomNameChange(entry.normalized, e.target.value)
-                                          }
-                                          placeholder="Enter room name"
-                                          className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
-                                        />
-                                        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                                          <input
-                                            type="checkbox"
-                                            checked={roomAssignments[entry.normalized]?.isHeadend || false}
-                                            onChange={(e) =>
-                                              handleNewRoomHeadendToggle(entry.normalized, e.target.checked)
-                                            }
-                                            className="rounded"
-                                          />
-                                          Mark as Head-End Room
-                                        </label>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
+                        {/* Matched Rooms Info */}
+                        {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
+                          <div
+                            className="p-4 rounded-lg"
+                            style={{
+                              backgroundColor: 'rgba(148, 175, 50, 0.1)',
+                              border: '1px solid rgba(148, 175, 50, 0.3)'
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
+                              <div>
+                                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                  All Lucid rooms are matched!
+                                </p>
+                                <p className="text-xs" style={{ color: '#94AF32' }}>
+                                  All room names from Lucid wire drops have been successfully matched to project rooms.
+                                </p>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Matched Rooms Info */}
-                      {droppableShapes.length > 0 && unmatchedRoomEntries.length === 0 && (
-                        <div
-                          className="p-4 rounded-lg"
-                          style={{
-                            backgroundColor: 'rgba(148, 175, 50, 0.1)',
-                            border: '1px solid rgba(148, 175, 50, 0.3)'
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                All Lucid rooms are matched!
-                              </p>
-                              <p className="text-xs" style={{ color: '#94AF32' }}>
-                                All room names from Lucid wire drops have been successfully matched to project rooms.
-                              </p>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Show instructions when no data available */}
-                      {droppableShapes.length === 0 && projectRooms.length === 0 && (
-                        <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
-                          <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
-                          <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
-                            No Room Data Available Yet
-                          </p>
-                          <p className="text-sm text-blue-700 dark:text-blue-300">
-                            Complete Steps 1 & 2 above to import room data, then return here to align room names.
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Summary of aligned rooms */}
-                      {droppableShapes.length > 0 && projectRooms.length > 0 && (
-                        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
-                            Summary
-                          </h3>
-                          <div className="grid grid-cols-2 gap-4 text-center mb-3">
-                            <div>
-                              <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
-                              <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
-                            </div>
-                            <div>
-                              <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
-                                {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
-                              </p>
-                              <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
-                            </div>
+                        {/* Show instructions when no data available */}
+                        {droppableShapes.length === 0 && projectRooms.length === 0 && (
+                          <div className="p-4 bg-blue-50 dark:bg-blue-800/30 rounded-lg text-center border border-blue-200 dark:border-blue-700">
+                            <FolderOpen className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+                            <p className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                              No Room Data Available Yet
+                            </p>
+                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                              Complete Steps 1 & 2 above to import room data, then return here to align room names.
+                            </p>
                           </div>
-                          {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
-                            <div
-                              className="flex items-center justify-center gap-2 p-2 rounded"
-                              style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)' }}
-                            >
-                              <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
-                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                All rooms successfully aligned
-                              </p>
+                        )}
+
+                        {/* Summary of aligned rooms */}
+                        {droppableShapes.length > 0 && projectRooms.length > 0 && (
+                          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-200 mb-3">
+                              Summary
+                            </h3>
+                            <div className="grid grid-cols-2 gap-4 text-center mb-3">
+                              <div>
+                                <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{projectRooms.length}</p>
+                                <p className="text-xs text-blue-700 dark:text-blue-300">Portal CSV Rooms</p>
+                              </div>
+                              <div>
+                                <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                                  {new Set(droppableShapes.map(s => extractShapeRoomName(s)).filter(Boolean)).size}
+                                </p>
+                                <p className="text-xs text-purple-700 dark:text-purple-300">Lucid Rooms</p>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {unmatchedRoomEntries.length === 0 && droppableShapes.length > 0 && (
+                              <div
+                                className="flex items-center justify-center gap-2 p-2 rounded"
+                                style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)' }}
+                              >
+                                <CheckCircle className="w-4 h-4" style={{ color: '#94AF32' }} />
+                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                  All rooms successfully aligned
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Project Overview - Only visible in edit mode */}
         {editMode && (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-4">
-            {/* Project Info - Consolidated Section */}
-            <div>
-              <button
-                onClick={() => toggleSection('projectInfo')}
-                className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-                style={sectionStyles.card}
-              >
-                <div className="flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Project Info</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  {editMode && (
-                    <span className="px-2 py-0.5 text-xs rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400">
-                      Editing
-                    </span>
-                  )}
-                  <ChevronRight
-                    className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                    style={{ transform: sectionsCollapsed.projectInfo ? 'none' : 'rotate(90deg)' }}
-                  />
-                </div>
-              </button>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2 space-y-4">
+              {/* Project Info - Consolidated Section */}
+              <div>
+                <button
+                  onClick={() => toggleSection('projectInfo')}
+                  className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+                  style={sectionStyles.card}
+                >
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">Project Info</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {editMode && (
+                      <span className="px-2 py-0.5 text-xs rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-400">
+                        Editing
+                      </span>
+                    )}
+                    <ChevronRight
+                      className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                      style={{ transform: sectionsCollapsed.projectInfo ? 'none' : 'rotate(90deg)' }}
+                    />
+                  </div>
+                </button>
 
-              {!sectionsCollapsed.projectInfo && (
-                <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-                  <div className="space-y-6">
-                    {/* Project Basics Section */}
-                    <div className="space-y-4">
-                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                        <FileText className="w-4 h-4" />
-                        Basic Information
-                      </h3>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Project Name
-                        </label>
-                        <input
-                          type="text"
-                          name="name"
-                          value={formData.name}
-                          onChange={handleInputChange}
-                          disabled={!editMode}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                {!sectionsCollapsed.projectInfo && (
+                  <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+                    <div className="space-y-6">
+                      {/* Project Basics Section */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          Basic Information
+                        </h3>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Project Name
+                          </label>
+                          <input
+                            type="text"
+                            name="name"
+                            value={formData.name}
+                            onChange={handleInputChange}
+                            disabled={!editMode}
+                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
                              bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                              disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                        />
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Client
+                          </label>
+                          <div className="relative">
+                            {!editMode ? (
+                              <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
+                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+                                {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    name="client"
+                                    value={formData.client}
+                                    onChange={handleInputChange}
+                                    placeholder="Enter client name or company"
+                                    className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowClientPicker(!showClientPicker)}
+                                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                     bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400
+                                     hover:border-violet-500 dark:hover:border-violet-400 hover:text-violet-600 
+                                     dark:hover:text-violet-400 transition-colors"
+                                    title="Select from contacts"
+                                  >
+                                    <Users className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  Type directly or click <Users className="w-3 h-3 inline" /> to select from contacts
+                                </p>
+
+                                {showClientPicker && (
+                                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
+                                        dark:border-gray-600 rounded-lg shadow-xl max-h-96 overflow-hidden">
+                                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                                      <input
+                                        type="text"
+                                        value={clientSearchTerm}
+                                        onChange={(e) => setClientSearchTerm(e.target.value)}
+                                        placeholder="Search contacts..."
+                                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
+                                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                         placeholder-gray-500 dark:placeholder-gray-400
+                                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                                        autoFocus
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    </div>
+
+                                    <div className="max-h-60 overflow-y-auto">
+                                      {filteredContacts.length === 0 ? (
+                                        <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                                          {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
+                                        </div>
+                                      ) : (
+                                        filteredContacts.map((contact) => {
+                                          const displayName =
+                                            contact.name || contact.company || 'Unnamed Contact';
+
+                                          return (
+                                            <div
+                                              key={contact.id}
+                                              className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
+                                               border-b border-gray-100 dark:border-gray-700 last:border-0
+                                               transition-colors"
+                                              onClick={() => handleClientSelect(contact)}
+                                            >
+                                              <div className="font-medium text-gray-900 dark:text-white">
+                                                {displayName}
+                                              </div>
+                                              {contact.company && contact.name && (
+                                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                                  {contact.company}
+                                                </div>
+                                              )}
+                                              {contact.email && (
+                                                <div className="text-sm text-gray-500 dark:text-gray-500">
+                                                  {contact.email} {contact.phone && `• ${contact.phone}`}
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })
+                                      )}
+                                    </div>
+
+                                    <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowNewContactForm(true);
+                                          setShowClientPicker(false);
+                                        }}
+                                        className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
+                                         flex items-center justify-center gap-2"
+                                      >
+                                        <Plus className="w-4 h-4" />
+                                        Add New Contact
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Phase
+                              {editMode && (
+                                <button
+                                  onClick={() => setShowPhaseModal(true)}
+                                  className="ml-2 text-violet-600 hover:text-violet-700"
+                                >
+                                  <Plus className="w-4 h-4 inline" />
+                                </button>
+                              )}
+                            </label>
+                            <select
+                              name="phase"
+                              value={formData.phase}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            >
+                              <option value="">Select Phase</option>
+                              {phases.map((phase) => (
+                                <option key={phase.id} value={phase.name}>
+                                  {phase.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Status
+                              {editMode && (
+                                <button
+                                  onClick={() => setShowStatusModal(true)}
+                                  className="ml-2 text-violet-600 hover:text-violet-700"
+                                >
+                                  <Plus className="w-4 h-4 inline" />
+                                </button>
+                              )}
+                            </label>
+                            <select
+                              name="status"
+                              value={formData.status}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            >
+                              {statuses.length === 0 ? (
+                                <>
+                                  <option value="active">Active</option>
+                                  <option value="on_hold">On Hold</option>
+                                  <option value="completed">Completed</option>
+                                  <option value="cancelled">Cancelled</option>
+                                </>
+                              ) : (
+                                statuses.map((status) => (
+                                  <option key={status.id} value={status.name}>
+                                    {status.name}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Client
-                        </label>
-                        <div className="relative">
-                          {!editMode ? (
-                            <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
-                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
-                              {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
-                            </div>
+                      {/* Schedule & Notes Section */}
+                      <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          Schedule & Notes
+                        </h3>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Project Number
+                            </label>
+                            <input
+                              type="text"
+                              name="project_number"
+                              value={formData.project_number}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed
+                                 [&::-webkit-calendar-picker-indicator]:dark:invert"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Start Date
+                            </label>
+                            <input
+                              type="date"
+                              name="start_date"
+                              value={formData.start_date}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              End Date
+                            </label>
+                            <input
+                              type="date"
+                              name="end_date"
+                              value={formData.end_date}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Address
+                            </label>
+                            <input
+                              type="text"
+                              name="address"
+                              value={formData.address}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                              Description
+                            </label>
+                            <textarea
+                              name="description"
+                              value={formData.description}
+                              onChange={handleInputChange}
+                              disabled={!editMode}
+                              rows={3}
+                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Client Contact Section */}
+                      <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          Client Contact
+                        </h3>
+                        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                          {formData.client ? (
+                            <>
+                              <p className="text-base font-semibold text-gray-900 dark:text-white">
+                                {formData.client}
+                              </p>
+                              {currentClientContact ? (
+                                <div className="space-y-1 text-xs">
+                                  {currentClientContact.company && (
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                      Company: {currentClientContact.company}
+                                    </p>
+                                  )}
+                                  {currentClientContact.email && (
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                      Email: {currentClientContact.email}
+                                    </p>
+                                  )}
+                                  {currentClientContact.phone && (
+                                    <p className="text-gray-500 dark:text-gray-400">
+                                      Phone: {currentClientContact.phone}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  No matching contact details found in your directory.
+                                </p>
+                              )}
+                            </>
                           ) : (
-                            <div className="space-y-2">
-                              <div className="flex gap-2">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Client not set. Switch to edit mode to assign a primary contact.
+                            </p>
+                          )}
+                          {editMode && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Use the client picker above to search, link, or create a new contact.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* Linked Resources - Collapsible */}
+              <div>
+                <button
+                  onClick={() => toggleSection('linkedResources')}
+                  className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+                  style={sectionStyles.card}
+                >
+                  <div className="flex items-center gap-3">
+                    <Link className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">Linked Resources</span>
+                  </div>
+                  <ChevronRight
+                    className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                    style={{ transform: sectionsCollapsed.linkedResources ? 'none' : 'rotate(90deg)' }}
+                  />
+                </button>
+
+                {!sectionsCollapsed.linkedResources && (
+                  <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
+                    <div className="space-y-4">
+                      {editMode ? (
+                        <div className="space-y-4">
+                          {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
+                            <div key={key}>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                <Icon className="w-4 h-4 inline mr-1" />
+                                {label}
+                              </label>
+                              <input
+                                type="url"
+                                name={key}
+                                value={value || ''}
+                                onChange={handleInputChange}
+                                placeholder={placeholder}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                              />
+                              {helper && (
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {resourceEntries.map(({ key, label, icon: Icon, value }) => (
+                            <div
+                              key={key}
+                              className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
+                            >
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                                  <Icon className="w-4 h-4 text-violet-500" />
+                                  {label}
+                                </div>
+                                {value ? (
+                                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
+                                    {value}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Not set</p>
+                                )}
+                              </div>
+                              {value && (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  icon={ExternalLink}
+                                  onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                                >
+                                  Open
+                                </Button>
+                              )}
+                            </div>
+                          ))}
+                          {resourceEntries.every(({ value }) => !value) && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              No URLs configured yet. Switch to edit mode to add links.
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* UniFi Network Configuration Section */}
+                      <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
+                          <Users className="w-4 h-4" />
+                          UniFi Network Configuration
+                        </h3>
+
+                        {editMode ? (
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Controller Local IP Address
+                              </label>
+                              <input
+                                type="text"
+                                name="unifi_controller_ip"
+                                value={formData.unifi_controller_ip}
+                                onChange={handleInputChange}
+                                placeholder="192.168.1.1"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                              />
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Local IP of your UDM Pro (only works on the same network)
+                              </p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Network API Key
+                              </label>
+                              <div className="relative">
                                 <input
-                                  type="text"
-                                  name="client"
-                                  value={formData.client}
+                                  type={showUnifiApiKey ? "text" : "password"}
+                                  name="unifi_network_api_key"
+                                  value={formData.unifi_network_api_key}
                                   onChange={handleInputChange}
-                                  placeholder="Enter client name or company"
-                                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
+                                  placeholder="Enter Network API Key"
+                                  className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
                                      bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                 />
                                 <button
                                   type="button"
-                                  onClick={() => setShowClientPicker(!showClientPicker)}
-                                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                     bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400
-                                     hover:border-violet-500 dark:hover:border-violet-400 hover:text-violet-600 
-                                     dark:hover:text-violet-400 transition-colors"
-                                  title="Select from contacts"
+                                  onClick={() => setShowUnifiApiKey(!showUnifiApiKey)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
+                                     text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300"
                                 >
-                                  <Users className="w-4 h-4" />
+                                  {showUnifiApiKey ? 'Hide' : 'Show'}
                                 </button>
                               </div>
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                Type directly or click <Users className="w-3 h-3 inline" /> to select from contacts
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Generate from: Network Application → Settings → System → Integrations
                               </p>
-
-                              {showClientPicker && (
-                                <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
-                                        dark:border-gray-600 rounded-lg shadow-xl max-h-96 overflow-hidden">
-                                  <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                                    <input
-                                      type="text"
-                                      value={clientSearchTerm}
-                                      onChange={(e) => setClientSearchTerm(e.target.value)}
-                                      placeholder="Search contacts..."
-                                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
-                                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                         placeholder-gray-500 dark:placeholder-gray-400
-                                         focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                                      autoFocus
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                  </div>
-
-                                  <div className="max-h-60 overflow-y-auto">
-                                    {filteredContacts.length === 0 ? (
-                                      <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                                        {clientSearchTerm ? 'No contacts found' : 'No contacts available'}
-                                      </div>
-                                    ) : (
-                                      filteredContacts.map((contact) => {
-                                        const displayName =
-                                          contact.name || contact.company || 'Unnamed Contact';
-
-                                        return (
-                                          <div
-                                            key={contact.id}
-                                            className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
-                                               border-b border-gray-100 dark:border-gray-700 last:border-0
-                                               transition-colors"
-                                            onClick={() => handleClientSelect(contact)}
-                                          >
-                                            <div className="font-medium text-gray-900 dark:text-white">
-                                              {displayName}
-                                            </div>
-                                            {contact.company && contact.name && (
-                                              <div className="text-sm text-gray-600 dark:text-gray-400">
-                                                {contact.company}
-                                              </div>
-                                            )}
-                                            {contact.email && (
-                                              <div className="text-sm text-gray-500 dark:text-gray-500">
-                                                {contact.email} {contact.phone && `• ${contact.phone}`}
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })
-                                    )}
-                                  </div>
-
-                                  <div className="p-2 border-t border-gray-200 dark:border-gray-700">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setShowNewContactForm(true);
-                                        setShowClientPicker(false);
-                                      }}
-                                      className="w-full px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white rounded 
-                                         flex items-center justify-center gap-2"
-                                    >
-                                      <Plus className="w-4 h-4" />
-                                      Add New Contact
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
                             </div>
-                          )}
-                        </div>
-                      </div>
 
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Phase
-                            {editMode && (
-                              <button
-                                onClick={() => setShowPhaseModal(true)}
-                                className="ml-2 text-violet-600 hover:text-violet-700"
-                              >
-                                <Plus className="w-4 h-4 inline" />
-                              </button>
-                            )}
-                          </label>
-                          <select
-                            name="phase"
-                            value={formData.phase}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          >
-                            <option value="">Select Phase</option>
-                            {phases.map((phase) => (
-                              <option key={phase.id} value={phase.name}>
-                                {phase.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Status
-                            {editMode && (
-                              <button
-                                onClick={() => setShowStatusModal(true)}
-                                className="ml-2 text-violet-600 hover:text-violet-700"
-                              >
-                                <Plus className="w-4 h-4 inline" />
-                              </button>
-                            )}
-                          </label>
-                          <select
-                            name="status"
-                            value={formData.status}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          >
-                            {statuses.length === 0 ? (
-                              <>
-                                <option value="active">Active</option>
-                                <option value="on_hold">On Hold</option>
-                                <option value="completed">Completed</option>
-                                <option value="cancelled">Cancelled</option>
-                              </>
-                            ) : (
-                              statuses.map((status) => (
-                                <option key={status.id} value={status.name}>
-                                  {status.name}
-                                </option>
-                              ))
-                            )}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Schedule & Notes Section */}
-                    <div className="space-y-4 pt-6 border-t border-gray-200 dark:border-gray-700">
-                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        Schedule & Notes
-                      </h3>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Project Number
-                          </label>
-                          <input
-                            type="text"
-                            name="project_number"
-                            value={formData.project_number}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed
-                                 [&::-webkit-calendar-picker-indicator]:dark:invert"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Start Date
-                          </label>
-                          <input
-                            type="date"
-                            name="start_date"
-                            value={formData.start_date}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            End Date
-                          </label>
-                          <input
-                            type="date"
-                            name="end_date"
-                            value={formData.end_date}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Address
-                          </label>
-                          <input
-                            type="text"
-                            name="address"
-                            value={formData.address}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                            Description
-                          </label>
-                          <textarea
-                            name="description"
-                            value={formData.description}
-                            onChange={handleInputChange}
-                            disabled={!editMode}
-                            rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Client Contact Section */}
-                    <div className="space-y-3 pt-6 border-t border-gray-200 dark:border-gray-700">
-                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        Client Contact
-                      </h3>
-                      <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-                        {formData.client ? (
-                          <>
-                            <p className="text-base font-semibold text-gray-900 dark:text-white">
-                              {formData.client}
-                            </p>
-                            {currentClientContact ? (
-                              <div className="space-y-1 text-xs">
-                                {currentClientContact.company && (
-                                  <p className="text-gray-500 dark:text-gray-400">
-                                    Company: {currentClientContact.company}
-                                  </p>
-                                )}
-                                {currentClientContact.email && (
-                                  <p className="text-gray-500 dark:text-gray-400">
-                                    Email: {currentClientContact.email}
-                                  </p>
-                                )}
-                                {currentClientContact.phone && (
-                                  <p className="text-gray-500 dark:text-gray-400">
-                                    Phone: {currentClientContact.phone}
-                                  </p>
-                                )}
-                              </div>
-                            ) : (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                No matching contact details found in your directory.
-                              </p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Client not set. Switch to edit mode to assign a primary contact.
-                          </p>
-                        )}
-                        {editMode && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Use the client picker above to search, link, or create a new contact.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {/* Linked Resources - Collapsible */}
-            <div>
-              <button
-                onClick={() => toggleSection('linkedResources')}
-                className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
-                style={sectionStyles.card}
-              >
-                <div className="flex items-center gap-3">
-                  <Link className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Linked Resources</span>
-                </div>
-                <ChevronRight
-                  className="w-5 h-5 text-zinc-500 transition-transform duration-200"
-                  style={{ transform: sectionsCollapsed.linkedResources ? 'none' : 'rotate(90deg)' }}
-                />
-              </button>
-
-              {!sectionsCollapsed.linkedResources && (
-                <div className="mt-4 rounded-2xl border p-4" style={sectionStyles.card}>
-                  <div className="space-y-4">
-                    {editMode ? (
-                      <div className="space-y-4">
-                        {resourceEntries.map(({ key, label, icon: Icon, placeholder, helper, value }) => (
-                          <div key={key}>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              <Icon className="w-4 h-4 inline mr-1" />
-                              {label}
-                            </label>
-                            <input
-                              type="url"
-                              name={key}
-                              value={value || ''}
-                              onChange={handleInputChange}
-                              placeholder={placeholder}
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                            />
-                            {helper && (
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helper}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {resourceEntries.map(({ key, label, icon: Icon, value }) => (
-                          <div
-                            key={key}
-                            className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800"
-                          >
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                                <Icon className="w-4 h-4 text-violet-500" />
-                                {label}
-                              </div>
-                              {value ? (
-                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 break-all">
-                                  {value}
-                                </p>
-                              ) : (
-                                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Not set</p>
-                              )}
-                            </div>
-                            {value && (
+                            <div>
                               <Button
                                 variant="secondary"
                                 size="sm"
-                                icon={ExternalLink}
-                                onClick={() => window.open(value, '_blank', 'noopener,noreferrer')}
+                                icon={RefreshCw}
+                                onClick={async () => {
+                                  const result = await fetchUnifiSiteData();
+                                  if (result) {
+                                    alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
+                                  } else {
+                                    alert('Failed to connect. Check your UniFi Network URL in the field above.');
+                                  }
+                                }}
+                                disabled={!formData.unifi_url}
                               >
-                                Open
+                                Test Connection & Fetch Site Data
                               </Button>
-                            )}
-                          </div>
-                        ))}
-                        {resourceEntries.every(({ value }) => !value) && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            No URLs configured yet. Switch to edit mode to add links.
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* UniFi Network Configuration Section */}
-                    <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        UniFi Network Configuration
-                      </h3>
-
-                      {editMode ? (
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Controller Local IP Address
-                            </label>
-                            <input
-                              type="text"
-                              name="unifi_controller_ip"
-                              value={formData.unifi_controller_ip}
-                              onChange={handleInputChange}
-                              placeholder="192.168.1.1"
-                              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                   focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                            />
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              Local IP of your UDM Pro (only works on the same network)
-                            </p>
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                              Network API Key
-                            </label>
-                            <div className="relative">
-                              <input
-                                type={showUnifiApiKey ? "text" : "password"}
-                                name="unifi_network_api_key"
-                                value={formData.unifi_network_api_key}
-                                onChange={handleInputChange}
-                                placeholder="Enter Network API Key"
-                                className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                     focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowUnifiApiKey(!showUnifiApiKey)}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs font-medium
-                                     text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300"
-                              >
-                                {showUnifiApiKey ? 'Hide' : 'Show'}
-                              </button>
-                            </div>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              Generate from: Network Application → Settings → System → Integrations
-                            </p>
-                          </div>
-
-                          <div>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              icon={RefreshCw}
-                              onClick={async () => {
-                                const result = await fetchUnifiSiteData();
-                                if (result) {
-                                  alert(`Connected successfully!\nSite: ${result.siteName}\nID: ${result.siteId}`);
-                                } else {
-                                  alert('Failed to connect. Check your UniFi Network URL in the field above.');
-                                }
-                              }}
-                              disabled={!formData.unifi_url}
-                            >
-                              Test Connection & Fetch Site Data
-                            </Button>
-                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                              Click to fetch site info from Cloud API and auto-populate Site ID below
-                            </p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Site ID
-                              </label>
-                              <input
-                                type="text"
-                                name="unifi_site_id"
-                                value={formData.unifi_site_id}
-                                onChange={handleInputChange}
-                                placeholder="Auto-fetched from API"
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
-                                readOnly
-                              />
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                Automatically populated from controller
+                                Click to fetch site info from Cloud API and auto-populate Site ID below
                               </p>
                             </div>
 
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Site Name
-                              </label>
-                              <input
-                                type="text"
-                                name="unifi_site_name"
-                                value={formData.unifi_site_name}
-                                onChange={handleInputChange}
-                                placeholder="Auto-fetched from API"
-                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                  Site ID
+                                </label>
+                                <input
+                                  type="text"
+                                  name="unifi_site_id"
+                                  value={formData.unifi_site_id}
+                                  onChange={handleInputChange}
+                                  placeholder="Auto-fetched from API"
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
                                      bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
-                                readOnly
-                              />
-                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                Automatically populated from controller
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                Controller IP
+                                  readOnly
+                                />
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                  Automatically populated from controller
+                                </p>
                               </div>
-                              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                                {formData.unifi_controller_ip || 'Not configured'}
-                              </p>
-                            </div>
-                          </div>
 
-                          <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                Network API Key
-                              </div>
-                              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                                {formData.unifi_network_api_key ? '••••••••••••••••' : 'Not configured'}
-                              </p>
-                            </div>
-                          </div>
-
-                          {formData.unifi_site_id && (
-                            <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-gray-900 dark:text-white">
-                                  Site: {formData.unifi_site_name || 'Unknown'}
-                                </div>
-                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 font-mono">
-                                  {formData.unifi_site_id}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                  Site Name
+                                </label>
+                                <input
+                                  type="text"
+                                  name="unifi_site_name"
+                                  value={formData.unifi_site_name}
+                                  onChange={handleInputChange}
+                                  placeholder="Auto-fetched from API"
+                                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
+                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                                  readOnly
+                                />
+                                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                  Automatically populated from controller
                                 </p>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                  Controller IP
+                                </div>
+                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                  {formData.unifi_controller_ip || 'Not configured'}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                              <div className="flex-1">
+                                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                  Network API Key
+                                </div>
+                                <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                                  {formData.unifi_network_api_key ? '••••••••••••••••' : 'Not configured'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {formData.unifi_site_id && (
+                              <div className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 px-3 py-2 dark:border-gray-800">
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                    Site: {formData.unifi_site_name || 'Unknown'}
+                                  </div>
+                                  <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 font-mono">
+                                    {formData.unifi_site_id}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
         )}
       </div>
 
@@ -4012,13 +4077,12 @@ const PMProjectViewEnhanced = () => {
                     >
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-zinc-900 dark:text-white">{issue.title}</h4>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          issue.status === 'resolved'
-                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                            : issue.status === 'blocked'
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${issue.status === 'resolved'
+                          ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : issue.status === 'blocked'
                             ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                             : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                        }`}>
+                          }`}>
                           {(issue.status || 'open').replace(/\b\w/g, (c) => c.toUpperCase())}
                         </span>
                       </div>
