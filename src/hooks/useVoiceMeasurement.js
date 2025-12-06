@@ -67,6 +67,27 @@ export const useVoiceMeasurement = ({ onFieldUpdate }) => {
     // Refs for API instances
     const recognition = useRef(null);
     const synthesis = useRef(window.speechSynthesis);
+    const voiceRef = useRef(null);
+
+    // Initialize Voices
+    useEffect(() => {
+        const loadVoices = () => {
+            const voices = synthesis.current.getVoices();
+            if (voices.length > 0) {
+                // Prefer Google US English, then any English, then first available
+                voiceRef.current = voices.find(v => v.name.includes('Google US English'))
+                    || voices.find(v => v.lang.startsWith('en-US'))
+                    || voices.find(v => v.lang.startsWith('en'))
+                    || voices[0];
+                console.log('Voice selected:', voiceRef.current?.name);
+            }
+        };
+
+        loadVoices();
+        if (synthesis.current.onvoiceschanged !== undefined) {
+            synthesis.current.onvoiceschanged = loadVoices;
+        }
+    }, []);
 
     // Flow Configuration
     const steps = [
@@ -80,12 +101,26 @@ export const useVoiceMeasurement = ({ onFieldUpdate }) => {
     const speak = useCallback((text, onEnd) => {
         if (!synthesis.current) return;
 
-        // Cancel any current speech
+        // Cancel any current speech to avoid queue buildup
         synthesis.current.cancel();
 
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1.0; // Normal speed
+        if (voiceRef.current) {
+            utterance.voice = voiceRef.current;
+        }
+        utterance.rate = 1.0;
+        utterance.volume = 1.0;
+
+        console.log('Speaking:', text); // Debug log
+
         utterance.onend = () => {
+            console.log('Finished speaking');
+            if (onEnd) onEnd();
+        };
+
+        utterance.onerror = (e) => {
+            console.error('Speech synthesis error:', e);
+            // Fallback: if error, still try to proceed so app doesn't hang
             if (onEnd) onEnd();
         };
 
@@ -138,8 +173,9 @@ export const useVoiceMeasurement = ({ onFieldUpdate }) => {
     const startSession = () => {
         setIsActive(true);
         setCurrentStep(0);
-        // Delay slightly or ensure wake lock here
-        setTimeout(() => runStep(0), 500);
+        // iOS Safari requires direct user gesture. Calling runStep immediately without timeout
+        // to ensure the first speech synthesis piggybacks on the click event.
+        runStep(0);
     };
 
     const runStep = (stepIndex) => {
