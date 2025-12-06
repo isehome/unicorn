@@ -1,39 +1,30 @@
 {
-  "devCommand": "PORT=3001 react-scripts start",
-  "build": {
-    "env": {
-      "CI": "false",
-      "GENERATE_SOURCEMAP": "false",
-      "DISABLE_ESLINT_PLUGIN": "true"
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
     }
-  },
-  "functions": {
-    "api/**/*.js": {
-      "memory": 1024,
-      "maxDuration": 10
-    }
-  },
-  "rewrites": [],
+  ],
   "headers": [
     {
-      "source": "/(.*).md",
+      "source": "/api/(.*)",
       "headers": [
         {
-          "key": "Content-Type",
-          "value": "text/plain; charset=utf-8"
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
         },
         {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
-        }
-      ]
-    },
-    {
-      "source": "/(.*).json",
-      "headers": [
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
         {
-          "key": "Content-Type",
-          "value": "application/json; charset=utf-8"
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET,OPTIONS,PATCH,DELETE,POST,PUT"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
         }
       ]
     }

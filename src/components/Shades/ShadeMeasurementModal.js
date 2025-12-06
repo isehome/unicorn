@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink, Mic, MicOff } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
@@ -6,7 +6,7 @@ import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
 import { useVoiceMeasurement } from '../../hooks/useVoiceMeasurement';
 
-const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) => {
+const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, availableMountTypes = [] }) => {
     const { theme, mode } = useTheme();
     const [activeTab, setActiveTab] = useState('m1'); // 'm1' or 'm2'
     const [uploading, setUploading] = useState(false);
@@ -20,6 +20,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
         width: targetShade?.[`${set}_width`] || '',
         height: targetShade?.[`${set}_height`] || '',
         mountDepth: targetShade?.[`${set}_mount_depth`] || '',
+        mountType: targetShade?.[`${set}_mount_type`] || targetShade?.mount_type || '', // Fallback to quoted mount type logic if M1/M2 are empty, but typically start empty? No, better start with quote. Or maybe empty. Plan didn't specify. Let's pre-fill with quote if empty.
 
         widthTop: targetShade?.[`${set}_measure_width_top`] || '',
         widthMiddle: targetShade?.[`${set}_measure_width_middle`] || '',
@@ -45,9 +46,17 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
         }
     }, [shade, activeTab]);
 
-    const handleChange = (field, value) => {
+    // Prevent body scroll when modal is open
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = 'unset';
+        };
+    }, []);
+
+    const handleChange = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-    };
+    }, []);
 
     // Voice Hook
     const {
@@ -58,7 +67,8 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
         startSession: startVoice,
         stopSession: stopVoice
     } = useVoiceMeasurement({
-        onFieldUpdate: handleChange
+        onFieldUpdate: handleChange,
+        initialContext: shade?.name
     });
 
     const handlePhotoUpload = async (e) => {
@@ -131,32 +141,68 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                     </div>
                 )}
 
-                {/* Header */}
-                <div className={`flex items-center justify-between p-4 border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
-                    <div>
-                        <h2 className={`text-lg font-semibold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                            Verify Measurements
-                        </h2>
-                        <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                            {shade?.name} • {shade?.room?.name}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {!showBlinded && (
-                            <button
-                                onClick={isVoiceActive ? stopVoice : startVoice}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isVoiceActive
+                {/* Header Section with Specs */}
+                <div className={`p-4 border-b space-y-4 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className={`text-lg font-semibold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
+                                Verify Measurements
+                            </h2>
+                            <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                                {shade?.name} • {shade?.room?.name} • <span className="font-medium text-violet-500">{shade?.technology}</span>
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {!showBlinded && (
+                                <button
+                                    onClick={isVoiceActive ? stopVoice : startVoice}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isVoiceActive
                                         ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
                                         : 'bg-violet-50 text-violet-600 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300'
-                                    }`}
-                            >
-                                {isVoiceActive ? <MicOff size={16} /> : <Mic size={16} />}
-                                {isVoiceActive ? 'Stop Voice' : 'Start Voice Mode'}
+                                        }`}
+                                >
+                                    {isVoiceActive ? <MicOff size={16} /> : <Mic size={16} />}
+                                    {isVoiceActive ? 'Stop Voice' : 'Start Voice Mode'}
+                                </button>
+                            )}
+                            <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
+                                <X size={20} />
                             </button>
-                        )}
-                        <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
-                            <X size={20} />
-                        </button>
+                        </div>
+                    </div>
+
+                    {/* Master Info Header */}
+                    <div className={`grid grid-cols-4 gap-4 p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-blue-50/50 border-blue-100'}`}>
+                        <div>
+                            <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Width</span>
+                            <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_width}"</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Height</span>
+                            <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_height}"</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Mount Type</span>
+                            <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.mount_type}</span>
+                        </div>
+                        <div>
+                            <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Fabric</span>
+                            <div className="flex items-center gap-2">
+                                <span className={`font-medium truncate ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                    {shade?.fabric_selection || 'Not Selected'}
+                                </span>
+                                {shade?.fabric_selection && (
+                                    <a
+                                        href={`https://www.lutronfabrics.com/us/en/search/results?q=${shade.fabric_selection}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-violet-500 hover:text-violet-400 text-xs"
+                                    >
+                                        <ExternalLink size={12} />
+                                    </a>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -182,94 +228,24 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                     </button>
                 </div>
 
-                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                    {/* Left Col: Specs */}
-                    <div className="space-y-6">
-                        <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-blue-50/50 border-blue-100'}`}>
-                            <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${mode === 'dark' ? 'text-zinc-400' : 'text-blue-600'}`}>
-                                Lutron Quote Specs
-                            </h3>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-400">Width</span>
-                                    <span className={mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}>{shade?.quoted_width}"</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-400">Height</span>
-                                    <span className={mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}>{shade?.quoted_height}"</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-zinc-400">Mount</span>
-                                    <span className={mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}>{shade?.mount_type}</span>
-                                </div>
-                                <div className="pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                                    <span className="block text-zinc-400 text-xs mb-1">Fabric</span>
-                                    <div className="flex items-center justify-between">
-                                        <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
-                                            {shade?.fabric_selection || 'Not Selected'}
-                                        </span>
-                                        {shade?.fabric_selection && (
-                                            <a
-                                                href={`https://www.lutronfabrics.com/us/en/search/results?q=${shade.fabric_selection}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-violet-500 hover:text-violet-400 text-xs flex items-center gap-1"
-                                            >
-                                                View <ExternalLink size={12} />
-                                            </a>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                {/* Main Content Area */}
+                <div className="p-6">
+                    {showBlinded ? (
+                        <div className="h-64 flex flex-col items-center justify-center text-center border rounded-xl border-dashed border-zinc-300 dark:border-zinc-700">
+                            <Lock size={48} className="text-zinc-300 mb-4" />
+                            <h3 className="text-lg font-medium text-zinc-500">Measurement 1 is Complete</h3>
+                            <p className="text-sm text-zinc-400 mt-2">
+                                Data masked for blind verification. Switch to Measure 2.
+                            </p>
                         </div>
-
-                        {/* Photos Section */}
-                        <div>
-                            <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                                Rough Opening Photos {activeTab === 'm1' ? '(M1)' : '(M2)'}
-                            </label>
-
-                            {showBlinded ? (
-                                <div className="p-8 border border-dashed rounded-lg text-center text-zinc-500">
-                                    <Lock size={24} className="mx-auto mb-2 opacity-50" />
-                                    <p className="text-sm">Photos Hidden</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {formData.photos?.map((url, i) => (
-                                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                                                <img src={url} alt="Rough opening" className="w-full h-full object-cover" />
-                                            </a>
-                                        ))}
-                                    </div>
-                                    <label className={`flex items-center justify-center gap-2 w-full p-3 border border-dashed rounded-lg cursor-pointer transition-colors ${mode === 'dark' ? 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800' : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
-                                        }`}>
-                                        <Camera size={18} className="text-zinc-400" />
-                                        <span className="text-sm text-zinc-500">{uploading ? 'Uploading...' : 'Add Photo'}</span>
-                                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
-                                    </label>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Right Col: Input Form */}
-                    <div className="lg:col-span-2 space-y-6">
-                        {showBlinded ? (
-                            <div className="h-full flex flex-col items-center justify-center p-12 text-center border rounded-xl border-dashed border-zinc-300 dark:border-zinc-700">
-                                <Lock size={48} className="text-zinc-300 mb-4" />
-                                <h3 className="text-lg font-medium text-zinc-500">Measurement 1 is Complete</h3>
-                                <p className="text-sm text-zinc-400 mt-2">
-                                    This data is masked for blind verification. Please switch to Measure 2 tab to enter your verification data.
-                                </p>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Left Column: Validation & Photos */}
+                            <div className="space-y-6">
+                                {/* Width/Height Validations */}
+                                <div className="space-y-6">
                                     <div className="space-y-3">
-                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Width Check</label>
+                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Width</label>
                                         <div className="space-y-2">
                                             <InputGroup label="Top" value={formData.widthTop} onChange={v => handleChange('widthTop', v)} mode={mode} />
                                             <InputGroup label="Middle" value={formData.widthMiddle} onChange={v => handleChange('widthMiddle', v)} mode={mode} />
@@ -277,7 +253,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                                         </div>
                                     </div>
                                     <div className="space-y-3">
-                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Height Check</label>
+                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Height</label>
                                         <div className="space-y-2">
                                             <InputGroup label="Left" value={formData.heightLeft} onChange={v => handleChange('heightLeft', v)} mode={mode} />
                                             <InputGroup label="Center" value={formData.heightCenter} onChange={v => handleChange('heightCenter', v)} mode={mode} />
@@ -286,8 +262,36 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                                     </div>
                                 </div>
 
-                                <div className={`p-4 rounded-xl border mt-4 ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
-                                    <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>Final Ordered Dimensions</h4>
+                                {/* Photos */}
+                                <div>
+                                    <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                        Verification Photos {activeTab === 'm1' ? '(M1)' : '(M2)'}
+                                    </label>
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {formData.photos?.map((url, i) => (
+                                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                                                    <img src={url} alt="Rough opening" className="w-full h-full object-cover" />
+                                                </a>
+                                            ))}
+                                        </div>
+                                        <label className={`flex items-center justify-center gap-2 w-full p-3 border border-dashed rounded-lg cursor-pointer transition-colors ${mode === 'dark' ? 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800' : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
+                                            }`}>
+                                            <Camera size={18} className="text-zinc-400" />
+                                            <span className="text-sm text-zinc-500">{uploading ? 'Uploading...' : 'Add Photo'}</span>
+                                            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Final Specs & Install */}
+                            <div className="space-y-6">
+                                {/* Final Dimensions (The "Order" Specs) */}
+                                <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
+                                    <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
+                                        <Ruler size={16} /> Final Ordered Dimensions
+                                    </h4>
                                     <div className="grid grid-cols-3 gap-4">
                                         <InputFinal label="Width" value={formData.width} onChange={v => handleChange('width', v)} mode={mode} />
                                         <InputFinal label="Height" value={formData.height} onChange={v => handleChange('height', v)} mode={mode} />
@@ -295,27 +299,45 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser }) 
                                     </div>
                                 </div>
 
-                                <div className={`p-4 rounded-xl border mt-4 ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
-                                    <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Mounting & Pockets</h4>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <InputFinal label="Pocket Width" value={formData.pocketWidth} onChange={v => handleChange('pocketWidth', v)} mode={mode} />
-                                        <InputFinal label="Pocket Height" value={formData.pocketHeight} onChange={v => handleChange('pocketHeight', v)} mode={mode} />
-                                        <InputFinal label="Pocket Depth" value={formData.pocketDepth} onChange={v => handleChange('pocketDepth', v)} mode={mode} />
+                                {/* Installation / Pockets */}
+                                <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                                    <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Installation & Pockets</h4>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-medium mb-1.5 text-zinc-500">Verified Mount Type</label>
+                                            <select
+                                                value={formData.mountType || ''}
+                                                onChange={e => handleChange('mountType', e.target.value)}
+                                                className={`w-full px-3 py-2 rounded-lg border font-semibold ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white focus:border-violet-500' : 'bg-white border-zinc-300 text-black focus:border-violet-500'}`}
+                                            >
+                                                <option value="">Select...</option>
+                                                {availableMountTypes.map(type => (
+                                                    <option key={type} value={type}>{type} Mount</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <InputFinal label="Pocket Width" value={formData.pocketWidth} onChange={v => handleChange('pocketWidth', v)} mode={mode} />
+                                            <InputFinal label="Pocket Height" value={formData.pocketHeight} onChange={v => handleChange('pocketHeight', v)} mode={mode} />
+                                            <InputFinal label="Pocket Depth" value={formData.pocketDepth} onChange={v => handleChange('pocketDepth', v)} mode={mode} />
+                                        </div>
                                     </div>
                                 </div>
 
+                                {/* Notes */}
                                 <div>
                                     <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>Obstruction Notes</label>
                                     <textarea
                                         value={formData.notes}
                                         onChange={e => handleChange('notes', e.target.value)}
                                         rows={3}
+                                        placeholder="Enter any validation notes..."
                                         className={`w-full px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
                                     />
                                 </div>
-                            </>
-                        )}
-                    </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Footer */}

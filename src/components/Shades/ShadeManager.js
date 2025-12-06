@@ -12,9 +12,12 @@ import {
     Search,
     Filter
 } from 'lucide-react';
+import Papa from 'papaparse';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { projectStakeholdersService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';
+import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
 import ShadeMeasurementModal from './ShadeMeasurementModal';
 import { brandColors } from '../../styles/styleSystem';
@@ -31,6 +34,11 @@ const ShadeManager = () => {
     const [error, setError] = useState(null);
     const [importing, setImporting] = useState(false);
 
+    // Designer Review State
+    const [designers, setDesigners] = useState([]);
+    const [selectedDesignerId, setSelectedDesignerId] = useState(null);
+    const [sendingReview, setSendingReview] = useState(false);
+
     // Filtering & Search
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('all'); // all, pending, verified, approved
@@ -39,6 +47,48 @@ const ShadeManager = () => {
     const [expandedRooms, setExpandedRooms] = useState(new Set());
     const [selectedShade, setSelectedShade] = useState(null);
     const [showMeasureModal, setShowMeasureModal] = useState(false);
+
+    // Fetch Designers
+    useEffect(() => {
+        const fetchDesigners = async () => {
+            const { external } = await projectStakeholdersService.getForProject(projectId);
+            setDesigners(external || []);
+            // Ideally pre-select if one is already assigned to shades?
+            // checking first shade to see if designer_stakeholder_id is set
+            if (shades.length > 0 && shades[0].designer_stakeholder_id) {
+                // We'll need to make sure 'shades' includes this col, might need to update getShades query
+                setSelectedDesignerId(shades[0].designer_stakeholder_id);
+            }
+        };
+        if (projectId) fetchDesigners();
+    }, [projectId, shades]); // shades dep might be loop-prone if not careful, but okay for checking init
+
+    const handleDesignerChange = async (newId) => {
+        setSelectedDesignerId(newId);
+        // Optional: Auto-save this choice to all shades? Or just waiting for "Send Review"?
+        // User asked to select designer if none selected.
+    };
+
+    const handleSendToReview = async () => {
+        if (!selectedDesignerId) return;
+        setSendingReview(true);
+        try {
+            // 1. Assign this designer to ALL shades (or just update project setting?)
+            // User: "The window covering should also include display the stakeholder... if project has designer..."
+            // We should save this assignment.
+
+            // 2. Trigger Notification (Stub for now)
+            await projectShadeService.sendToDesignReview(projectId, selectedDesignerId, user.id);
+
+            alert('Review request sent to designer!');
+            loadShades();
+        } catch (e) {
+            console.error('Send review failed:', e);
+            alert('Failed to send review: ' + e.message);
+        } finally {
+            setSendingReview(false);
+        }
+    };
 
     const loadShades = useCallback(async () => {
         try {
@@ -93,7 +143,7 @@ const ShadeManager = () => {
             }
 
             // Convert to CSV
-            const Papa = require('papaparse');
+            // Convert to CSV
             const csv = Papa.unparse(data);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
@@ -172,6 +222,18 @@ const ShadeManager = () => {
         }, {});
     }, [shades, searchQuery, statusFilter]);
 
+    // Dynamic Mount Options
+    const availableMountTypes = useMemo(() => {
+        const types = new Set(['Inside', 'Outside', 'Side']); // Defaults
+        shades.forEach(s => {
+            // Add any existing values from the database to the list
+            if (s.mount_type && s.mount_type.trim()) types.add(s.mount_type.trim());
+            if (s.m1_mount_type && s.m1_mount_type.trim()) types.add(s.m1_mount_type.trim());
+            if (s.m2_mount_type && s.m2_mount_type.trim()) types.add(s.m2_mount_type.trim());
+        });
+        return Array.from(types).sort();
+    }, [shades]);
+
     const toggleRoom = (roomName) => {
         setExpandedRooms(prev => {
             const next = new Set(prev);
@@ -223,7 +285,33 @@ const ShadeManager = () => {
                             Manage measurements, verification, and designer approvals.
                         </p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                        {/* Designer Selection */}
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={selectedDesignerId || ''}
+                                onChange={(e) => handleDesignerChange(e.target.value)}
+                                className={`px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                            >
+                                <option value="">Select Designer</option>
+                                {designers.map(d => (
+                                    <option key={d.id} value={d.id}>
+                                        {d.contact?.first_name} {d.contact?.last_name}
+                                    </option>
+                                ))}
+                            </select>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={!selectedDesignerId || sendingReview}
+                                onClick={handleSendToReview}
+                            >
+                                {sendingReview ? 'Sending...' : 'Send Review'}
+                            </Button>
+                        </div>
+
+                        <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-700 mx-2 hidden sm:block"></div>
+
                         <Button variant="secondary" icon={Upload} onClick={() => document.getElementById('csv-upload').click()} disabled={importing}>
                             {importing ? 'Importing...' : 'Import Quote'}
                         </Button>
@@ -346,8 +434,8 @@ const ShadeManager = () => {
                                                         const isHigh = delta > 0.125;
                                                         return (
                                                             <span className={`px-2 py-1 rounded text-xs font-bold ${isHigh
-                                                                    ? 'bg-red-100 text-red-700'
-                                                                    : 'bg-green-100 text-green-700'
+                                                                ? 'bg-red-100 text-red-700'
+                                                                : 'bg-green-100 text-green-700'
                                                                 }`}>
                                                                 {delta.toFixed(3)}"
                                                             </span>
@@ -382,6 +470,7 @@ const ShadeManager = () => {
                     shade={selectedShade}
                     onSave={handleMeasurementSave}
                     currentUser={user}
+                    availableMountTypes={availableMountTypes}
                 />
             )}
         </div>

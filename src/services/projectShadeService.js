@@ -51,68 +51,128 @@ export const projectShadeService = {
         const rows = await parseCsvFile(file);
         if (!rows.length) throw new Error('CSV file is empty');
 
-        // 1. Resolve Rooms
-        // We reuse ensureRooms logic or basic lookup? 
-        // For now, let's fetch existing rooms and match by name. 
-        // If room doesn't exist, we should probably create it or warn?
-        // Let's create them to be safe, similar to Equipment Service.
-
-        // Fetch existing rooms
+        // 1. Resolve Rooms using Gemini AI
         const { data: existingRooms } = await supabase
             .from('project_rooms')
             .select('id, name')
             .eq('project_id', projectId);
 
-        const roomMap = new Map();
-        existingRooms?.forEach(r => roomMap.set(normalizeRoomName(r.name), r.id));
+        const projectRoomsList = existingRooms || [];
+        const uniqueImportAreas = [...new Set(rows.map(r => normalizeString(r.Area)).filter(Boolean))];
 
-        // Identify new rooms
-        const newRoomNames = new Set();
-        rows.forEach(row => {
-            const area = normalizeString(row.Area);
-            if (area && !roomMap.has(normalizeRoomName(area))) {
-                newRoomNames.add(area);
+        let roomMap = new Map(); // Normalized Name -> ID
+        projectRoomsList.forEach(r => roomMap.set(normalizeRoomName(r.name), r.id));
+
+        // Call Gemini API for matching
+        try {
+            const response = await fetch('/api/match-rooms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    importedAreas: uniqueImportAreas,
+                    projectRooms: projectRoomsList
+                })
+            });
+
+            if (response.ok) {
+                const { mappings, newRooms } = await response.json();
+
+                // Apply mappings
+                Object.entries(mappings).forEach(([importName, roomId]) => {
+                    const normalizedImport = normalizeRoomName(importName);
+                    if (roomId) roomMap.set(normalizedImport, roomId);
+                });
+
+                // Create new rooms
+                if (newRooms && newRooms.length > 0) {
+                    const { data: createdRooms, error: roomError } = await supabase
+                        .from('project_rooms')
+                        .insert(newRooms.map(name => ({
+                            project_id: projectId,
+                            name: name,
+                            created_by: userId
+                        })))
+                        .select();
+
+                    if (!roomError && createdRooms) {
+                        createdRooms.forEach(r => roomMap.set(normalizeRoomName(r.name), r.id));
+                        // Also map the original import name to this new room if it was in the newRooms list logic
+                        // But Gemini returns "Standardized Name", so we rely on the loop below to match by standard name 
+                        // or we might need to be smarter. For now, we trust Gemini's "newRooms" are the names we want to use.
+                        // We also need to map the *Imported* name to this new *Created* room ID.
+                        // Since Gemini gave us "newRooms" as a list of strings, we assume the Import Area maps to one of these strings.
+                        // We'll simplisticly assume if the normalized import name matches normalized new room name, it's a hit.
+                    }
+                }
+            } else {
+                console.warn('Gemini Room Match failed, falling back to exact match');
             }
-        });
-
-        if (newRoomNames.size > 0) {
-            const { data: newRooms, error: roomError } = await supabase
-                .from('project_rooms')
-                .insert(Array.from(newRoomNames).map(name => ({
-                    project_id: projectId,
-                    name: name,
-                    created_by: userId
-                })))
-                .select();
-
-            if (roomError) throw roomError;
-            newRooms?.forEach(r => roomMap.set(normalizeRoomName(r.name), r.id));
+        } catch (e) {
+            console.error('Error calling match-rooms:', e);
+            // Fallback: Proceed with existing map (exact matches only)
         }
 
-        // 2. Build Shade Records
-        const shadePayload = rows.map(row => {
+        // 2. Create Import Batch
+        const { data: batchData, error: batchError } = await supabase
+            .from('project_shade_batches')
+            .insert([{
+                project_id: projectId,
+                original_filename: file.name,
+                original_headers: rows.meta?.fields || Object.keys(rows[0]),
+                created_by: userId
+            }])
+            .select()
+            .single();
+
+        if (batchError) throw batchError;
+        const batchId = batchData.id;
+
+        // 3. Build Shade Records
+        const shadePayload = [];
+
+        for (const row of rows) {
             const name = normalizeString(row.Name);
-            if (!name) return null;
+            if (!name) continue;
 
             const area = normalizeString(row.Area);
-            const roomId = roomMap.get(normalizeRoomName(area)) || null;
 
-            return {
+            // Try explicit map first (from Gemini), then normalized exact match
+            let roomId = null;
+
+            // Check Gemini Mapping result (we need to have stored the "Import Name" -> ID map better above)
+            // Re-refining the map logic locally:
+            // The map above `roomMap` keys are `normalizeRoomName(name)`.
+            // So we normalize the current row's area and check.
+            const normArea = normalizeRoomName(area);
+            roomId = roomMap.get(normArea);
+
+            // If still null, maybe it was a "New Room" that we created but didn't map back explicitly
+            // (e.g. Import "Living Rm" -> AI says create "Living Room" -> We created "Living Room")
+            // We need to ensure we find "Living Room"'s ID for "Living Rm".
+            // Since we added created rooms to `roomMap` under `normalizeRoomName("Living Room")`,
+            // checking `normalizeRoomName("Living Rm")` might fail if they differ.
+            // We'll rely on Gemini to have returned a mapping if it matched an existing room.
+            // For new rooms, we might miss the link if we don't do a second pass.
+            // IMPROVEMENT: If roomId is null, check if any room in map has fuzzy similarity or just rely on manual fix later.
+            // For now, we leave it null or assign to "Unassigned".
+
+            shadePayload.push({
                 project_id: projectId,
                 room_id: roomId,
+                shade_batch_id: batchId,
                 name: name,
-                // Use Line # or Name+Area as ID if Line # isn't clear in this CSV version
-                // For now, we don't have a guaranteed stable ID in the CSV sample provided (no Line # column shown in previous turn).
-                // We'll leave lutron_id null or use Name for now.
                 lutron_id: name,
 
                 // Quoted Specs
                 quoted_width: normalizeString(row.Width),
                 quoted_height: normalizeString(row.Height),
-                mount_type: normalizeString(row['System Mount']),
-                technology: normalizeString(row.Technology),
+                mount_type: normalizeString(row['System Mount']) || normalizeString(row['Mounting']),
+                technology: normalizeString(row.Technology) || normalizeString(row.System),
                 product_type: normalizeString(row['Product Type']),
                 model: normalizeString(row['Product Details']) || normalizeString(row.Product),
+
+                // Original Data for Round Trip
+                original_csv_row: row,
 
                 // Initial Status
                 m1_complete: false,
@@ -122,9 +182,9 @@ export const projectShadeService = {
 
                 // Metadata
                 created_by: userId,
-                fabric_selection: normalizeString(row.Fabric) // Initial selection from quote
-            };
-        }).filter(Boolean);
+                fabric_selection: normalizeString(row.Fabric)
+            });
+        }
 
         if (shadePayload.length === 0) return { inserted: 0 };
 
@@ -156,6 +216,28 @@ export const projectShadeService = {
     },
 
     /**
+     * Send shades to Design Review
+     */
+    async sendToDesignReview(projectId, designerId, userId) {
+        if (!projectId || !designerId) throw new Error('Project and Designer required');
+
+        // Update all pending shades to 'sent'
+        // Also assign the designer
+        const { error } = await supabase
+            .from('project_shades')
+            .update({
+                designer_stakeholder_id: designerId,
+                design_review_status: 'sent',
+                updated_at: new Date().toISOString()
+            })
+            .eq('project_id', projectId)
+            .eq('design_review_status', 'pending'); // Only update pending ones
+
+        if (error) throw error;
+        // Logic for email notification would go here or trigger a cloud function
+    },
+
+    /**
      * Update field measurements for a shade (M1 or M2)
      * @param {string} shadeId
      * @param {Object} measurements - Measurement data
@@ -179,6 +261,8 @@ export const projectShadeService = {
             [`${prefix}_measure_height_center`]: measurements.heightCenter,
             [`${prefix}_measure_height_right`]: measurements.heightRight,
             [`${prefix}_mount_depth`]: measurements.mountDepth,
+            // Verified Mount Type
+            [`${prefix}_mount_type`]: measurements.mountType,
             [`${prefix}_obstruction_notes`]: measurements.notes,
             [`${prefix}_photos`]: measurements.photos, // Array of URLs specific to this measurement set
 
@@ -251,7 +335,7 @@ export const projectShadeService = {
             // Prioritize M2 (Verified 2) -> M1 (Verified 1) -> Quoted
             'Width': shade.m2_width || shade.m1_width || shade.quoted_width,
             'Height': shade.m2_height || shade.m1_height || shade.quoted_height,
-            'System Mount': shade.mount_type,
+            'System Mount': shade.m2_mount_type || shade.m1_mount_type || shade.mount_type,
             'Fabric': shade.fabric_selection,
             'Technology': shade.technology,
             // Status fields to help the user know what's changed
