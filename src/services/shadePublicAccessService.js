@@ -14,8 +14,22 @@ class ShadePublicAccessService {
       throw new Error('Missing project context for public link');
     }
 
-    // First, check if a valid (non-revoked) link already exists
-    if (!forceRegenerate) {
+    console.log('[ShadePublicAccessService] ensureLink called:', { projectId, stakeholderId, forceRegenerate });
+
+    // If force regenerate, delete existing link first
+    if (forceRegenerate) {
+      console.log('[ShadePublicAccessService] Force regenerate - deleting existing link...');
+      const { error: deleteError } = await supabase
+        .from('shade_public_access_links')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('stakeholder_id', stakeholderId);
+
+      if (deleteError) {
+        console.warn('[ShadePublicAccessService] Error deleting existing link:', deleteError);
+      }
+    } else {
+      // Check if a valid (non-revoked) link already exists
       const { data: existingLink, error: fetchError } = await supabase
         .from('shade_public_access_links')
         .select('id, token_hash, contact_email')
@@ -42,13 +56,15 @@ class ShadePublicAccessService {
       }
     }
 
-    // No existing link or force regenerate - create a new one
+    // Create a new link
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData?.user?.id || null;
 
     // Generate new token and OTP
     const token = generatePortalToken();
     const otp = generateOtpCode();
+    console.log('[ShadePublicAccessService] Generated token and OTP');
+
     const [tokenHash, otpHash] = await Promise.all([
       hashSecret(token),
       hashSecret(otp)
@@ -73,24 +89,24 @@ class ShadePublicAccessService {
       updated_by: userId
     };
 
+    console.log('[ShadePublicAccessService] Inserting new link...');
     const { data, error } = await supabase
       .from('shade_public_access_links')
-      .upsert([payload], {
-        onConflict: 'project_id,stakeholder_id',
-        ignoreDuplicates: false
-      })
+      .insert([payload])
       .select()
       .single();
 
     if (error) {
-      console.error('[ShadePublicAccessService] Failed to upsert shade public link:', error);
-      throw new Error('Failed to generate public share link');
+      console.error('[ShadePublicAccessService] Failed to insert shade public link:', error);
+      throw new Error('Failed to generate public share link: ' + error.message);
     }
 
-    console.log('[ShadePublicAccessService] Link created:', {
+    console.log('[ShadePublicAccessService] Link created successfully:', {
       linkId: data.id,
       stakeholderId,
-      projectId
+      projectId,
+      hasToken: !!token,
+      hasOtp: !!otp
     });
 
     return {
