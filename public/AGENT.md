@@ -1282,3 +1282,68 @@ Before any feature is complete, test on a real phone:
 ---
 
 **This file is the single source of truth. Follow it exactly.**
+
+---
+
+# PART 3: AI & VOICE COPILOT ARCHITECTURE
+
+## Overview
+
+The AI integration in Unicorn follows the **"Copilot" Architecture** (Option B).
+- **Goal**: A "Field Partner" that assists via voice/chat.
+- **Rule**: The AI acts as a **Power User**, using "Tools" to click buttons, navigate, and save data. It DOES NOT access the database directly.
+- **Safety**: App logic (validations, state) remains the source of truth.
+
+## Core Components
+
+### 1. Global AI Provider (`VoiceCopilotContext.js`)
+- Manages the WebSocket connection to Gemini Live.
+- Handles Audio I/O (Microphone & Speaker).
+- Manages the "Tool Registry".
+
+### 2. Tool Registry System
+Capabilities are "injected" based on the current page to give context-aware skills.
+
+**Global Tools (Always Available):**
+- `navigate_to(url)`
+- `search_contacts(query)`
+- `create_task(title)`
+
+**Context Tools (Page Specific):**
+- **ShadeManager**: `registerTool({ set_measurement, list_shades })`
+- **IssueManager**: `registerTool({ update_priority, close_issue })`
+
+### 3. User Settings (`AISettings.js`)
+- **Persona Config**: Users can adjust the "verbosity" and "personality" of their helper.
+- **Voice Selection**: Choose TTS voice (Puck/Charon).
+- **Custom Instructions**: Stored in `user_preferences` table.
+
+## Implementation Guidelines
+
+### A. How to Add a New Skill
+1.  **Define the Tool**:
+    ```javascript
+    const myTool = {
+      name: "update_status",
+      description: "Updates the status of the current item",
+      parameters: { status: "string" },
+      execute: async ({ status }) => { await updateStatus(status); }
+    };
+    ```
+2.  **Register on Mount**:
+    ```javascript
+    useEffect(() => {
+      registerTools([myTool]);
+      return () => unregisterTools([myTool]);
+    }, []);
+    ```
+
+### B. The "Listener" Persona
+- The AI is instructed to be concise.
+- It proactively asks for missing data ("Width is set. What is the Height?").
+- It validates inputs using the App's own validation logic (via the Tool).
+
+## Key Files
+- `src/contexts/VoiceCopilotContext.js` (The Brain)
+- `src/components/UserSettings/AISettings.js` (The Configuration)
+- `src/hooks/useVoiceMeasurement.js` (Legacy/Specific prototype logic, moving to Registry)

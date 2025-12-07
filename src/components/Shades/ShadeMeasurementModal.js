@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from 'react';
 import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
