@@ -20,7 +20,7 @@ import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
 import ShadeMeasurementModal from './ShadeMeasurementModal';
-import { brandColors } from '../../styles/styleSystem';
+import { brandColors, stakeholderColors } from '../../styles/styleSystem';
 
 const ShadeManager = () => {
     const { projectId } = useParams();
@@ -36,6 +36,7 @@ const ShadeManager = () => {
 
     // Designer Review State
     const [designers, setDesigners] = useState([]);
+    const [isDesignerOpen, setIsDesignerOpen] = useState(false);
     const [selectedDesignerId, setSelectedDesignerId] = useState(null);
     const [sendingReview, setSendingReview] = useState(false);
 
@@ -48,20 +49,42 @@ const ShadeManager = () => {
     const [selectedShade, setSelectedShade] = useState(null);
     const [showMeasureModal, setShowMeasureModal] = useState(false);
 
-    // Fetch Designers
+    // Fetch Designers (Project Team)
     useEffect(() => {
         const fetchDesigners = async () => {
-            const { external } = await projectStakeholdersService.getForProject(projectId);
-            setDesigners(external || []);
-            // Ideally pre-select if one is already assigned to shades?
-            // checking first shade to see if designer_stakeholder_id is set
-            if (shades.length > 0 && shades[0].designer_stakeholder_id) {
-                // We'll need to make sure 'shades' includes this col, might need to update getShades query
-                setSelectedDesignerId(shades[0].designer_stakeholder_id);
+            try {
+                // Use the same service as IssueDetail to ensure consistency
+                const { internal, external } = await projectStakeholdersService.getForProject(projectId);
+
+                // Map and combine exactly like IssueDetail.js
+                const internalMapped = (internal || []).map(p => ({ ...p, category: 'internal' }));
+                const externalMapped = (external || []).map(p => ({ ...p, category: 'external' }));
+
+                // Deduplicate
+                const stakeholderMap = new Map();
+                [...internalMapped, ...externalMapped].forEach(stakeholder => {
+                    // Use assignment_id as the key identifier if available
+                    if (stakeholder.assignment_id || stakeholder.id) {
+                        const displayKey = `${stakeholder.contact_name || ''}_${stakeholder.role_name || ''}_${stakeholder.category || ''}`;
+                        if (!stakeholderMap.has(displayKey)) {
+                            stakeholderMap.set(displayKey, stakeholder);
+                        }
+                    }
+                });
+
+                const combined = Array.from(stakeholderMap.values());
+                setDesigners(combined);
+
+                // Pre-select if one is already assigned
+                if (shades.length > 0 && shades[0].designer_stakeholder_id) {
+                    setSelectedDesignerId(shades[0].designer_stakeholder_id);
+                }
+            } catch (e) {
+                console.error("Failed to fetch project stakeholders", e);
             }
         };
         if (projectId) fetchDesigners();
-    }, [projectId, shades]); // shades dep might be loop-prone if not careful, but okay for checking init
+    }, [projectId, shades]);
 
     const handleDesignerChange = async (newId) => {
         setSelectedDesignerId(newId);
@@ -287,19 +310,80 @@ const ShadeManager = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
                         {/* Designer Selection */}
-                        <div className="flex items-center gap-2">
-                            <select
-                                value={selectedDesignerId || ''}
-                                onChange={(e) => handleDesignerChange(e.target.value)}
-                                className={`px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
-                            >
-                                <option value="">Select Designer</option>
-                                {designers.map(d => (
-                                    <option key={d.id} value={d.id}>
-                                        {d.contact?.first_name} {d.contact?.last_name}
-                                    </option>
-                                ))}
-                            </select>
+                        <div className="flex items-center gap-2 relative">
+                            {/* Custom Dropdown Trigger */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsDesignerOpen(!isDesignerOpen)}
+                                    className={`flex items-center justify-between gap-3 px-3 py-2 w-64 rounded-lg border text-sm transition-colors ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100 hover:bg-zinc-700' : 'bg-white border-zinc-300 text-zinc-900 hover:bg-zinc-50'
+                                        }`}
+                                >
+                                    {(() => {
+                                        // Find selected using assignment_id or id
+                                        const selected = designers.find(d => (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId));
+                                        if (selected) {
+                                            const isInternal = selected.category === 'internal';
+                                            const color = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
+                                            return (
+                                                <span className="flex items-center gap-2 truncate">
+                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                                    <span className="font-medium">{selected.contact_name}</span>
+                                                </span>
+                                            );
+                                        }
+                                        return <span className="text-zinc-500">Select Designer</span>;
+                                    })()}
+                                    <ChevronDown size={16} className={`text-zinc-400 transition-transform ${isDesignerOpen ? 'rotate-180' : ''}`} />
+                                </button>
+
+                                {/* Dropdown Menu */}
+                                {isDesignerOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setIsDesignerOpen(false)} />
+                                        <div className={`absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl shadow-xl border z-20 ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'
+                                            }`}>
+                                            <div className="p-2 space-y-1">
+                                                {designers.map(d => {
+                                                    const isInternal = d.category === 'internal';
+                                                    const borderColor = isInternal ? stakeholderColors.internal.border : stakeholderColors.external.border;
+                                                    const dotColor = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
+                                                    // Allow matching by assignment_id or id
+                                                    const idValue = d.assignment_id || d.id;
+                                                    const isSelected = idValue === selectedDesignerId;
+
+                                                    return (
+                                                        <button
+                                                            key={idValue}
+                                                            onClick={() => {
+                                                                handleDesignerChange(idValue);
+                                                                setIsDesignerOpen(false);
+                                                            }}
+                                                            className={`w-full text-left p-3 rounded-lg border flex items-center justify-between group transition-all ${isSelected
+                                                                    ? (mode === 'dark' ? 'bg-violet-900/20 border-violet-500/50' : 'bg-violet-50 border-violet-200')
+                                                                    : (mode === 'dark' ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700' : 'bg-white border-zinc-200 hover:bg-zinc-50')
+                                                                }`}
+                                                            style={{ borderLeftWidth: '4px', borderLeftColor: borderColor }}
+                                                        >
+                                                            <div className="flex flex-col gap-0.5">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
+                                                                    <span className={`font-semibold text-sm ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                                                        {d.contact_name}
+                                                                    </span>
+                                                                </div>
+                                                                <span className="text-xs text-zinc-500 ml-4">
+                                                                    {d.role_name || d.stakeholder_slot?.slot_name || 'Stakeholder'}
+                                                                </span>
+                                                            </div>
+                                                            {isSelected && <CheckCircle size={14} className="text-violet-500" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                             <Button
                                 variant="primary"
                                 size="sm"

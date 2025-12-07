@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 // Helper to parse spoken fractions and numbers - REPLACED BY LLM API
 // const parseSpokenDimension = (text) => { ... }
 
-export const useVoiceMeasurement = ({ onFieldUpdate, initialContext }) => {
+export const useVoiceMeasurement = ({ onFieldUpdate, initialContext = null }) => {
     const [isActive, setIsActive] = useState(false);
     const [status, setStatus] = useState('idle'); // idle, connecting, listening, speaking
     const [transcript, setTranscript] = useState('');
@@ -34,6 +34,13 @@ export const useVoiceMeasurement = ({ onFieldUpdate, initialContext }) => {
     useEffect(() => {
         stateRef.current = { isActive, onFieldUpdate, currentStep, initialContext };
     });
+
+    // Flow Config
+    const steps = [
+        { key: 'widthTop', label: 'Top Width' },
+        { key: 'widthMiddle', label: 'Middle Width' },
+        { key: 'widthBottom', label: 'Bottom Width' }
+    ];
 
     // ... (previous code)
 
