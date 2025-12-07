@@ -143,34 +143,30 @@ const ShadeManager = () => {
             await projectShadeService.sendToDesignReview(projectId, selectedDesignerId, user.id);
 
             // Generate portal link for the stakeholder
-            console.log('[ShadeManager] Generating portal link...');
-            const linkResult = await shadePublicAccessService.ensureLink({
-                projectId,
-                stakeholderId: selectedDesignerId,
-                stakeholder: selectedDesigner
-            });
-
             let portalUrl = null;
             let otp = null;
-            if (linkResult.token) {
-                // New link was created
-                portalUrl = shadePublicAccessService.buildPortalUrl(linkResult.token);
-                otp = linkResult.otp;
-                console.log('[ShadeManager] New portal link created:', { portalUrl, hasOtp: !!otp });
-            } else if (linkResult.linkExists) {
-                // Link already exists - we can't reconstruct the URL since token is hashed
-                // For existing links, we'd need to regenerate or store the token differently
-                console.log('[ShadeManager] Portal link already exists, regenerating...');
-                const regenerated = await shadePublicAccessService.ensureLink({
+
+            try {
+                console.log('[ShadeManager] Generating portal link...');
+                const linkResult = await shadePublicAccessService.ensureLink({
                     projectId,
                     stakeholderId: selectedDesignerId,
                     stakeholder: selectedDesigner,
-                    forceRegenerate: true
+                    forceRegenerate: true // Always regenerate to get a fresh token
                 });
-                if (regenerated.token) {
-                    portalUrl = shadePublicAccessService.buildPortalUrl(regenerated.token);
-                    otp = regenerated.otp;
+
+                console.log('[ShadeManager] Link result:', linkResult);
+
+                if (linkResult.token) {
+                    portalUrl = shadePublicAccessService.buildPortalUrl(linkResult.token);
+                    otp = linkResult.otp;
+                    console.log('[ShadeManager] Portal link created:', { portalUrl, hasOtp: !!otp });
+                } else {
+                    console.warn('[ShadeManager] No token returned from ensureLink');
                 }
+            } catch (linkError) {
+                console.error('[ShadeManager] Failed to generate portal link:', linkError);
+                // Continue without portal link - email will still be sent
             }
 
             // Send email notification
