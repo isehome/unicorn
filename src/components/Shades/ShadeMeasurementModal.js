@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink, Mic, MicOff } from 'lucide-react';
+import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
-import { useVoiceMeasurement } from '../../hooks/useVoiceMeasurement';
+import { useShadeTools } from '../../hooks/useShadeTools';
 
 const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, availableMountTypes = [] }) => {
     const { theme, mode } = useTheme();
@@ -58,18 +57,18 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         setFormData(prev => ({ ...prev, [field]: value }));
     }, []);
 
-    // Voice Hook
-    const {
-        isActive: isVoiceActive,
-        status: voiceStatus,
-        transcript,
-        currentStepLabel,
-        startSession: startVoice,
-        stopSession: stopVoice
-    } = useVoiceMeasurement({
-        onFieldUpdate: handleChange,
-        initialContext: shade?.name
+    // NEW: Global Copilot Tools
+    useShadeTools({
+        formData,
+        setFormData,
+        activeTab,
+        shade,
+        onClose,
+        onSave: () => handleSaveClick() // Use the wrapper to include validation if needed? Or just direct onSave(formData, activeTab)
     });
+    // Fix: We need to pass the real save logic or specific wrapper. 
+    // The existing handleSaveClick relies on state 'formData' which is available.
+    // So passing handleSaveClick is correct because it wraps parameters.
 
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -77,14 +76,13 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
         try {
             setUploading(true);
-
-            // Dynamically import service (avoid circular deps if any, though likely safe here)
+            // Dynamically import service
             const { sharePointStorageService } = await import('../../services/sharePointStorageService');
 
             const publicUrl = await sharePointStorageService.uploadShadePhoto(
                 shade.project_id,
                 shade.id,
-                activeTab, // 'm1' or 'm2'
+                activeTab,
                 file
             );
 
@@ -101,13 +99,11 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     };
 
     const handleSaveClick = () => {
-        // Validation: Must have at least one photo for "Rough Opening" to mark complete
+        // Validation for M1 completion (Rough Opening photo required)
         if (!formData.photos || formData.photos.length === 0) {
             alert('Please upload a photo of the rough opening to complete verification.');
             return;
         }
-
-        // Pass 'set' (m1/m2) to parent save handler
         onSave(formData, activeTab);
     };
 
@@ -119,27 +115,6 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
-
-                {/* Voice Status Banner */}
-                {isVoiceActive && (
-                    <div className="bg-violet-600 text-white p-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
-                        <div className="flex items-center gap-3">
-                            <div className={`w-3 h-3 rounded-full ${voiceStatus === 'listening' ? 'bg-red-400 animate-pulse' : 'bg-white/50'}`} />
-                            <span className="font-medium text-sm">
-                                {voiceStatus === 'listening' ? 'Listening...' : voiceStatus === 'speaking' ? 'Speaking...' : 'Processing...'}
-                            </span>
-                            <span className="text-white/80 text-sm border-l border-white/20 pl-3">
-                                {currentStepLabel ? `Asking for: ${currentStepLabel}` : ''}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            {transcript && <span className="text-sm italic opacity-90 max-w-[200px] truncate">"{transcript}"</span>}
-                            <button onClick={stopVoice} className="bg-white/20 hover:bg-white/30 p-1.5 rounded-full transition-colors">
-                                <X size={14} />
-                            </button>
-                        </div>
-                    </div>
-                )}
 
                 {/* Header Section with Specs */}
                 <div className={`p-4 border-b space-y-4 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
@@ -153,18 +128,6 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
-                            {!showBlinded && (
-                                <button
-                                    onClick={isVoiceActive ? stopVoice : startVoice}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${isVoiceActive
-                                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
-                                        : 'bg-violet-50 text-violet-600 hover:bg-violet-100 dark:bg-violet-900/20 dark:text-violet-300'
-                                        }`}
-                                >
-                                    {isVoiceActive ? <MicOff size={16} /> : <Mic size={16} />}
-                                    {isVoiceActive ? 'Stop Voice' : 'Start Voice Mode'}
-                                </button>
-                            )}
                             <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
                                 <X size={20} />
                             </button>
