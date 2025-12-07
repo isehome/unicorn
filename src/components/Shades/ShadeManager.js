@@ -126,15 +126,26 @@ const ShadeManager = () => {
                 (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId)
             );
 
+            console.log('[ShadeManager] handleSendToReview:', {
+                selectedDesignerId,
+                designersCount: designers.length,
+                selectedDesigner,
+                hasEmail: !!selectedDesigner?.email,
+                projectName: project?.name
+            });
+
             if (!selectedDesigner?.email) {
-                throw new Error('Selected designer does not have an email address');
+                throw new Error('Selected designer does not have an email address. Please ensure this stakeholder has an email in their contact record.');
             }
 
             // Update database status
             await projectShadeService.sendToDesignReview(projectId, selectedDesignerId, user.id);
 
             // Send email notification
+            console.log('[ShadeManager] Acquiring token for email...');
             const graphToken = await acquireToken();
+            console.log('[ShadeManager] Token acquired, sending notification...');
+
             await notifyShadeReviewRequest(
                 {
                     project: project,
@@ -145,6 +156,7 @@ const ShadeManager = () => {
                 { authToken: graphToken }
             );
 
+            console.log('[ShadeManager] Notification sent successfully');
             alert('Review request sent to designer!');
             loadShades();
         } catch (e) {
