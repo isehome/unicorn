@@ -34,6 +34,21 @@ export const VoiceCopilotProvider = ({ children }) => {
     const [activeTools, setActiveTools] = useState(new Map());
     const [isConfigured, setIsConfigured] = useState(false);
 
+    // Debug state - visible in UI
+    const [debugLog, setDebugLog] = useState([]);
+    const [audioLevel, setAudioLevel] = useState(0);
+    const [lastTranscript, setLastTranscript] = useState('');
+    const [wsState, setWsState] = useState('closed');
+    const [audioChunksSent, setAudioChunksSent] = useState(0);
+    const [audioChunksReceived, setAudioChunksReceived] = useState(0);
+
+    // Debug logging helper
+    const addLog = useCallback((message, type = 'info') => {
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`[Copilot ${type}] ${message}`);
+        setDebugLog(prev => [...prev.slice(-50), { timestamp, message, type }]);
+    }, []);
+
     // Refs for audio and connection management
     const ws = useRef(null);
     const audioContext = useRef(null);
@@ -43,6 +58,7 @@ export const VoiceCopilotProvider = ({ children }) => {
     const audioQueue = useRef([]);
     const isPlaying = useRef(false);
     const recordingActive = useRef(false);
+    const audioLevelInterval = useRef(null);
 
     // Check if API key is configured on mount
     useEffect(() => {
@@ -257,34 +273,41 @@ export const VoiceCopilotProvider = ({ children }) => {
     // --- START SESSION ---
     const startSession = useCallback(async () => {
         if (status !== 'idle' && status !== 'error') {
-            console.log('[Copilot] Session already active, status:', status);
+            addLog(`Session already active, status: ${status}`);
             return;
         }
 
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
         if (!apiKey) {
+            addLog('No API key configured', 'error');
             setError('Gemini API key not configured. Add REACT_APP_GEMINI_API_KEY to environment.');
             setStatus('error');
             return;
         }
 
+        addLog(`Starting session... API key length: ${apiKey.length}`);
+
         try {
             setStatus('connecting');
             setError(null);
+            setAudioChunksSent(0);
+            setAudioChunksReceived(0);
 
             // Initialize audio context (must be from user gesture)
             // Note: iOS Safari's webkitAudioContext doesn't accept constructor options
             if (!audioContext.current || audioContext.current.state === 'closed') {
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 audioContext.current = new AudioContextClass();
-                console.log(`[Copilot] AudioContext created with sample rate: ${audioContext.current.sampleRate}${isIOS ? ' (iOS)' : ''}`);
+                addLog(`AudioContext created: ${audioContext.current.sampleRate}Hz${isIOS ? ' (iOS Safari)' : ''}`);
             }
             if (audioContext.current.state === 'suspended') {
                 await audioContext.current.resume();
+                addLog('AudioContext resumed from suspended state');
             }
 
             // Get microphone access
             // Note: Don't specify sampleRate - iOS ignores it and uses native rate (48kHz)
+            addLog('Requesting microphone access...');
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
@@ -293,6 +316,8 @@ export const VoiceCopilotProvider = ({ children }) => {
                 }
             });
             mediaStream.current = stream;
+            const audioTrack = stream.getAudioTracks()[0];
+            addLog(`Mic access granted: ${audioTrack.label || 'default mic'}`);
 
             // Create WebSocket connection to Gemini
             const uri = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
@@ -300,7 +325,8 @@ export const VoiceCopilotProvider = ({ children }) => {
             ws.current = socket;
 
             socket.onopen = () => {
-                console.log('[Copilot] Connected to Gemini');
+                addLog('WebSocket connected to Gemini');
+                setWsState('open');
 
                 // Send initial configuration
                 const settings = getSettings();
@@ -309,6 +335,8 @@ export const VoiceCopilotProvider = ({ children }) => {
                     description: t.description,
                     parameters: t.parameters
                 }));
+
+                addLog(`Voice: ${settings.voice}, Persona: ${settings.persona}, Tools: ${toolDeclarations.length}`);
 
                 const config = {
                     setup: {
@@ -324,7 +352,8 @@ export const VoiceCopilotProvider = ({ children }) => {
                                 text: `You are a helpful field technician assistant for a smart home installation company.
                                        Persona: ${settings.persona === 'brief' ? 'Be concise and direct. Give short answers.' : 'Be helpful and explain your reasoning.'}
                                        ${settings.instructions ? `Additional instructions: ${settings.instructions}` : ''}
-                                       When asked to record measurements, use the available tools to set values.`
+                                       When asked to record measurements, use the available tools to set values.
+                                       IMPORTANT: When the session starts, greet the user briefly so they know you're connected.`
                             }]
                         }
                     }
@@ -336,78 +365,121 @@ export const VoiceCopilotProvider = ({ children }) => {
                 }
 
                 socket.send(JSON.stringify(config));
+                addLog('Sent setup config to Gemini');
 
                 // Start audio processing
                 startAudioProcessing();
                 setStatus('listening');
             };
 
+            let receivedChunks = 0;
             socket.onmessage = (event) => {
-                if (event.data instanceof Blob) return;
+                if (event.data instanceof Blob) {
+                    addLog('Received blob data (unexpected)');
+                    return;
+                }
 
                 try {
                     const data = JSON.parse(event.data);
 
-                    // Handle audio responses
+                    // Log setup complete
+                    if (data.setupComplete) {
+                        addLog('Gemini setup complete - ready for audio');
+                    }
+
+                    // Handle text transcripts if present
                     if (data.serverContent?.modelTurn?.parts) {
                         for (const part of data.serverContent.modelTurn.parts) {
+                            // Text response
+                            if (part.text) {
+                                addLog(`Gemini text: "${part.text.substring(0, 100)}..."`, 'response');
+                                setLastTranscript(part.text);
+                            }
+                            // Audio response
                             if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
+                                receivedChunks++;
+                                setAudioChunksReceived(receivedChunks);
                                 const pcmData = base64ToFloat32(part.inlineData.data);
                                 audioQueue.current.push(pcmData);
+                                if (receivedChunks === 1) {
+                                    addLog('Receiving audio response from Gemini');
+                                }
                                 playNextChunk();
                             }
                         }
                     }
 
+                    // Handle turn complete
+                    if (data.serverContent?.turnComplete) {
+                        addLog(`Turn complete - received ${receivedChunks} audio chunks`);
+                        receivedChunks = 0;
+                    }
+
                     // Handle tool calls
                     if (data.toolCall) {
+                        addLog(`Tool call: ${JSON.stringify(data.toolCall)}`, 'tool');
                         handleToolCall(data.toolCall);
                     }
                 } catch (e) {
-                    console.error('[Copilot] Message parse error:', e);
+                    addLog(`Message parse error: ${e.message}`, 'error');
                 }
             };
 
-            socket.onclose = () => {
-                console.log('[Copilot] Disconnected');
+            socket.onclose = (e) => {
+                addLog(`WebSocket closed: code=${e.code}, reason=${e.reason || 'none'}`);
+                setWsState('closed');
                 cleanup();
                 setStatus('idle');
             };
 
             socket.onerror = (e) => {
-                console.error('[Copilot] WebSocket error:', e);
+                addLog(`WebSocket error: ${e.message || 'unknown'}`, 'error');
+                setWsState('error');
                 setError('Connection failed. Check your API key and internet connection.');
                 cleanup();
                 setStatus('error');
             };
 
         } catch (e) {
-            console.error('[Copilot] Failed to start session:', e);
+            addLog(`Failed to start session: ${e.message}`, 'error');
             setError(e.message || 'Failed to start voice session');
             cleanup();
             setStatus('error');
         }
-    }, [status, activeTools, cleanup, handleToolCall, playNextChunk]);
+    }, [status, activeTools, cleanup, handleToolCall, playNextChunk, addLog]);
 
     // --- AUDIO PROCESSING ---
     const startAudioProcessing = useCallback(() => {
-        if (!audioContext.current || !mediaStream.current) return;
+        if (!audioContext.current || !mediaStream.current) {
+            addLog('Cannot start audio: missing context or stream', 'error');
+            return;
+        }
 
         recordingActive.current = true;
         sourceNode.current = audioContext.current.createMediaStreamSource(mediaStream.current);
 
         // Get device's actual sample rate (iOS uses 48kHz, desktop may use 44.1kHz or 48kHz)
         const deviceSampleRate = audioContext.current.sampleRate;
-        console.log(`[Copilot] Device sample rate: ${deviceSampleRate}, will downsample to ${GEMINI_INPUT_SAMPLE_RATE}`);
+        addLog(`Device sample rate: ${deviceSampleRate}Hz, downsampling to ${GEMINI_INPUT_SAMPLE_RATE}Hz`);
 
         // Use ScriptProcessor (deprecated but more iOS compatible than AudioWorklet)
         const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
         processorNode.current = processor;
 
+        let chunkCount = 0;
         processor.onaudioprocess = (e) => {
             if (!recordingActive.current || ws.current?.readyState !== WebSocket.OPEN) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
+
+            // Calculate audio level (RMS) for debug display
+            let sum = 0;
+            for (let i = 0; i < inputData.length; i++) {
+                sum += inputData[i] * inputData[i];
+            }
+            const rms = Math.sqrt(sum / inputData.length);
+            const level = Math.min(100, Math.round(rms * 500)); // Scale to 0-100
+            setAudioLevel(level);
 
             // Downsample to 16kHz for Gemini (device may be 48kHz on iOS)
             const downsampledData = downsampleForGemini(inputData, deviceSampleRate);
@@ -430,11 +502,20 @@ export const VoiceCopilotProvider = ({ children }) => {
                     }]
                 }
             }));
+
+            chunkCount++;
+            setAudioChunksSent(chunkCount);
+
+            // Log every 50 chunks (~3 seconds of audio)
+            if (chunkCount % 50 === 0) {
+                addLog(`Sent ${chunkCount} audio chunks, level: ${level}%`);
+            }
         };
 
         sourceNode.current.connect(processor);
         processor.connect(audioContext.current.destination);
-    }, []);
+        addLog('Audio processing started');
+    }, [addLog]);
 
     // --- END SESSION ---
     const endSession = useCallback(() => {
@@ -458,6 +539,13 @@ export const VoiceCopilotProvider = ({ children }) => {
         return () => cleanup();
     }, [cleanup]);
 
+    // Clear debug log
+    const clearDebugLog = useCallback(() => {
+        setDebugLog([]);
+        setAudioChunksSent(0);
+        setAudioChunksReceived(0);
+    }, []);
+
     return (
         <VoiceCopilotContext.Provider value={{
             // State
@@ -465,6 +553,15 @@ export const VoiceCopilotProvider = ({ children }) => {
             error,
             isConfigured,
             activeTools,
+
+            // Debug state
+            debugLog,
+            audioLevel,
+            lastTranscript,
+            wsState,
+            audioChunksSent,
+            audioChunksReceived,
+            clearDebugLog,
 
             // Actions
             startSession,
