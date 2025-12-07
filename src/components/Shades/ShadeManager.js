@@ -20,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { projectStakeholdersService, projectsService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';
 import { notifyShadeReviewRequest } from '../../services/issueNotificationService';
+import { shadePublicAccessService } from '../../services/shadePublicAccessService';
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
 import ShadeMeasurementModal from './ShadeMeasurementModal';
@@ -141,17 +142,49 @@ const ShadeManager = () => {
             // Update database status
             await projectShadeService.sendToDesignReview(projectId, selectedDesignerId, user.id);
 
+            // Generate portal link for the stakeholder
+            console.log('[ShadeManager] Generating portal link...');
+            const linkResult = await shadePublicAccessService.ensureLink({
+                projectId,
+                stakeholderId: selectedDesignerId,
+                stakeholder: selectedDesigner
+            });
+
+            let portalUrl = null;
+            let otp = null;
+            if (linkResult.token) {
+                // New link was created
+                portalUrl = shadePublicAccessService.buildPortalUrl(linkResult.token);
+                otp = linkResult.otp;
+                console.log('[ShadeManager] New portal link created:', { portalUrl, hasOtp: !!otp });
+            } else if (linkResult.linkExists) {
+                // Link already exists - we can't reconstruct the URL since token is hashed
+                // For existing links, we'd need to regenerate or store the token differently
+                console.log('[ShadeManager] Portal link already exists, regenerating...');
+                const regenerated = await shadePublicAccessService.ensureLink({
+                    projectId,
+                    stakeholderId: selectedDesignerId,
+                    stakeholder: selectedDesigner,
+                    forceRegenerate: true
+                });
+                if (regenerated.token) {
+                    portalUrl = shadePublicAccessService.buildPortalUrl(regenerated.token);
+                    otp = regenerated.otp;
+                }
+            }
+
             // Send email notification
             console.log('[ShadeManager] Acquiring token for email...');
             const graphToken = await acquireToken();
-            console.log('[ShadeManager] Token acquired, sending notification...');
+            console.log('[ShadeManager] Token acquired, sending notification with portal URL:', portalUrl);
 
             await notifyShadeReviewRequest(
                 {
                     project: project,
                     stakeholder: selectedDesigner,
                     actor: { name: user?.name || user?.displayName || 'Your project team' },
-                    shadePortalUrl: null // No portal URL for now - just sends notification
+                    shadePortalUrl: portalUrl,
+                    otp: otp
                 },
                 { authToken: graphToken }
             );

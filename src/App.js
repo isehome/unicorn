@@ -51,6 +51,7 @@ const VendorManagement = lazy(() => import('./components/VendorManagement'));
 const ScanTagPage = lazy(() => import('./components/ScanTagPage'));
 const PublicIssuePortal = lazy(() => import('./pages/PublicIssuePortal'));
 const PublicPurchaseOrderPortal = lazy(() => import('./pages/PublicPurchaseOrderPortal'));
+const PublicShadePortal = lazy(() => import('./pages/PublicShadePortal'));
 const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
 const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 
@@ -352,6 +353,7 @@ const AppRoutes = () => {
               />
               <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
               <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
+              <Route path="/shade-portal/:token" element={<PublicShadePortal />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

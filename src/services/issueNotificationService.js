@@ -488,7 +488,7 @@ export const processPendingNotifications = async (issueId, options = {}) => {
  * Notify a designer/stakeholder that shades are ready for review.
  * Uses the same email infrastructure as issue notifications.
  */
-export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, shadePortalUrl, companySettings }, options = {}) => {
+export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, shadePortalUrl, otp, companySettings }, options = {}) => {
   if (!stakeholder?.email) {
     console.warn('[IssueNotificationService] notifyShadeReviewRequest: No stakeholder email provided');
     return;
@@ -512,6 +512,7 @@ export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, sh
   const safeProjectName = escapeHtml(projectName);
   const safeActorName = escapeHtml(actorName);
   const safeUrl = escapeHtml(shadePortalUrl || '#');
+  const safeOtp = otp ? escapeHtml(otp) : null;
 
   const emailFooter = generateEmailFooter(settings, projectName);
   const textFooter = generateTextFooter(settings, projectName);
@@ -520,6 +521,7 @@ export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, sh
     stakeholderEmail: stakeholder?.email,
     projectName,
     hasPortalUrl: !!shadePortalUrl,
+    hasOtp: !!otp,
     hasAuthToken: !!options?.authToken,
     hasCompanySettings: !!settings
   });
@@ -529,6 +531,7 @@ export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, sh
     <p>${safeActorName} has sent window covering selections for <strong>${safeProjectName}</strong> for your review.</p>
     <p>Please review the shade specifications and provide your approval or feedback.</p>
     ${shadePortalUrl ? `<p><a href="${safeUrl}" style="display:inline-block;padding:12px 24px;background-color:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;">Review Window Coverings</a></p>` : ''}
+    ${safeOtp ? `<p>Your one-time verification code: <strong>${safeOtp}</strong></p>` : ''}
     ${WHITELIST_NOTICE_HTML}
     ${emailFooter}
   `;
@@ -540,7 +543,8 @@ ${actorName} has sent window covering selections for ${projectName} for your rev
 
 Please review the shade specifications and provide your approval or feedback.
 
-${shadePortalUrl ? `Review Window Coverings: ${shadePortalUrl}` : ''}
+${shadePortalUrl ? `Review Window Coverings: ${shadePortalUrl}` : ''}${otp ? `
+Your one-time verification code: ${otp}` : ''}
 ${WHITELIST_NOTICE_TEXT}${textFooter}`;
 
   // Send from user's email (sendAsUser: true) with system email CC'd

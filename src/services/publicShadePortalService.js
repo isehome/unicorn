@@ -1,0 +1,28 @@
+const API_ENDPOINT = '/api/public-shade';
+
+async function request(body) {
+  const response = await fetch(API_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = data?.error || `Public shade portal request failed (${response.status} ${response.statusText})`;
+    const error = new Error(errorMessage);
+    error.data = data;
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export const publicShadePortalService = {
+  exchange(token, sessionToken) {
+    return request({ action: 'exchange', token, sessionToken });
+  },
+  verify(token, otp) {
+    return request({ action: 'verify', token, otp });
+  }
+};
