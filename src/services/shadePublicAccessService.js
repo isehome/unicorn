@@ -69,6 +69,12 @@ class ShadePublicAccessService {
       hashSecret(token),
       hashSecret(otp)
     ]);
+    console.log('[ShadePublicAccessService] Hash debug:', {
+      tokenPreview: token.substring(0, 10) + '...',
+      tokenLength: token.length,
+      tokenHashPreview: tokenHash.substring(0, 20) + '...',
+      tokenHashLength: tokenHash.length
+    });
     const expiresAt = new Date(Date.now() + OTP_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
     const payload = {

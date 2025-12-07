@@ -7,6 +7,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut } from 'lucide-react';
+import AISettings from './UserSettings/AISettings';
 
 const SettingsPage = () => {
   const { mode } = useTheme();
@@ -133,11 +134,10 @@ const SettingsPage = () => {
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                     Brady M211 Printer
                   </div>
-                  <div className={`text-xs flex items-center gap-1.5 mt-1 ${
-                    connected
-                      ? 'text-green-600 dark:text-green-400'
-                      : 'text-gray-500 dark:text-gray-400'
-                  }`}>
+                  <div className={`text-xs flex items-center gap-1.5 mt-1 ${connected
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-gray-500 dark:text-gray-400'
+                    }`}>
                     {connected ? (
                       <>
                         <CheckCircle size={14} />
@@ -201,6 +201,9 @@ const SettingsPage = () => {
         )}
       </section>
 
+      {/* AI Copilot Settings */}
+      <AISettings />
+
       <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
         <div>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Default Workspace</h2>
@@ -210,22 +213,20 @@ const SettingsPage = () => {
           <button
             type="button"
             onClick={() => handleDefaultWorkspaceChange('technician')}
-            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${
-              defaultWorkspace === 'technician'
-                ? 'bg-violet-500 text-white shadow-md'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
-            }`}
+            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${defaultWorkspace === 'technician'
+              ? 'bg-violet-500 text-white shadow-md'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+              }`}
           >
             Technician
           </button>
           <button
             type="button"
             onClick={() => handleDefaultWorkspaceChange('pm')}
-            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${
-              defaultWorkspace === 'pm'
-                ? 'bg-violet-500 text-white shadow-md'
-                : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
-            }`}
+            className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${defaultWorkspace === 'pm'
+              ? 'bg-violet-500 text-white shadow-md'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+              }`}
           >
             Project Manager
           </button>

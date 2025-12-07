@@ -5,6 +5,7 @@ import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrinterProvider } from './contexts/PrinterContext';
+import { VoiceCopilotProvider } from './contexts/VoiceCopilotContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppHeader from './components/AppHeader';
@@ -17,6 +18,7 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
+import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
 import './index.css';
 
 // Lazy load all route components
@@ -57,7 +59,7 @@ const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 
 const AppRoutes = () => {
   const location = useLocation();
-  const isPublicRoute = location.pathname.startsWith('/public');
+  const isPublicRoute = location.pathname.startsWith('/public') || location.pathname.startsWith('/shade-portal');
   const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute;
   const { isOnline } = useNetworkStatus();
   const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
@@ -359,6 +361,7 @@ const AppRoutes = () => {
           </Suspense>
         </ErrorBoundary>
       </main>
+      <VoiceCopilotOverlay />
       {!hideChrome && <BottomNavigation />}
     </div>
   );
@@ -390,11 +393,13 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <PrinterProvider>
-            <PhotoViewerProvider>
-              <Router>
-                <AppRoutes />
-              </Router>
-            </PhotoViewerProvider>
+            <VoiceCopilotProvider>
+              <PhotoViewerProvider>
+                <Router>
+                  <AppRoutes />
+                </Router>
+              </PhotoViewerProvider>
+            </VoiceCopilotProvider>
           </PrinterProvider>
         </AuthProvider>
       </ThemeProvider>
