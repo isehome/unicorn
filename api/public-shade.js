@@ -157,9 +157,9 @@ async function buildPortalPayload(link, sessionValid) {
     fetchCompanySettings()
   ]);
 
+  // Note: Project lookup may fail due to RLS - don't block on it
   if (!project) {
-    console.log('[PublicShade] Project not found for link:', link.project_id);
-    return { status: 'invalid', reason: 'project_missing' };
+    console.log('[PublicShade] Project not found for link (RLS?):', link.project_id);
   }
 
   const base = {
@@ -168,7 +168,7 @@ async function buildPortalPayload(link, sessionValid) {
       valid: sessionValid,
       expiresAt: link.session_expires_at || null
     },
-    project: {
+    project: project ? {
       id: project.id,
       name: project.name,
       code: project.code,
@@ -178,7 +178,7 @@ async function buildPortalPayload(link, sessionValid) {
       state: project.state,
       postalCode: project.postal_code,
       customerName: project.customer_name
-    },
+    } : null,
     stakeholder: {
       name: link.contact_name,
       email: link.contact_email
