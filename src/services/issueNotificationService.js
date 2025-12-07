@@ -153,13 +153,16 @@ const postNotification = async ({ to, cc, subject, html, text, sendAsUser }, opt
       body: JSON.stringify({ to, cc, subject, html, text, sendAsUser })
     });
 
+    const responseData = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || `Notification request failed (${response.status})`);
+      console.error('[IssueNotificationService] Server error:', response.status, responseData);
+      throw new Error(responseData.error || `Notification request failed (${response.status})`);
     }
-    console.log('[IssueNotificationService] Notification sent successfully');
+    console.log('[IssueNotificationService] Notification sent successfully', responseData);
   } catch (error) {
-    console.warn('[IssueNotificationService] Failed to send notification:', error.message);
+    console.error('[IssueNotificationService] Failed to send notification:', error.message);
+    throw error; // Re-throw so caller knows it failed
   }
 };
 
