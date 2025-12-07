@@ -38,7 +38,7 @@ async function fetchLinkByToken(token) {
   console.log('[PublicShade] Looking up token:', {
     tokenPreview: token.substring(0, 10) + '...',
     tokenLength: token.length,
-    tokenHash: tokenHash.substring(0, 20) + '...'
+    tokenHashFull: tokenHash // Full hash for comparison
   });
 
   // First, let's see what tokens exist in the database

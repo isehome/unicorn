@@ -1,5 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from './AuthContext';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 
 const VoiceCopilotContext = createContext(null);
 
@@ -188,14 +187,62 @@ export const VoiceCopilotProvider = ({ children }) => {
     }, [activeTools]);
 
     // --- TOOL EXECUTION LOGIC ---
-    const handleToolUse = async (toolUse) => {
-        console.log('[Copilot] Tool Call Received:', toolUse);
-        // This is a simplified handler. 
-        // Real implementation needs to match function calls to `activeTools` execution map.
-        // For each call in toolUse.functionCalls:
-        // 1. Find tool in activeTools
-        // 2. Execute tool.execute(args)
-        // 3. Send tool_response back to socket
+    const handleToolUse = async (toolCall) => {
+        console.log('[Copilot] Tool Call Received:', toolCall);
+
+        // Handle both formats: toolCall.functionCalls[] or toolCall directly
+        const functionCalls = toolCall.functionCalls || [toolCall];
+        const responses = [];
+
+        for (const call of functionCalls) {
+            const toolName = call.name || call.functionCall?.name;
+            const args = call.args || call.functionCall?.args || {};
+
+            console.log(`[Copilot] Executing tool: ${toolName}`, args);
+
+            const tool = activeTools.get(toolName);
+            if (!tool) {
+                console.warn(`[Copilot] Tool not found: ${toolName}`);
+                responses.push({
+                    id: call.id,
+                    name: toolName,
+                    response: { error: `Tool '${toolName}' not registered` }
+                });
+                continue;
+            }
+
+            try {
+                const result = await tool.execute(args);
+                console.log(`[Copilot] Tool ${toolName} result:`, result);
+                responses.push({
+                    id: call.id,
+                    name: toolName,
+                    response: result
+                });
+            } catch (err) {
+                console.error(`[Copilot] Tool ${toolName} failed:`, err);
+                responses.push({
+                    id: call.id,
+                    name: toolName,
+                    response: { error: err.message }
+                });
+            }
+        }
+
+        // Send tool responses back to Gemini
+        if (ws.current?.readyState === WebSocket.OPEN && responses.length > 0) {
+            const toolResponse = {
+                tool_response: {
+                    function_responses: responses.map(r => ({
+                        id: r.id,
+                        name: r.name,
+                        response: r.response
+                    }))
+                }
+            };
+            console.log('[Copilot] Sending tool response:', toolResponse);
+            ws.current.send(JSON.stringify(toolResponse));
+        }
     };
 
     // --- AUDIO HELPERS ---
