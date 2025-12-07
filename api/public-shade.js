@@ -30,15 +30,40 @@ const respond = (res, status, payload) => {
 
 async function fetchLinkByToken(token) {
   if (!token || token.length < 8) {
+    console.log('[PublicShade] Token too short or missing:', { tokenLength: token?.length });
     return null;
   }
 
   const tokenHash = hashSecret(token);
+  console.log('[PublicShade] Looking up token:', {
+    tokenPreview: token.substring(0, 10) + '...',
+    tokenLength: token.length,
+    tokenHash: tokenHash.substring(0, 20) + '...'
+  });
+
+  // First, let's see what tokens exist in the database
+  const { data: allLinks, error: listError } = await supabase
+    .from('shade_public_access_links')
+    .select('id, token_hash, created_at')
+    .limit(5);
+
+  console.log('[PublicShade] Recent links in DB:', allLinks?.map(l => ({
+    id: l.id,
+    hashPreview: l.token_hash?.substring(0, 20) + '...',
+    created: l.created_at
+  })));
+
   const { data, error } = await supabase
     .from('shade_public_access_links')
     .select('*')
     .eq('token_hash', tokenHash)
     .maybeSingle();
+
+  console.log('[PublicShade] Token lookup result:', {
+    found: !!data,
+    error: error?.message,
+    linkId: data?.id
+  });
 
   if (error) throw error;
   return data;
