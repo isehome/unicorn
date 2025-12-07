@@ -543,7 +543,7 @@ const PublicShadePortal = () => {
                                     <p style={{ ...styles.shadeDetails, marginTop: '4px' }}>
                                       <span style={{ color: '#9ca3af' }}>Fabric:</span>{' '}
                                       <a
-                                        href={`https://www.lutronfabrics.com/textile-search?search_api_views_fulltext=${encodeURIComponent(shade.fabricSelection)}`}
+                                        href={`https://www.lutronfabrics.com/us/en/search?q=${encodeURIComponent(shade.fabricSelection)}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         style={styles.fabricLink}

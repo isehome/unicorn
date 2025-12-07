@@ -578,7 +578,7 @@ const ShadeManager = () => {
                                                     {shade.fabric_selection && (
                                                         <div className="mt-1 text-xs">
                                                             <a
-                                                                href={`https://www.lutronfabrics.com/textile-search?search_api_views_fulltext=${encodeURIComponent(shade.fabric_selection)}`}
+                                                                href={`https://www.lutronfabrics.com/us/en/search?q=${encodeURIComponent(shade.fabric_selection)}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 className="text-violet-600 hover:underline inline-flex items-center gap-1"
