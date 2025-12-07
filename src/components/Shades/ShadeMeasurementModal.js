@@ -154,7 +154,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             <div className="flex items-center gap-2">
                                 {shade?.fabric_selection ? (
                                     <a
-                                        href={`https://www.lutronfabrics.com/us/en/search?q=${encodeURIComponent(shade.fabric_selection)}`}
+                                        href={`https://www.lutronfabrics.com/us/en/search/results?q=${encodeURIComponent(shade.fabric_selection)}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className={`font-medium truncate hover:underline flex items-center gap-1 ${mode === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}

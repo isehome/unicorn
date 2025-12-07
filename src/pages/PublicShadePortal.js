@@ -317,7 +317,8 @@ const PublicShadePortal = () => {
     },
     fabricLink: {
       color: '#8b5cf6',
-      textDecoration: 'none'
+      textDecoration: 'underline',
+      cursor: 'pointer'
     },
     contactBox: {
       padding: '16px',
@@ -540,17 +541,17 @@ const PublicShadePortal = () => {
                                     {shade.technology} • {shade.model}
                                   </p>
                                   {shade.fabricSelection && (
-                                    <p style={{ ...styles.shadeDetails, marginTop: '4px' }}>
-                                      <span style={{ color: '#9ca3af' }}>Fabric:</span>{' '}
+                                    <div style={{ marginTop: '4px', fontSize: '12px' }}>
                                       <a
-                                        href={`https://www.lutronfabrics.com/us/en/search?q=${encodeURIComponent(shade.fabricSelection)}`}
+                                        href={`https://www.lutronfabrics.com/us/en/search/results?q=${encodeURIComponent(shade.fabricSelection)}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
                                         style={styles.fabricLink}
                                       >
-                                        {shade.fabricSelection}
+                                        Fabric: {shade.fabricSelection}
                                       </a>
-                                    </p>
+                                    </div>
                                   )}
                                 </div>
                                 <div style={styles.shadeDimensions}>
