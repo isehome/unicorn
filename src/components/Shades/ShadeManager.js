@@ -10,10 +10,12 @@ import {
     ChevronRight,
     ChevronDown,
     Search,
-    Filter
+    Filter,
+    Settings
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { useTheme } from '../../contexts/ThemeContext';
+import { enhancedStyles } from '../../styles/styleSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { projectStakeholdersService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';
@@ -39,6 +41,7 @@ const ShadeManager = () => {
     const [isDesignerOpen, setIsDesignerOpen] = useState(false);
     const [selectedDesignerId, setSelectedDesignerId] = useState(null);
     const [sendingReview, setSendingReview] = useState(false);
+    const [showControls, setShowControls] = useState(false);
 
     // Filtering & Search
     const [searchQuery, setSearchQuery] = useState('');
@@ -88,8 +91,15 @@ const ShadeManager = () => {
 
     const handleDesignerChange = async (newId) => {
         setSelectedDesignerId(newId);
-        // Optional: Auto-save this choice to all shades? Or just waiting for "Send Review"?
-        // User asked to select designer if none selected.
+        try {
+            // Automatically assign this designer to the project shades
+            await projectShadeService.assignProjectDesigner(projectId, newId);
+            // Optionally reload to confirm (though we updated local state optimistically technically via setSelectedDesignerId)
+            loadShades();
+        } catch (e) {
+            console.error('Failed to assign designer', e);
+            alert('Failed to save designer assignment: ' + e.message);
+        }
     };
 
     const handleSendToReview = async () => {
@@ -298,118 +308,130 @@ const ShadeManager = () => {
         <div className={`min-h-screen pb-20 ${mode === 'dark' ? 'bg-zinc-900' : 'bg-zinc-50'}`}>
             <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
 
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div>
-                        <h1 className={`text-2xl font-bold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                            Window Treatments
-                        </h1>
-                        <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                            Manage measurements, verification, and designer approvals.
-                        </p>
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                        {/* Designer Selection */}
-                        <div className="flex items-center gap-2 relative">
-                            {/* Custom Dropdown Trigger */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setIsDesignerOpen(!isDesignerOpen)}
-                                    className={`flex items-center justify-between gap-3 px-3 py-2 w-64 rounded-lg border text-sm transition-colors ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100 hover:bg-zinc-700' : 'bg-white border-zinc-300 text-zinc-900 hover:bg-zinc-50'
-                                        }`}
-                                >
-                                    {(() => {
-                                        // Find selected using assignment_id or id
-                                        const selected = designers.find(d => (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId));
-                                        if (selected) {
-                                            const isInternal = selected.category === 'internal';
-                                            const color = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
-                                            return (
-                                                <span className="flex items-center gap-2 truncate">
-                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-                                                    <span className="font-medium">{selected.contact_name}</span>
-                                                </span>
-                                            );
-                                        }
-                                        return <span className="text-zinc-500">Select Designer</span>;
-                                    })()}
-                                    <ChevronDown size={16} className={`text-zinc-400 transition-transform ${isDesignerOpen ? 'rotate-180' : ''}`} />
-                                </button>
-
-                                {/* Dropdown Menu */}
-                                {isDesignerOpen && (
-                                    <>
-                                        <div className="fixed inset-0 z-10" onClick={() => setIsDesignerOpen(false)} />
-                                        <div className={`absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl shadow-xl border z-20 ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'
-                                            }`}>
-                                            <div className="p-2 space-y-1">
-                                                {designers.map(d => {
-                                                    const isInternal = d.category === 'internal';
-                                                    const borderColor = isInternal ? stakeholderColors.internal.border : stakeholderColors.external.border;
-                                                    const dotColor = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
-                                                    // Allow matching by assignment_id or id
-                                                    const idValue = d.assignment_id || d.id;
-                                                    const isSelected = idValue === selectedDesignerId;
-
-                                                    return (
-                                                        <button
-                                                            key={idValue}
-                                                            onClick={() => {
-                                                                handleDesignerChange(idValue);
-                                                                setIsDesignerOpen(false);
-                                                            }}
-                                                            className={`w-full text-left p-3 rounded-lg border flex items-center justify-between group transition-all ${isSelected
-                                                                    ? (mode === 'dark' ? 'bg-violet-900/20 border-violet-500/50' : 'bg-violet-50 border-violet-200')
-                                                                    : (mode === 'dark' ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700' : 'bg-white border-zinc-200 hover:bg-zinc-50')
-                                                                }`}
-                                                            style={{ borderLeftWidth: '4px', borderLeftColor: borderColor }}
-                                                        >
-                                                            <div className="flex flex-col gap-0.5">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
-                                                                    <span className={`font-semibold text-sm ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
-                                                                        {d.contact_name}
-                                                                    </span>
-                                                                </div>
-                                                                <span className="text-xs text-zinc-500 ml-4">
-                                                                    {d.role_name || d.stakeholder_slot?.slot_name || 'Stakeholder'}
-                                                                </span>
-                                                            </div>
-                                                            {isSelected && <CheckCircle size={14} className="text-violet-500" />}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            <Button
-                                variant="primary"
-                                size="sm"
-                                disabled={!selectedDesignerId || sendingReview}
-                                onClick={handleSendToReview}
-                            >
-                                {sendingReview ? 'Sending...' : 'Send Review'}
-                            </Button>
+                {/* Controls (Collapsible) */}
+                <div className={`rounded-xl border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+                    <button
+                        onClick={() => setShowControls(!showControls)}
+                        className={`w-full flex items-center justify-between p-4 transition-colors ${mode === 'dark' ? 'hover:bg-zinc-700' : 'hover:bg-zinc-50'}`}
+                    >
+                        <div className="flex items-center gap-2">
+                            <Settings size={18} className="text-zinc-500" />
+                            <span className={`font-semibold ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                                Project Actions & Settings
+                            </span>
                         </div>
+                        {showControls ? <ChevronDown size={18} className="text-zinc-400" /> : <ChevronRight size={18} className="text-zinc-400" />}
+                    </button>
 
-                        <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-700 mx-2 hidden sm:block"></div>
+                    {showControls && (
+                        <div className="p-4 border-t border-zinc-100 dark:border-zinc-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center w-full sm:w-auto">
+                                {/* Designer Selection */}
+                                <div className="flex items-center gap-2 relative">
+                                    {/* Custom Dropdown Trigger - Match Button 'sm' height (py-1.5 is small, py-2.5 is md)
+                                         Button sm: px-3 py-1.5 text-sm.
+                                         We'll use standard h-9 or py-1.5 to match. 
+                                     */}
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setIsDesignerOpen(!isDesignerOpen)}
+                                            className={`flex items-center justify-between gap-3 px-3 py-1.5 min-w-[16rem] h-[34px] rounded-lg border text-sm transition-colors ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100 hover:bg-zinc-700' : 'bg-white border-zinc-300 text-zinc-900 hover:bg-zinc-50'
+                                                }`}
+                                        >
+                                            {(() => {
+                                                // Find selected using assignment_id or id
+                                                const selected = designers.find(d => (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId));
+                                                if (selected) {
+                                                    const isInternal = selected.category === 'internal';
+                                                    const color = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
+                                                    return (
+                                                        <span className="flex items-center gap-2 truncate">
+                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                                            <span className="font-medium">{selected.contact_name}</span>
+                                                        </span>
+                                                    );
+                                                }
+                                                return <span className="text-zinc-500">Select Designer</span>;
+                                            })()}
+                                            <ChevronDown size={16} className={`text-zinc-400 transition-transform ${isDesignerOpen ? 'rotate-180' : ''}`} />
+                                        </button>
 
-                        <Button variant="secondary" icon={Upload} onClick={() => document.getElementById('csv-upload').click()} disabled={importing}>
-                            {importing ? 'Importing...' : 'Import Quote'}
-                        </Button>
-                        <input
-                            id="csv-upload"
-                            type="file"
-                            accept=".csv"
-                            className="hidden"
-                            onChange={handleFileUpload}
-                        />
-                        <Button variant="primary" icon={Download} onClick={handleExport}>
-                            Export Order
-                        </Button>
-                    </div>
+                                        {/* Dropdown Menu */}
+                                        {isDesignerOpen && (
+                                            <>
+                                                <div className="fixed inset-0 z-10" onClick={() => setIsDesignerOpen(false)} />
+                                                <div className={`absolute top-full left-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl shadow-xl border z-20 ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'
+                                                    }`}>
+                                                    <div className="p-2 space-y-1">
+                                                        {designers.map(d => {
+                                                            const isInternal = d.category === 'internal';
+                                                            const borderColor = isInternal ? stakeholderColors.internal.border : stakeholderColors.external.border;
+                                                            const dotColor = isInternal ? stakeholderColors.internal.text : stakeholderColors.external.text;
+                                                            // Allow matching by assignment_id or id
+                                                            const idValue = d.assignment_id || d.id;
+                                                            const isSelected = idValue === selectedDesignerId;
+
+                                                            return (
+                                                                <button
+                                                                    key={idValue}
+                                                                    onClick={() => {
+                                                                        handleDesignerChange(idValue);
+                                                                        setIsDesignerOpen(false);
+                                                                    }}
+                                                                    className={`w-full text-left p-3 rounded-lg border flex items-center justify-between group transition-all ${isSelected
+                                                                        ? (mode === 'dark' ? 'bg-violet-900/20 border-violet-500/50' : 'bg-violet-50 border-violet-200')
+                                                                        : (mode === 'dark' ? 'bg-zinc-800 border-zinc-700 hover:bg-zinc-700' : 'bg-white border-zinc-200 hover:bg-zinc-50')
+                                                                        }`}
+                                                                    style={{ borderLeftWidth: '4px', borderLeftColor: borderColor }}
+                                                                >
+                                                                    <div className="flex flex-col gap-0.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
+                                                                            <span className={`font-semibold text-sm ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                                                                {d.contact_name}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="text-xs text-zinc-500 ml-4">
+                                                                            {d.role_name || d.stakeholder_slot?.slot_name || 'Stakeholder'}
+                                                                        </span>
+                                                                    </div>
+                                                                    {isSelected && <CheckCircle size={14} className="text-violet-500" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                    <Button
+                                        variant="primary"
+                                        size="sm"
+                                        disabled={!selectedDesignerId || sendingReview}
+                                        onClick={handleSendToReview}
+                                    >
+                                        {sendingReview ? 'Sending...' : 'Send Review Link'}
+                                    </Button>
+                                </div>
+
+                                <div className="h-6 w-px bg-zinc-300 dark:bg-zinc-700 mx-2 hidden sm:block"></div>
+
+                                <Button variant="secondary" size="sm" icon={Upload} onClick={() => document.getElementById('csv-upload').click()} disabled={importing}>
+                                    {importing ? 'Importing...' : 'Import Quote'}
+                                </Button>
+                                <input
+                                    id="csv-upload"
+                                    type="file"
+                                    accept=".csv"
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                />
+                                <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
+                                    Export Order
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Filters */}
@@ -480,6 +502,19 @@ const ShadeManager = () => {
                                                     <div className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
                                                         {shade.technology} • {shade.model}
                                                     </div>
+                                                    {shade.fabric_selection && (
+                                                        <div className="mt-1 text-xs">
+                                                            <a
+                                                                href={`https://www.lutronfabrics.com/textile-search?search_api_views_fulltext=${encodeURIComponent(shade.fabric_selection)}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-violet-600 hover:underline inline-flex items-center gap-1"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                Fabric: {shade.fabric_selection}
+                                                            </a>
+                                                        </div>
+                                                    )}
                                                     <div className="mt-1 text-xs text-zinc-400">
                                                         Quote: {shade.quoted_width}" x {shade.quoted_height}"
                                                     </div>
@@ -489,7 +524,8 @@ const ShadeManager = () => {
                                                 <div className="col-span-2 text-center">
                                                     <div className="text-xs uppercase text-zinc-400 font-semibold mb-1">M1</div>
                                                     {shade.m1_complete ? (
-                                                        <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+                                                            style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: brandColors.success }}>
                                                             <CheckCircle size={12} /> Done
                                                         </span>
                                                     ) : (
@@ -501,7 +537,8 @@ const ShadeManager = () => {
                                                 <div className="col-span-2 text-center">
                                                     <div className="text-xs uppercase text-zinc-400 font-semibold mb-1">M2</div>
                                                     {shade.m2_complete ? (
-                                                        <span className="inline-flex items-center gap-1 text-green-600 bg-green-50 px-2 py-1 rounded text-xs">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs"
+                                                            style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: brandColors.success }}>
                                                             <CheckCircle size={12} /> Done
                                                         </span>
                                                     ) : (
@@ -516,11 +553,13 @@ const ShadeManager = () => {
                                                         const delta = getDelta(shade);
                                                         if (delta === null) return <span className="text-zinc-300 text-xs">-</span>;
                                                         const isHigh = delta > 0.125;
+                                                        // Use brand success color for low delta (good state)
+                                                        const successStyle = { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: brandColors.success };
+                                                        const dangerStyle = { backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#EF4444' };
+
                                                         return (
-                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${isHigh
-                                                                ? 'bg-red-100 text-red-700'
-                                                                : 'bg-green-100 text-green-700'
-                                                                }`}>
+                                                            <span className="px-2 py-1 rounded text-xs font-bold"
+                                                                style={isHigh ? dangerStyle : successStyle}>
                                                                 {delta.toFixed(3)}"
                                                             </span>
                                                         );

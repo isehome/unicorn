@@ -238,6 +238,23 @@ export const projectShadeService = {
     },
 
     /**
+     * Assign a designer to all shades in the project
+     */
+    async assignProjectDesigner(projectId, designerId) {
+        if (!projectId || !designerId) throw new Error('Project and Designer required');
+
+        const { error } = await supabase
+            .from('project_shades')
+            .update({
+                designer_stakeholder_id: designerId,
+                updated_at: new Date().toISOString()
+            })
+            .eq('project_id', projectId);
+
+        if (error) throw error;
+    },
+
+    /**
      * Update field measurements for a shade (M1 or M2)
      * @param {string} shadeId
      * @param {Object} measurements - Measurement data

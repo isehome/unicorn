@@ -53,6 +53,7 @@ const AppHeader = () => {
     if (p.includes('/receiving')) return 'Parts Receiving';
     if (p.includes('/reports')) return 'Project Reports';
     if (p.includes('/secure-data')) return 'Secure Data';
+    if (p.includes('/shades')) return 'Window Treatments';
     if (p.startsWith('/unifi-test')) return 'UniFi API Test';
     if (p.startsWith('/settings')) return 'Settings';
     if (p.startsWith('/login')) return 'Sign In';

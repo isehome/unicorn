@@ -188,18 +188,20 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                         <div>
                             <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Fabric</span>
                             <div className="flex items-center gap-2">
-                                <span className={`font-medium truncate ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
-                                    {shade?.fabric_selection || 'Not Selected'}
-                                </span>
-                                {shade?.fabric_selection && (
+                                {shade?.fabric_selection ? (
                                     <a
-                                        href={`https://www.lutronfabrics.com/us/en/search/results?q=${shade.fabric_selection}`}
+                                        href={`https://www.lutronfabrics.com/textile-search?search_api_views_fulltext=${encodeURIComponent(shade.fabric_selection)}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-violet-500 hover:text-violet-400 text-xs"
+                                        className={`font-medium truncate hover:underline flex items-center gap-1 ${mode === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}
                                     >
+                                        {shade.fabric_selection}
                                         <ExternalLink size={12} />
                                     </a>
+                                ) : (
+                                    <span className={`font-medium truncate ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                        Not Selected
+                                    </span>
                                 )}
                             </div>
                         </div>
