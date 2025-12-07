@@ -34,21 +34,21 @@ const toHex = (buffer) => Array.from(new Uint8Array(buffer)).map((b) => b.toStri
 export const hashSecret = async (value) => {
   const encoder = new TextEncoder();
   const data = encoder.encode(String(value));
+
+  // Try window.crypto.subtle first (browser)
   if (typeof window !== 'undefined' && window.crypto?.subtle) {
     const digest = await window.crypto.subtle.digest('SHA-256', data);
     return toHex(digest);
   }
 
+  // Try globalThis.crypto.subtle (modern environments)
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle) {
     const digest = await globalThis.crypto.subtle.digest('SHA-256', data);
     return toHex(digest);
   }
 
-  // Fallback: use a simple polyfill (not cryptographically secure)
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    hash = (hash << 5) - hash + data[i];
-    hash |= 0;
-  }
-  return hash.toString(16);
+  // CRITICAL: If no Web Crypto available, throw an error instead of using
+  // a broken fallback that won't match the backend's SHA-256
+  console.error('[portalTokens] Web Crypto API not available - cannot generate secure hash');
+  throw new Error('Secure hashing not available. Please use a modern browser with HTTPS.');
 };
