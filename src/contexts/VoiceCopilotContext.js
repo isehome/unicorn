@@ -2,6 +2,13 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 
 const VoiceCopilotContext = createContext(null);
 
+// iOS Safari detection
+const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+// Gemini expects 16kHz input, sends 24kHz output
+const GEMINI_INPUT_SAMPLE_RATE = 16000;
+const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
+
 export const useVoiceCopilot = () => {
     const context = useContext(VoiceCopilotContext);
     if (!context) {
@@ -18,6 +25,7 @@ export const useVoiceCopilot = () => {
  * - WebSocket connection only when actively in a session
  * - Proper cleanup to prevent resource leaks
  * - Audio processing only when recording
+ * - iOS Safari compatible (no constructor options, handles sample rate differences)
  */
 export const VoiceCopilotProvider = ({ children }) => {
     // Session State
@@ -80,8 +88,12 @@ export const VoiceCopilotProvider = ({ children }) => {
         const audioData = audioQueue.current.shift();
 
         try {
-            const buffer = audioContext.current.createBuffer(1, audioData.length, 24000);
-            buffer.getChannelData(0).set(audioData);
+            // Gemini sends audio at 24kHz, but device may use different rate (iOS uses 48kHz)
+            const deviceSampleRate = audioContext.current.sampleRate;
+            const resampledData = resampleAudio(audioData, GEMINI_OUTPUT_SAMPLE_RATE, deviceSampleRate);
+
+            const buffer = audioContext.current.createBuffer(1, resampledData.length, deviceSampleRate);
+            buffer.getChannelData(0).set(resampledData);
 
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
@@ -186,6 +198,29 @@ export const VoiceCopilotProvider = ({ children }) => {
         return float32;
     };
 
+    // Linear interpolation resampling (simple but effective for voice)
+    const resampleAudio = (inputData, inputSampleRate, outputSampleRate) => {
+        if (inputSampleRate === outputSampleRate) {
+            return inputData;
+        }
+        const ratio = inputSampleRate / outputSampleRate;
+        const outputLength = Math.floor(inputData.length / ratio);
+        const output = new Float32Array(outputLength);
+        for (let i = 0; i < outputLength; i++) {
+            const srcIndex = i * ratio;
+            const srcIndexFloor = Math.floor(srcIndex);
+            const srcIndexCeil = Math.min(srcIndexFloor + 1, inputData.length - 1);
+            const t = srcIndex - srcIndexFloor;
+            output[i] = inputData[srcIndexFloor] * (1 - t) + inputData[srcIndexCeil] * t;
+        }
+        return output;
+    };
+
+    // Downsample from device rate to Gemini's expected 16kHz
+    const downsampleForGemini = (inputData, inputSampleRate) => {
+        return resampleAudio(inputData, inputSampleRate, GEMINI_INPUT_SAMPLE_RATE);
+    };
+
     // --- CLEANUP ---
     const cleanup = useCallback(() => {
         recordingActive.current = false;
@@ -238,18 +273,21 @@ export const VoiceCopilotProvider = ({ children }) => {
             setError(null);
 
             // Initialize audio context (must be from user gesture)
+            // Note: iOS Safari's webkitAudioContext doesn't accept constructor options
             if (!audioContext.current || audioContext.current.state === 'closed') {
-                audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioContext.current = new AudioContextClass();
+                console.log(`[Copilot] AudioContext created with sample rate: ${audioContext.current.sampleRate}${isIOS ? ' (iOS)' : ''}`);
             }
             if (audioContext.current.state === 'suspended') {
                 await audioContext.current.resume();
             }
 
             // Get microphone access
+            // Note: Don't specify sampleRate - iOS ignores it and uses native rate (48kHz)
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    sampleRate: 16000,
                     echoCancellation: true,
                     noiseSuppression: true
                 }
@@ -358,8 +396,11 @@ export const VoiceCopilotProvider = ({ children }) => {
         recordingActive.current = true;
         sourceNode.current = audioContext.current.createMediaStreamSource(mediaStream.current);
 
-        // Use ScriptProcessor (deprecated but more compatible)
-        // In production, consider AudioWorklet for better performance
+        // Get device's actual sample rate (iOS uses 48kHz, desktop may use 44.1kHz or 48kHz)
+        const deviceSampleRate = audioContext.current.sampleRate;
+        console.log(`[Copilot] Device sample rate: ${deviceSampleRate}, will downsample to ${GEMINI_INPUT_SAMPLE_RATE}`);
+
+        // Use ScriptProcessor (deprecated but more iOS compatible than AudioWorklet)
         const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
         processorNode.current = processor;
 
@@ -367,7 +408,10 @@ export const VoiceCopilotProvider = ({ children }) => {
             if (!recordingActive.current || ws.current?.readyState !== WebSocket.OPEN) return;
 
             const inputData = e.inputBuffer.getChannelData(0);
-            const pcmData = floatTo16BitPCM(inputData);
+
+            // Downsample to 16kHz for Gemini (device may be 48kHz on iOS)
+            const downsampledData = downsampleForGemini(inputData, deviceSampleRate);
+            const pcmData = floatTo16BitPCM(downsampledData);
 
             // Convert to base64
             const bytes = new Uint8Array(pcmData.buffer);
