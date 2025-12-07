@@ -107,10 +107,20 @@ class ShadePublicAccessService {
       throw new Error('Failed to generate public share link: ' + error.message);
     }
 
-    console.log('[ShadePublicAccessService] Link created successfully:', {
+    // Verify the token_hash was actually saved correctly
+    const { data: verifyData } = await supabase
+      .from('shade_public_access_links')
+      .select('token_hash')
+      .eq('id', data.id)
+      .single();
+
+    console.log('[ShadePublicAccessService] Link created and verified:', {
       linkId: data.id,
       stakeholderId,
       projectId,
+      expectedHash: tokenHash.substring(0, 20) + '...',
+      actualHash: verifyData?.token_hash?.substring(0, 20) + '...',
+      hashMatch: verifyData?.token_hash === tokenHash,
       hasToken: !!token,
       hasOtp: !!otp
     });
