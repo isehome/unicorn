@@ -17,8 +17,9 @@ import Papa from 'papaparse';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { useAuth } from '../../contexts/AuthContext';
-import { projectStakeholdersService } from '../../services/supabaseService';
+import { projectStakeholdersService, projectsService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';
+import { notifyShadeReviewRequest } from '../../services/issueNotificationService';
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
 import ShadeMeasurementModal from './ShadeMeasurementModal';
@@ -28,13 +29,14 @@ const ShadeManager = () => {
     const { projectId } = useParams();
     const navigate = useNavigate();
     const { theme, mode } = useTheme();
-    const { user } = useAuth(); // MSAL User
+    const { user, acquireToken } = useAuth(); // MSAL User
     const palette = theme.palette;
 
     const [shades, setShades] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [importing, setImporting] = useState(false);
+    const [project, setProject] = useState(null);
 
     // Designer Review State
     const [designers, setDesigners] = useState([]);
@@ -89,6 +91,19 @@ const ShadeManager = () => {
         if (projectId) fetchDesigners();
     }, [projectId, shades]);
 
+    // Fetch Project Info (for email notifications)
+    useEffect(() => {
+        const fetchProject = async () => {
+            try {
+                const projectData = await projectsService.getById(projectId);
+                setProject(projectData);
+            } catch (e) {
+                console.error("Failed to fetch project info", e);
+            }
+        };
+        if (projectId) fetchProject();
+    }, [projectId]);
+
     const handleDesignerChange = async (newId) => {
         setSelectedDesignerId(newId);
         try {
@@ -106,12 +121,29 @@ const ShadeManager = () => {
         if (!selectedDesignerId) return;
         setSendingReview(true);
         try {
-            // 1. Assign this designer to ALL shades (or just update project setting?)
-            // User: "The window covering should also include display the stakeholder... if project has designer..."
-            // We should save this assignment.
+            // Find the selected designer stakeholder
+            const selectedDesigner = designers.find(d =>
+                (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId)
+            );
 
-            // 2. Trigger Notification (Stub for now)
+            if (!selectedDesigner?.email) {
+                throw new Error('Selected designer does not have an email address');
+            }
+
+            // Update database status
             await projectShadeService.sendToDesignReview(projectId, selectedDesignerId, user.id);
+
+            // Send email notification
+            const graphToken = await acquireToken();
+            await notifyShadeReviewRequest(
+                {
+                    project: project,
+                    stakeholder: selectedDesigner,
+                    actor: { name: user?.name || user?.displayName || 'Your project team' },
+                    shadePortalUrl: null // No portal URL for now - just sends notification
+                },
+                { authToken: graphToken }
+            );
 
             alert('Review request sent to designer!');
             loadShades();

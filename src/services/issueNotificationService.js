@@ -481,5 +481,78 @@ export const processPendingNotifications = async (issueId, options = {}) => {
   }
 };
 
+/**
+ * Notify a designer/stakeholder that shades are ready for review.
+ * Uses the same email infrastructure as issue notifications.
+ */
+export const notifyShadeReviewRequest = async ({ project, stakeholder, actor, shadePortalUrl, companySettings }, options = {}) => {
+  if (!stakeholder?.email) {
+    console.warn('[IssueNotificationService] notifyShadeReviewRequest: No stakeholder email provided');
+    return;
+  }
+
+  // Fetch company settings if not provided
+  let settings = companySettings;
+  if (!settings) {
+    try {
+      settings = await companySettingsService.getCompanySettings();
+    } catch (err) {
+      console.warn('[IssueNotificationService] Could not fetch company settings:', err.message);
+    }
+  }
+
+  const projectName = project?.name || 'your project';
+  const actorName = actor?.name || 'Your project team';
+  const recipient = stakeholder?.contact_name || stakeholder?.displayName || stakeholder?.role_name || 'Designer';
+
+  const safeRecipient = escapeHtml(recipient);
+  const safeProjectName = escapeHtml(projectName);
+  const safeActorName = escapeHtml(actorName);
+  const safeUrl = escapeHtml(shadePortalUrl || '#');
+
+  const emailFooter = generateEmailFooter(settings, projectName);
+  const textFooter = generateTextFooter(settings, projectName);
+
+  console.log('[IssueNotificationService] notifyShadeReviewRequest:', {
+    stakeholderEmail: stakeholder?.email,
+    projectName,
+    hasPortalUrl: !!shadePortalUrl,
+    hasAuthToken: !!options?.authToken,
+    hasCompanySettings: !!settings
+  });
+
+  const htmlContent = `
+    <p>Hi ${safeRecipient},</p>
+    <p>${safeActorName} has sent window covering selections for <strong>${safeProjectName}</strong> for your review.</p>
+    <p>Please review the shade specifications and provide your approval or feedback.</p>
+    ${shadePortalUrl ? `<p><a href="${safeUrl}" style="display:inline-block;padding:12px 24px;background-color:#7c3aed;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;">Review Window Coverings</a></p>` : ''}
+    ${WHITELIST_NOTICE_HTML}
+    ${emailFooter}
+  `;
+  const html = wrapEmailHtml(htmlContent);
+
+  const text = `Hi ${recipient},
+
+${actorName} has sent window covering selections for ${projectName} for your review.
+
+Please review the shade specifications and provide your approval or feedback.
+
+${shadePortalUrl ? `Review Window Coverings: ${shadePortalUrl}` : ''}
+${WHITELIST_NOTICE_TEXT}${textFooter}`;
+
+  // Send from user's email (sendAsUser: true) with system email CC'd
+  await postNotification(
+    {
+      to: [stakeholder.email],
+      cc: [SYSTEM_EMAIL],
+      subject: `Window Covering Review Request - ${projectName}`,
+      html,
+      text,
+      sendAsUser: true
+    },
+    { authToken: options?.authToken }
+  );
+};
+
 // Export constants and functions for use by other services
 export { SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml };
