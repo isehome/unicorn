@@ -86,12 +86,25 @@ async function fetchCompanySettings() {
 }
 
 async function fetchProject(projectId) {
-  if (!projectId) return null;
-  const { data } = await supabase
+  if (!projectId) {
+    console.log('[PublicShade] fetchProject: No projectId provided');
+    return null;
+  }
+
+  console.log('[PublicShade] fetchProject: Looking up project:', projectId);
+
+  const { data, error } = await supabase
     .from('projects')
     .select('id, name, code, stage, address, city, state, postal_code, customer_name')
     .eq('id', projectId)
     .maybeSingle();
+
+  console.log('[PublicShade] fetchProject result:', {
+    found: !!data,
+    error: error?.message,
+    projectName: data?.name
+  });
+
   return data || null;
 }
 
@@ -129,6 +142,12 @@ async function buildPortalPayload(link, sessionValid) {
     return { status: 'invalid', reason: 'link_not_found' };
   }
 
+  console.log('[PublicShade] buildPortalPayload:', {
+    linkId: link.id,
+    projectId: link.project_id,
+    revoked: !!link.revoked_at
+  });
+
   if (link.revoked_at) {
     return { status: 'revoked', reason: 'link_revoked' };
   }
@@ -139,6 +158,7 @@ async function buildPortalPayload(link, sessionValid) {
   ]);
 
   if (!project) {
+    console.log('[PublicShade] Project not found for link:', link.project_id);
     return { status: 'invalid', reason: 'project_missing' };
   }
 
