@@ -410,6 +410,14 @@ module.exports = async (req, res) => {
         // Creates a test link and returns the raw URL - for troubleshooting only
         result = await handleDebugCreate(req.body);
         break;
+      case 'debug_project':
+        // Direct project lookup test
+        {
+          const { projectId } = req.body || {};
+          const project = await fetchProject(projectId);
+          result = { status: 200, data: { projectFound: !!project, project } };
+        }
+        break;
       default:
         respond(res, 400, { error: 'Unknown action' });
         return;
