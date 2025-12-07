@@ -16,6 +16,25 @@ class ShadePublicAccessService {
 
     console.log('[ShadePublicAccessService] ensureLink called:', { projectId, stakeholderId, forceRegenerate });
 
+    // Validate project exists before creating link
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, name')
+      .eq('id', projectId)
+      .maybeSingle();
+
+    if (projectError) {
+      console.error('[ShadePublicAccessService] Error checking project:', projectError);
+      throw new Error('Failed to validate project');
+    }
+
+    if (!project) {
+      console.error('[ShadePublicAccessService] Project not found:', projectId);
+      throw new Error('Project not found. Cannot create portal link for non-existent project.');
+    }
+
+    console.log('[ShadePublicAccessService] Project validated:', project.name);
+
     // If force regenerate, delete existing link first
     if (forceRegenerate) {
       console.log('[ShadePublicAccessService] Force regenerate - deleting existing link...');

@@ -359,17 +359,35 @@ const PublicShadePortal = () => {
     );
   }
 
-  // Invalid/revoked/expired state
+  // Invalid/revoked/expired state - show specific error messages based on reason
   if (portalData?.status === 'invalid' || portalData?.status === 'revoked' || portalData?.status === 'expired') {
+    const reason = portalData?.reason;
+    let errorTitle = 'Link not available';
+    let errorMessage = 'This window covering review link has expired or was revoked. Please contact your project manager for a new invitation.';
+
+    if (reason === 'project_missing' || reason === 'project_deleted') {
+      errorTitle = 'Project no longer exists';
+      errorMessage = 'The project associated with this link has been deleted. Please contact your project manager if you believe this is an error.';
+    } else if (reason === 'link_revoked') {
+      errorTitle = 'Link has been revoked';
+      errorMessage = 'This review link has been revoked by the project manager. Please request a new invitation if you need access.';
+    } else if (reason === 'link_not_found') {
+      errorTitle = 'Invalid link';
+      errorMessage = 'This link is not valid. Please check that you have the correct URL or request a new invitation.';
+    } else if (reason === 'otp_expired') {
+      errorTitle = 'Verification code expired';
+      errorMessage = 'Your verification code has expired. Please request a new invitation from your project manager.';
+    }
+
     return (
       <div style={styles.centerContent}>
         <div style={{ maxWidth: '400px', textAlign: 'center' }}>
           <div style={{ color: '#f43f5e', marginBottom: '16px' }}>
             <AlertTriangleIcon />
           </div>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>Link not available</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>{errorTitle}</h2>
           <p style={{ fontSize: '14px', color: '#6b7280' }}>
-            This window covering review link has expired or was revoked. Please contact your project manager for a new invitation.
+            {errorMessage}
           </p>
         </div>
       </div>
