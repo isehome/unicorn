@@ -127,7 +127,7 @@ const ShadeManager = () => {
                 (d.assignment_id === selectedDesignerId) || (d.id === selectedDesignerId)
             );
 
-            console.log('[ShadeManager] handleSendToReview:', {
+            console.log('[ShadeManager] handleSendToReview v2:', {
                 selectedDesignerId,
                 designersCount: designers.length,
                 selectedDesigner,
