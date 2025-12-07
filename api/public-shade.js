@@ -212,6 +212,92 @@ async function handleExchange(body) {
   return { status: 200, data: payload };
 }
 
+// Debug action to create a test link and return the raw URL (for troubleshooting)
+async function handleDebugCreate(body) {
+  const { projectId, stakeholderId, contactEmail, contactName } = body || {};
+
+  if (!projectId) {
+    return { status: 400, data: { error: 'projectId required' } };
+  }
+
+  // Generate a random token and OTP
+  const token = crypto.randomBytes(32).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 48);
+  const otp = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+  const tokenHash = hashSecret(token);
+  const otpHash = hashSecret(otp);
+  const expiresAt = addDays(OTP_TTL_DAYS);
+
+  console.log('[PublicShade DEBUG] Creating test link:', {
+    projectId,
+    stakeholderId: stakeholderId || 'test-stakeholder',
+    tokenPreview: token.substring(0, 10) + '...',
+    tokenHash,
+    otpHash
+  });
+
+  // Delete any existing test link for this project/stakeholder
+  if (stakeholderId) {
+    await supabase
+      .from('shade_public_access_links')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('stakeholder_id', stakeholderId);
+  }
+
+  // Insert the new link
+  const { data, error } = await supabase
+    .from('shade_public_access_links')
+    .insert([{
+      project_id: projectId,
+      stakeholder_id: stakeholderId || `test-${Date.now()}`,
+      contact_email: contactEmail || 'test@example.com',
+      contact_name: contactName || 'Test User',
+      token_hash: tokenHash,
+      otp_hash: otpHash,
+      otp_expires_at: expiresAt,
+      session_token_hash: null,
+      session_expires_at: null,
+      session_version: 0,
+      verification_attempts: 0,
+      metadata: { debug: true },
+      revoked_at: null
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[PublicShade DEBUG] Insert failed:', error);
+    return { status: 500, data: { error: error.message } };
+  }
+
+  // Verify the hash was saved correctly
+  const { data: verifyData } = await supabase
+    .from('shade_public_access_links')
+    .select('token_hash')
+    .eq('id', data.id)
+    .single();
+
+  console.log('[PublicShade DEBUG] Link created:', {
+    linkId: data.id,
+    savedHash: verifyData?.token_hash,
+    expectedHash: tokenHash,
+    hashesMatch: verifyData?.token_hash === tokenHash
+  });
+
+  return {
+    status: 200,
+    data: {
+      success: true,
+      linkId: data.id,
+      token: token,
+      otp: otp,
+      portalUrl: `/shade-portal/${token}`,
+      tokenHash: tokenHash,
+      hashesMatch: verifyData?.token_hash === tokenHash
+    }
+  };
+}
+
 async function handleVerify(body) {
   const { token, otp } = body || {};
   if (!token || !otp) {
@@ -299,6 +385,10 @@ module.exports = async (req, res) => {
         break;
       case 'verify':
         result = await handleVerify(req.body);
+        break;
+      case 'debug_create':
+        // Creates a test link and returns the raw URL - for troubleshooting only
+        result = await handleDebugCreate(req.body);
         break;
       default:
         respond(res, 400, { error: 'Unknown action' });
