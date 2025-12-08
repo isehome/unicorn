@@ -92,14 +92,14 @@ export const useShadeTools = ({
             name: "set_measurement",
             description: "Record a measurement value for the current shade. Use this when the technician tells you a measurement. Fields: 'top width', 'middle width', 'bottom width', 'left height', 'center height', 'right height'",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     field: {
-                        type: "STRING",
+                        type: "string",
                         description: "Which measurement: 'top width', 'middle width', 'bottom width', 'left height', 'center height', or 'right height'"
                     },
                     value: {
-                        type: "NUMBER",
+                        type: "number",
                         description: "The measurement in inches (decimals OK, e.g., 52.25 for 52 and a quarter)"
                     }
                 },
@@ -149,7 +149,7 @@ export const useShadeTools = ({
         {
             name: "get_shade_context",
             description: "Get information about the current shade being measured: name, room, quoted dimensions, and which measurements have been recorded vs still needed.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing, allComplete } = getMeasurementStatus();
 
@@ -178,7 +178,7 @@ export const useShadeTools = ({
         {
             name: "read_back_measurements",
             description: "Read back all the measurements that have been recorded for this shade so the technician can verify them.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing } = getMeasurementStatus();
 
@@ -200,10 +200,10 @@ export const useShadeTools = ({
             name: "clear_measurement",
             description: "Clear/reset a specific measurement if the technician made an error.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     field: {
-                        type: "STRING",
+                        type: "string",
                         description: "Which measurement to clear"
                     }
                 },
@@ -230,7 +230,7 @@ export const useShadeTools = ({
         {
             name: "save_shade_measurements",
             description: "Save the current measurements and complete this shade. Use when all measurements are done or when the tech says to save.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing, allComplete } = getMeasurementStatus();
 
@@ -264,7 +264,7 @@ export const useShadeTools = ({
         {
             name: "close_without_saving",
             description: "Close the measurement modal without saving. Use if the tech wants to cancel or skip this shade.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 onClose();
                 return {

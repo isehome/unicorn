@@ -106,7 +106,7 @@ export const useAgentContext = () => {
         {
             name: "get_current_location",
             description: "Get information about where the user currently is in the app - which page, which project (if any), etc.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 let projectDetails = null;
                 if (currentContext.projectId) {
@@ -131,10 +131,10 @@ export const useAgentContext = () => {
             name: "list_projects",
             description: "Get a list of all available projects the user can navigate to.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     status: {
-                        type: "STRING",
+                        type: "string",
                         description: "Optional filter by status: 'active', 'completed', 'on-hold', or 'all' (default)"
                     }
                 }
@@ -171,18 +171,18 @@ export const useAgentContext = () => {
             name: "navigate_to_project",
             description: "Navigate to a specific project by ID or by searching by name.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     projectId: {
-                        type: "STRING",
+                        type: "string",
                         description: "The UUID of the project to navigate to"
                     },
                     projectName: {
-                        type: "STRING",
+                        type: "string",
                         description: "Search for project by name (partial match). Use this if you don't have the ID."
                     },
                     section: {
-                        type: "STRING",
+                        type: "string",
                         description: "Optional: go directly to a section - 'overview', 'equipment', 'shades', 'procurement', 'receiving', 'issues', 'wire-drops'"
                     }
                 }
@@ -250,10 +250,10 @@ export const useAgentContext = () => {
             name: "navigate_to_section",
             description: "Navigate to a main section of the app (not project-specific).",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     section: {
-                        type: "STRING",
+                        type: "string",
                         description: "Section to go to: 'dashboard', 'issues', 'todos', 'people', 'vendors', 'parts', 'settings'"
                     }
                 },
@@ -288,7 +288,7 @@ export const useAgentContext = () => {
         {
             name: "go_back",
             description: "Go back to the previous page.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 navigate(-1);
                 return { success: true, message: "Going back" };

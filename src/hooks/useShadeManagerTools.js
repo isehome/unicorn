@@ -72,7 +72,7 @@ export const useShadeManagerTools = ({
         {
             name: "get_shades_overview",
             description: "Get an overview of all shades on this project - how many total, how many need measuring, grouped by room.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 const totalShades = shades.length;
                 const pending = pendingShades.length;
@@ -100,10 +100,10 @@ export const useShadeManagerTools = ({
             name: "list_shades_in_room",
             description: "List all shades in a specific room with their measurement status.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     roomName: {
-                        type: "STRING",
+                        type: "string",
                         description: "The room name to list shades for (e.g., 'Living Room', 'Master Bedroom')"
                     }
                 },
@@ -136,14 +136,14 @@ export const useShadeManagerTools = ({
             name: "open_shade_for_measuring",
             description: "Open a specific shade to start measuring it. Can search by shade name or get the next pending shade in a room.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     shadeName: {
-                        type: "STRING",
+                        type: "string",
                         description: "The name of the shade to open (e.g., 'Window 1', 'Shade A')"
                     },
                     roomName: {
-                        type: "STRING",
+                        type: "string",
                         description: "Optional: If no shade name, open the first pending shade in this room"
                     }
                 }
@@ -207,7 +207,7 @@ export const useShadeManagerTools = ({
         {
             name: "get_next_pending_shade",
             description: "Get information about the next shade that needs measuring, without opening it yet.",
-            parameters: { type: "OBJECT", properties: {} },
+            parameters: { type: "object", properties: {} },
             execute: async () => {
                 if (pendingShades.length === 0) {
                     return {
@@ -234,10 +234,10 @@ export const useShadeManagerTools = ({
             name: "expand_room",
             description: "Expand or collapse a room section in the shade list.",
             parameters: {
-                type: "OBJECT",
+                type: "object",
                 properties: {
                     roomName: {
-                        type: "STRING",
+                        type: "string",
                         description: "The room to expand/show"
                     }
                 },
