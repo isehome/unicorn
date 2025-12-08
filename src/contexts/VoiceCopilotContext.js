@@ -432,14 +432,34 @@ export const VoiceCopilotProvider = ({ children }) => {
             };
 
             let receivedChunks = 0;
-            socket.onmessage = (event) => {
+            socket.onmessage = async (event) => {
+                // Handle Blob data (Gemini can send binary audio responses)
                 if (event.data instanceof Blob) {
-                    addLog('Received blob data (unexpected)');
+                    try {
+                        const text = await event.data.text();
+                        if (VERBOSE_LOGGING) {
+                            addLog(`Received blob (${event.data.size} bytes), parsing as text...`, 'audio');
+                        }
+                        // Try to parse as JSON
+                        const data = JSON.parse(text);
+                        handleGeminiMessage(data);
+                    } catch (e) {
+                        addLog(`Blob parse error: ${e.message}`, 'error');
+                    }
                     return;
                 }
 
                 try {
                     const data = JSON.parse(event.data);
+                    handleGeminiMessage(data);
+                } catch (e) {
+                    addLog(`Message parse error: ${e.message}`, 'error');
+                }
+            };
+
+            // Extracted message handler for reuse with both blob and text
+            const handleGeminiMessage = (data) => {
+                try {
 
                     // Log setup complete
                     if (data.setupComplete) {
