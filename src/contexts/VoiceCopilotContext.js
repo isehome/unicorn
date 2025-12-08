@@ -453,6 +453,21 @@ export const VoiceCopilotProvider = ({ children }) => {
                                 voice_config: { prebuilt_voice_config: { voice_name: settings.voice } }
                             }
                         },
+                        // Realtime input config - reduce VAD sensitivity to prevent interruptions
+                        realtime_input_config: {
+                            // Require more silence before considering speech ended
+                            automatic_activity_detection: {
+                                disabled: false,
+                                // Start of speech detection threshold (0-1, higher = less sensitive)
+                                start_of_speech_sensitivity: 0.5,
+                                // End of speech detection - how much silence needed (0-1, higher = more silence needed)
+                                end_of_speech_sensitivity: 0.7,
+                                // Minimum speech duration in seconds before processing
+                                prefix_padding_ms: 300,
+                                // Silence duration after speech ends before finalizing
+                                silence_duration_ms: 700
+                            }
+                        },
                         system_instruction: {
                             parts: [{
                                 text: `You are a friendly voice assistant helping field technicians measure windows for motorized shades.

@@ -11,6 +11,9 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     const [activeTab, setActiveTab] = useState('m1'); // 'm1', 'm2', or 'comments'
     const [uploading, setUploading] = useState(false);
 
+    // Voice AI active field highlighting
+    const [activeField, setActiveField] = useState(null);
+
     // Comments state
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(false);
@@ -122,7 +125,8 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         activeTab,
         shade,
         onClose,
-        onSave: () => handleSaveClick() // Use the wrapper to include validation if needed? Or just direct onSave(formData, activeTab)
+        onSave: () => handleSaveClick(), // Use the wrapper to include validation if needed? Or just direct onSave(formData, activeTab)
+        setActiveField  // Pass for visual highlighting when AI sets a field
     });
     // Fix: We need to pass the real save logic or specific wrapper. 
     // The existing handleSaveClick relies on state 'formData' which is available.
@@ -360,17 +364,17 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                     <div className="space-y-3">
                                         <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Width</label>
                                         <div className="space-y-2">
-                                            <InputGroup label="Top" value={formData.widthTop} onChange={v => handleChange('widthTop', v)} mode={mode} />
-                                            <InputGroup label="Middle" value={formData.widthMiddle} onChange={v => handleChange('widthMiddle', v)} mode={mode} />
-                                            <InputGroup label="Bottom" value={formData.widthBottom} onChange={v => handleChange('widthBottom', v)} mode={mode} />
+                                            <InputGroup label="Top" value={formData.widthTop} onChange={v => handleChange('widthTop', v)} mode={mode} highlighted={activeField === 'widthTop'} />
+                                            <InputGroup label="Middle" value={formData.widthMiddle} onChange={v => handleChange('widthMiddle', v)} mode={mode} highlighted={activeField === 'widthMiddle'} />
+                                            <InputGroup label="Bottom" value={formData.widthBottom} onChange={v => handleChange('widthBottom', v)} mode={mode} highlighted={activeField === 'widthBottom'} />
                                         </div>
                                     </div>
                                     <div className="space-y-3">
                                         <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Height</label>
                                         <div className="space-y-2">
-                                            <InputGroup label="Left" value={formData.heightLeft} onChange={v => handleChange('heightLeft', v)} mode={mode} />
-                                            <InputGroup label="Center" value={formData.heightCenter} onChange={v => handleChange('heightCenter', v)} mode={mode} />
-                                            <InputGroup label="Right" value={formData.heightRight} onChange={v => handleChange('heightRight', v)} mode={mode} />
+                                            <InputGroup label="Left" value={formData.heightLeft} onChange={v => handleChange('heightLeft', v)} mode={mode} highlighted={activeField === 'heightLeft'} />
+                                            <InputGroup label="Center" value={formData.heightCenter} onChange={v => handleChange('heightCenter', v)} mode={mode} highlighted={activeField === 'heightCenter'} />
+                                            <InputGroup label="Right" value={formData.heightRight} onChange={v => handleChange('heightRight', v)} mode={mode} highlighted={activeField === 'heightRight'} />
                                         </div>
                                     </div>
                                 </div>
@@ -468,15 +472,21 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     );
 };
 
-// Helper for compact inputs
-const InputGroup = ({ label, value, onChange, mode }) => (
-    <div className="flex items-center justify-between gap-4">
+// Helper for compact inputs with optional voice AI highlighting
+const InputGroup = ({ label, value, onChange, mode, highlighted }) => (
+    <div className={`flex items-center justify-between gap-4 p-1 rounded-lg transition-all duration-300 ${
+        highlighted ? 'bg-violet-500/20 ring-2 ring-violet-500 ring-offset-1' : ''
+    }`}>
         <span className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>{label}</span>
         <input
             type="text"
             value={value}
             onChange={e => onChange(e.target.value)}
-            className={`w-24 px-2 py-1.5 text-right rounded-md border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+            className={`w-24 px-2 py-1.5 text-right rounded-md border text-sm transition-all duration-300 ${
+                highlighted
+                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/30 ring-1 ring-violet-500'
+                    : mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'
+            }`}
         />
     </div>
 );

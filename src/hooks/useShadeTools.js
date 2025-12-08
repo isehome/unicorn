@@ -17,7 +17,8 @@ export const useShadeTools = ({
     shade,
     onClose,
     onSave,
-    onNextShade  // Optional: callback to advance to next shade after saving
+    onNextShade,  // Optional: callback to advance to next shade after saving
+    setActiveField  // Optional: callback to highlight the currently focused field
 }) => {
     const { registerTools, unregisterTools } = useVoiceCopilot();
 
@@ -120,6 +121,13 @@ export const useShadeTools = ({
                 }
 
                 console.log(`[ShadeTools] Setting ${key} to ${value}`);
+
+                // Highlight the field being updated
+                if (setActiveField) {
+                    setActiveField(key);
+                    // Clear highlight after 2 seconds
+                    setTimeout(() => setActiveField(null), 2000);
+                }
 
                 setFormData(prev => ({
                     ...prev,
@@ -273,7 +281,7 @@ export const useShadeTools = ({
                 };
             }
         }
-    ], [formData, fieldMap, shade, activeTab, onSave, onClose, onNextShade, setFormData, getMeasurementStatus]);
+    ], [formData, fieldMap, shade, activeTab, onSave, onClose, onNextShade, setFormData, setActiveField, getMeasurementStatus]);
 
     // Register/update tools when they change
     // Tools change when formData changes (to capture latest measurement values)
