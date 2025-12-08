@@ -51,6 +51,9 @@ export const VoiceCopilotProvider = ({ children }) => {
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
     }));
 
+    // Tool execution feedback - for visual toast notifications
+    const [lastToolAction, setLastToolAction] = useState(null); // { toolName, args, result, timestamp }
+
     // Debug logging helper
     const addLog = useCallback((message, type = 'info') => {
         const timestamp = new Date().toLocaleTimeString();
@@ -82,8 +85,38 @@ export const VoiceCopilotProvider = ({ children }) => {
     const getSettings = () => ({
         voice: localStorage.getItem('ai_voice') || 'Puck',
         persona: localStorage.getItem('ai_persona') || 'brief',
-        instructions: localStorage.getItem('ai_custom_instructions') || ''
+        instructions: localStorage.getItem('ai_custom_instructions') || '',
+        // VAD sensitivity: 1-5 scale maps to Gemini's enum values
+        vadStartSensitivity: parseInt(localStorage.getItem('ai_vad_start') || '3', 10),
+        vadEndSensitivity: parseInt(localStorage.getItem('ai_vad_end') || '3', 10)
     });
+
+    // Map 1-5 scale to Gemini VAD enum values
+    const getVadStartEnum = (level) => {
+        // 1 = very sensitive (triggers easily) = HIGH sensitivity
+        // 5 = least sensitive (needs clear speech) = LOW sensitivity
+        const map = {
+            1: 'START_SENSITIVITY_HIGH',
+            2: 'START_SENSITIVITY_MEDIUM_HIGH',
+            3: 'START_SENSITIVITY_MEDIUM',
+            4: 'START_SENSITIVITY_MEDIUM_LOW',
+            5: 'START_SENSITIVITY_LOW'
+        };
+        return map[level] || 'START_SENSITIVITY_MEDIUM';
+    };
+
+    const getVadEndEnum = (level) => {
+        // 1 = very quick (cuts off fast) = LOW sensitivity (ends turn quickly)
+        // 5 = very patient (waits longer) = HIGH sensitivity (waits for long pauses)
+        const map = {
+            1: 'END_SENSITIVITY_LOW',
+            2: 'END_SENSITIVITY_MEDIUM_LOW',
+            3: 'END_SENSITIVITY_MEDIUM',
+            4: 'END_SENSITIVITY_MEDIUM_HIGH',
+            5: 'END_SENSITIVITY_HIGH'
+        };
+        return map[level] || 'END_SENSITIVITY_MEDIUM';
+    };
 
     // --- TOOL REGISTRY ---
     // Note: Gemini Live API does NOT support dynamic tool updates mid-session.
@@ -255,6 +288,16 @@ export const VoiceCopilotProvider = ({ children }) => {
                 const result = await tool.execute(args);
                 addLog(`Tool ${toolName} succeeded: ${JSON.stringify(result).substring(0, 100)}`, 'tool');
                 console.log(`[Copilot] Tool ${toolName} result:`, result);
+
+                // Set last tool action for visual feedback (toast notifications)
+                setLastToolAction({
+                    toolName,
+                    args,
+                    result,
+                    success: true,
+                    timestamp: Date.now()
+                });
+
                 responses.push({
                     id: callId,
                     name: toolName,
@@ -263,6 +306,16 @@ export const VoiceCopilotProvider = ({ children }) => {
             } catch (err) {
                 addLog(`Tool ${toolName} failed: ${err.message}`, 'error');
                 console.error(`[Copilot] Tool ${toolName} failed:`, err);
+
+                // Set last tool action for visual feedback (error case)
+                setLastToolAction({
+                    toolName,
+                    args,
+                    result: { error: err.message },
+                    success: false,
+                    timestamp: Date.now()
+                });
+
                 responses.push({
                     id: callId,
                     name: toolName,
@@ -462,19 +515,18 @@ export const VoiceCopilotProvider = ({ children }) => {
                                 }
                             }
                         },
-                        // VAD config - reduce sensitivity to prevent interruptions
+                        // VAD config - user-configurable sensitivity
                         // Docs: https://ai.google.dev/gemini-api/docs/live-guide
                         realtimeInputConfig: {
                             automaticActivityDetection: {
                                 disabled: false,
-                                // START_SENSITIVITY_LOW = harder to trigger (less sensitive to background noise)
-                                startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
-                                // END_SENSITIVITY_HIGH = waits longer before ending turn (more patient)
-                                endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+                                // User-configurable sensitivity (1-5 scale mapped to Gemini enums)
+                                startOfSpeechSensitivity: getVadStartEnum(settings.vadStartSensitivity),
+                                endOfSpeechSensitivity: getVadEndEnum(settings.vadEndSensitivity),
                                 // How long to wait before committing speech start (ms)
                                 prefixPaddingMs: 100,
-                                // How long of silence before end of speech (ms)
-                                silenceDurationMs: 500
+                                // How long of silence before end of speech (ms) - scale with patience
+                                silenceDurationMs: 300 + (settings.vadEndSensitivity * 100) // 400-800ms based on patience
                             }
                         },
                         systemInstruction: {
@@ -870,6 +922,9 @@ AVAILABLE ACTIONS:
             audioChunksReceived,
             platformInfo,
             clearDebugLog,
+
+            // Tool execution feedback (for visual toasts)
+            lastToolAction,
 
             // Actions
             startSession,

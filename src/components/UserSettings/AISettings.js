@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Bot, Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText } from 'lucide-react';
+import { Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText, Sliders } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/VoiceCopilotContext';
 
 const AISettings = () => {
@@ -37,7 +37,15 @@ const AISettings = () => {
     const [voice, setVoice] = useState(() => localStorage.getItem('ai_voice') || 'Puck');
     const [model, setModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
-    const [isExpanded, setIsExpanded] = useState(false);
+
+    // VAD Sensitivity settings (1-5 scale, default 3 = medium)
+    // Lower = more sensitive (triggers easier), Higher = less sensitive (needs clearer speech)
+    const [vadStartSensitivity, setVadStartSensitivity] = useState(() =>
+        parseInt(localStorage.getItem('ai_vad_start') || '3', 10)
+    );
+    const [vadEndSensitivity, setVadEndSensitivity] = useState(() =>
+        parseInt(localStorage.getItem('ai_vad_end') || '3', 10)
+    );
 
     // Test state
     const [testingAudio, setTestingAudio] = useState(false);
@@ -52,7 +60,9 @@ const AISettings = () => {
         localStorage.setItem('ai_voice', voice);
         localStorage.setItem('ai_model', model);
         localStorage.setItem('ai_custom_instructions', instructions);
-    }, [persona, voice, model, instructions]);
+        localStorage.setItem('ai_vad_start', vadStartSensitivity.toString());
+        localStorage.setItem('ai_vad_end', vadEndSensitivity.toString());
+    }, [persona, voice, model, instructions, vadStartSensitivity, vadEndSensitivity]);
 
     // Capture AI responses to transcript
     useEffect(() => {
@@ -244,6 +254,72 @@ const AISettings = () => {
                     </div>
                     <p className="text-xs text-zinc-400 italic">
                         Restart voice session after changing model.
+                    </p>
+                </div>
+
+                {/* VAD Sensitivity Controls */}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                        <Sliders size={14} />
+                        <span>Voice Detection Sensitivity</span>
+                    </div>
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl p-4 space-y-4">
+                        {/* Start of Speech */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                    Start Detection
+                                </label>
+                                <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
+                                    {vadStartSensitivity === 1 ? 'Very Sensitive' :
+                                     vadStartSensitivity === 2 ? 'Sensitive' :
+                                     vadStartSensitivity === 3 ? 'Medium' :
+                                     vadStartSensitivity === 4 ? 'Less Sensitive' : 'Least Sensitive'}
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1"
+                                max="5"
+                                value={vadStartSensitivity}
+                                onChange={(e) => setVadStartSensitivity(parseInt(e.target.value, 10))}
+                                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                            />
+                            <div className="flex justify-between text-[10px] text-zinc-400">
+                                <span>Picks up whispers</span>
+                                <span>Needs clear speech</span>
+                            </div>
+                        </div>
+
+                        {/* End of Speech */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                                <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                                    End Detection (Patience)
+                                </label>
+                                <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
+                                    {vadEndSensitivity === 1 ? 'Very Quick' :
+                                     vadEndSensitivity === 2 ? 'Quick' :
+                                     vadEndSensitivity === 3 ? 'Medium' :
+                                     vadEndSensitivity === 4 ? 'Patient' : 'Very Patient'}
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="1"
+                                max="5"
+                                value={vadEndSensitivity}
+                                onChange={(e) => setVadEndSensitivity(parseInt(e.target.value, 10))}
+                                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                            />
+                            <div className="flex justify-between text-[10px] text-zinc-400">
+                                <span>Cuts off quickly</span>
+                                <span>Waits for pauses</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p className="text-xs text-zinc-400 italic">
+                        Adjust if the AI interrupts you or doesn't hear you. Restart session after changing.
                     </p>
                 </div>
 

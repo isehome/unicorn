@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
-import { Mic, MicOff, Loader2, X, Activity, Bug, Trash2 } from 'lucide-react';
+import { Mic, MicOff, Loader2, X, Activity, Bug, Trash2, Wand2, XCircle } from 'lucide-react';
 
 const VoiceCopilotOverlay = () => {
     const location = useLocation();
@@ -17,16 +17,60 @@ const VoiceCopilotOverlay = () => {
         wsState,
         audioChunksSent,
         audioChunksReceived,
-        clearDebugLog
+        clearDebugLog,
+        // Tool feedback
+        lastToolAction
     } = useVoiceCopilot();
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [showDebug, setShowDebug] = useState(false);
+    const [toolToast, setToolToast] = useState(null); // { message, success, timestamp }
 
     // Auto-expand on error to show message
     useEffect(() => {
         if (error) setIsExpanded(true);
     }, [error]);
+
+    // Show toast when tool executes
+    useEffect(() => {
+        if (lastToolAction && lastToolAction.timestamp) {
+            // Create human-readable message based on tool name
+            const toolMessages = {
+                'set_measurement': `Recorded ${lastToolAction.args?.field || 'measurement'}: ${lastToolAction.args?.value || ''}"`,
+                'get_shade_context': 'Checking shade info...',
+                'read_back_measurements': 'Reading back measurements...',
+                'clear_measurement': `Cleared ${lastToolAction.args?.field || 'measurement'}`,
+                'save_shade_measurements': lastToolAction.result?.success ? 'Shade saved!' : 'Save failed',
+                'close_without_saving': 'Closed without saving',
+                'get_shades_overview': 'Getting shades overview...',
+                'list_shades_in_room': `Listing shades in ${lastToolAction.args?.roomName || 'room'}...`,
+                'open_shade_for_measuring': `Opening ${lastToolAction.args?.shadeName || 'shade'}...`,
+                'get_next_pending_shade': 'Finding next shade...',
+                'expand_room': `Expanding ${lastToolAction.args?.roomName || 'room'}`,
+                'get_current_location': 'Getting location...',
+                'navigate_to_project': `Going to ${lastToolAction.args?.projectName || 'project'}...`,
+                'navigate_to_section': `Going to ${lastToolAction.args?.section || 'section'}...`,
+                'list_projects': 'Listing projects...',
+                'go_back': 'Going back...'
+            };
+
+            const message = toolMessages[lastToolAction.toolName] || `Running ${lastToolAction.toolName}...`;
+
+            setToolToast({
+                message,
+                success: lastToolAction.success,
+                toolName: lastToolAction.toolName,
+                timestamp: lastToolAction.timestamp
+            });
+
+            // Auto-hide toast after 3 seconds
+            const timer = setTimeout(() => {
+                setToolToast(null);
+            }, 3000);
+
+            return () => clearTimeout(timer);
+        }
+    }, [lastToolAction]);
 
     // Only show on shades/window coverings section
     const isOnShadesSection = location.pathname.includes('/shades');
@@ -86,6 +130,27 @@ const VoiceCopilotOverlay = () => {
 
     return (
         <div className="fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2">
+            {/* Tool Action Toast - shows when AI executes a tool */}
+            {toolToast && (
+                <div
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg mb-2 animate-fade-in backdrop-blur-md transition-all ${
+                        toolToast.success
+                            ? 'bg-violet-500/90 text-white'
+                            : 'bg-red-500/90 text-white'
+                    }`}
+                    style={{
+                        animation: 'slideInRight 0.3s ease-out'
+                    }}
+                >
+                    {toolToast.success ? (
+                        <Wand2 size={18} className="flex-shrink-0" />
+                    ) : (
+                        <XCircle size={18} className="flex-shrink-0" />
+                    )}
+                    <span className="text-sm font-medium">{toolToast.message}</span>
+                </div>
+            )}
+
             {/* Debug Panel */}
             {showDebug && (
                 <div className="bg-black/90 text-green-400 p-3 rounded-lg shadow-xl mb-2 w-80 max-h-96 overflow-hidden flex flex-col font-mono text-xs">
