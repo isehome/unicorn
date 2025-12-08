@@ -18,7 +18,7 @@ export const useShadeManagerTools = ({
     expandedRooms,
     setExpandedRooms
 }) => {
-    const { registerTools, unregisterTools, status } = useVoiceCopilot();
+    const { registerTools, unregisterTools } = useVoiceCopilot();
 
     // Get shades that still need measuring (no M1 complete)
     const pendingShades = useMemo(() =>

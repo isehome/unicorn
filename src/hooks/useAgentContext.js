@@ -18,7 +18,7 @@ import { supabase } from '../lib/supabase';
 export const useAgentContext = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { registerTools, unregisterTools, status } = useVoiceCopilot();
+    const { registerTools, unregisterTools } = useVoiceCopilot();
 
     // Extract project ID from URL path (more reliable than useParams at app level)
     const extractProjectId = (path) => {

@@ -19,7 +19,7 @@ export const useShadeTools = ({
     onSave,
     onNextShade  // Optional: callback to advance to next shade after saving
 }) => {
-    const { registerTools, unregisterTools, status } = useVoiceCopilot();
+    const { registerTools, unregisterTools } = useVoiceCopilot();
 
     // Field Mapping - maps spoken phrases to form field names
     const fieldMap = useMemo(() => ({
