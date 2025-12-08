@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 import { supabase } from '../lib/supabase';
@@ -14,11 +14,25 @@ import { supabase } from '../lib/supabase';
  * 2. Navigate to different projects or sections
  * 3. List available projects
  * 4. Get project details
+ *
+ * IMPORTANT: Uses refs for navigate to prevent stale closure issues.
+ * Tool execute functions read from refs to always get the current navigate function.
  */
 export const useAgentContext = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { registerTools, unregisterTools } = useVoiceCopilot();
+
+    // ===== REFS FOR STABLE CALLBACKS =====
+    // These refs ensure tool execute functions always have access to current navigate
+    const navigateRef = useRef(navigate);
+    const locationRef = useRef(location);
+
+    // Keep refs updated
+    useEffect(() => {
+        navigateRef.current = navigate;
+        locationRef.current = location;
+    }, [navigate, location]);
 
     // Extract project ID from URL path (more reliable than useParams at app level)
     const extractProjectId = (path) => {
@@ -238,7 +252,9 @@ export const useAgentContext = () => {
                     url = sectionMap[section] || url;
                 }
 
-                navigate(url);
+                // Use ref to avoid stale closure
+                console.log('[AgentContext] navigate_to_project: Navigating to', url);
+                navigateRef.current(url);
                 return {
                     success: true,
                     message: `Navigating to ${section === 'overview' ? 'project overview' : section}`,
@@ -281,7 +297,9 @@ export const useAgentContext = () => {
                     };
                 }
 
-                navigate(url);
+                // Use ref to avoid stale closure
+                console.log('[AgentContext] navigate_to_section: Navigating to', url);
+                navigateRef.current(url);
                 return { success: true, message: `Navigating to ${section}`, url };
             }
         },
@@ -290,11 +308,13 @@ export const useAgentContext = () => {
             description: "Go back to the previous page.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
-                navigate(-1);
+                // Use ref to avoid stale closure
+                console.log('[AgentContext] go_back: Navigating back');
+                navigateRef.current(-1);
                 return { success: true, message: "Going back" };
             }
         }
-    ], [currentContext, fetchProjectDetails, navigate]);
+    ], [currentContext, fetchProjectDetails]); // Removed navigate from deps - using ref instead
 
     // Helper to determine what actions are available in current context
     const getAvailableActions = (ctx) => {
