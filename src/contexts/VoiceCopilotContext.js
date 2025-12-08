@@ -86,6 +86,28 @@ export const VoiceCopilotProvider = ({ children }) => {
     });
 
     // --- TOOL REGISTRY ---
+    // Send tool update to Gemini when tools change mid-session
+    const sendToolUpdate = useCallback((tools) => {
+        if (ws.current?.readyState === WebSocket.OPEN && tools.size > 0) {
+            const toolDeclarations = Array.from(tools.values()).map(t => ({
+                name: t.name,
+                description: t.description,
+                parameters: t.parameters
+            }));
+
+            // Gemini Live API: send tool_config to update available tools
+            const toolUpdate = {
+                tool_config: {
+                    function_declarations: toolDeclarations
+                }
+            };
+
+            console.log('[Copilot] Sending tool update to Gemini:', toolDeclarations.map(t => t.name));
+            addLog(`Updating Gemini tools: ${toolDeclarations.map(t => t.name).join(', ')}`, 'tool');
+            ws.current.send(JSON.stringify(toolUpdate));
+        }
+    }, [addLog]);
+
     const registerTools = useCallback((newTools) => {
         setActiveTools(prev => {
             const next = new Map(prev);
@@ -93,9 +115,11 @@ export const VoiceCopilotProvider = ({ children }) => {
                 console.log(`[Copilot] Registering tool: ${tool.name}`);
                 next.set(tool.name, tool);
             });
+            // Send updated tools to Gemini
+            sendToolUpdate(next);
             return next;
         });
-    }, []);
+    }, [sendToolUpdate]);
 
     const unregisterTools = useCallback((toolNames) => {
         setActiveTools(prev => {
