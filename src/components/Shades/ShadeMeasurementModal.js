@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink } from 'lucide-react';
+import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink, MessageSquare, Send } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
@@ -8,8 +8,15 @@ import { useShadeTools } from '../../hooks/useShadeTools';
 
 const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, availableMountTypes = [] }) => {
     const { theme, mode } = useTheme();
-    const [activeTab, setActiveTab] = useState('m1'); // 'm1' or 'm2'
+    const [activeTab, setActiveTab] = useState('m1'); // 'm1', 'm2', or 'comments'
     const [uploading, setUploading] = useState(false);
+
+    // Comments state
+    const [comments, setComments] = useState([]);
+    const [loadingComments, setLoadingComments] = useState(false);
+    const [newComment, setNewComment] = useState('');
+    const [isInternalComment, setIsInternalComment] = useState(true);
+    const [submittingComment, setSubmittingComment] = useState(false);
 
     // Derived state for blinding
     // If M1 is complete AND current user is NOT the one who did M1 -> Blind M1
@@ -41,10 +48,60 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
     // Reset when shade or tab changes
     useEffect(() => {
-        if (shade) {
+        if (shade && (activeTab === 'm1' || activeTab === 'm2')) {
             setFormData(getInitialValues(shade, activeTab));
         }
     }, [shade, activeTab]);
+
+    // Load comments when comments tab is selected
+    useEffect(() => {
+        const loadComments = async () => {
+            if (activeTab !== 'comments' || !shade?.id) return;
+            setLoadingComments(true);
+            try {
+                const { data, error } = await supabase
+                    .from('shade_comments')
+                    .select('*')
+                    .eq('shade_id', shade.id)
+                    .order('created_at', { ascending: true });
+                if (error) throw error;
+                setComments(data || []);
+            } catch (err) {
+                console.error('[ShadeMeasurementModal] Failed to load comments:', err);
+            } finally {
+                setLoadingComments(false);
+            }
+        };
+        loadComments();
+    }, [activeTab, shade?.id]);
+
+    const handleSubmitComment = async () => {
+        if (!newComment.trim() || !shade?.id || submittingComment) return;
+        setSubmittingComment(true);
+        try {
+            const { data, error } = await supabase
+                .from('shade_comments')
+                .insert([{
+                    shade_id: shade.id,
+                    project_id: shade.project_id,
+                    comment_text: newComment.trim(),
+                    is_internal: isInternalComment,
+                    author_id: currentUser?.id,
+                    author_name: currentUser?.name || currentUser?.displayName || 'Staff',
+                    author_email: currentUser?.email
+                }])
+                .select()
+                .single();
+            if (error) throw error;
+            setComments(prev => [...prev, data]);
+            setNewComment('');
+        } catch (err) {
+            console.error('[ShadeMeasurementModal] Failed to add comment:', err);
+            alert('Failed to add comment: ' + err.message);
+        } finally {
+            setSubmittingComment(false);
+        }
+    };
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -192,11 +249,104 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                     >
                         Measure 2 {shade?.m2_complete && <CheckCircle size={14} className="inline ml-1 text-green-500" />}
                     </button>
+                    <button
+                        onClick={() => setActiveTab('comments')}
+                        className={`flex-1 p-3 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-1 ${activeTab === 'comments'
+                            ? 'border-violet-500 text-violet-500'
+                            : 'border-transparent text-zinc-500 hover:text-zinc-700'
+                            }`}
+                    >
+                        <MessageSquare size={14} />
+                        Comments {comments.length > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-violet-100 text-violet-600">{comments.length}</span>}
+                    </button>
                 </div>
 
                 {/* Main Content Area */}
                 <div className="p-6">
-                    {showBlinded ? (
+                    {activeTab === 'comments' ? (
+                        /* Comments Tab Content */
+                        <div className="space-y-4">
+                            {/* Comments List */}
+                            <div className={`rounded-xl border p-4 min-h-[300px] max-h-[400px] overflow-y-auto ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                                {loadingComments ? (
+                                    <div className="flex items-center justify-center h-32 text-zinc-400">Loading comments...</div>
+                                ) : comments.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-32 text-zinc-400">
+                                        <MessageSquare size={32} className="mb-2 opacity-50" />
+                                        <p>No comments yet</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {comments.map(comment => (
+                                            <div key={comment.id} className={`p-3 rounded-lg border ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+                                                <div className="flex items-start justify-between gap-2 mb-1">
+                                                    <span className={`text-sm font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
+                                                        {comment.author_name || 'Unknown'}
+                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        {comment.is_internal ? (
+                                                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Internal</span>
+                                                        ) : (
+                                                            <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">External</span>
+                                                        )}
+                                                        <span className="text-xs text-zinc-400">
+                                                            {new Date(comment.created_at).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <p className={`text-sm ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
+                                                    {comment.comment_text}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Add Comment Form */}
+                            <div className={`rounded-xl border p-4 ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+                                <div className="flex items-center gap-3 mb-3">
+                                    <label className={`text-sm font-medium ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                        Add Comment
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={isInternalComment}
+                                            onChange={(e) => setIsInternalComment(e.target.checked)}
+                                            className="rounded border-zinc-300"
+                                        />
+                                        <span className={`${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                                            Internal only {isInternalComment && <span className="text-amber-500">(not visible to external stakeholders)</span>}
+                                        </span>
+                                    </label>
+                                </div>
+                                <div className="flex gap-2">
+                                    <textarea
+                                        value={newComment}
+                                        onChange={(e) => setNewComment(e.target.value)}
+                                        placeholder="Write a comment..."
+                                        rows={2}
+                                        className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                handleSubmitComment();
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        icon={Send}
+                                        onClick={handleSubmitComment}
+                                        disabled={!newComment.trim() || submittingComment}
+                                    >
+                                        {submittingComment ? 'Sending...' : 'Send'}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : showBlinded ? (
                         <div className="h-64 flex flex-col items-center justify-center text-center border rounded-xl border-dashed border-zinc-300 dark:border-zinc-700">
                             <Lock size={48} className="text-zinc-300 mb-4" />
                             <h3 className="text-lg font-medium text-zinc-500">Measurement 1 is Complete</h3>
@@ -309,7 +459,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                 {/* Footer */}
                 <div className={`p-4 border-t flex justify-end gap-3 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    {!showBlinded && (
+                    {!showBlinded && activeTab !== 'comments' && (
                         <Button variant="primary" icon={Save} onClick={handleSaveClick}>
                             Save & Mark {activeTab === 'm1' ? 'M1' : 'M2'} Complete
                         </Button>

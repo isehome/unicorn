@@ -764,7 +764,9 @@ const PublicShadePortal = () => {
                                         padding: '8px 12px',
                                         border: '1px solid #d1d5db',
                                         borderRadius: '6px',
-                                        fontSize: '14px'
+                                        fontSize: '14px',
+                                        backgroundColor: '#ffffff',
+                                        color: '#111827'
                                       }}
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
