@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Bot, Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Bot, Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/VoiceCopilotContext';
 
 const AISettings = () => {
@@ -14,8 +14,23 @@ const AISettings = () => {
         testMicrophoneInput,
         platformInfo,
         debugLog,
-        clearDebugLog
+        clearDebugLog,
+        lastTranscript,
+        status,
+        audioChunksSent,
+        audioChunksReceived
     } = useVoiceCopilot();
+
+    // Conversation transcript state (persists across sessions)
+    const [transcript, setTranscript] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('ai_transcript') || '[]');
+        } catch {
+            return [];
+        }
+    });
+    const [copied, setCopied] = useState(false);
+    const transcriptEndRef = useRef(null);
 
     // State - Initialize from localStorage
     const [persona, setPersona] = useState(() => localStorage.getItem('ai_persona') || 'brief');
@@ -36,6 +51,58 @@ const AISettings = () => {
         localStorage.setItem('ai_voice', voice);
         localStorage.setItem('ai_custom_instructions', instructions);
     }, [persona, voice, instructions]);
+
+    // Capture AI responses to transcript
+    useEffect(() => {
+        if (lastTranscript && lastTranscript.trim()) {
+            const newEntry = {
+                type: 'ai',
+                text: lastTranscript,
+                timestamp: new Date().toISOString()
+            };
+            setTranscript(prev => {
+                const updated = [...prev, newEntry].slice(-50); // Keep last 50 entries
+                localStorage.setItem('ai_transcript', JSON.stringify(updated));
+                return updated;
+            });
+        }
+    }, [lastTranscript]);
+
+    // Auto-scroll transcript
+    useEffect(() => {
+        transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [transcript]);
+
+    // Copy transcript to clipboard
+    const copyTranscript = async () => {
+        const text = transcript.map(entry => {
+            const time = new Date(entry.timestamp).toLocaleTimeString();
+            return `[${time}] ${entry.type === 'ai' ? 'AI' : 'You'}: ${entry.text}`;
+        }).join('\n');
+
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            // Fallback for iOS
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const clearTranscript = () => {
+        setTranscript([]);
+        localStorage.removeItem('ai_transcript');
+    };
 
     const voices = [
         { id: 'Puck', name: 'Puck (Energetic)', gender: 'Male' },
@@ -250,6 +317,91 @@ const AISettings = () => {
 
                     <p className="text-xs text-zinc-400 italic">
                         Use these tests to verify audio works on your device. iOS Safari may require tapping to enable audio.
+                    </p>
+                </div>
+
+                {/* Conversation Transcript - Copyable */}
+                <div className="space-y-3 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                            <ScrollText size={14} />
+                            <span>Conversation Transcript</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={copyTranscript}
+                                disabled={transcript.length === 0}
+                                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                    copied
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                        : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700'
+                                } ${transcript.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                {copied ? <Check size={12} /> : <Copy size={12} />}
+                                {copied ? 'Copied!' : 'Copy'}
+                            </button>
+                            <button
+                                onClick={clearTranscript}
+                                disabled={transcript.length === 0}
+                                className={`px-2 py-1 rounded text-xs font-medium bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700 transition-colors ${
+                                    transcript.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Status indicator */}
+                    <div className="flex items-center gap-4 text-xs">
+                        <div className="flex items-center gap-1.5">
+                            <div className={`w-2 h-2 rounded-full ${
+                                status === 'listening' ? 'bg-green-500 animate-pulse' :
+                                status === 'speaking' ? 'bg-violet-500 animate-pulse' :
+                                status === 'connecting' ? 'bg-amber-500 animate-pulse' :
+                                'bg-zinc-400'
+                            }`} />
+                            <span className="text-zinc-500 dark:text-zinc-400 capitalize">{status}</span>
+                        </div>
+                        {status !== 'idle' && (
+                            <>
+                                <span className="text-zinc-400">Sent: {audioChunksSent}</span>
+                                <span className="text-zinc-400">Recv: {audioChunksReceived}</span>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Transcript Display */}
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-lg p-3 max-h-80 overflow-y-auto">
+                        {transcript.length === 0 ? (
+                            <div className="text-zinc-400 text-sm text-center py-8">
+                                No conversation yet. Start a voice session to see the transcript here.
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {transcript.map((entry, i) => (
+                                    <div key={i} className={`text-sm ${entry.type === 'ai' ? '' : 'text-right'}`}>
+                                        <div className={`inline-block max-w-[85%] px-3 py-2 rounded-lg ${
+                                            entry.type === 'ai'
+                                                ? 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200'
+                                                : 'bg-violet-500 text-white'
+                                        }`}>
+                                            <p className="whitespace-pre-wrap break-words">{entry.text}</p>
+                                            <p className={`text-[10px] mt-1 ${
+                                                entry.type === 'ai' ? 'text-zinc-400' : 'text-violet-200'
+                                            }`}>
+                                                {new Date(entry.timestamp).toLocaleTimeString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                                <div ref={transcriptEndRef} />
+                            </div>
+                        )}
+                    </div>
+
+                    <p className="text-xs text-zinc-400 italic">
+                        This shows what the AI said. Copy to share issues with Steve for debugging.
                     </p>
                 </div>
             </div>
