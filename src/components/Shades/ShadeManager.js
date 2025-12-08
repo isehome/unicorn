@@ -25,6 +25,7 @@ import { supabase } from '../../lib/supabase'; // Needed for direct updates if s
 import Button from '../ui/Button';
 import ShadeMeasurementModal from './ShadeMeasurementModal';
 import { brandColors, stakeholderColors } from '../../styles/styleSystem';
+import { useShadeManagerTools } from '../../hooks/useShadeManagerTools';
 
 const ShadeManager = () => {
     const { projectId } = useParams();
@@ -356,6 +357,21 @@ const ShadeManager = () => {
         });
         return Array.from(types).sort();
     }, [shades]);
+
+    // Voice AI Tools for shade list navigation
+    const handleSelectShadeForMeasuring = useCallback((shade) => {
+        setSelectedShade(shade);
+        setShowMeasureModal(true);
+    }, []);
+
+    useShadeManagerTools({
+        shades,
+        rooms: Object.keys(groupedShades),
+        projectName: project?.name || '',
+        onSelectShade: handleSelectShadeForMeasuring,
+        expandedRooms,
+        setExpandedRooms
+    });
 
     const toggleRoom = (roomName) => {
         setExpandedRooms(prev => {
