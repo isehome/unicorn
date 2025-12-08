@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 
 /**
@@ -9,6 +9,9 @@ import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
  * - 3 height measurements (left, center, right)
  *
  * The AI will guide the tech through each measurement and confirm values.
+ *
+ * IMPORTANT: Uses refs for callbacks to prevent stale closure issues.
+ * The tool execute functions read from refs to always get the current callbacks.
  */
 export const useShadeTools = ({
     formData,
@@ -21,6 +24,28 @@ export const useShadeTools = ({
     setActiveField  // Optional: callback to highlight the currently focused field
 }) => {
     const { registerTools, unregisterTools } = useVoiceCopilot();
+
+    // ===== REFS FOR STABLE CALLBACKS =====
+    // These refs ensure tool execute functions always have access to current callbacks
+    // This prevents stale closure issues when tools are stored in the context Map
+    const setFormDataRef = useRef(setFormData);
+    const setActiveFieldRef = useRef(setActiveField);
+    const onSaveRef = useRef(onSave);
+    const onCloseRef = useRef(onClose);
+    const formDataRef = useRef(formData);
+    const shadeRef = useRef(shade);
+    const activeTabRef = useRef(activeTab);
+
+    // Keep refs updated
+    useEffect(() => {
+        setFormDataRef.current = setFormData;
+        setActiveFieldRef.current = setActiveField;
+        onSaveRef.current = onSave;
+        onCloseRef.current = onClose;
+        formDataRef.current = formData;
+        shadeRef.current = shade;
+        activeTabRef.current = activeTab;
+    }, [setFormData, setActiveField, onSave, onClose, formData, shade, activeTab]);
 
     // Field Mapping - maps spoken phrases to form field names
     const fieldMap = useMemo(() => ({
@@ -64,13 +89,14 @@ export const useShadeTools = ({
         { key: 'heightRight', spoken: 'right height', prompt: 'And finally the right side height' }
     ], []);
 
-    // Determine which measurements are complete
+    // Determine which measurements are complete - uses ref for current formData
     const getMeasurementStatus = useCallback(() => {
+        const currentFormData = formDataRef.current;
         const completed = [];
         const missing = [];
 
         measurementSequence.forEach(m => {
-            const value = formData[m.key];
+            const value = currentFormData[m.key];
             if (value && value.toString().trim() !== '') {
                 completed.push({ ...m, value });
             } else {
@@ -79,7 +105,7 @@ export const useShadeTools = ({
         });
 
         return { completed, missing, allComplete: missing.length === 0 };
-    }, [formData, measurementSequence]);
+    }, [measurementSequence]);
 
     // Get the next measurement to prompt for
     const getNextMeasurement = useCallback(() => {
@@ -87,7 +113,9 @@ export const useShadeTools = ({
         return missing[0] || null;
     }, [getMeasurementStatus]);
 
-    // Tool Definitions
+    // ===== TOOL DEFINITIONS =====
+    // Tools are created once and use refs to access current state/callbacks
+    // This prevents tools from being re-created on every render
     const tools = useMemo(() => [
         {
             name: "set_measurement",
@@ -122,23 +150,60 @@ export const useShadeTools = ({
 
                 console.log(`[ShadeTools] Setting ${key} to ${value}`);
 
-                // Highlight the field being updated
-                if (setActiveField) {
-                    setActiveField(key);
+                // Highlight the field being updated (via ref)
+                const setActiveFieldFn = setActiveFieldRef.current;
+                if (setActiveFieldFn) {
+                    console.log(`[ShadeTools] Highlighting field: ${key}`);
+                    setActiveFieldFn(key);
                     // Clear highlight after 2 seconds
-                    setTimeout(() => setActiveField(null), 2000);
+                    setTimeout(() => {
+                        if (setActiveFieldRef.current) {
+                            setActiveFieldRef.current(null);
+                        }
+                    }, 2000);
                 }
 
-                setFormData(prev => ({
-                    ...prev,
-                    [key]: value.toString()
-                }));
+                // Update form data (via ref)
+                const setFormDataFn = setFormDataRef.current;
+                if (setFormDataFn) {
+                    console.log(`[ShadeTools] Calling setFormData for ${key}=${value}`);
+                    setFormDataFn(prev => ({
+                        ...prev,
+                        [key]: value.toString()
+                    }));
+                } else {
+                    console.error('[ShadeTools] setFormData ref is null!');
+                }
 
                 // Check what's next after this update
-                const currentStatus = getMeasurementStatus();
-                // Account for the one we just set
-                const remainingAfterThis = currentStatus.missing.filter(m => m.key !== key);
-                const nextMeasurement = remainingAfterThis[0];
+                const currentFormData = formDataRef.current;
+                const completed = [];
+                const missing = [];
+                measurementSequence.forEach(m => {
+                    // For the field we just set, consider it complete
+                    if (m.key === key) {
+                        completed.push({ ...m, value });
+                    } else {
+                        const existingValue = currentFormData[m.key];
+                        if (existingValue && existingValue.toString().trim() !== '') {
+                            completed.push({ ...m, value: existingValue });
+                        } else {
+                            missing.push(m);
+                        }
+                    }
+                });
+
+                const nextMeasurement = missing[0];
+
+                // If there's a next field, highlight it after a delay
+                if (nextMeasurement && setActiveFieldRef.current) {
+                    setTimeout(() => {
+                        console.log(`[ShadeTools] Pre-highlighting next field: ${nextMeasurement.key}`);
+                        if (setActiveFieldRef.current) {
+                            setActiveFieldRef.current(nextMeasurement.key);
+                        }
+                    }, 2500);
+                }
 
                 return {
                     success: true,
@@ -147,8 +212,8 @@ export const useShadeTools = ({
                         field: nextMeasurement.spoken,
                         prompt: nextMeasurement.prompt
                     } : null,
-                    allComplete: remainingAfterThis.length === 0,
-                    hint: remainingAfterThis.length === 0
+                    allComplete: missing.length === 0,
+                    hint: missing.length === 0
                         ? "All measurements recorded! Say 'save' to save this shade, or 'read them back' to review."
                         : nextMeasurement.prompt
                 };
@@ -159,18 +224,20 @@ export const useShadeTools = ({
             description: "Get information about the current shade being measured: name, room, quoted dimensions, and which measurements have been recorded vs still needed.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
+                const currentShade = shadeRef.current;
+                const currentTab = activeTabRef.current;
                 const { completed, missing, allComplete } = getMeasurementStatus();
 
                 return {
                     shade: {
-                        name: shade?.name,
-                        room: shade?.room?.name,
-                        quotedWidth: shade?.quoted_width,
-                        quotedHeight: shade?.quoted_height,
-                        mountType: shade?.mount_type,
-                        technology: shade?.technology
+                        name: currentShade?.name,
+                        room: currentShade?.room?.name,
+                        quotedWidth: currentShade?.quoted_width,
+                        quotedHeight: currentShade?.quoted_height,
+                        mountType: currentShade?.mount_type,
+                        technology: currentShade?.technology
                     },
-                    measurementTab: activeTab,
+                    measurementTab: currentTab,
                     measurements: {
                         completed: completed.map(m => ({ field: m.spoken, value: m.value })),
                         missing: missing.map(m => m.spoken),
@@ -188,10 +255,11 @@ export const useShadeTools = ({
             description: "Read back all the measurements that have been recorded for this shade so the technician can verify them.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
+                const currentShade = shadeRef.current;
                 const { completed, missing } = getMeasurementStatus();
 
                 return {
-                    shadeName: shade?.name,
+                    shadeName: currentShade?.name,
                     recorded: completed.map(m => ({
                         field: m.spoken,
                         value: m.value,
@@ -223,10 +291,18 @@ export const useShadeTools = ({
                     return { success: false, error: `Unknown field: ${field}` };
                 }
 
-                setFormData(prev => ({
-                    ...prev,
-                    [key]: ''
-                }));
+                const setFormDataFn = setFormDataRef.current;
+                if (setFormDataFn) {
+                    setFormDataFn(prev => ({
+                        ...prev,
+                        [key]: ''
+                    }));
+                }
+
+                // Highlight the cleared field
+                if (setActiveFieldRef.current) {
+                    setActiveFieldRef.current(key);
+                }
 
                 return {
                     success: true,
@@ -241,6 +317,7 @@ export const useShadeTools = ({
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing, allComplete } = getMeasurementStatus();
+                const currentShade = shadeRef.current;
 
                 if (!allComplete && missing.length > 0) {
                     return {
@@ -250,21 +327,27 @@ export const useShadeTools = ({
                     };
                 }
 
-                // Call the save handler
-                try {
-                    onSave();
-                    return {
-                        success: true,
-                        message: `Saved ${shade?.name}!`,
-                        measurementsRecorded: completed.length,
-                        hint: onNextShade
-                            ? "Say 'next shade' to move to the next window, or 'done' to stop."
-                            : "Shade saved. Close the modal to return to the list."
-                    };
-                } catch (err) {
+                // Call the save handler via ref
+                const onSaveFn = onSaveRef.current;
+                if (onSaveFn) {
+                    try {
+                        onSaveFn();
+                        return {
+                            success: true,
+                            message: `Saved ${currentShade?.name}!`,
+                            measurementsRecorded: completed.length,
+                            hint: "Shade saved. Say 'next shade' to continue or close the modal."
+                        };
+                    } catch (err) {
+                        return {
+                            success: false,
+                            error: `Failed to save: ${err.message}`
+                        };
+                    }
+                } else {
                     return {
                         success: false,
-                        error: `Failed to save: ${err.message}`
+                        error: "Save function not available"
                     };
                 }
             }
@@ -274,19 +357,25 @@ export const useShadeTools = ({
             description: "Close the measurement modal without saving. Use if the tech wants to cancel or skip this shade.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
-                onClose();
+                const onCloseFn = onCloseRef.current;
+                if (onCloseFn) {
+                    onCloseFn();
+                    return {
+                        success: true,
+                        message: "Closed without saving. Back to the shade list."
+                    };
+                }
                 return {
-                    success: true,
-                    message: "Closed without saving. Back to the shade list."
+                    success: false,
+                    error: "Close function not available"
                 };
             }
         }
-    ], [formData, fieldMap, shade, activeTab, onSave, onClose, onNextShade, setFormData, setActiveField, getMeasurementStatus]);
+    ], [fieldMap, measurementSequence, getMeasurementStatus]); // Minimal deps - refs handle the rest
 
-    // Register/update tools when they change
-    // Tools change when formData changes (to capture latest measurement values)
+    // Register tools once when shade changes (not on every formData change)
     useEffect(() => {
-        console.log('[ShadeTools] Registering/updating measurement tools for', shade?.name);
+        console.log('[ShadeTools] Registering measurement tools for', shade?.name);
         registerTools(tools);
 
         return () => {
@@ -301,3 +390,5 @@ export const useShadeTools = ({
         measurementSequence
     };
 };
+
+export default useShadeTools;

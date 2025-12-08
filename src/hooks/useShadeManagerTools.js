@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 
 /**
@@ -9,6 +9,8 @@ import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
  * - Opening a specific shade by name or room
  * - Getting room summary
  * - Navigating through shades sequentially
+ *
+ * IMPORTANT: Uses refs for callbacks to prevent stale closure issues.
  */
 export const useShadeManagerTools = ({
     shades = [],
@@ -20,15 +22,29 @@ export const useShadeManagerTools = ({
 }) => {
     const { registerTools, unregisterTools } = useVoiceCopilot();
 
+    // ===== REFS FOR STABLE CALLBACKS =====
+    const onSelectShadeRef = useRef(onSelectShade);
+    const setExpandedRoomsRef = useRef(setExpandedRooms);
+    const shadesRef = useRef(shades);
+    const projectNameRef = useRef(projectName);
+
+    // Keep refs updated
+    useEffect(() => {
+        onSelectShadeRef.current = onSelectShade;
+        setExpandedRoomsRef.current = setExpandedRooms;
+        shadesRef.current = shades;
+        projectNameRef.current = projectName;
+    }, [onSelectShade, setExpandedRooms, shades, projectName]);
+
     // Get shades that still need measuring (no M1 complete)
-    const pendingShades = useMemo(() =>
-        shades.filter(s => !s.m1_complete),
-    [shades]);
+    const getPendingShades = useCallback(() => {
+        return shadesRef.current.filter(s => !s.m1_complete);
+    }, []);
 
     // Get shades grouped by room
-    const shadesByRoom = useMemo(() => {
+    const getShadesByRoom = useCallback(() => {
         const grouped = {};
-        shades.forEach(shade => {
+        shadesRef.current.forEach(shade => {
             const roomName = shade.room?.name || 'Unknown Room';
             if (!grouped[roomName]) {
                 grouped[roomName] = [];
@@ -36,45 +52,50 @@ export const useShadeManagerTools = ({
             grouped[roomName].push(shade);
         });
         return grouped;
-    }, [shades]);
+    }, []);
 
     // Find shade by name (fuzzy match)
     const findShadeByName = useCallback((searchName) => {
         const search = searchName.toLowerCase().trim();
+        const currentShades = shadesRef.current;
 
         // Exact match first
-        let found = shades.find(s =>
+        let found = currentShades.find(s =>
             s.name?.toLowerCase() === search
         );
 
         // Partial match
         if (!found) {
-            found = shades.find(s =>
+            found = currentShades.find(s =>
                 s.name?.toLowerCase().includes(search) ||
                 search.includes(s.name?.toLowerCase())
             );
         }
 
         return found;
-    }, [shades]);
+    }, []);
 
     // Find shades in a room
     const findShadesByRoom = useCallback((roomName) => {
         const search = roomName.toLowerCase().trim();
-        return shades.filter(s =>
+        return shadesRef.current.filter(s =>
             s.room?.name?.toLowerCase().includes(search) ||
             search.includes(s.room?.name?.toLowerCase())
         );
-    }, [shades]);
+    }, []);
 
-    // Tool Definitions
+    // Tool Definitions - use refs for all callbacks
     const tools = useMemo(() => [
         {
             name: "get_shades_overview",
             description: "Get an overview of all shades on this project - how many total, how many need measuring, grouped by room.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
-                const totalShades = shades.length;
+                const currentShades = shadesRef.current;
+                const pendingShades = getPendingShades();
+                const shadesByRoom = getShadesByRoom();
+
+                const totalShades = currentShades.length;
                 const pending = pendingShades.length;
                 const completed = totalShades - pending;
 
@@ -85,7 +106,7 @@ export const useShadeManagerTools = ({
                 }));
 
                 return {
-                    projectName,
+                    projectName: projectNameRef.current,
                     totalShades,
                     pendingMeasurement: pending,
                     completed,
@@ -111,6 +132,7 @@ export const useShadeManagerTools = ({
             },
             execute: async ({ roomName }) => {
                 const roomShades = findShadesByRoom(roomName);
+                const shadesByRoom = getShadesByRoom();
 
                 if (roomShades.length === 0) {
                     return {
@@ -150,6 +172,7 @@ export const useShadeManagerTools = ({
             },
             execute: async ({ shadeName, roomName }) => {
                 let targetShade = null;
+                const pendingShades = getPendingShades();
 
                 if (shadeName) {
                     targetShade = findShadeByName(shadeName);
@@ -182,13 +205,27 @@ export const useShadeManagerTools = ({
                     }
                 }
 
-                // Expand the room if collapsed
-                if (setExpandedRooms && targetShade.room?.name) {
-                    setExpandedRooms(prev => new Set([...prev, targetShade.room.name]));
+                console.log(`[ShadeManagerTools] Opening shade: ${targetShade.name}`);
+
+                // Expand the room if collapsed (via ref)
+                const setExpandedRoomsFn = setExpandedRoomsRef.current;
+                if (setExpandedRoomsFn && targetShade.room?.name) {
+                    console.log(`[ShadeManagerTools] Expanding room: ${targetShade.room.name}`);
+                    setExpandedRoomsFn(prev => new Set([...prev, targetShade.room.name]));
                 }
 
-                // Open the shade modal
-                onSelectShade(targetShade);
+                // Open the shade modal (via ref)
+                const onSelectShadeFn = onSelectShadeRef.current;
+                if (onSelectShadeFn) {
+                    console.log(`[ShadeManagerTools] Calling onSelectShade for: ${targetShade.name}`);
+                    onSelectShadeFn(targetShade);
+                } else {
+                    console.error('[ShadeManagerTools] onSelectShade ref is null!');
+                    return {
+                        success: false,
+                        error: "Unable to open shade - selection handler not available"
+                    };
+                }
 
                 return {
                     success: true,
@@ -209,6 +246,8 @@ export const useShadeManagerTools = ({
             description: "Get information about the next shade that needs measuring, without opening it yet.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
+                const pendingShades = getPendingShades();
+
                 if (pendingShades.length === 0) {
                     return {
                         success: false,
@@ -244,6 +283,7 @@ export const useShadeManagerTools = ({
                 required: ["roomName"]
             },
             execute: async ({ roomName }) => {
+                const shadesByRoom = getShadesByRoom();
                 const matchingRoom = Object.keys(shadesByRoom).find(r =>
                     r.toLowerCase().includes(roomName.toLowerCase())
                 );
@@ -256,8 +296,10 @@ export const useShadeManagerTools = ({
                     };
                 }
 
-                if (setExpandedRooms) {
-                    setExpandedRooms(prev => new Set([...prev, matchingRoom]));
+                const setExpandedRoomsFn = setExpandedRoomsRef.current;
+                if (setExpandedRoomsFn) {
+                    console.log(`[ShadeManagerTools] Expanding room: ${matchingRoom}`);
+                    setExpandedRoomsFn(prev => new Set([...prev, matchingRoom]));
                 }
 
                 return {
@@ -267,7 +309,7 @@ export const useShadeManagerTools = ({
                 };
             }
         }
-    ], [shades, pendingShades, shadesByRoom, projectName, findShadeByName, findShadesByRoom, onSelectShade, setExpandedRooms]);
+    ], [getPendingShades, getShadesByRoom, findShadeByName, findShadesByRoom]);
 
     // Register/update tools when they change
     useEffect(() => {
@@ -281,8 +323,8 @@ export const useShadeManagerTools = ({
     }, [tools, registerTools, unregisterTools]);
 
     return {
-        pendingShades,
-        shadesByRoom
+        getPendingShades,
+        getShadesByRoom
     };
 };
 
