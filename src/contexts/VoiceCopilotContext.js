@@ -194,40 +194,72 @@ export const VoiceCopilotProvider = ({ children }) => {
 
     // --- TOOL EXECUTION ---
     const handleToolCall = useCallback(async (toolCall) => {
+        addLog(`Tool call received: ${JSON.stringify(toolCall).substring(0, 200)}`, 'tool');
         console.log('[Copilot] Tool call received:', toolCall);
+        console.log('[Copilot] Active tools:', Array.from(activeTools.keys()));
 
-        const functionCalls = toolCall.functionCalls || [toolCall];
+        // Gemini Live sends tool calls in different formats - handle all of them
+        let functionCalls = [];
+
+        // Format 1: { functionCalls: [...] }
+        if (toolCall.functionCalls) {
+            functionCalls = toolCall.functionCalls;
+        }
+        // Format 2: { functionCall: { name, args } } (single call)
+        else if (toolCall.functionCall) {
+            functionCalls = [toolCall.functionCall];
+        }
+        // Format 3: Direct { name, args }
+        else if (toolCall.name) {
+            functionCalls = [toolCall];
+        }
+        // Format 4: Array passed directly
+        else if (Array.isArray(toolCall)) {
+            functionCalls = toolCall;
+        }
+
+        if (functionCalls.length === 0) {
+            addLog(`No function calls found in: ${JSON.stringify(toolCall)}`, 'warn');
+            return;
+        }
+
         const responses = [];
 
         for (const call of functionCalls) {
-            const toolName = call.name || call.functionCall?.name;
-            const args = call.args || call.functionCall?.args || {};
+            const toolName = call.name;
+            const args = call.args || {};
+            const callId = call.id || `call_${Date.now()}`;
 
+            addLog(`Executing tool: ${toolName} with args: ${JSON.stringify(args)}`, 'tool');
             console.log(`[Copilot] Executing tool: ${toolName}`, args);
 
             const tool = activeTools.get(toolName);
             if (!tool) {
-                console.warn(`[Copilot] Tool not found: ${toolName}`);
+                const availableTools = Array.from(activeTools.keys()).join(', ');
+                addLog(`Tool not found: ${toolName}. Available: ${availableTools}`, 'error');
+                console.warn(`[Copilot] Tool not found: ${toolName}. Available tools:`, Array.from(activeTools.keys()));
                 responses.push({
-                    id: call.id,
+                    id: callId,
                     name: toolName,
-                    response: { error: `Tool '${toolName}' not registered` }
+                    response: { error: `Tool '${toolName}' not registered. Available: ${availableTools}` }
                 });
                 continue;
             }
 
             try {
                 const result = await tool.execute(args);
+                addLog(`Tool ${toolName} succeeded: ${JSON.stringify(result).substring(0, 100)}`, 'tool');
                 console.log(`[Copilot] Tool ${toolName} result:`, result);
                 responses.push({
-                    id: call.id,
+                    id: callId,
                     name: toolName,
                     response: result
                 });
             } catch (err) {
+                addLog(`Tool ${toolName} failed: ${err.message}`, 'error');
                 console.error(`[Copilot] Tool ${toolName} failed:`, err);
                 responses.push({
-                    id: call.id,
+                    id: callId,
                     name: toolName,
                     response: { error: err.message }
                 });
@@ -235,18 +267,22 @@ export const VoiceCopilotProvider = ({ children }) => {
         }
 
         // Send responses back to Gemini
+        // Gemini Live API expects snake_case format
         if (ws.current?.readyState === WebSocket.OPEN && responses.length > 0) {
-            ws.current.send(JSON.stringify({
+            const toolResponse = {
                 tool_response: {
                     function_responses: responses.map(r => ({
                         id: r.id,
                         name: r.name,
-                        response: r.response
+                        response: { output: r.response }
                     }))
                 }
-            }));
+            };
+            addLog(`Sending tool response: ${JSON.stringify(toolResponse).substring(0, 200)}`, 'tool');
+            console.log('[Copilot] Sending tool response:', toolResponse);
+            ws.current.send(JSON.stringify(toolResponse));
         }
-    }, [activeTools]);
+    }, [activeTools, addLog]);
 
     // --- AUDIO HELPERS ---
     const floatTo16BitPCM = (input) => {
@@ -395,7 +431,13 @@ export const VoiceCopilotProvider = ({ children }) => {
                     parameters: t.parameters
                 }));
 
+                // Log all registered tools for debugging
                 addLog(`Voice: ${settings.voice}, Persona: ${settings.persona}, Tools: ${toolDeclarations.length}`);
+                if (toolDeclarations.length > 0) {
+                    addLog(`Registered tools: ${toolDeclarations.map(t => t.name).join(', ')}`, 'tool');
+                } else {
+                    addLog('WARNING: No tools registered! Voice commands won\'t work.', 'warn');
+                }
 
                 const config = {
                     setup: {
@@ -495,6 +537,11 @@ AVAILABLE ACTIONS:
             // Extracted message handler for reuse with both blob and text
             const handleGeminiMessage = (data) => {
                 try {
+                    // Log ALL incoming messages for debugging (truncated)
+                    if (VERBOSE_LOGGING) {
+                        const keys = Object.keys(data);
+                        addLog(`Gemini message keys: [${keys.join(', ')}]`, 'debug');
+                    }
 
                     // Log setup complete
                     if (data.setupComplete) {
@@ -507,7 +554,7 @@ AVAILABLE ACTIONS:
                             // Text response
                             if (part.text) {
                                 addLog(`Gemini text: "${part.text.substring(0, 100)}..."`, 'response');
-                                setLastTranscript(part.text);
+                                setLastTranscript(prev => prev + (prev ? '\n' : '') + part.text);
                             }
                             // Audio response
                             if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
@@ -529,13 +576,28 @@ AVAILABLE ACTIONS:
                         receivedChunks = 0;
                     }
 
-                    // Handle tool calls
+                    // Handle tool calls - Gemini Live API uses multiple formats
+                    // Format 1: data.toolCall (direct)
                     if (data.toolCall) {
-                        addLog(`Tool call: ${JSON.stringify(data.toolCall)}`, 'tool');
+                        addLog(`Tool call (direct): ${JSON.stringify(data.toolCall).substring(0, 200)}`, 'tool');
                         handleToolCall(data.toolCall);
+                    }
+                    // Format 2: data.serverContent.modelTurn.parts[].functionCall
+                    if (data.serverContent?.modelTurn?.parts) {
+                        for (const part of data.serverContent.modelTurn.parts) {
+                            if (part.functionCall) {
+                                addLog(`Tool call (functionCall in parts): ${JSON.stringify(part.functionCall).substring(0, 200)}`, 'tool');
+                                handleToolCall(part.functionCall);
+                            }
+                        }
+                    }
+                    // Format 3: data.toolCallCancellation (tool was cancelled)
+                    if (data.toolCallCancellation) {
+                        addLog(`Tool call cancelled: ${JSON.stringify(data.toolCallCancellation)}`, 'warn');
                     }
                 } catch (e) {
                     addLog(`Message parse error: ${e.message}`, 'error');
+                    console.error('[Copilot] Message parse error:', e, 'Data:', data);
                 }
             };
 
