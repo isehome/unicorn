@@ -19,6 +19,7 @@ import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
 import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
+import { useAgentContext } from './hooks/useAgentContext';
 import './index.css';
 
 // Lazy load all route components
@@ -63,6 +64,9 @@ const AppRoutes = () => {
   const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute;
   const { isOnline } = useNetworkStatus();
   const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
+
+  // Initialize agent context for voice AI navigation (only on protected routes)
+  useAgentContext();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300 flex flex-col">

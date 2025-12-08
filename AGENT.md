@@ -1287,66 +1287,244 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
+**Last Updated:** 2024-12-08
+
 ## Overview
 
-The AI integration in Unicorn follows the **"Copilot" Architecture** (Option B).
-- **Goal**: A "Field Partner" that assists via voice/chat.
-- **Rule**: The AI acts as a **Power User**, using "Tools" to click buttons, navigate, and save data. It DOES NOT access the database directly.
+The AI integration in Unicorn follows the **"Copilot" Architecture**.
+- **Goal**: A "Field Partner" that assists via voice commands.
+- **Rule**: The AI acts as a **Power User**, using "Tools" to navigate, click buttons, and save data. It DOES NOT access the database directly.
 - **Safety**: App logic (validations, state) remains the source of truth.
+- **Platform**: Gemini Live API via WebSocket (real-time audio streaming).
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         User's iPhone/iPad                       │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
+│  │ Microphone  │───▶│ VoiceCopilot     │───▶│ Gemini Live   │  │
+│  │ (48kHz)     │    │ Context          │    │ WebSocket     │  │
+│  └─────────────┘    │ - Downsample     │    │ (16kHz PCM)   │  │
+│                     │ - Base64 encode  │    └───────┬───────┘  │
+│  ┌─────────────┐    │                  │            │          │
+│  │ Speaker     │◀───│ - Resample 24k   │◀───────────┘          │
+│  │ (48kHz)     │    │ - Play audio     │    Audio Response     │
+│  └─────────────┘    └────────┬─────────┘                       │
+│                              │                                  │
+│                     ┌────────▼─────────┐                       │
+│                     │ Tool Registry    │                       │
+│                     │ - Global tools   │                       │
+│                     │ - Context tools  │                       │
+│                     └────────┬─────────┘                       │
+│                              │                                  │
+│         ┌────────────────────┼────────────────────┐            │
+│         ▼                    ▼                    ▼            │
+│  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐       │
+│  │ useAgent    │    │ useShade     │    │ Page-       │       │
+│  │ Context     │    │ Tools        │    │ Specific    │       │
+│  │ (navigation)│    │ (measuring)  │    │ Tools       │       │
+│  └─────────────┘    └──────────────┘    └─────────────┘       │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Core Components
 
-### 1. Global AI Provider (`VoiceCopilotContext.js`)
-- Manages the WebSocket connection to Gemini Live.
-- Handles Audio I/O (Microphone & Speaker).
-- Manages the "Tool Registry".
+### 1. VoiceCopilotProvider (`src/contexts/VoiceCopilotContext.js`)
+The "brain" of the voice AI system.
 
-### 2. Tool Registry System
-Capabilities are "injected" based on the current page to give context-aware skills.
+**Responsibilities:**
+- WebSocket connection to Gemini Live API
+- Audio I/O (microphone capture, speaker playback)
+- Sample rate conversion (iOS uses 48kHz, Gemini uses 16kHz in / 24kHz out)
+- Tool registry management
+- Session state management
+
+**Key States:**
+- `idle` - No active session
+- `connecting` - Opening WebSocket
+- `listening` - Recording user audio
+- `speaking` - Playing Gemini's audio response
+- `error` - Something went wrong
+
+**iOS Safari Compatibility:**
+- Uses `webkitAudioContext` fallback
+- Handles blob responses (Safari sends WebSocket data as Blob)
+- No AudioContext constructor options (iOS ignores them)
+- Must resume AudioContext after user gesture
+
+### 2. useAgentContext (`src/hooks/useAgentContext.js`)
+Provides **location awareness** and **global navigation** tools.
+
+**Responsibilities:**
+- Tracks where user is in the app (which project, which section)
+- Registers global tools when voice session is active
+- Enables project switching via voice
 
 **Global Tools (Always Available):**
-- `navigate_to(url)`
-- `search_contacts(query)`
-- `create_task(title)`
+| Tool | Description |
+|------|-------------|
+| `get_current_location` | Returns current section, project, available actions |
+| `list_projects` | Lists all projects (with optional status filter) |
+| `navigate_to_project` | Go to a project by ID or name search |
+| `navigate_to_section` | Go to dashboard, issues, todos, people, etc. |
+| `go_back` | Navigate back |
 
-**Context Tools (Page Specific):**
-- **ShadeManager**: `registerTool({ set_measurement, list_shades })`
-- **IssueManager**: `registerTool({ update_priority, close_issue })`
+### 3. Page-Specific Tool Hooks
 
-### 3. User Settings (`AISettings.js`)
-- **Persona Config**: Users can adjust the "verbosity" and "personality" of their helper.
-- **Voice Selection**: Choose TTS voice (Puck/Charon).
-- **Custom Instructions**: Stored in `user_preferences` table.
+**useShadeTools (`src/hooks/useShadeTools.js`)**
+Registered when user is in the Shade measurement modal.
 
-## Implementation Guidelines
+| Tool | Description |
+|------|-------------|
+| `set_measurement` | Record a dimension (e.g., "top width", "left height") |
+| `get_current_context` | Get shade name, room, current values |
+| `save_and_close` | Save measurements and close modal |
 
-### A. How to Add a New Skill
-1.  **Define the Tool**:
-    ```javascript
-    const myTool = {
-      name: "update_status",
-      description: "Updates the status of the current item",
-      parameters: { status: "string" },
-      execute: async ({ status }) => { await updateStatus(status); }
-    };
-    ```
-2.  **Register on Mount**:
-    ```javascript
+### 4. User Settings (`src/components/UserSettings/AISettings.js`)
+- **Persona Config**: "Field Partner" (brief) vs "Teacher" (detailed)
+- **Voice Selection**: Puck, Charon, Kore, Fenrir, Aoede
+- **Custom Instructions**: User-defined context for AI
+- **Audio Diagnostics**: Test speaker and microphone
+
+## How Tools Work
+
+### Tool Definition Format
+```javascript
+const myTool = {
+    name: "tool_name",
+    description: "What this tool does - be specific for AI",
+    parameters: {
+        type: "OBJECT",
+        properties: {
+            paramName: {
+                type: "STRING", // or "NUMBER", "BOOLEAN"
+                description: "What this parameter is for"
+            }
+        },
+        required: ["paramName"] // Optional
+    },
+    execute: async ({ paramName }) => {
+        // Do something
+        return { success: true, message: "Done" };
+    }
+};
+```
+
+### Registering Tools
+```javascript
+import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+
+const MyComponent = () => {
+    const { registerTools, unregisterTools, status } = useVoiceCopilot();
+
     useEffect(() => {
-      registerTools([myTool]);
-      return () => unregisterTools([myTool]);
-    }, []);
-    ```
+        // Only register when voice session is active
+        if (status === 'listening' || status === 'speaking') {
+            registerTools([myTool]);
+            return () => unregisterTools(['tool_name']);
+        }
+    }, [status]);
+};
+```
 
-### B. The "Listener" Persona
-- The AI is instructed to be concise.
-- It proactively asks for missing data ("Width is set. What is the Height?").
-- It validates inputs using the App's own validation logic (via the Tool).
+## Adding a New Skill
+
+### Step 1: Create a Tool Hook
+```javascript
+// src/hooks/useMyFeatureTools.js
+import { useEffect, useMemo } from 'react';
+import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+
+export const useMyFeatureTools = ({ data, onSave }) => {
+    const { registerTools, unregisterTools } = useVoiceCopilot();
+
+    const tools = useMemo(() => [
+        {
+            name: "my_action",
+            description: "Does something with the current item",
+            parameters: {
+                type: "OBJECT",
+                properties: {
+                    value: { type: "STRING", description: "The value to set" }
+                },
+                required: ["value"]
+            },
+            execute: async ({ value }) => {
+                onSave(value);
+                return { success: true, message: `Set to ${value}` };
+            }
+        }
+    ], [data, onSave]);
+
+    useEffect(() => {
+        registerTools(tools);
+        return () => unregisterTools(tools.map(t => t.name));
+    }, [registerTools, unregisterTools, tools]);
+};
+```
+
+### Step 2: Use in Component
+```javascript
+import { useMyFeatureTools } from '../hooks/useMyFeatureTools';
+
+const MyFeatureModal = ({ data, onSave }) => {
+    // This registers tools when modal is open
+    useMyFeatureTools({ data, onSave });
+
+    return <div>...</div>;
+};
+```
+
+## Debugging
+
+### Debug Panel
+The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
+- Connection status
+- WebSocket state
+- Audio level meter
+- Chunks sent/received
+- Log messages
+
+### Settings > AI Copilot Settings
+- Platform detection (iOS/Safari)
+- Test Speaker button (plays 440Hz tone)
+- Test Microphone button (measures input level)
+- Debug log viewer
+
+### Common Issues
+
+| Problem | Cause | Solution |
+|---------|-------|----------|
+| "Blob data unexpected" | Old code before fix | Update VoiceCopilotContext.js |
+| No audio output | AudioContext suspended | Ensure user taps to start (iOS requirement) |
+| Audio level 0% | Mic permission denied | Check browser permissions |
+| WebSocket error | Invalid API key | Check REACT_APP_GEMINI_API_KEY in Vercel |
+| Tools not working | Not registered | Check status before registering |
 
 ## Key Files
-- `src/contexts/VoiceCopilotContext.js` (The Brain)
-- `src/components/UserSettings/AISettings.js` (The Configuration)
-- `src/hooks/useVoiceMeasurement.js` (Legacy/Specific prototype logic, moving to Registry)
+
+| File | Purpose |
+|------|---------|
+| `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
+| `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
+| `src/hooks/useShadeTools.js` | Shade measurement tools |
+| `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
+| `src/components/UserSettings/AISettings.js` | Voice/persona settings |
+
+## Environment Variables
+
+```bash
+REACT_APP_GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+## iOS Safari Notes
+
+1. **User Gesture Required**: AudioContext must be created/resumed from a user tap
+2. **48kHz Sample Rate**: iOS ignores sampleRate options, always uses 48kHz
+3. **Blob WebSocket Messages**: Safari may send WS messages as Blob instead of text
+4. **16px Font on Inputs**: Prevents iOS zoom when tapping inputs
 
 ---
 
