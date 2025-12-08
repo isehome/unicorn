@@ -792,9 +792,11 @@ AVAILABLE ACTIONS:
 
             // Send to Gemini using camelCase format per API spec
             // Docs: https://ai.google.dev/api/live
+            // IMPORTANT: Must include mimeType with sample rate!
             ws.current.send(JSON.stringify({
                 realtimeInput: {
                     audio: {
+                        mimeType: "audio/pcm;rate=16000",
                         data: base64Audio
                     }
                 }
