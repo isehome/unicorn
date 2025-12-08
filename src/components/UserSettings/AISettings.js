@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Bot, Mic, MessageSquare, Sparkles, UserCog } from 'lucide-react';
+import { Bot, Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { useVoiceCopilot } from '../../contexts/VoiceCopilotContext';
 
 const AISettings = () => {
     const { mode } = useTheme();
     const sectionStyles = enhancedStyles.sections[mode];
+
+    // Voice Copilot context for testing
+    const {
+        testAudioOutput,
+        testMicrophoneInput,
+        platformInfo,
+        debugLog,
+        clearDebugLog
+    } = useVoiceCopilot();
 
     // State - Initialize from localStorage
     const [persona, setPersona] = useState(() => localStorage.getItem('ai_persona') || 'brief');
     const [voice, setVoice] = useState(() => localStorage.getItem('ai_voice') || 'Puck');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
     const [isExpanded, setIsExpanded] = useState(false);
+
+    // Test state
+    const [testingAudio, setTestingAudio] = useState(false);
+    const [testingMic, setTestingMic] = useState(false);
+    const [audioTestResult, setAudioTestResult] = useState(null); // null, true, false
+    const [micTestResult, setMicTestResult] = useState(null);
+    const [showDebugLog, setShowDebugLog] = useState(false);
 
     // Save changes to localStorage
     useEffect(() => {
@@ -123,6 +140,116 @@ const AISettings = () => {
                     </div>
                     <p className="text-xs text-zinc-400 italic">
                         The AI will consider these instructions in every interaction.
+                    </p>
+                </div>
+
+                {/* Audio & Microphone Tests */}
+                <div className="space-y-3 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                        <TestTube size={14} />
+                        <span>Audio Diagnostics</span>
+                    </div>
+
+                    {/* Platform Info */}
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-lg p-3 text-xs">
+                        <div className="font-medium text-zinc-700 dark:text-zinc-300 mb-1">Platform Detected:</div>
+                        <div className="text-zinc-500 dark:text-zinc-400 space-y-0.5">
+                            <div>iOS: <span className={platformInfo?.isIOS ? 'text-amber-600 font-medium' : 'text-green-600'}>{platformInfo?.isIOS ? 'Yes' : 'No'}</span></div>
+                            <div>Safari: <span className={platformInfo?.isSafari ? 'text-amber-600 font-medium' : 'text-green-600'}>{platformInfo?.isSafari ? 'Yes' : 'No'}</span></div>
+                        </div>
+                    </div>
+
+                    {/* Test Buttons */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <button
+                            onClick={async () => {
+                                setTestingAudio(true);
+                                setAudioTestResult(null);
+                                const result = await testAudioOutput();
+                                setAudioTestResult(result);
+                                setTestingAudio(false);
+                            }}
+                            disabled={testingAudio}
+                            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                                audioTestResult === true ? 'bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400' :
+                                audioTestResult === false ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400' :
+                                'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                            }`}
+                        >
+                            {testingAudio ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : audioTestResult === true ? (
+                                <CheckCircle size={16} />
+                            ) : audioTestResult === false ? (
+                                <XCircle size={16} />
+                            ) : (
+                                <Volume2 size={16} />
+                            )}
+                            {testingAudio ? 'Playing...' : 'Test Speaker'}
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                setTestingMic(true);
+                                setMicTestResult(null);
+                                const result = await testMicrophoneInput();
+                                setMicTestResult(result);
+                                setTestingMic(false);
+                            }}
+                            disabled={testingMic}
+                            className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                                micTestResult === true ? 'bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400' :
+                                micTestResult === false ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400' :
+                                'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                            }`}
+                        >
+                            {testingMic ? (
+                                <Loader2 size={16} className="animate-spin" />
+                            ) : micTestResult === true ? (
+                                <CheckCircle size={16} />
+                            ) : micTestResult === false ? (
+                                <XCircle size={16} />
+                            ) : (
+                                <Mic size={16} />
+                            )}
+                            {testingMic ? 'Listening...' : 'Test Microphone'}
+                        </button>
+                    </div>
+
+                    {/* Debug Log Toggle */}
+                    <button
+                        onClick={() => setShowDebugLog(!showDebugLog)}
+                        className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                    >
+                        {showDebugLog ? 'Hide Debug Log' : 'Show Debug Log'}
+                    </button>
+
+                    {/* Debug Log */}
+                    {showDebugLog && (
+                        <div className="bg-black/90 text-green-400 p-3 rounded-lg font-mono text-xs max-h-60 overflow-y-auto">
+                            <div className="flex justify-between items-center mb-2 pb-2 border-b border-green-800">
+                                <span className="text-green-300 font-bold">Voice Copilot Log</span>
+                                <button onClick={clearDebugLog} className="text-green-500 hover:text-green-300 text-xs">Clear</button>
+                            </div>
+                            {debugLog.length === 0 ? (
+                                <div className="text-green-700 text-center py-4">No logs yet. Run a test above.</div>
+                            ) : (
+                                debugLog.slice(-30).map((log, i) => (
+                                    <div key={i} className={`py-0.5 ${
+                                        log.type === 'error' ? 'text-red-400' :
+                                        log.type === 'warn' ? 'text-yellow-400' :
+                                        log.type === 'audio' ? 'text-cyan-400' :
+                                        'text-green-400'
+                                    }`}>
+                                        <span className="text-green-700">{log.timestamp}</span> {log.message}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+
+                    <p className="text-xs text-zinc-400 italic">
+                        Use these tests to verify audio works on your device. iOS Safari may require tapping to enable audio.
                     </p>
                 </div>
             </div>

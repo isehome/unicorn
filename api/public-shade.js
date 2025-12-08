@@ -469,6 +469,70 @@ async function handleApprove(body) {
   return { status: 200, data: payload };
 }
 
+// Handle shade unapproval from external portal
+async function handleUnapprove(body) {
+  const { token, sessionToken, shadeId } = body || {};
+
+  if (!shadeId) {
+    return { status: 400, data: { error: 'Shade ID required' } };
+  }
+
+  const link = await fetchLinkByToken(token);
+  if (!link) {
+    return { status: 404, data: { status: 'invalid', reason: 'link_not_found' } };
+  }
+
+  if (!isSessionValid(link, sessionToken)) {
+    return { status: 401, data: { error: 'Session expired' } };
+  }
+
+  // Verify the shade belongs to this project
+  const { data: shade, error: shadeError } = await supabase
+    .from('project_shades')
+    .select('id, project_id, approval_status')
+    .eq('id', shadeId)
+    .eq('project_id', link.project_id)
+    .maybeSingle();
+
+  if (shadeError || !shade) {
+    return { status: 404, data: { error: 'Shade not found or not in this project' } };
+  }
+
+  // Update the shade approval status back to pending
+  const { error: updateError } = await supabase
+    .from('project_shades')
+    .update({
+      approval_status: 'pending',
+      approved_at: null,
+      approved_by: null,
+      approved_by_email: null
+    })
+    .eq('id', shadeId);
+
+  if (updateError) {
+    console.error('[PublicShade] Error unapproving shade:', updateError);
+    return { status: 500, data: { error: 'Failed to undo approval' } };
+  }
+
+  // Clear project-level approval if it was set
+  await supabase
+    .from('projects')
+    .update({
+      shades_approved_at: null,
+      shades_approved_by: null,
+      shades_approved_by_email: null,
+      shades_approval_notification_pending: false
+    })
+    .eq('id', link.project_id);
+
+  console.log('[PublicShade] Shade unapproved:', shadeId);
+
+  // Return updated payload
+  const payload = await buildPortalPayload(link, true);
+  payload.allApproved = false;
+  return { status: 200, data: payload };
+}
+
 // Handle comment from external portal
 async function handleComment(body) {
   const { token, sessionToken, shadeId, comment } = body || {};
@@ -644,6 +708,9 @@ module.exports = async (req, res) => {
         break;
       case 'approve':
         result = await handleApprove(req.body);
+        break;
+      case 'unapprove':
+        result = await handleUnapprove(req.body);
         break;
       case 'comment':
         result = await handleComment(req.body);

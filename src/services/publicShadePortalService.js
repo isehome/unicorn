@@ -28,6 +28,9 @@ export const publicShadePortalService = {
   approve(token, sessionToken, shadeId) {
     return request({ action: 'approve', token, sessionToken, shadeId });
   },
+  unapprove(token, sessionToken, shadeId) {
+    return request({ action: 'unapprove', token, sessionToken, shadeId });
+  },
   addComment(token, sessionToken, shadeId, comment) {
     return request({ action: 'comment', token, sessionToken, shadeId, comment });
   },

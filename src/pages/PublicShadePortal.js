@@ -50,6 +50,13 @@ const SendIcon = () => (
   </svg>
 );
 
+const UndoIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 7v6h6"/>
+    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+  </svg>
+);
+
 const getStatusBadge = (status) => {
   const normalized = (status || '').toLowerCase();
   if (normalized === 'approved') {
@@ -193,6 +200,29 @@ const PublicShadePortal = () => {
     } catch (err) {
       console.error('[PublicShadePortal] Approve failed:', err);
       setError(err.message || 'Failed to approve shade');
+    } finally {
+      setApprovingShade(null);
+    }
+  };
+
+  const handleUnapprove = async (shadeId) => {
+    if (!sessionRef.current || approvingShade) return;
+    try {
+      setApprovingShade(shadeId);
+      const response = await publicShadePortalService.unapprove(token, sessionRef.current, shadeId);
+      if (response.shades) {
+        setPortalData(prev => ({ ...prev, shades: response.shades }));
+        // Check if all shades are now approved (likely not after unapprove)
+        const nowAllApproved = response.shades.length > 0 && response.shades.every(s => s.approvalStatus === 'approved');
+        setAllApproved(nowAllApproved);
+      }
+      // API returns allApproved: false when unapproving
+      if (response.allApproved === false) {
+        setAllApproved(false);
+      }
+    } catch (err) {
+      console.error('[PublicShadePortal] Unapprove failed:', err);
+      setError(err.message || 'Failed to undo approval');
     } finally {
       setApprovingShade(null);
     }
@@ -687,7 +717,7 @@ const PublicShadePortal = () => {
                               {/* Action buttons row */}
                               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
                                 {/* Approve button - only show if not already approved */}
-                                {shade.approvalStatus !== 'approved' && (
+                                {shade.approvalStatus !== 'approved' ? (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleApprove(shade.id); }}
                                     disabled={approvingShade === shade.id}
@@ -707,6 +737,27 @@ const PublicShadePortal = () => {
                                   >
                                     <CheckIcon />
                                     {approvingShade === shade.id ? 'Approving...' : 'Approve'}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleUnapprove(shade.id); }}
+                                    disabled={approvingShade === shade.id}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '6px 12px',
+                                      backgroundColor: approvingShade === shade.id ? '#d1d5db' : '#f3f4f6',
+                                      color: approvingShade === shade.id ? '#9ca3af' : '#6b7280',
+                                      border: '1px solid #d1d5db',
+                                      borderRadius: '8px',
+                                      fontSize: '13px',
+                                      fontWeight: '500',
+                                      cursor: approvingShade === shade.id ? 'wait' : 'pointer'
+                                    }}
+                                  >
+                                    <UndoIcon />
+                                    {approvingShade === shade.id ? 'Undoing...' : 'Undo Approval'}
                                   </button>
                                 )}
 

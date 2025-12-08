@@ -15,7 +15,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(false);
     const [newComment, setNewComment] = useState('');
-    const [isInternalComment, setIsInternalComment] = useState(true);
+    const [isPublicComment, setIsPublicComment] = useState(false);
     const [submittingComment, setSubmittingComment] = useState(false);
 
     // Derived state for blinding
@@ -85,7 +85,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                     shade_id: shade.id,
                     project_id: shade.project_id,
                     comment_text: newComment.trim(),
-                    is_internal: isInternalComment,
+                    is_internal: !isPublicComment,
                     author_id: currentUser?.id,
                     author_name: currentUser?.name || currentUser?.displayName || 'Staff',
                     author_email: currentUser?.email
@@ -278,21 +278,20 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                 ) : (
                                     <div className="space-y-3">
                                         {comments.map(comment => (
-                                            <div key={comment.id} className={`p-3 rounded-lg border ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'}`}>
+                                            <div
+                                                key={comment.id}
+                                                className={`p-3 rounded-xl border ${comment.is_internal === false
+                                                    ? 'border-amber-300 bg-amber-50 dark:border-amber-500/50 dark:bg-amber-900/10'
+                                                    : mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'
+                                                }`}
+                                            >
                                                 <div className="flex items-start justify-between gap-2 mb-1">
                                                     <span className={`text-sm font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-800'}`}>
                                                         {comment.author_name || 'Unknown'}
                                                     </span>
-                                                    <div className="flex items-center gap-2">
-                                                        {comment.is_internal ? (
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Staff Only</span>
-                                                        ) : (
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Visible to Designer</span>
-                                                        )}
-                                                        <span className="text-xs text-zinc-400">
-                                                            {new Date(comment.created_at).toLocaleString()}
-                                                        </span>
-                                                    </div>
+                                                    <span className="text-xs text-zinc-400">
+                                                        {new Date(comment.created_at).toLocaleString()}
+                                                    </span>
                                                 </div>
                                                 <p className={`text-sm ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-600'}`}>
                                                     {comment.comment_text}
@@ -305,29 +304,27 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
                             {/* Add Comment Form */}
                             <div className={`rounded-xl border p-4 ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'}`}>
-                                <div className="flex items-center gap-3 mb-3">
-                                    <label className={`text-sm font-medium ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                                        Add Comment
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            checked={!isInternalComment}
-                                            onChange={(e) => setIsInternalComment(!e.target.checked)}
-                                            className="rounded border-zinc-300"
-                                        />
-                                        <span className={`${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                                            Visible to designer {!isInternalComment && <span className="text-green-500">(will appear on external portal)</span>}
-                                        </span>
-                                    </label>
-                                </div>
+                                <label className="flex items-center gap-2 text-sm cursor-pointer select-none mb-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={isPublicComment}
+                                        onChange={(e) => setIsPublicComment(e.target.checked)}
+                                        className="rounded border-zinc-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className={isPublicComment ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-zinc-500 dark:text-zinc-400'}>
+                                        Visible to External Stakeholders
+                                    </span>
+                                </label>
                                 <div className="flex gap-2">
                                     <textarea
                                         value={newComment}
                                         onChange={(e) => setNewComment(e.target.value)}
-                                        placeholder="Write a comment..."
+                                        placeholder={isPublicComment ? "Write a public comment..." : "Write an internal comment..."}
                                         rows={2}
-                                        className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                        className={`flex-1 px-3 py-2 rounded-xl border resize-none ${isPublicComment
+                                            ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-500/50 focus:ring-amber-500 focus:border-amber-500'
+                                            : mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'
+                                        }`}
                                         onKeyDown={(e) => {
                                             if (e.key === 'Enter' && !e.shiftKey) {
                                                 e.preventDefault();

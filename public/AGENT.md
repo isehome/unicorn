@@ -1347,3 +1347,147 @@ Capabilities are "injected" based on the current page to give context-aware skil
 - `src/contexts/VoiceCopilotContext.js` (The Brain)
 - `src/components/UserSettings/AISettings.js` (The Configuration)
 - `src/hooks/useVoiceMeasurement.js` (Legacy/Specific prototype logic, moving to Registry)
+
+---
+
+# PART 4: EXTERNAL PORTALS (PUBLIC ACCESS)
+
+## Overview
+
+External portals allow stakeholders (designers, clients) to access project information without logging into the main app. They use:
+- **Token-based authentication** with SHA-256 hashing
+- **OTP verification** via email
+- **Session tokens** stored in browser localStorage
+
+## Portal Types
+
+| Portal | Route | API | Purpose |
+|--------|-------|-----|---------|
+| Issue Portal | `/public/issues/:token` | `/api/public-issue` | View/comment on issues |
+| Shade Portal | `/shade-portal/:token` | `/api/public-shade` | Review shade measurements |
+
+## Key Architecture
+
+### Token Flow
+1. Internal user generates link → token created + hashed → stored in DB
+2. External user visits URL with token
+3. API hashes incoming token → compares to DB hash
+4. If match, show OTP verification
+5. After OTP verified, create session token → stored in localStorage
+
+### Files
+| Component | File |
+|-----------|------|
+| Issue Portal UI | `src/pages/PublicIssuePortal.js` |
+| Shade Portal UI | `src/pages/PublicShadePortal.js` |
+| Issue API | `api/public-issue.js` |
+| Shade API | `api/public-shade.js` |
+| Shade Link Service | `src/services/shadePublicAccessService.js` |
+
+### Database Tables
+- `issue_public_access_links` - Issue portal tokens
+- `shade_public_access_links` - Shade portal tokens
+
+## Standalone Portal Pattern
+
+**External portals must be STANDALONE** - they cannot use internal contexts like `ThemeContext` because:
+1. External users are not authenticated
+2. Portals may be embedded or opened separately
+3. Must work without any app state
+
+```jsx
+// ✅ CORRECT - Inline styles, no context dependencies
+const PublicShadePortal = () => {
+  const styles = {
+    container: { minHeight: '100vh', backgroundColor: '#f9fafb' },
+    card: { backgroundColor: '#ffffff', borderRadius: '12px', padding: '24px' }
+  };
+
+  return <div style={styles.container}>...</div>;
+};
+
+// ❌ WRONG - Depends on ThemeContext (will crash for external users)
+const PublicShadePortal = () => {
+  const { mode } = useTheme();  // External users don't have this!
+  return <div className={mode === 'dark' ? 'bg-zinc-900' : 'bg-white'}>...</div>;
+};
+```
+
+## External Links in Portals
+
+### Lutron Fabric Search Links
+**Use `/search/results` endpoint** - it auto-executes the search:
+
+```jsx
+// ✅ CORRECT - Auto-executes search
+href={`https://www.lutronfabrics.com/us/en/search/results?q=${encodeURIComponent(fabricCode)}`}
+
+// ❌ WRONG - Just shows search page, doesn't execute
+href={`https://www.lutronfabrics.com/us/en/search?q=${encodeURIComponent(fabricCode)}`}
+```
+
+### Link Click Handlers
+Always add `onClick={(e) => e.stopPropagation()}` to prevent parent handlers from blocking:
+
+```jsx
+<a
+  href={fabricUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  onClick={(e) => e.stopPropagation()}  // Critical!
+>
+  {fabricCode}
+</a>
+```
+
+## Service Role vs RLS
+
+External portal APIs use Supabase **service role key** to bypass RLS. However:
+- Some tables may have restrictive RLS that blocks even service role
+- Handle missing data gracefully (don't block the portal)
+
+```javascript
+// ✅ CORRECT - Handle RLS blocking gracefully
+const project = await fetchProject(link.project_id);
+if (!project) {
+  console.log('[PublicShade] Project not found (RLS?)', link.project_id);
+  // Continue without project data - don't block the portal
+}
+
+// ❌ WRONG - Blocking on missing project
+if (!project) {
+  return { status: 'invalid', reason: 'project_not_found' };
+}
+```
+
+## Comments System (Reusable Pattern)
+
+Both Issue and Shade portals use the same comment pattern:
+- Comments stored in `{type}_comments` table
+- `is_internal` flag for internal-only comments (not shown to external users)
+- Collapsible by default on external portal
+- External users can add comments (marked as external)
+
+### Comment Table Schema
+```sql
+CREATE TABLE shade_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shade_id UUID REFERENCES project_shades(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id),
+  content TEXT NOT NULL,
+  is_internal BOOLEAN DEFAULT false,
+  created_by UUID,
+  created_by_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+## Troubleshooting External Portals
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| "Link not found" | Token hash mismatch | Check hashing algorithm matches (SHA-256) |
+| Project shows null | RLS blocking service role | Add policy: `CREATE POLICY service_role_select ON projects FOR SELECT TO service_role USING (true);` |
+| Fabric link doesn't search | Using `/search` not `/search/results` | Change URL to `/search/results?q=` |
+| Link doesn't open | Missing stopPropagation | Add `onClick={(e) => e.stopPropagation()}` |
+| Orphaned links | Project deleted | Run cleanup: `DELETE FROM shade_public_access_links WHERE project_id NOT IN (SELECT id FROM projects);` |

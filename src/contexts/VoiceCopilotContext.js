@@ -4,10 +4,14 @@ const VoiceCopilotContext = createContext(null);
 
 // iOS Safari detection
 const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isSafari = typeof navigator !== 'undefined' && /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 // Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
+
+// Verbose logging flag - enable for debugging
+const VERBOSE_LOGGING = true;
 
 export const useVoiceCopilot = () => {
     const context = useContext(VoiceCopilotContext);
@@ -41,6 +45,11 @@ export const VoiceCopilotProvider = ({ children }) => {
     const [wsState, setWsState] = useState('closed');
     const [audioChunksSent, setAudioChunksSent] = useState(0);
     const [audioChunksReceived, setAudioChunksReceived] = useState(0);
+    const [platformInfo] = useState(() => ({
+        isIOS,
+        isSafari,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
+    }));
 
     // Debug logging helper
     const addLog = useCallback((message, type = 'info') => {
@@ -98,7 +107,18 @@ export const VoiceCopilotProvider = ({ children }) => {
 
     // --- AUDIO PLAYBACK ---
     const playNextChunk = useCallback(() => {
-        if (!audioContext.current || audioQueue.current.length === 0 || isPlaying.current) return;
+        if (!audioContext.current) {
+            if (VERBOSE_LOGGING) addLog('playNextChunk: No audioContext', 'error');
+            return;
+        }
+        if (audioQueue.current.length === 0) {
+            if (VERBOSE_LOGGING) addLog('playNextChunk: Queue empty', 'audio');
+            return;
+        }
+        if (isPlaying.current) {
+            if (VERBOSE_LOGGING) addLog('playNextChunk: Already playing', 'audio');
+            return;
+        }
 
         isPlaying.current = true;
         const audioData = audioQueue.current.shift();
@@ -106,7 +126,33 @@ export const VoiceCopilotProvider = ({ children }) => {
         try {
             // Gemini sends audio at 24kHz, but device may use different rate (iOS uses 48kHz)
             const deviceSampleRate = audioContext.current.sampleRate;
+            const contextState = audioContext.current.state;
+
+            if (VERBOSE_LOGGING) {
+                addLog(`Audio playback: contextState=${contextState}, deviceRate=${deviceSampleRate}, inputSamples=${audioData.length}`, 'audio');
+            }
+
+            // iOS Safari: AudioContext may be suspended - must resume from user gesture
+            if (contextState === 'suspended') {
+                addLog('AudioContext suspended - attempting resume...', 'warn');
+                audioContext.current.resume().then(() => {
+                    addLog('AudioContext resumed successfully', 'audio');
+                    // Retry playback after resume
+                    isPlaying.current = false;
+                    audioQueue.current.unshift(audioData); // Put back in queue
+                    playNextChunk();
+                }).catch(e => {
+                    addLog(`AudioContext resume failed: ${e.message}`, 'error');
+                    isPlaying.current = false;
+                });
+                return;
+            }
+
             const resampledData = resampleAudio(audioData, GEMINI_OUTPUT_SAMPLE_RATE, deviceSampleRate);
+
+            if (VERBOSE_LOGGING) {
+                addLog(`Resampled: ${audioData.length} → ${resampledData.length} samples (${GEMINI_OUTPUT_SAMPLE_RATE}→${deviceSampleRate}Hz)`, 'audio');
+            }
 
             const buffer = audioContext.current.createBuffer(1, resampledData.length, deviceSampleRate);
             buffer.getChannelData(0).set(resampledData);
@@ -116,22 +162,35 @@ export const VoiceCopilotProvider = ({ children }) => {
             source.connect(audioContext.current.destination);
 
             source.onended = () => {
+                if (VERBOSE_LOGGING) addLog(`Chunk played (${resampledData.length} samples)`, 'audio');
                 isPlaying.current = false;
                 if (audioQueue.current.length > 0) {
                     playNextChunk();
                 } else {
+                    addLog('Audio playback complete', 'audio');
                     // Done speaking, go back to idle or listening
                     setStatus(recordingActive.current ? 'listening' : 'idle');
                 }
             };
 
+            source.onerror = (e) => {
+                addLog(`AudioBufferSource error: ${e}`, 'error');
+                isPlaying.current = false;
+            };
+
             setStatus('speaking');
-            source.start();
+            source.start(0);
+            if (VERBOSE_LOGGING) addLog('AudioBufferSource started', 'audio');
         } catch (e) {
+            addLog(`Audio playback error: ${e.message}`, 'error');
             console.error('[Copilot] Audio playback error:', e);
             isPlaying.current = false;
+            // Try next chunk
+            if (audioQueue.current.length > 0) {
+                setTimeout(() => playNextChunk(), 100);
+            }
         }
-    }, []);
+    }, [addLog]);
 
     // --- TOOL EXECUTION ---
     const handleToolCall = useCallback(async (toolCall) => {
@@ -546,6 +605,108 @@ export const VoiceCopilotProvider = ({ children }) => {
         setAudioChunksReceived(0);
     }, []);
 
+    // Test audio output - plays a simple tone to verify audio works
+    const testAudioOutput = useCallback(async () => {
+        addLog('Testing audio output...', 'info');
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            const testCtx = new AudioContextClass();
+            addLog(`Test AudioContext created: state=${testCtx.state}, sampleRate=${testCtx.sampleRate}`, 'audio');
+
+            // Resume if suspended (iOS requirement)
+            if (testCtx.state === 'suspended') {
+                addLog('Test context suspended, resuming...', 'warn');
+                await testCtx.resume();
+                addLog(`Resumed: state=${testCtx.state}`, 'audio');
+            }
+
+            // Create a simple 440Hz tone for 0.5 seconds
+            const duration = 0.5;
+            const frequency = 440;
+            const sampleRate = testCtx.sampleRate;
+            const numSamples = Math.floor(duration * sampleRate);
+
+            const buffer = testCtx.createBuffer(1, numSamples, sampleRate);
+            const channelData = buffer.getChannelData(0);
+
+            for (let i = 0; i < numSamples; i++) {
+                // Sine wave with fade in/out to avoid clicks
+                const t = i / sampleRate;
+                const envelope = Math.min(1, t * 20) * Math.min(1, (duration - t) * 20);
+                channelData[i] = Math.sin(2 * Math.PI * frequency * t) * 0.3 * envelope;
+            }
+
+            const source = testCtx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(testCtx.destination);
+
+            source.onended = () => {
+                addLog('Test tone completed successfully!', 'info');
+                testCtx.close();
+            };
+
+            source.start(0);
+            addLog(`Playing ${frequency}Hz test tone for ${duration}s...`, 'audio');
+            return true;
+        } catch (e) {
+            addLog(`Test audio failed: ${e.message}`, 'error');
+            console.error('[Copilot] Test audio error:', e);
+            return false;
+        }
+    }, [addLog]);
+
+    // Test microphone input
+    const testMicrophoneInput = useCallback(async () => {
+        addLog('Testing microphone input...', 'info');
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }
+            });
+            const track = stream.getAudioTracks()[0];
+            const settings = track.getSettings();
+            addLog(`Mic access granted: ${track.label}`, 'info');
+            addLog(`Mic settings: sampleRate=${settings.sampleRate || 'default'}, channelCount=${settings.channelCount}`, 'audio');
+
+            // Create context to measure audio level
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            const testCtx = new AudioContextClass();
+
+            if (testCtx.state === 'suspended') {
+                await testCtx.resume();
+            }
+
+            addLog(`Test context: sampleRate=${testCtx.sampleRate}Hz`, 'audio');
+
+            const source = testCtx.createMediaStreamSource(stream);
+            const analyser = testCtx.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+
+            // Measure for 2 seconds
+            let maxLevel = 0;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+            const measureInterval = setInterval(() => {
+                analyser.getByteFrequencyData(dataArray);
+                const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+                if (avg > maxLevel) maxLevel = avg;
+            }, 50);
+
+            setTimeout(() => {
+                clearInterval(measureInterval);
+                stream.getTracks().forEach(t => t.stop());
+                testCtx.close();
+                addLog(`Mic test complete. Max level: ${Math.round(maxLevel)} (speak louder if < 10)`, maxLevel > 10 ? 'info' : 'warn');
+            }, 2000);
+
+            return true;
+        } catch (e) {
+            addLog(`Mic test failed: ${e.message}`, 'error');
+            console.error('[Copilot] Mic test error:', e);
+            return false;
+        }
+    }, [addLog]);
+
     return (
         <VoiceCopilotContext.Provider value={{
             // State
@@ -561,6 +722,7 @@ export const VoiceCopilotProvider = ({ children }) => {
             wsState,
             audioChunksSent,
             audioChunksReceived,
+            platformInfo,
             clearDebugLog,
 
             // Actions
@@ -569,6 +731,10 @@ export const VoiceCopilotProvider = ({ children }) => {
             toggle,
             registerTools,
             unregisterTools,
+
+            // Test functions
+            testAudioOutput,
+            testMicrophoneInput,
 
             // Legacy aliases
             connect: startSession,
