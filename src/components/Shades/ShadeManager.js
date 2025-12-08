@@ -19,7 +19,7 @@ import { enhancedStyles } from '../../styles/styleSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { projectStakeholdersService, projectsService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';
-import { notifyShadeReviewRequest } from '../../services/issueNotificationService';
+import { notifyShadeReviewRequest, processPendingShadeNotifications } from '../../services/issueNotificationService';
 import { shadePublicAccessService } from '../../services/shadePublicAccessService';
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
@@ -216,6 +216,23 @@ const ShadeManager = () => {
     useEffect(() => {
         loadShades();
     }, [loadShades]);
+
+    // Process any pending shade approval notifications when viewing this page
+    useEffect(() => {
+        const checkPendingNotifications = async () => {
+            if (!projectId || !user) return;
+            try {
+                const graphToken = await acquireToken();
+                if (graphToken) {
+                    await processPendingShadeNotifications(projectId, { authToken: graphToken });
+                }
+            } catch (err) {
+                // Silent fail - notifications are not critical
+                console.warn('[ShadeManager] Failed to process pending notifications:', err);
+            }
+        };
+        checkPendingNotifications();
+    }, [projectId, user, acquireToken]);
 
     const handleFileUpload = async (event) => {
         const file = event.target.files?.[0];

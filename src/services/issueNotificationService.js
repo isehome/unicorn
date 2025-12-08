@@ -484,6 +484,42 @@ export const processPendingNotifications = async (issueId, options = {}) => {
   }
 };
 
+// Process pending notifications for shade approvals (called when internal user views shades)
+export const processPendingShadeNotifications = async (projectId, options = {}) => {
+  if (!projectId) return { processed: 0 };
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  if (options.authToken) {
+    headers.Authorization = `Bearer ${options.authToken}`;
+  }
+
+  try {
+    const response = await fetch('/api/process-pending-shade-notifications', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ projectId })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      console.warn('[IssueNotificationService] Failed to process pending shade notifications:', error);
+      return { processed: 0, error: error.error };
+    }
+
+    const result = await response.json();
+    if (result.processed > 0) {
+      console.log('[IssueNotificationService] Processed pending shade notifications:', result);
+    }
+    return result;
+  } catch (error) {
+    console.warn('[IssueNotificationService] Error processing pending shade notifications:', error);
+    return { processed: 0, error: error.message };
+  }
+};
+
 /**
  * Notify a designer/stakeholder that shades are ready for review.
  * Uses the same email infrastructure as issue notifications.
@@ -556,6 +592,78 @@ ${WHITELIST_NOTICE_TEXT}${textFooter}`;
       html,
       text,
       sendAsUser: true
+    },
+    { authToken: options?.authToken }
+  );
+};
+
+/**
+ * Notify internal stakeholders that all shades have been approved by the designer/stakeholder.
+ * This is called when an external stakeholder approves the final shade.
+ */
+export const notifyShadesAllApproved = async ({ project, approvedBy, approvedByEmail, shadeCount, companySettings }, options = {}) => {
+  if (!project?.id) {
+    console.warn('[IssueNotificationService] notifyShadesAllApproved: No project provided');
+    return;
+  }
+
+  // Fetch company settings if not provided
+  let settings = companySettings;
+  if (!settings) {
+    try {
+      settings = await companySettingsService.getCompanySettings();
+    } catch (err) {
+      console.warn('[IssueNotificationService] Could not fetch company settings:', err.message);
+    }
+  }
+
+  const projectName = project?.name || 'the project';
+  const approver = approvedBy || approvedByEmail || 'The designer';
+  const count = shadeCount || 'all';
+
+  const safeProjectName = escapeHtml(projectName);
+  const safeApprover = escapeHtml(approver);
+  const projectUrl = options.projectUrl || '#';
+
+  const emailFooter = generateEmailFooter(settings, projectName);
+  const textFooter = generateTextFooter(settings, projectName);
+
+  console.log('[IssueNotificationService] notifyShadesAllApproved:', {
+    projectId: project.id,
+    projectName,
+    approvedBy,
+    shadeCount,
+    hasAuthToken: !!options?.authToken,
+    recipients: options.recipients?.length
+  });
+
+  const htmlContent = `
+    <p>Great news! <strong>${safeApprover}</strong> has approved all ${count} window covering selections for <strong>${safeProjectName}</strong>.</p>
+    <p>The shades are now ready to proceed to the next stage.</p>
+    <p><a href="${escapeHtml(projectUrl)}" style="display:inline-block;padding:12px 24px;background-color:#22c55e;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;">View Project</a></p>
+    ${emailFooter}
+  `;
+  const html = wrapEmailHtml(htmlContent);
+
+  const text = `Great news! ${approver} has approved all ${count} window covering selections for ${projectName}.
+
+The shades are now ready to proceed to the next stage.
+
+View Project: ${projectUrl}${textFooter}`;
+
+  // Send to specified recipients (internal project team)
+  const recipients = options.recipients || [];
+  if (recipients.length === 0) {
+    console.warn('[IssueNotificationService] notifyShadesAllApproved: No recipients provided');
+    return;
+  }
+
+  await postNotification(
+    {
+      to: recipients,
+      subject: `✓ All Window Coverings Approved - ${projectName}`,
+      html,
+      text
     },
     { authToken: options?.authToken }
   );

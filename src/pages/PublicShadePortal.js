@@ -31,6 +31,25 @@ const ImageIcon = () => (
   </svg>
 );
 
+const CheckIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 6 9 17l-5-5"/>
+  </svg>
+);
+
+const MessageIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m22 2-7 20-4-9-9-4Z"/>
+    <path d="M22 2 11 13"/>
+  </svg>
+);
+
 const getStatusBadge = (status) => {
   const normalized = (status || '').toLowerCase();
   if (normalized === 'approved') {
@@ -53,6 +72,12 @@ const PublicShadePortal = () => {
   const [otpCode, setOtpCode] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [expandedRooms, setExpandedRooms] = useState(new Set());
+  const [approvingShade, setApprovingShade] = useState(null);
+  const [expandedComments, setExpandedComments] = useState(new Set());
+  const [commentsByShade, setCommentsByShade] = useState({});
+  const [newComments, setNewComments] = useState({});
+  const [submittingComment, setSubmittingComment] = useState(null);
+  const [allApproved, setAllApproved] = useState(false);
 
   const loadPortal = useCallback(async () => {
     if (!token) return;
@@ -70,6 +95,9 @@ const PublicShadePortal = () => {
       if (data?.shades) {
         const rooms = new Set(data.shades.map(s => s.roomName || 'Unassigned'));
         setExpandedRooms(rooms);
+        // Check if all shades are already approved
+        const allAlreadyApproved = data.shades.length > 0 && data.shades.every(s => s.approvalStatus === 'approved');
+        setAllApproved(allAlreadyApproved);
       }
     } catch (err) {
       console.error('[PublicShadePortal] Failed to load portal:', err);
@@ -101,6 +129,9 @@ const PublicShadePortal = () => {
       if (data?.shades) {
         const rooms = new Set(data.shades.map(s => s.roomName || 'Unassigned'));
         setExpandedRooms(rooms);
+        // Check if all shades are already approved
+        const allAlreadyApproved = data.shades.length > 0 && data.shades.every(s => s.approvalStatus === 'approved');
+        setAllApproved(allAlreadyApproved);
       }
     } catch (err) {
       console.error('OTP verify failed:', err);
@@ -117,6 +148,76 @@ const PublicShadePortal = () => {
       else next.add(roomName);
       return next;
     });
+  };
+
+  const toggleComments = async (shadeId) => {
+    const isCurrentlyExpanded = expandedComments.has(shadeId);
+
+    setExpandedComments(prev => {
+      const next = new Set(prev);
+      if (next.has(shadeId)) next.delete(shadeId);
+      else next.add(shadeId);
+      return next;
+    });
+
+    // Fetch comments when expanding (if not already loaded)
+    if (!isCurrentlyExpanded && !commentsByShade[shadeId] && sessionRef.current) {
+      try {
+        const response = await publicShadePortalService.getComments(token, sessionRef.current, shadeId);
+        if (response.comments) {
+          setCommentsByShade(prev => ({ ...prev, [shadeId]: response.comments }));
+        }
+      } catch (err) {
+        console.error('[PublicShadePortal] Failed to load comments:', err);
+      }
+    }
+  };
+
+  const handleApprove = async (shadeId) => {
+    if (!sessionRef.current || approvingShade) return;
+    try {
+      setApprovingShade(shadeId);
+      const response = await publicShadePortalService.approve(token, sessionRef.current, shadeId);
+      if (response.shades) {
+        setPortalData(prev => ({ ...prev, shades: response.shades }));
+        // Check if all shades are now approved
+        const nowAllApproved = response.shades.length > 0 && response.shades.every(s => s.approvalStatus === 'approved');
+        if (nowAllApproved) {
+          setAllApproved(true);
+        }
+      }
+      // Also check the explicit flag from API
+      if (response.allApproved) {
+        setAllApproved(true);
+      }
+    } catch (err) {
+      console.error('[PublicShadePortal] Approve failed:', err);
+      setError(err.message || 'Failed to approve shade');
+    } finally {
+      setApprovingShade(null);
+    }
+  };
+
+  const handleCommentChange = (shadeId, value) => {
+    setNewComments(prev => ({ ...prev, [shadeId]: value }));
+  };
+
+  const handleSubmitComment = async (shadeId) => {
+    const commentText = (newComments[shadeId] || '').trim();
+    if (!commentText || !sessionRef.current || submittingComment) return;
+    try {
+      setSubmittingComment(shadeId);
+      const response = await publicShadePortalService.addComment(token, sessionRef.current, shadeId, commentText);
+      if (response.comments) {
+        setCommentsByShade(prev => ({ ...prev, [shadeId]: response.comments }));
+      }
+      setNewComments(prev => ({ ...prev, [shadeId]: '' }));
+    } catch (err) {
+      console.error('[PublicShadePortal] Comment failed:', err);
+      setError(err.message || 'Failed to add comment');
+    } finally {
+      setSubmittingComment(null);
+    }
   };
 
   const company = portalData?.company || null;
@@ -457,8 +558,27 @@ const PublicShadePortal = () => {
           renderVerification()
         ) : (
           <>
+            {/* All approved success message */}
+            {allApproved && (
+              <div style={{
+                borderRadius: '12px',
+                backgroundColor: '#dcfce7',
+                border: '1px solid #86efac',
+                padding: '16px',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                <p style={{ fontSize: '16px', fontWeight: '600', color: '#15803d', margin: 0 }}>
+                  ✓ All window coverings have been approved!
+                </p>
+                <p style={{ fontSize: '14px', color: '#166534', marginTop: '8px', margin: '8px 0 0 0' }}>
+                  Thank you for your review. The project team has been notified.
+                </p>
+              </div>
+            )}
+
             {/* Welcome message */}
-            {stakeholder?.name && (
+            {stakeholder?.name && !allApproved && (
               <div style={styles.welcomeBox}>
                 <p style={styles.welcomeText}>
                   Welcome, <strong>{stakeholder.name}</strong>. Please review the window covering selections below.
@@ -563,6 +683,117 @@ const PublicShadePortal = () => {
                                   </p>
                                 </div>
                               </div>
+
+                              {/* Action buttons row */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #f3f4f6' }}>
+                                {/* Approve button - only show if not already approved */}
+                                {shade.approvalStatus !== 'approved' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleApprove(shade.id); }}
+                                    disabled={approvingShade === shade.id}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '6px 12px',
+                                      backgroundColor: approvingShade === shade.id ? '#d1d5db' : '#15803d',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: '8px',
+                                      fontSize: '13px',
+                                      fontWeight: '500',
+                                      cursor: approvingShade === shade.id ? 'wait' : 'pointer'
+                                    }}
+                                  >
+                                    <CheckIcon />
+                                    {approvingShade === shade.id ? 'Approving...' : 'Approve'}
+                                  </button>
+                                )}
+
+                                {/* Comments toggle button */}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); toggleComments(shade.id); }}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '6px 12px',
+                                    backgroundColor: expandedComments.has(shade.id) ? '#e0e7ff' : '#f3f4f6',
+                                    color: expandedComments.has(shade.id) ? '#4338ca' : '#6b7280',
+                                    border: 'none',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                    fontWeight: '500',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <MessageIcon />
+                                  Comments {(commentsByShade[shade.id]?.length || 0) > 0 && `(${commentsByShade[shade.id].length})`}
+                                </button>
+                              </div>
+
+                              {/* Comments section - collapsible */}
+                              {expandedComments.has(shade.id) && (
+                                <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
+                                  {/* Existing comments */}
+                                  {(commentsByShade[shade.id] || []).length > 0 ? (
+                                    <div style={{ marginBottom: '12px' }}>
+                                      {commentsByShade[shade.id].map(comment => (
+                                        <div key={comment.id} style={{ padding: '8px', backgroundColor: '#ffffff', borderRadius: '6px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
+                                          <p style={{ fontSize: '13px', color: '#111827', margin: 0 }}>{comment.text}</p>
+                                          <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', margin: 0 }}>
+                                            by <span style={{ fontWeight: '500', color: comment.email === stakeholder?.email ? '#15803d' : '#8b5cf6' }}>{comment.author}</span>
+                                            {' '}• {new Date(comment.createdAt).toLocaleString()}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '12px' }}>No comments yet</p>
+                                  )}
+
+                                  {/* Add comment form */}
+                                  <div style={{ display: 'flex', gap: '8px' }}>
+                                    <input
+                                      type="text"
+                                      value={newComments[shade.id] || ''}
+                                      onChange={(e) => handleCommentChange(shade.id, e.target.value)}
+                                      placeholder="Add a comment..."
+                                      style={{
+                                        flex: 1,
+                                        padding: '8px 12px',
+                                        border: '1px solid #d1d5db',
+                                        borderRadius: '6px',
+                                        fontSize: '14px'
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault();
+                                          handleSubmitComment(shade.id);
+                                        }
+                                      }}
+                                    />
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleSubmitComment(shade.id); }}
+                                      disabled={submittingComment === shade.id || !(newComments[shade.id] || '').trim()}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        padding: '8px 12px',
+                                        backgroundColor: (newComments[shade.id] || '').trim() ? '#8b5cf6' : '#d1d5db',
+                                        color: '#ffffff',
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        fontSize: '13px',
+                                        cursor: (newComments[shade.id] || '').trim() ? 'pointer' : 'not-allowed'
+                                      }}
+                                    >
+                                      <SendIcon />
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

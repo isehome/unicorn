@@ -24,5 +24,14 @@ export const publicShadePortalService = {
   },
   verify(token, otp) {
     return request({ action: 'verify', token, otp });
+  },
+  approve(token, sessionToken, shadeId) {
+    return request({ action: 'approve', token, sessionToken, shadeId });
+  },
+  addComment(token, sessionToken, shadeId, comment) {
+    return request({ action: 'comment', token, sessionToken, shadeId, comment });
+  },
+  getComments(token, sessionToken, shadeId = null) {
+    return request({ action: 'get_comments', token, sessionToken, shadeId });
   }
 };

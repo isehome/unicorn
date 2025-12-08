@@ -5,6 +5,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SESSION_DAYS = parseInt(process.env.PUBLIC_SHADE_SESSION_DAYS || '365', 10);
 const OTP_TTL_DAYS = parseInt(process.env.PUBLIC_SHADE_OTP_TTL_DAYS || '365', 10);
+const COMMENT_MAX = 2000;
 
 const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -378,6 +379,229 @@ async function handleVerify(body) {
   return { status: 200, data: payload };
 }
 
+// Fetch comments for a shade (only non-internal for external portal)
+async function fetchShadeComments(shadeId) {
+  const { data, error } = await supabase
+    .from('shade_comments')
+    .select('*')
+    .eq('shade_id', shadeId)
+    .eq('is_internal', false)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[PublicShade] Error fetching comments:', error);
+    return [];
+  }
+  return data || [];
+}
+
+// Handle shade approval from external portal
+async function handleApprove(body) {
+  const { token, sessionToken, shadeId } = body || {};
+
+  if (!shadeId) {
+    return { status: 400, data: { error: 'Shade ID required' } };
+  }
+
+  const link = await fetchLinkByToken(token);
+  if (!link) {
+    return { status: 404, data: { status: 'invalid', reason: 'link_not_found' } };
+  }
+
+  if (!isSessionValid(link, sessionToken)) {
+    return { status: 401, data: { error: 'Session expired' } };
+  }
+
+  // Verify the shade belongs to this project
+  const { data: shade, error: shadeError } = await supabase
+    .from('project_shades')
+    .select('id, project_id, approval_status')
+    .eq('id', shadeId)
+    .eq('project_id', link.project_id)
+    .maybeSingle();
+
+  if (shadeError || !shade) {
+    return { status: 404, data: { error: 'Shade not found or not in this project' } };
+  }
+
+  // Update the shade approval status
+  const { error: updateError } = await supabase
+    .from('project_shades')
+    .update({
+      approval_status: 'approved',
+      approved_at: nowIso(),
+      approved_by: link.contact_name || 'External Stakeholder',
+      approved_by_email: link.contact_email
+    })
+    .eq('id', shadeId);
+
+  if (updateError) {
+    console.error('[PublicShade] Error approving shade:', updateError);
+    return { status: 500, data: { error: 'Failed to approve shade' } };
+  }
+
+  // Check if all shades for this project are now approved
+  const { data: allShades } = await supabase
+    .from('project_shades')
+    .select('id, approval_status')
+    .eq('project_id', link.project_id);
+
+  const allApproved = allShades?.every(s => s.approval_status === 'approved');
+
+  if (allApproved && allShades?.length > 0) {
+    // Update project-level approval tracking and flag for notification
+    await supabase
+      .from('projects')
+      .update({
+        shades_approved_at: nowIso(),
+        shades_approved_by: link.contact_name || 'External Stakeholder',
+        shades_approved_by_email: link.contact_email,
+        shades_approval_notification_pending: true
+      })
+      .eq('id', link.project_id);
+
+    console.log('[PublicShade] All shades approved for project:', link.project_id);
+  }
+
+  // Return updated payload
+  const payload = await buildPortalPayload(link, true);
+  payload.allApproved = allApproved;
+  return { status: 200, data: payload };
+}
+
+// Handle comment from external portal
+async function handleComment(body) {
+  const { token, sessionToken, shadeId, comment } = body || {};
+  const trimmed = (comment || '').trim();
+
+  if (!trimmed) {
+    return { status: 400, data: { error: 'Comment text required' } };
+  }
+  if (trimmed.length > COMMENT_MAX) {
+    return { status: 400, data: { error: `Comment too long (max ${COMMENT_MAX} characters)` } };
+  }
+  if (!shadeId) {
+    return { status: 400, data: { error: 'Shade ID required' } };
+  }
+
+  const link = await fetchLinkByToken(token);
+  if (!link) {
+    return { status: 404, data: { status: 'invalid', reason: 'link_not_found' } };
+  }
+
+  if (!isSessionValid(link, sessionToken)) {
+    return { status: 401, data: { error: 'Session expired' } };
+  }
+
+  // Verify the shade belongs to this project
+  const { data: shade, error: shadeError } = await supabase
+    .from('project_shades')
+    .select('id, project_id')
+    .eq('id', shadeId)
+    .eq('project_id', link.project_id)
+    .maybeSingle();
+
+  if (shadeError || !shade) {
+    return { status: 404, data: { error: 'Shade not found or not in this project' } };
+  }
+
+  // Insert the comment (external comments are NOT internal)
+  const { data: newComment, error: insertError } = await supabase
+    .from('shade_comments')
+    .insert([{
+      shade_id: shadeId,
+      project_id: link.project_id,
+      comment_text: trimmed,
+      is_internal: false,
+      author_name: link.contact_name || 'External Stakeholder',
+      author_email: link.contact_email,
+      notification_pending: true
+    }])
+    .select()
+    .maybeSingle();
+
+  if (insertError) {
+    console.error('[PublicShade] Error adding comment:', insertError);
+    return { status: 500, data: { error: 'Failed to add comment' } };
+  }
+
+  // Return the updated shade comments
+  const comments = await fetchShadeComments(shadeId);
+  return {
+    status: 200,
+    data: {
+      success: true,
+      comment: newComment,
+      comments: comments.map(c => ({
+        id: c.id,
+        text: c.comment_text,
+        author: c.author_name,
+        email: c.author_email,
+        createdAt: c.created_at
+      }))
+    }
+  };
+}
+
+// Fetch comments for all shades in a project (for portal display)
+async function handleGetComments(body) {
+  const { token, sessionToken, shadeId } = body || {};
+
+  const link = await fetchLinkByToken(token);
+  if (!link) {
+    return { status: 404, data: { status: 'invalid', reason: 'link_not_found' } };
+  }
+
+  if (!isSessionValid(link, sessionToken)) {
+    return { status: 401, data: { error: 'Session expired' } };
+  }
+
+  if (shadeId) {
+    // Get comments for a specific shade
+    const comments = await fetchShadeComments(shadeId);
+    return {
+      status: 200,
+      data: {
+        comments: comments.map(c => ({
+          id: c.id,
+          text: c.comment_text,
+          author: c.author_name,
+          email: c.author_email,
+          createdAt: c.created_at
+        }))
+      }
+    };
+  }
+
+  // Get all comments for all shades in the project
+  const { data: allComments, error } = await supabase
+    .from('shade_comments')
+    .select('*')
+    .eq('project_id', link.project_id)
+    .eq('is_internal', false)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[PublicShade] Error fetching all comments:', error);
+    return { status: 500, data: { error: 'Failed to fetch comments' } };
+  }
+
+  // Group by shade_id
+  const commentsByShade = (allComments || []).reduce((acc, c) => {
+    if (!acc[c.shade_id]) acc[c.shade_id] = [];
+    acc[c.shade_id].push({
+      id: c.id,
+      text: c.comment_text,
+      author: c.author_name,
+      email: c.author_email,
+      createdAt: c.created_at
+    });
+    return acc;
+  }, {});
+
+  return { status: 200, data: { commentsByShade } };
+}
+
 module.exports = async (req, res) => {
   withCors(res);
 
@@ -417,6 +641,15 @@ module.exports = async (req, res) => {
           const project = await fetchProject(projectId);
           result = { status: 200, data: { projectFound: !!project, project } };
         }
+        break;
+      case 'approve':
+        result = await handleApprove(req.body);
+        break;
+      case 'comment':
+        result = await handleComment(req.body);
+        break;
+      case 'get_comments':
+        result = await handleGetComments(req.body);
         break;
       default:
         respond(res, 400, { error: 'Unknown action' });
