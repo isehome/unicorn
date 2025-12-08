@@ -305,6 +305,58 @@ export const projectShadeService = {
     },
 
     /**
+     * Auto-save a single measurement field (without marking complete)
+     * Used for incremental saves as user enters data via voice or manually
+     */
+    async autoSaveMeasurementField(shadeId, fieldKey, value, set = 'm1') {
+        if (!['m1', 'm2'].includes(set)) throw new Error('Invalid measurement set');
+
+        const prefix = set;
+
+        // Map form field keys to database column names
+        const fieldMapping = {
+            'width': `${prefix}_width`,
+            'height': `${prefix}_height`,
+            'widthTop': `${prefix}_measure_width_top`,
+            'widthMiddle': `${prefix}_measure_width_middle`,
+            'widthBottom': `${prefix}_measure_width_bottom`,
+            'heightLeft': `${prefix}_measure_height_left`,
+            'heightCenter': `${prefix}_measure_height_center`,
+            'heightRight': `${prefix}_measure_height_right`,
+            'mountDepth': `${prefix}_mount_depth`,
+            'mountType': `${prefix}_mount_type`,
+            'notes': `${prefix}_obstruction_notes`,
+            'photos': `${prefix}_photos`,
+            'pocketWidth': `${prefix}_pocket_width`,
+            'pocketHeight': `${prefix}_pocket_height`,
+            'pocketDepth': `${prefix}_pocket_depth`
+        };
+
+        const dbColumn = fieldMapping[fieldKey];
+        if (!dbColumn) {
+            console.warn(`[projectShadeService] Unknown field key: ${fieldKey}`);
+            return; // Skip unknown fields silently
+        }
+
+        const updates = {
+            [dbColumn]: value,
+            updated_at: new Date().toISOString()
+        };
+
+        console.log(`[projectShadeService] Auto-saving ${fieldKey} -> ${dbColumn} = ${value}`);
+
+        const { error } = await supabase
+            .from('project_shades')
+            .update(updates)
+            .eq('id', shadeId);
+
+        if (error) {
+            console.error(`[projectShadeService] Auto-save failed for ${fieldKey}:`, error);
+            throw error;
+        }
+    },
+
+    /**
      * Designer approves or rejects a shade
      */
     async updateApproval(shadeId, status, changes, userId) {

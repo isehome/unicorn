@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { X, Save, Ruler, Camera, FileText, CheckCircle, Lock, ExternalLink, MessageSquare, Send } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Save, Ruler, Camera, CheckCircle, Lock, ExternalLink, MessageSquare, Send } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
@@ -114,9 +114,40 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         };
     }, []);
 
+    // Debounce timer for auto-save
+    const autoSaveTimerRef = useRef(null);
+
+    // Auto-save a field to the database (debounced)
+    const autoSaveField = useCallback((field, value) => {
+        if (!shade?.id) return;
+
+        // Clear any pending save for this field
+        if (autoSaveTimerRef.current) {
+            clearTimeout(autoSaveTimerRef.current);
+        }
+
+        // Debounce: wait 500ms after last change before saving
+        autoSaveTimerRef.current = setTimeout(async () => {
+            try {
+                await projectShadeService.autoSaveMeasurementField(
+                    shade.id,
+                    field,
+                    value,
+                    activeTab === 'm2' ? 'm2' : 'm1'
+                );
+                console.log(`[ShadeMeasurementModal] Auto-saved ${field} = ${value}`);
+            } catch (err) {
+                console.error(`[ShadeMeasurementModal] Auto-save failed for ${field}:`, err);
+                // Don't show alert - silent fail for auto-save
+            }
+        }, 500);
+    }, [shade?.id, activeTab]);
+
     const handleChange = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-    }, []);
+        // Auto-save to database
+        autoSaveField(field, value);
+    }, [autoSaveField]);
 
     // NEW: Global Copilot Tools
     useShadeTools({
@@ -161,11 +192,8 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     };
 
     const handleSaveClick = () => {
-        // Validation for M1 completion (Rough Opening photo required)
-        if (!formData.photos || formData.photos.length === 0) {
-            alert('Please upload a photo of the rough opening to complete verification.');
-            return;
-        }
+        // Photo requirement temporarily disabled for voice workflow flexibility
+        // Users can save progress and come back to add photos later
         onSave(formData, activeTab);
     };
 

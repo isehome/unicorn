@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { projectShadeService } from '../services/projectShadeService';
 
 /**
  * useShadeTools - Voice AI tools for the ShadeMeasurementModal (inside a specific shade)
@@ -175,6 +176,24 @@ export const useShadeTools = ({
                     console.error('[ShadeTools] setFormData ref is null!');
                 }
 
+                // AUTO-SAVE to database immediately (don't wait for explicit save)
+                const currentShade = shadeRef.current;
+                const currentTab = activeTabRef.current;
+                if (currentShade?.id) {
+                    try {
+                        await projectShadeService.autoSaveMeasurementField(
+                            currentShade.id,
+                            key,
+                            value.toString(),
+                            currentTab === 'm2' ? 'm2' : 'm1'
+                        );
+                        console.log(`[ShadeTools] Auto-saved ${key} to database`);
+                    } catch (err) {
+                        console.error(`[ShadeTools] Auto-save failed:`, err);
+                        // Don't fail the tool - just log the error
+                    }
+                }
+
                 // Check what's next after this update
                 const currentFormData = formDataRef.current;
                 const completed = [];
@@ -313,42 +332,32 @@ export const useShadeTools = ({
         },
         {
             name: "save_shade_measurements",
-            description: "Save the current measurements and complete this shade. Use when all measurements are done or when the tech says to save. Note: A verification photo is required before saving.",
+            description: "Save the current measurements and mark this shade as complete. Use when the tech says 'save' or 'done'. Note: Individual measurements are auto-saved as you go, but this marks the shade complete.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing, allComplete } = getMeasurementStatus();
                 const currentShade = shadeRef.current;
-                const currentFormData = formDataRef.current;
 
-                // Check for required photo FIRST - this is the most common blocker
-                if (!currentFormData.photos || currentFormData.photos.length === 0) {
-                    return {
-                        success: false,
-                        error: "Cannot save - a verification photo is required",
-                        hint: "Please take a photo of the rough opening before saving. The tech needs to tap the 'Add Photo' button."
-                    };
-                }
-
+                // Photo requirement disabled - can save anytime
+                // Just warn if measurements are incomplete
                 if (!allComplete && missing.length > 0) {
-                    return {
-                        success: false,
-                        warning: `Still missing ${missing.length} measurements: ${missing.map(m => m.spoken).join(', ')}`,
-                        hint: "Do you want to save anyway, or finish measuring first?"
-                    };
+                    // Allow save anyway - just inform them
+                    console.log(`[ShadeTools] Saving with ${missing.length} missing measurements`);
                 }
 
                 // Call the save handler via ref
                 const onSaveFn = onSaveRef.current;
                 if (onSaveFn) {
                     try {
-                        // Note: onSaveFn calls handleSaveClick which also checks for photos
-                        // but may use alert() - we check above to give voice feedback
                         onSaveFn();
                         return {
                             success: true,
                             message: `Saved ${currentShade?.name}!`,
                             measurementsRecorded: completed.length,
-                            hint: "Shade saved. Say 'next shade' to continue or close the modal."
+                            missingCount: missing.length,
+                            hint: missing.length > 0
+                                ? `Saved with ${missing.length} measurements still pending. Say 'next shade' to continue.`
+                                : "All measurements saved. Say 'next shade' to continue or close the modal."
                         };
                     } catch (err) {
                         return {
