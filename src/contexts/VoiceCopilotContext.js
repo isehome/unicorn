@@ -181,20 +181,24 @@ export const VoiceCopilotProvider = ({ children }) => {
     // --- AUDIO PLAYBACK ---
     const playNextChunk = useCallback(() => {
         if (!audioContext.current) {
-            if (VERBOSE_LOGGING) addLog('playNextChunk: No audioContext', 'error');
-            return;
+            addLog('playNextChunk: No audioContext - creating one', 'warn');
+            // Try to create audio context if missing
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioContext.current = new AudioContextClass();
+            addLog(`Created new AudioContext: ${audioContext.current.sampleRate}Hz, state=${audioContext.current.state}`, 'audio');
         }
         if (audioQueue.current.length === 0) {
             if (VERBOSE_LOGGING) addLog('playNextChunk: Queue empty', 'audio');
             return;
         }
         if (isPlaying.current) {
-            if (VERBOSE_LOGGING) addLog('playNextChunk: Already playing', 'audio');
+            if (VERBOSE_LOGGING) addLog(`playNextChunk: Already playing, queue size: ${audioQueue.current.length}`, 'audio');
             return;
         }
 
         isPlaying.current = true;
         const audioData = audioQueue.current.shift();
+        addLog(`Playing chunk: ${audioData.length} samples, queue remaining: ${audioQueue.current.length}`, 'audio');
 
         try {
             // Gemini sends audio at 24kHz, but device may use different rate (iOS uses 48kHz)
@@ -672,16 +676,24 @@ AVAILABLE ACTIONS:
                                 addLog(`Gemini text: "${part.text.substring(0, 100)}..."`, 'response');
                                 setLastTranscript(prev => prev + (prev ? '\n' : '') + part.text);
                             }
-                            // Audio response
-                            if (part.inlineData?.mimeType?.startsWith('audio/pcm')) {
-                                receivedChunks++;
-                                setAudioChunksReceived(receivedChunks);
-                                const pcmData = base64ToFloat32(part.inlineData.data);
-                                audioQueue.current.push(pcmData);
-                                if (receivedChunks === 1) {
-                                    addLog('Receiving audio response from Gemini');
+                            // Audio response - check for any audio mimeType
+                            // Gemini can send: audio/pcm, audio/L16, or others
+                            if (part.inlineData?.data) {
+                                const mimeType = part.inlineData.mimeType || '';
+                                if (VERBOSE_LOGGING) {
+                                    addLog(`Audio part received: mimeType="${mimeType}", dataLen=${part.inlineData.data.length}`, 'audio');
                                 }
-                                playNextChunk();
+                                // Accept any audio format - Gemini sends 16-bit PCM regardless of mimeType label
+                                if (mimeType.startsWith('audio/') || mimeType === '' || !mimeType) {
+                                    receivedChunks++;
+                                    setAudioChunksReceived(receivedChunks);
+                                    const pcmData = base64ToFloat32(part.inlineData.data);
+                                    audioQueue.current.push(pcmData);
+                                    if (receivedChunks === 1) {
+                                        addLog(`Receiving audio response (mimeType: ${mimeType || 'none'})`);
+                                    }
+                                    playNextChunk();
+                                }
                             }
                         }
                     }
