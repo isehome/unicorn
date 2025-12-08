@@ -35,6 +35,7 @@ const AISettings = () => {
     // State - Initialize from localStorage
     const [persona, setPersona] = useState(() => localStorage.getItem('ai_persona') || 'brief');
     const [voice, setVoice] = useState(() => localStorage.getItem('ai_voice') || 'Puck');
+    const [model, setModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -49,8 +50,9 @@ const AISettings = () => {
     useEffect(() => {
         localStorage.setItem('ai_persona', persona);
         localStorage.setItem('ai_voice', voice);
+        localStorage.setItem('ai_model', model);
         localStorage.setItem('ai_custom_instructions', instructions);
-    }, [persona, voice, instructions]);
+    }, [persona, voice, model, instructions]);
 
     // Capture AI responses to transcript
     useEffect(() => {
@@ -110,6 +112,22 @@ const AISettings = () => {
         { id: 'Kore', name: 'Kore (Warm)', gender: 'Female' },
         { id: 'Fenrir', name: 'Fenrir (Deep)', gender: 'Male' },
         { id: 'Aoede', name: 'Aoede (Formal)', gender: 'Female' },
+    ];
+
+    // Available Gemini models for Live API
+    const models = [
+        {
+            id: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            name: '2.5 Flash Native Audio',
+            description: 'Latest & best quality (recommended)',
+            badge: 'NEW'
+        },
+        {
+            id: 'gemini-2.0-flash-live-001',
+            name: '2.0 Flash Live',
+            description: 'Stable, deprecated Dec 2025',
+            badge: null
+        },
     ];
 
     return (
@@ -188,6 +206,45 @@ const AISettings = () => {
                             </button>
                         ))}
                     </div>
+                </div>
+
+                {/* Model Selection */}
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                        <Bot size={14} />
+                        <span>AI Model</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {models.map(m => (
+                            <button
+                                key={m.id}
+                                onClick={() => setModel(m.id)}
+                                className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${model === m.id
+                                        ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-500 ring-1 ring-violet-500'
+                                        : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:border-violet-300'
+                                    }`}
+                            >
+                                <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center ${model === m.id ? 'border-violet-500' : 'border-zinc-400'
+                                    }`}>
+                                    {model === m.id && <div className="w-2 h-2 rounded-full bg-violet-500" />}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{m.name}</h3>
+                                        {m.badge && (
+                                            <span className="px-1.5 py-0.5 text-[10px] font-bold bg-violet-500 text-white rounded">
+                                                {m.badge}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{m.description}</p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                    <p className="text-xs text-zinc-400 italic">
+                        Restart voice session after changing model.
+                    </p>
                 </div>
 
                 {/* Custom Instructions */}

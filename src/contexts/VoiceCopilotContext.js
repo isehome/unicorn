@@ -272,20 +272,21 @@ export const VoiceCopilotProvider = ({ children }) => {
         }
 
         // Send responses back to Gemini
-        // Gemini Live API expects snake_case format
+        // Gemini Live API expects camelCase format
+        // Docs: https://ai.google.dev/api/live
         if (ws.current?.readyState === WebSocket.OPEN && responses.length > 0) {
-            const toolResponse = {
-                tool_response: {
-                    function_responses: responses.map(r => ({
+            const toolResponseMsg = {
+                toolResponse: {
+                    functionResponses: responses.map(r => ({
                         id: r.id,
                         name: r.name,
-                        response: { output: r.response }
+                        response: r.response
                     }))
                 }
             };
-            addLog(`Sending tool response: ${JSON.stringify(toolResponse).substring(0, 200)}`, 'tool');
-            console.log('[Copilot] Sending tool response:', toolResponse);
-            ws.current.send(JSON.stringify(toolResponse));
+            addLog(`Sending tool response: ${JSON.stringify(toolResponseMsg).substring(0, 200)}`, 'tool');
+            console.log('[Copilot] Sending tool response:', toolResponseMsg);
+            ws.current.send(JSON.stringify(toolResponseMsg));
         }
     }, [activeTools, addLog]);
 
@@ -420,7 +421,8 @@ export const VoiceCopilotProvider = ({ children }) => {
             addLog(`Mic access granted: ${audioTrack.label || 'default mic'}`);
 
             // Create WebSocket connection to Gemini
-            const uri = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${apiKey}`;
+            // Using v1beta as per official docs: https://ai.google.dev/api/live
+            const uri = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
             const socket = new WebSocket(uri);
             ws.current = socket;
 
@@ -444,26 +446,38 @@ export const VoiceCopilotProvider = ({ children }) => {
                     addLog('WARNING: No tools registered! Voice commands won\'t work.', 'warn');
                 }
 
+                // Get user's model preference (default to latest native audio model)
+                const selectedModel = localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025';
+
+                // Build config using camelCase as per Gemini API spec
+                // Docs: https://ai.google.dev/api/live
                 const config = {
                     setup: {
-                        model: "models/gemini-2.0-flash-exp",
-                        generation_config: {
-                            response_modalities: ["AUDIO"],
-                            speech_config: {
-                                voice_config: { prebuilt_voice_config: { voice_name: settings.voice } }
+                        model: `models/${selectedModel}`,
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: {
+                                voiceConfig: {
+                                    prebuiltVoiceConfig: { voiceName: settings.voice }
+                                }
                             }
                         },
-                        // Realtime input config - reduce VAD sensitivity to prevent interruptions
-                        realtime_input_config: {
-                            automatic_activity_detection: {
+                        // VAD config - reduce sensitivity to prevent interruptions
+                        // Docs: https://ai.google.dev/gemini-api/docs/live-guide
+                        realtimeInputConfig: {
+                            automaticActivityDetection: {
                                 disabled: false,
-                                // LOW = less sensitive (harder to trigger), HIGH = more sensitive
-                                start_of_speech_sensitivity: "LOW",
-                                // LOW = ends quickly on silence, HIGH = waits longer for more speech
-                                end_of_speech_sensitivity: "HIGH"
+                                // START_SENSITIVITY_LOW = harder to trigger (less sensitive to background noise)
+                                startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
+                                // END_SENSITIVITY_HIGH = waits longer before ending turn (more patient)
+                                endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",
+                                // How long to wait before committing speech start (ms)
+                                prefixPaddingMs: 100,
+                                // How long of silence before end of speech (ms)
+                                silenceDurationMs: 500
                             }
                         },
-                        system_instruction: {
+                        systemInstruction: {
                             parts: [{
                                 text: `You are a friendly voice assistant helping field technicians measure windows for motorized shades.
 
@@ -510,9 +524,9 @@ AVAILABLE ACTIONS:
                     }
                 };
 
-                // Add tools if any are registered
+                // Add tools if any are registered (camelCase: functionDeclarations)
                 if (toolDeclarations.length > 0) {
-                    config.setup.tools = [{ function_declarations: toolDeclarations }];
+                    config.setup.tools = [{ functionDeclarations: toolDeclarations }];
                 }
 
                 socket.send(JSON.stringify(config));
