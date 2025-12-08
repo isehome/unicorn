@@ -122,14 +122,60 @@ export const VoiceCopilotProvider = ({ children }) => {
     // Note: Gemini Live API does NOT support dynamic tool updates mid-session.
     // Tools are declared in setup config only. However, we still track tools locally
     // so they can be executed when Gemini calls them. New tools registered after
-    // session start won't be known to Gemini, but we keep them for the next session.
+    // session start will trigger a session refresh to include them.
+
+    // Track pending session refresh for new tools
+    const pendingToolRefresh = useRef(false);
+    const sessionRefreshTimeout = useRef(null);
+    const startSessionRef = useRef(null); // Will be set after startSession is defined
+
     const registerTools = useCallback((newTools) => {
         setActiveTools(prev => {
             const next = new Map(prev);
+            let hasNewTools = false;
+
             newTools.forEach(tool => {
-                console.log(`[Copilot] Registering tool: ${tool.name}`);
+                // Check if this is a genuinely new tool (not just an update)
+                const existingTool = prev.get(tool.name);
+                if (!existingTool) {
+                    hasNewTools = true;
+                    console.log(`[Copilot] Registering NEW tool: ${tool.name}`);
+                } else {
+                    console.log(`[Copilot] Updating tool: ${tool.name}`);
+                }
                 next.set(tool.name, tool);
             });
+
+            // If session is active and we have genuinely new tools, flag for refresh
+            if (hasNewTools && ws.current?.readyState === WebSocket.OPEN) {
+                addLog(`New tools registered during session - will refresh connection`, 'warn');
+                pendingToolRefresh.current = true;
+
+                // Debounce the refresh to allow multiple tool registrations to batch
+                if (sessionRefreshTimeout.current) {
+                    clearTimeout(sessionRefreshTimeout.current);
+                }
+                sessionRefreshTimeout.current = setTimeout(() => {
+                    if (pendingToolRefresh.current && ws.current?.readyState === WebSocket.OPEN && startSessionRef.current) {
+                        addLog('Refreshing session to include new tools...', 'info');
+                        // Close and immediately reconnect
+                        ws.current?.close();
+                        // Wait for close, then reconnect
+                        setTimeout(() => {
+                            pendingToolRefresh.current = false;
+                            setStatus('idle');
+                            // Reconnect with new tools
+                            setTimeout(() => {
+                                if (startSessionRef.current) {
+                                    startSessionRef.current();
+                                }
+                            }, 100);
+                        }, 200);
+                    }
+                    pendingToolRefresh.current = false;
+                }, 500); // Wait 500ms for any other tools to register
+            }
+
             addLog(`Tools registered locally: ${newTools.map(t => t.name).join(', ')}`, 'tool');
             return next;
         });
@@ -704,6 +750,11 @@ AVAILABLE ACTIONS:
             setStatus('error');
         }
     }, [status, activeTools, cleanup, handleToolCall, playNextChunk, addLog]);
+
+    // Keep ref updated for use in registerTools
+    useEffect(() => {
+        startSessionRef.current = startSession;
+    }, [startSession]);
 
     // --- AUDIO PROCESSING ---
     const startAudioProcessing = useCallback(() => {
