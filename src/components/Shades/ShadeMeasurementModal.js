@@ -285,9 +285,9 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                                     </span>
                                                     <div className="flex items-center gap-2">
                                                         {comment.is_internal ? (
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Internal</span>
+                                                            <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Staff Only</span>
                                                         ) : (
-                                                            <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">External</span>
+                                                            <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">Visible to Designer</span>
                                                         )}
                                                         <span className="text-xs text-zinc-400">
                                                             {new Date(comment.created_at).toLocaleString()}
@@ -312,12 +312,12 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                                         <input
                                             type="checkbox"
-                                            checked={isInternalComment}
-                                            onChange={(e) => setIsInternalComment(e.target.checked)}
+                                            checked={!isInternalComment}
+                                            onChange={(e) => setIsInternalComment(!e.target.checked)}
                                             className="rounded border-zinc-300"
                                         />
                                         <span className={`${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}`}>
-                                            Internal only {isInternalComment && <span className="text-amber-500">(not visible to external stakeholders)</span>}
+                                            Visible to designer {!isInternalComment && <span className="text-green-500">(will appear on external portal)</span>}
                                         </span>
                                     </label>
                                 </div>
