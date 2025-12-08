@@ -269,18 +269,17 @@ export const useShadeManagerTools = ({
         }
     ], [shades, pendingShades, shadesByRoom, projectName, findShadeByName, findShadesByRoom, onSelectShade, setExpandedRooms]);
 
-    // Register tools when voice session is active
+    // Register tools immediately when component mounts (not just when voice active)
+    // This ensures tools are available BEFORE voice session starts
     useEffect(() => {
-        if (status === 'listening' || status === 'speaking' || status === 'connecting') {
-            console.log('[ShadeManagerTools] Registering shade list tools');
-            registerTools(tools);
+        console.log('[ShadeManagerTools] Registering shade list tools');
+        registerTools(tools);
 
-            return () => {
-                console.log('[ShadeManagerTools] Unregistering shade list tools');
-                unregisterTools(tools.map(t => t.name));
-            };
-        }
-    }, [status, tools, registerTools, unregisterTools]);
+        return () => {
+            console.log('[ShadeManagerTools] Unregistering shade list tools');
+            unregisterTools(tools.map(t => t.name));
+        };
+    }, [tools, registerTools, unregisterTools]);
 
     return {
         pendingShades,

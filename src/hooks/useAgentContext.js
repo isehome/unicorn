@@ -315,19 +315,17 @@ export const useAgentContext = () => {
         return actions;
     };
 
-    // Register global tools when voice copilot is active
+    // Register global tools immediately (not just when voice active)
+    // This ensures tools are available BEFORE voice session starts
     useEffect(() => {
-        // Only register when agent session is active
-        if (status === 'listening' || status === 'speaking' || status === 'connecting') {
-            console.log('[AgentContext] Registering global navigation tools');
-            registerTools(globalTools);
+        console.log('[AgentContext] Registering global navigation tools');
+        registerTools(globalTools);
 
-            return () => {
-                console.log('[AgentContext] Unregistering global navigation tools');
-                unregisterTools(globalTools.map(t => t.name));
-            };
-        }
-    }, [status, globalTools, registerTools, unregisterTools]);
+        return () => {
+            console.log('[AgentContext] Unregistering global navigation tools');
+            unregisterTools(globalTools.map(t => t.name));
+        };
+    }, [globalTools, registerTools, unregisterTools]);
 
     return {
         currentContext,

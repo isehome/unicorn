@@ -275,18 +275,17 @@ export const useShadeTools = ({
         }
     ], [formData, fieldMap, shade, activeTab, onSave, onClose, onNextShade, setFormData, getMeasurementStatus]);
 
-    // Register tools when voice session is active
+    // Register tools immediately when component mounts (not just when voice active)
+    // This ensures tools are available BEFORE voice session starts
     useEffect(() => {
-        if (status === 'listening' || status === 'speaking' || status === 'connecting') {
-            console.log('[ShadeTools] Registering measurement tools for', shade?.name);
-            registerTools(tools);
+        console.log('[ShadeTools] Registering measurement tools for', shade?.name);
+        registerTools(tools);
 
-            return () => {
-                console.log('[ShadeTools] Unregistering measurement tools');
-                unregisterTools(tools.map(t => t.name));
-            };
-        }
-    }, [status, tools, registerTools, unregisterTools, shade?.name]);
+        return () => {
+            console.log('[ShadeTools] Unregistering measurement tools');
+            unregisterTools(tools.map(t => t.name));
+        };
+    }, [tools, registerTools, unregisterTools, shade?.name]);
 
     return {
         getMeasurementStatus,
