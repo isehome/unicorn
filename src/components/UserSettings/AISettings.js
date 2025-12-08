@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText, Sliders } from 'lucide-react';
+import { Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText, Sliders, Bot } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/VoiceCopilotContext';
 
 const AISettings = () => {
@@ -38,13 +38,14 @@ const AISettings = () => {
     const [model, setModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
 
-    // VAD Sensitivity settings (1-5 scale, default 3 = medium)
-    // Lower = more sensitive (triggers easier), Higher = less sensitive (needs clearer speech)
+    // VAD Sensitivity settings (1-2 scale only - Gemini API only supports HIGH/LOW)
+    // 1 = HIGH sensitivity (triggers easily / cuts off quickly)
+    // 2 = LOW sensitivity (needs clear speech / waits patiently)
     const [vadStartSensitivity, setVadStartSensitivity] = useState(() =>
-        parseInt(localStorage.getItem('ai_vad_start') || '3', 10)
+        parseInt(localStorage.getItem('ai_vad_start') || '1', 10)
     );
     const [vadEndSensitivity, setVadEndSensitivity] = useState(() =>
-        parseInt(localStorage.getItem('ai_vad_end') || '3', 10)
+        parseInt(localStorage.getItem('ai_vad_end') || '2', 10)
     );
 
     // Test state
@@ -264,58 +265,86 @@ const AISettings = () => {
                         <span>Voice Detection Sensitivity</span>
                     </div>
                     <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl p-4 space-y-4">
-                        {/* Start of Speech */}
+                        {/* Start of Speech - Toggle between HIGH/LOW */}
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                                     Start Detection
                                 </label>
-                                <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
-                                    {vadStartSensitivity === 1 ? 'Very Sensitive' :
-                                     vadStartSensitivity === 2 ? 'Sensitive' :
-                                     vadStartSensitivity === 3 ? 'Medium' :
-                                     vadStartSensitivity === 4 ? 'Less Sensitive' : 'Least Sensitive'}
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                    vadStartSensitivity === 1
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                        : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400'
+                                }`}>
+                                    {vadStartSensitivity === 1 ? 'Sensitive (picks up easily)' : 'Standard (needs clear speech)'}
                                 </span>
                             </div>
-                            <input
-                                type="range"
-                                min="1"
-                                max="5"
-                                value={vadStartSensitivity}
-                                onChange={(e) => setVadStartSensitivity(parseInt(e.target.value, 10))}
-                                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
-                            />
-                            <div className="flex justify-between text-[10px] text-zinc-400">
-                                <span>Picks up whispers</span>
-                                <span>Needs clear speech</span>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setVadStartSensitivity(1)}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                                        vadStartSensitivity === 1
+                                            ? 'bg-violet-500 text-white'
+                                            : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    Sensitive
+                                </button>
+                                <button
+                                    onClick={() => setVadStartSensitivity(2)}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                                        vadStartSensitivity === 2
+                                            ? 'bg-violet-500 text-white'
+                                            : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    Standard
+                                </button>
                             </div>
+                            <p className="text-[10px] text-zinc-400">
+                                Sensitive picks up speech quickly; Standard waits for clear voice input
+                            </p>
                         </div>
 
-                        {/* End of Speech */}
+                        {/* End of Speech - Toggle between QUICK/PATIENT */}
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
                                     End Detection (Patience)
                                 </label>
-                                <span className="text-xs text-zinc-500 px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded">
-                                    {vadEndSensitivity === 1 ? 'Very Quick' :
-                                     vadEndSensitivity === 2 ? 'Quick' :
-                                     vadEndSensitivity === 3 ? 'Medium' :
-                                     vadEndSensitivity === 4 ? 'Patient' : 'Very Patient'}
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                    vadEndSensitivity === 2
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                        : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400'
+                                }`}>
+                                    {vadEndSensitivity === 1 ? 'Quick (responds fast)' : 'Patient (waits for pauses)'}
                                 </span>
                             </div>
-                            <input
-                                type="range"
-                                min="1"
-                                max="5"
-                                value={vadEndSensitivity}
-                                onChange={(e) => setVadEndSensitivity(parseInt(e.target.value, 10))}
-                                className="w-full h-2 bg-zinc-200 dark:bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-violet-500"
-                            />
-                            <div className="flex justify-between text-[10px] text-zinc-400">
-                                <span>Cuts off quickly</span>
-                                <span>Waits for pauses</span>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setVadEndSensitivity(1)}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                                        vadEndSensitivity === 1
+                                            ? 'bg-violet-500 text-white'
+                                            : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    Quick
+                                </button>
+                                <button
+                                    onClick={() => setVadEndSensitivity(2)}
+                                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                                        vadEndSensitivity === 2
+                                            ? 'bg-violet-500 text-white'
+                                            : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                                    }`}
+                                >
+                                    Patient
+                                </button>
                             </div>
+                            <p className="text-[10px] text-zinc-400">
+                                Quick responds after brief pause; Patient waits longer before responding
+                            </p>
                         </div>
                     </div>
                     <p className="text-xs text-zinc-400 italic">

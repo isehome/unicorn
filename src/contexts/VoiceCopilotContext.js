@@ -86,36 +86,25 @@ export const VoiceCopilotProvider = ({ children }) => {
         voice: localStorage.getItem('ai_voice') || 'Puck',
         persona: localStorage.getItem('ai_persona') || 'brief',
         instructions: localStorage.getItem('ai_custom_instructions') || '',
-        // VAD sensitivity: 1-5 scale maps to Gemini's enum values
-        vadStartSensitivity: parseInt(localStorage.getItem('ai_vad_start') || '3', 10),
-        vadEndSensitivity: parseInt(localStorage.getItem('ai_vad_end') || '3', 10)
+        // VAD sensitivity: 1-2 scale (Gemini only supports HIGH/LOW, no MEDIUM!)
+        // 1 = sensitive/quick, 2 = less sensitive/patient
+        vadStartSensitivity: parseInt(localStorage.getItem('ai_vad_start') || '1', 10),
+        vadEndSensitivity: parseInt(localStorage.getItem('ai_vad_end') || '2', 10)
     });
 
-    // Map 1-5 scale to Gemini VAD enum values
+    // Map 1-2 scale to Gemini VAD enum values
+    // NOTE: Gemini Live API only supports HIGH and LOW - no MEDIUM values exist!
+    // Docs: https://ai.google.dev/api/live
     const getVadStartEnum = (level) => {
-        // 1 = very sensitive (triggers easily) = HIGH sensitivity
-        // 5 = least sensitive (needs clear speech) = LOW sensitivity
-        const map = {
-            1: 'START_SENSITIVITY_HIGH',
-            2: 'START_SENSITIVITY_MEDIUM_HIGH',
-            3: 'START_SENSITIVITY_MEDIUM',
-            4: 'START_SENSITIVITY_MEDIUM_LOW',
-            5: 'START_SENSITIVITY_LOW'
-        };
-        return map[level] || 'START_SENSITIVITY_MEDIUM';
+        // 1 = HIGH sensitivity (triggers on any speech)
+        // 2 = LOW sensitivity (needs clear speech to start)
+        return level === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW';
     };
 
     const getVadEndEnum = (level) => {
-        // 1 = very quick (cuts off fast) = LOW sensitivity (ends turn quickly)
-        // 5 = very patient (waits longer) = HIGH sensitivity (waits for long pauses)
-        const map = {
-            1: 'END_SENSITIVITY_LOW',
-            2: 'END_SENSITIVITY_MEDIUM_LOW',
-            3: 'END_SENSITIVITY_MEDIUM',
-            4: 'END_SENSITIVITY_MEDIUM_HIGH',
-            5: 'END_SENSITIVITY_HIGH'
-        };
-        return map[level] || 'END_SENSITIVITY_MEDIUM';
+        // 1 = LOW sensitivity (ends turn quickly after silence)
+        // 2 = HIGH sensitivity (waits longer for pauses, more patient)
+        return level === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH';
     };
 
     // --- TOOL REGISTRY ---
@@ -801,13 +790,13 @@ AVAILABLE ACTIONS:
             }
             const base64Audio = btoa(binary);
 
-            // Send to Gemini
+            // Send to Gemini using camelCase format per API spec
+            // Docs: https://ai.google.dev/api/live
             ws.current.send(JSON.stringify({
-                realtime_input: {
-                    media_chunks: [{
-                        mime_type: "audio/pcm",
+                realtimeInput: {
+                    audio: {
                         data: base64Audio
-                    }]
+                    }
                 }
             }));
 
