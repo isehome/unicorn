@@ -269,8 +269,7 @@ export const useShadeManagerTools = ({
         }
     ], [shades, pendingShades, shadesByRoom, projectName, findShadeByName, findShadesByRoom, onSelectShade, setExpandedRooms]);
 
-    // Register tools immediately when component mounts (not just when voice active)
-    // This ensures tools are available BEFORE voice session starts
+    // Register/update tools when they change
     useEffect(() => {
         console.log('[ShadeManagerTools] Registering shade list tools');
         registerTools(tools);

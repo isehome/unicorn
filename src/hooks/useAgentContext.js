@@ -315,15 +315,22 @@ export const useAgentContext = () => {
         return actions;
     };
 
-    // Register global tools immediately (not just when voice active)
-    // This ensures tools are available BEFORE voice session starts
+    // Register/update global tools when they change
     useEffect(() => {
-        console.log('[AgentContext] Registering global navigation tools');
-        registerTools(globalTools);
+        try {
+            console.log('[AgentContext] Registering global navigation tools');
+            registerTools(globalTools);
+        } catch (err) {
+            console.error('[AgentContext] Failed to register tools:', err);
+        }
 
         return () => {
-            console.log('[AgentContext] Unregistering global navigation tools');
-            unregisterTools(globalTools.map(t => t.name));
+            try {
+                console.log('[AgentContext] Unregistering global navigation tools');
+                unregisterTools(globalTools.map(t => t.name));
+            } catch (err) {
+                console.error('[AgentContext] Failed to unregister tools:', err);
+            }
         };
     }, [globalTools, registerTools, unregisterTools]);
 
