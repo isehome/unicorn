@@ -313,11 +313,21 @@ export const useShadeTools = ({
         },
         {
             name: "save_shade_measurements",
-            description: "Save the current measurements and complete this shade. Use when all measurements are done or when the tech says to save.",
+            description: "Save the current measurements and complete this shade. Use when all measurements are done or when the tech says to save. Note: A verification photo is required before saving.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 const { completed, missing, allComplete } = getMeasurementStatus();
                 const currentShade = shadeRef.current;
+                const currentFormData = formDataRef.current;
+
+                // Check for required photo FIRST - this is the most common blocker
+                if (!currentFormData.photos || currentFormData.photos.length === 0) {
+                    return {
+                        success: false,
+                        error: "Cannot save - a verification photo is required",
+                        hint: "Please take a photo of the rough opening before saving. The tech needs to tap the 'Add Photo' button."
+                    };
+                }
 
                 if (!allComplete && missing.length > 0) {
                     return {
@@ -331,6 +341,8 @@ export const useShadeTools = ({
                 const onSaveFn = onSaveRef.current;
                 if (onSaveFn) {
                     try {
+                        // Note: onSaveFn calls handleSaveClick which also checks for photos
+                        // but may use alert() - we check above to give voice feedback
                         onSaveFn();
                         return {
                             success: true,
