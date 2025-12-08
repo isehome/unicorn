@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 import { Mic, MicOff, Loader2, X, Activity, Bug, Trash2 } from 'lucide-react';
 
 const VoiceCopilotOverlay = () => {
+    const location = useLocation();
     const {
         status,
         toggle,
@@ -25,6 +27,13 @@ const VoiceCopilotOverlay = () => {
     useEffect(() => {
         if (error) setIsExpanded(true);
     }, [error]);
+
+    // Only show on shades/window coverings section
+    const isOnShadesSection = location.pathname.includes('/shades');
+
+    if (!isOnShadesSection) {
+        return null;
+    }
 
     // Handle Mic Click
     const handleToggle = () => {
