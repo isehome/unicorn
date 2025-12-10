@@ -11,7 +11,11 @@ import {
   Loader,
   Check,
   Bluetooth,
-  BluetoothOff
+  BluetoothOff,
+  Search,
+  X,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { wireDropService } from '../services/wireDropService';
 import labelRenderService from '../services/labelRenderService';
@@ -43,6 +47,8 @@ const PrewireMode = () => {
   // Filter states
   const [selectedFloor, setSelectedFloor] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showPrinted, setShowPrinted] = useState(true); // Toggle to show/hide already printed
 
   // Printer states
   const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
@@ -160,6 +166,22 @@ const PrewireMode = () => {
       filtered = filtered.filter(drop => drop.room_name === selectedRoom);
     }
 
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(drop =>
+        (drop.drop_name || '').toLowerCase().includes(term) ||
+        (drop.room_name || '').toLowerCase().includes(term) ||
+        (drop.uid || '').toLowerCase().includes(term) ||
+        (drop.wire_type || '').toLowerCase().includes(term)
+      );
+    }
+
+    // Apply printed filter (hide printed if toggled off)
+    if (!showPrinted) {
+      filtered = filtered.filter(drop => !drop.labels_printed);
+    }
+
     // Sort by room_name, then by labels_printed (false first), then by drop_name
     return [...filtered].sort((a, b) => {
       // First by room name
@@ -174,7 +196,7 @@ const PrewireMode = () => {
       // Finally by drop name
       return (a.drop_name || '').localeCompare(b.drop_name || '');
     });
-  }, [wireDrops, selectedFloor, selectedRoom]);
+  }, [wireDrops, selectedFloor, selectedRoom, searchTerm, showPrinted]);
 
   // Check if prewire stage is complete
   const isPrewireComplete = (drop) => {
@@ -290,11 +312,15 @@ const PrewireMode = () => {
           )}
 
           {/* Printer status indicator */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-            printerConnected
-              ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-              : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-          }`}>
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
+              !printerConnected ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400' : ''
+            }`}
+            style={printerConnected ? {
+              backgroundColor: 'rgba(148, 175, 50, 0.15)',
+              color: '#94AF32'
+            } : undefined}
+          >
             {printerConnected ? (
               <>
                 <Bluetooth size={16} />
@@ -314,7 +340,36 @@ const PrewireMode = () => {
           className="rounded-2xl border p-4 mb-6"
           style={sectionStyles.card}
         >
-          <div className="flex flex-wrap gap-3">
+          {/* Search bar - full width on top */}
+          <div className="relative mb-3">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+            />
+            <input
+              type="text"
+              placeholder="Search drops, rooms, wire types..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-10 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-violet-500"
+              style={{
+                backgroundColor: mode === 'dark' ? '#18181b' : '#FFFFFF',
+                borderColor: mode === 'dark' ? '#27272a' : '#D1D5DB',
+                color: mode === 'dark' ? '#f4f4f5' : '#18181b',
+                fontSize: '16px' // Prevents iOS zoom
+              }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
             {/* Floor filter */}
             {availableFloors.length > 0 && (
               <select
@@ -353,9 +408,25 @@ const PrewireMode = () => {
               </select>
             )}
 
+            {/* Show/Hide printed toggle */}
+            <button
+              onClick={() => setShowPrinted(!showPrinted)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+                showPrinted
+                  ? 'border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400'
+                  : 'border-violet-500 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400'
+              }`}
+              title={showPrinted ? 'Click to hide printed labels' : 'Click to show all labels'}
+            >
+              {showPrinted ? <Eye size={16} /> : <EyeOff size={16} />}
+              <span className="text-sm font-medium">
+                {showPrinted ? 'Showing All' : 'Unprinted Only'}
+              </span>
+            </button>
+
             {/* Stats */}
             <div className="ml-auto text-sm text-zinc-600 dark:text-zinc-400">
-              {filteredDrops.filter(d => d.labels_printed).length} / {filteredDrops.length} labels printed
+              {filteredDrops.filter(d => d.labels_printed).length} / {filteredDrops.length} printed
             </div>
           </div>
         </div>
@@ -414,11 +485,12 @@ const PrewireMode = () => {
                         <button
                           onClick={(e) => handlePrintLabels(drop, e)}
                           disabled={printingDropId === drop.id}
-                          className={`px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                            drop.labels_printed
-                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                              : 'bg-violet-500 hover:bg-violet-600 text-white'
-                          }`}
+                          className="px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                          style={{
+                            backgroundColor: drop.labels_printed ? '#94AF32' : '#8B5CF6'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = drop.labels_printed ? '#7A9229' : '#7C3AED'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = drop.labels_printed ? '#94AF32' : '#8B5CF6'}
                           title={drop.labels_printed ? 'Labels already printed (click to reprint)' : 'Print 2x wire labels'}
                         >
                           {printingDropId === drop.id ? (
@@ -434,11 +506,12 @@ const PrewireMode = () => {
                         {/* Photo capture button */}
                         <button
                           onClick={(e) => handleOpenPhotoModal(drop, e)}
-                          className={`px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                            prewireComplete
-                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                              : 'bg-violet-500 hover:bg-violet-600 text-white'
-                          }`}
+                          className="px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-white"
+                          style={{
+                            backgroundColor: prewireComplete ? '#94AF32' : '#8B5CF6'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = prewireComplete ? '#7A9229' : '#7C3AED'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = prewireComplete ? '#94AF32' : '#8B5CF6'}
                           title={prewireComplete ? 'Prewire complete (click to retake photo)' : 'Capture prewire photo'}
                         >
                           {prewireComplete ? <Check size={16} /> : <Camera size={16} />}

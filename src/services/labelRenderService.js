@@ -140,8 +140,8 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   const DPI = 203;
 
   // Label dimensions in inches (Standard Continuous Label Width)
-  // We use 2.25" as the base canvas width based on testing
-  const LABEL_WIDTH_INCHES = 2.25;
+  // We use 1.5" based on visual optimization (reduced from 2.25")
+  const LABEL_WIDTH_INCHES = 1.5;
   const LABEL_HEIGHT_INCHES = 0.75;
 
   // Convert to pixels
