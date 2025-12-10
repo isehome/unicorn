@@ -54,6 +54,7 @@ import {
   AlignJustify
 } from 'lucide-react';
 import { projectShadeService } from '../services/projectShadeService';
+import ShadeManager from './Shades/ShadeManager';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
 
@@ -388,6 +389,10 @@ const PMProjectViewEnhanced = () => {
   const [milestoneDates, setMilestoneDates] = useState([]);
   const [phaseMilestonesEditMode, setPhaseMilestonesEditMode] = useState(false);
 
+  // Window Treatments / Shades state
+  const [projectShades, setProjectShades] = useState([]);
+  const [shadesLoading, setShadesLoading] = useState(false);
+
   // Collapsible sections state - all default to collapsed (true)
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
     projectInfo: true,
@@ -402,7 +407,8 @@ const PMProjectViewEnhanced = () => {
     phaseMilestones: false, // Start expanded for easy access
     buildingPermits: true,  // Start collapsed
     setupAndEdit: true,      // Setup & Configuration section - collapsed by default for existing projects
-    shadesSetup: true       // Window treatments setup
+    shadesSetup: true,      // Window treatments setup (import controls)
+    windowCoverings: true   // Window coverings list (embedded ShadeManager)
   });
 
   const toggleSection = (section) => {
@@ -422,6 +428,20 @@ const PMProjectViewEnhanced = () => {
       console.error('Failed to load project rooms:', error);
     } finally {
       setRoomsLoading(false);
+    }
+  }, [projectId]);
+
+  // Load project shades for window coverings section
+  const loadProjectShades = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setShadesLoading(true);
+      const shades = await projectShadeService.getShades(projectId);
+      setProjectShades(shades || []);
+    } catch (error) {
+      console.error('Failed to load project shades:', error);
+    } finally {
+      setShadesLoading(false);
     }
   }, [projectId]);
 
@@ -1610,6 +1630,10 @@ const PMProjectViewEnhanced = () => {
   }, [loadProjectRooms]);
 
   useEffect(() => {
+    loadProjectShades();
+  }, [loadProjectShades]);
+
+  useEffect(() => {
     loadEquipmentStats();
   }, [loadEquipmentStats]);
 
@@ -2584,7 +2608,7 @@ const PMProjectViewEnhanced = () => {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600 dark:text-gray-400">
             {/* Left side - Client badge */}
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-zinc-800 dark:text-gray-200">
               <Users className="h-4 w-4" />
               {formData.client || 'Client not set'}
             </span>
@@ -2593,7 +2617,7 @@ const PMProjectViewEnhanced = () => {
             <div className="flex items-center gap-3">
               {/* Phase selector/badge */}
               {editMode ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-1">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-zinc-800 px-2 py-1">
                   <Target className="h-4 w-4 text-gray-700 dark:text-gray-200" />
                   <select
                     value={formData.phase}
@@ -2609,7 +2633,7 @@ const PMProjectViewEnhanced = () => {
                   </select>
                 </div>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-zinc-800 dark:text-gray-200">
                   <Target className="h-4 w-4" />
                   {formData.phase || 'Phase not set'}
                 </span>
@@ -2617,7 +2641,7 @@ const PMProjectViewEnhanced = () => {
 
               {/* Status selector/badge */}
               {editMode ? (
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-1">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-zinc-800 px-2 py-1">
                   <CheckCircle className="h-4 w-4 text-gray-700 dark:text-gray-200" />
                   <select
                     value={formData.status}
@@ -2642,7 +2666,7 @@ const PMProjectViewEnhanced = () => {
                   </select>
                 </div>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700 dark:bg-zinc-800 dark:text-gray-200">
                   <CheckCircle className="h-4 w-4" />
                   {formData.status || 'Status not set'}
                 </span>
@@ -2689,7 +2713,7 @@ const PMProjectViewEnhanced = () => {
                 variant="ghost"
                 size="sm"
                 icon={Icon}
-                className="border border-gray-200 bg-white hover:border-violet-300 hover:text-violet-600 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-violet-500 w-full justify-center"
+                className="border border-gray-200 bg-white hover:border-violet-300 hover:text-violet-600 dark:border-gray-700 dark:bg-zinc-900 dark:hover:border-violet-500 w-full justify-center"
               >
                 {label}
               </Button>
@@ -2769,7 +2793,7 @@ const PMProjectViewEnhanced = () => {
                           onChange={handleLutronUpload}
                         />
                         <Button variant="secondary" size="sm" icon={ExternalLink} onClick={() => navigate(`/projects/${projectId}/shades`)}>
-                          Open Manager
+                          Open Full Manager
                         </Button>
                       </div>
                     </div>
@@ -2858,7 +2882,7 @@ const PMProjectViewEnhanced = () => {
 
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
-                                <thead className="bg-gray-100 dark:bg-gray-800">
+                                <thead className="bg-gray-100 dark:bg-zinc-800">
                                   <tr>
                                     <th className="px-3 py-2 text-left">
                                       <input
@@ -2881,7 +2905,7 @@ const PMProjectViewEnhanced = () => {
                                     const dropType = extractShapeDropType(shape);
 
                                     return (
-                                      <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${linked ? 'opacity-60' : ''}`}>
+                                      <tr key={shape.id} className={`hover:bg-gray-50 dark:hover:bg-zinc-800/50 ${linked ? 'opacity-60' : ''}`}>
                                         <td className="px-3 py-2">
                                           <input
                                             type="checkbox"
@@ -3049,7 +3073,7 @@ const PMProjectViewEnhanced = () => {
 
                           if (allRoomEntries.length === 0) {
                             return (
-                              <div className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg text-center">
+                              <div className="p-4 bg-gray-50 dark:bg-zinc-900/50 rounded-lg text-center">
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
                                   No rooms found yet. Complete steps 1 & 2 to import room data.
                                 </p>
@@ -3129,7 +3153,7 @@ const PMProjectViewEnhanced = () => {
                                             }
                                             disabled={isMatched && !roomAssignments[entry.normalized]}
                                             className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white
+                                               bg-white dark:bg-zinc-900 text-gray-900 dark:text-white
                                                disabled:opacity-75"
                                           >
                                             <option value="">-- Select CSV Room or Create New --</option>
@@ -3183,7 +3207,7 @@ const PMProjectViewEnhanced = () => {
                                               }
                                               placeholder="Enter room name"
                                               className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                                 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                                 bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
                                             />
                                             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                               <input
@@ -3223,7 +3247,7 @@ const PMProjectViewEnhanced = () => {
                               {unmatchedRoomEntries.map((entry) => (
                                 <div
                                   key={entry.normalized}
-                                  className="p-3 bg-white dark:bg-gray-800 rounded border border-yellow-300 dark:border-yellow-700"
+                                  className="p-3 bg-white dark:bg-zinc-800 rounded border border-yellow-300 dark:border-yellow-700"
                                 >
                                   <div className="flex items-start justify-between gap-4">
                                     <div className="flex-1 min-w-0">
@@ -3252,7 +3276,7 @@ const PMProjectViewEnhanced = () => {
                                               handleRoomSelectionChange(entry.normalized, e.target.value, entry)
                                             }
                                             className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                               bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
                                           >
                                             <option value="">-- Select Action --</option>
                                             <option value="__new__">Create New Room</option>
@@ -3291,7 +3315,7 @@ const PMProjectViewEnhanced = () => {
                                             }
                                             placeholder="Enter room name"
                                             className="w-full px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded
-                                               bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                                               bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
                                           />
                                           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                                             <input
@@ -3439,8 +3463,8 @@ const PMProjectViewEnhanced = () => {
                             onChange={handleInputChange}
                             disabled={!editMode}
                             className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                             bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                             disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                             bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                             disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                           />
                         </div>
 
@@ -3451,7 +3475,7 @@ const PMProjectViewEnhanced = () => {
                           <div className="relative">
                             {!editMode ? (
                               <div className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg 
-                                   bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white">
+                                   bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white">
                                 {formData.client || <span className="text-gray-400 dark:text-gray-500">No client selected</span>}
                               </div>
                             ) : (
@@ -3464,14 +3488,14 @@ const PMProjectViewEnhanced = () => {
                                     onChange={handleInputChange}
                                     placeholder="Enter client name or company"
                                     className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => setShowClientPicker(!showClientPicker)}
                                     className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                     bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400
+                                     bg-white dark:bg-zinc-800 text-gray-600 dark:text-gray-400
                                      hover:border-violet-500 dark:hover:border-violet-400 hover:text-violet-600 
                                      dark:hover:text-violet-400 transition-colors"
                                     title="Select from contacts"
@@ -3484,16 +3508,16 @@ const PMProjectViewEnhanced = () => {
                                 </p>
 
                                 {showClientPicker && (
-                                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-900 border border-gray-300 
+                                  <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-gray-300 
                                         dark:border-gray-600 rounded-lg shadow-xl max-h-96 overflow-hidden">
-                                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                                    <div className="p-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800">
                                       <input
                                         type="text"
                                         value={clientSearchTerm}
                                         onChange={(e) => setClientSearchTerm(e.target.value)}
                                         placeholder="Search contacts..."
                                         className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded 
-                                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                         bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                                          placeholder-gray-500 dark:placeholder-gray-400
                                          focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                         autoFocus
@@ -3514,7 +3538,7 @@ const PMProjectViewEnhanced = () => {
                                           return (
                                             <div
                                               key={contact.id}
-                                              className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer 
+                                              className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-800 cursor-pointer 
                                                border-b border-gray-100 dark:border-gray-700 last:border-0
                                                transition-colors"
                                               onClick={() => handleClientSelect(contact)}
@@ -3578,8 +3602,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                               bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             >
                               <option value="">Select Phase</option>
                               {phases.map((phase) => (
@@ -3608,8 +3632,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                               disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                               bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                               disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             >
                               {statuses.length === 0 ? (
                                 <>
@@ -3648,8 +3672,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed
+                                 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed
                                  [&::-webkit-calendar-picker-indicator]:dark:invert"
                             />
                           </div>
@@ -3664,8 +3688,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                                 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div>
@@ -3679,8 +3703,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                                 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div className="md:col-span-2">
@@ -3694,8 +3718,8 @@ const PMProjectViewEnhanced = () => {
                               onChange={handleInputChange}
                               disabled={!editMode}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                                 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             />
                           </div>
                           <div className="md:col-span-2">
@@ -3709,8 +3733,8 @@ const PMProjectViewEnhanced = () => {
                               disabled={!editMode}
                               rows={3}
                               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                 bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                 disabled:bg-gray-100 dark:disabled:bg-gray-900 disabled:cursor-not-allowed"
+                                 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
+                                 disabled:bg-gray-100 dark:disabled:bg-zinc-900 disabled:cursor-not-allowed"
                             />
                           </div>
                         </div>
@@ -3806,7 +3830,7 @@ const PMProjectViewEnhanced = () => {
                                 onChange={handleInputChange}
                                 placeholder={placeholder}
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                                    focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                               />
                               {helper && (
@@ -3875,7 +3899,7 @@ const PMProjectViewEnhanced = () => {
                                 onChange={handleInputChange}
                                 placeholder="192.168.1.1"
                                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                                    focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                               />
                               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -3895,7 +3919,7 @@ const PMProjectViewEnhanced = () => {
                                   onChange={handleInputChange}
                                   placeholder="Enter Network API Key"
                                   className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                     bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                                      focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                                 />
                                 <button
@@ -3946,7 +3970,7 @@ const PMProjectViewEnhanced = () => {
                                   onChange={handleInputChange}
                                   placeholder="Auto-fetched from API"
                                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                                     bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white"
                                   readOnly
                                 />
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -3965,7 +3989,7 @@ const PMProjectViewEnhanced = () => {
                                   onChange={handleInputChange}
                                   placeholder="Auto-fetched from API"
                                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                                     bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white"
+                                     bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white"
                                   readOnly
                                 />
                                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -4101,6 +4125,39 @@ const PMProjectViewEnhanced = () => {
           </div>
         )}
       </div>
+
+      {/* Window Coverings Section */}
+      {projectShades.length > 0 && (
+        <div>
+          <button
+            onClick={() => toggleSection('windowCoverings')}
+            className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+            style={sectionStyles.card}
+          >
+            <div className="flex items-center gap-3">
+              <AlignJustify className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">Window Coverings</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="px-2 py-0.5 text-xs rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                {projectShades.length} shades
+              </span>
+              <span className="px-2 py-0.5 text-xs rounded-full" style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }}>
+                {projectShades.filter(s => s.m1_complete && s.m2_complete).length} verified
+              </span>
+              <ChevronRight
+                className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+                style={{ transform: sectionsCollapsed.windowCoverings ? 'none' : 'rotate(90deg)' }}
+              />
+            </div>
+          </button>
+          {!sectionsCollapsed.windowCoverings && (
+            <div className="mt-4">
+              <ShadeManager isPMView={true} embeddedProjectId={projectId} />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Reports Section - Links to dedicated page */}
       <div>
@@ -4342,7 +4399,7 @@ const PMProjectViewEnhanced = () => {
               <button
                 type="button"
                 onClick={() => setLaborBudgetCollapsed((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-zinc-800 dark:hover:bg-gray-700"
               >
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Labor Budget</p>
@@ -4359,7 +4416,7 @@ const PMProjectViewEnhanced = () => {
               </button>
 
               {!laborBudgetCollapsed && (
-                <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-zinc-800">
                   {laborSummary.entries.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">
                       No labor entries imported from the portal CSV yet.
@@ -4367,7 +4424,7 @@ const PMProjectViewEnhanced = () => {
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-900/50">
+                        <thead className="bg-gray-50 dark:bg-zinc-900/50">
                           <tr>
                             <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Labor Type</th>
                             <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Room</th>
@@ -4380,7 +4437,7 @@ const PMProjectViewEnhanced = () => {
                           {laborSummary.entries.map((entry) => {
                             const plannedCost = entry.hours * entry.hourlyRate;
                             return (
-                              <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                                 <td className="px-4 py-2 text-gray-900 dark:text-white">{entry.laborType}</td>
                                 <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{entry.roomName}</td>
                                 <td className="px-4 py-2 text-right text-gray-900 dark:text-white">
@@ -4396,7 +4453,7 @@ const PMProjectViewEnhanced = () => {
                             );
                           })}
                         </tbody>
-                        <tfoot className="bg-gray-50 dark:bg-gray-900/50">
+                        <tfoot className="bg-gray-50 dark:bg-zinc-900/50">
                           <tr>
                             <td className="px-4 py-2 font-semibold text-gray-900 dark:text-white">Total</td>
                             <td className="px-4 py-2" />
@@ -4460,7 +4517,7 @@ const PMProjectViewEnhanced = () => {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 dark:bg-gray-900/50">
+                    <thead className="bg-gray-50 dark:bg-zinc-900/50">
                       <tr>
                         <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">User</th>
                         <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Sessions</th>
@@ -4471,7 +4528,7 @@ const PMProjectViewEnhanced = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {timeData.summary.map((user) => (
-                        <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <tr key={user.user_email} className="hover:bg-gray-50 dark:hover:bg-zinc-800/50">
                           <td className="px-4 py-3">
                             <div>
                               <p className="font-medium text-gray-900 dark:text-white">
@@ -4559,22 +4616,6 @@ const PMProjectViewEnhanced = () => {
         />
       )}
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-4">
-        <Button
-          variant="primary"
-          onClick={() => navigate(`/project/${projectId}/pm-issues`)}
-        >
-          View Issues
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={() => navigate('/wire-drops')}
-        >
-          View Wire Drops
-        </Button>
-      </div>
-
       {/* Add Phase Modal */}
       {showPhaseModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -4650,7 +4691,7 @@ const PMProjectViewEnhanced = () => {
               {phases.map((phase, index) => (
                 <div
                   key={phase.id}
-                  className="flex items-center justify-between p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900/50"
+                  className="flex items-center justify-between p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-zinc-900/50"
                 >
                   <div className="flex items-center gap-2">
                     <GripVertical className="w-4 h-4 text-gray-400" />
@@ -4716,7 +4757,7 @@ const PMProjectViewEnhanced = () => {
                   placeholder="Full name"
                   required
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                           bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
 
@@ -4729,7 +4770,7 @@ const PMProjectViewEnhanced = () => {
                   value={newContactData.company}
                   onChange={(e) => setNewContactData({ ...newContactData, company: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                           bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
 
@@ -4743,7 +4784,7 @@ const PMProjectViewEnhanced = () => {
                   onChange={(e) => setNewContactData({ ...newContactData, email: e.target.value })}
                   placeholder="email@example.com"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                           bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
 
@@ -4757,7 +4798,7 @@ const PMProjectViewEnhanced = () => {
                   onChange={(e) => setNewContactData({ ...newContactData, phone: e.target.value })}
                   placeholder="(555) 123-4567"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                           bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
@@ -4816,7 +4857,7 @@ const PMProjectViewEnhanced = () => {
                     You are about to permanently delete:
                   </p>
 
-                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="bg-gray-50 dark:bg-zinc-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
                     <p className="font-semibold text-gray-900 dark:text-white mb-2">
                       {project.name}
                     </p>
@@ -4874,7 +4915,7 @@ const PMProjectViewEnhanced = () => {
                     </p>
                   </div>
 
-                  <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
+                  <div className="bg-gray-100 dark:bg-zinc-800 p-4 rounded-lg border-2 border-gray-300 dark:border-gray-600">
                     <p className="text-gray-900 dark:text-white font-semibold mb-1">
                       Deleting: {project.name}
                     </p>

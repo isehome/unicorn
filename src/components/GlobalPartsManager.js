@@ -219,7 +219,7 @@ const GlobalPartsManager = () => {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by part number, name, manufacturer, or model..."
-            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+            className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
           />
         </div>
 
@@ -230,7 +230,7 @@ const GlobalPartsManager = () => {
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               filter === 'all'
                 ? 'bg-violet-600 text-white dark:bg-violet-500'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
             }`}
           >
             All Parts
@@ -240,7 +240,7 @@ const GlobalPartsManager = () => {
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               filter === 'prewire'
                 ? 'bg-violet-600 text-white dark:bg-violet-500'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
             }`}
           >
             Prewire Prep
@@ -250,7 +250,7 @@ const GlobalPartsManager = () => {
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               filter === 'trim'
                 ? 'bg-violet-600 text-white dark:bg-violet-500'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
             }`}
           >
             Trim Prep
@@ -344,7 +344,7 @@ const GlobalPartsManager = () => {
                         }
                       }}
                       disabled={savingInventory === part.id}
-                      className="w-20 px-2 py-1 text-sm border border-violet-300 dark:border-violet-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+                      className="w-20 px-2 py-1 text-sm border border-violet-300 dark:border-violet-600 rounded bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
                       autoFocus
                     />
                     <button
@@ -439,7 +439,7 @@ const GlobalPartsManager = () => {
       </div>
 
       {filteredParts.length === 0 && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-12 text-center dark:border-gray-700 dark:bg-gray-800">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-6 py-12 text-center dark:border-gray-700 dark:bg-zinc-800">
           <Package className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
             {searchQuery ? 'No parts found' : 'No parts in catalog'}

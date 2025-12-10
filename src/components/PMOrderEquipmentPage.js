@@ -1189,7 +1189,7 @@ const PMOrderEquipmentPageEnhanced = () => {
           </div>
 
           {selectedCount > 0 && (
-            <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border-2 border-violet-500">
+            <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-800 rounded-lg border-2 border-violet-500">
               <div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">
                   {selectedCount} part number{selectedCount !== 1 ? 's' : ''} selected
@@ -1255,12 +1255,12 @@ const PMOrderEquipmentPageEnhanced = () => {
       <div
         key={partNumberKey}
         className={`p-4 rounded-lg border transition-all ${isDisabled
-          ? 'bg-gray-50 dark:bg-gray-800/30 border-gray-200 dark:border-gray-700 opacity-50'
+          ? 'bg-gray-50 dark:bg-zinc-800/30 border-gray-200 dark:border-gray-700 opacity-50'
           : hasDraftOnly
             ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-400 dark:border-orange-600 border-2'
             : isSelected
               ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-500 border-2'
-              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
+              : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
           }`}
       >
         <div className="flex items-start gap-4">
@@ -1311,7 +1311,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                     </label>
                     <div className="flex gap-2">
                       <select
-                        className="flex-1 px-3 py-2 text-sm border border-violet-300 dark:border-violet-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                        className="flex-1 px-3 py-2 text-sm border border-violet-300 dark:border-violet-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
                         defaultValue={group.supplier_id || ''}
                         onChange={(e) => {
                           const selectedSupplier = allSuppliers.find(s => s.id === e.target.value);
@@ -1418,7 +1418,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                         </label>
                         <div className="flex gap-2">
                           <select
-                            className="flex-1 px-3 py-2 text-sm border border-red-300 dark:border-red-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500"
+                            className="flex-1 px-3 py-2 text-sm border border-red-300 dark:border-red-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-red-500"
                             defaultValue=""
                             onChange={(e) => {
                               const selectedSupplier = allSuppliers.find(s => s.id === e.target.value);
@@ -1471,7 +1471,7 @@ const PMOrderEquipmentPageEnhanced = () => {
 
             {/* Editable Quantity for Selected Items */}
             {isSelected && (
-              <div className="mt-3 p-3 bg-white dark:bg-gray-900 rounded border border-violet-300">
+              <div className="mt-3 p-3 bg-white dark:bg-zinc-900 rounded border border-violet-300">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Quantity to Order
                 </label>
@@ -1481,7 +1481,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                   max={needed}
                   value={selectedQty}
                   onChange={(e) => handleSelectedQuantityChangeByPartNumber(partNumberKey, parseInt(e.target.value, 10) || 0)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Max: {needed} (still needed across all locations)
@@ -1650,7 +1650,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                   {groupData.equipment.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg"
+                      className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-zinc-800/50 rounded-lg"
                     >
                       <div className="flex-1">
                         <p className="font-medium text-sm text-gray-900 dark:text-white">
@@ -1717,7 +1717,7 @@ const PMOrderEquipmentPageEnhanced = () => {
   const orderedCost = calculateOrderedCost();
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 pb-20 transition-colors">
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
@@ -1739,7 +1739,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               onClick={() => setTab('inventory')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${tab === 'inventory'
                 ? 'bg-violet-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               <Package className="w-4 h-4" />
@@ -1749,7 +1749,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               onClick={() => setTab('prewire')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${tab === 'prewire'
                 ? 'bg-violet-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               Prewire Prep
@@ -1758,7 +1758,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               onClick={() => setTab('trim')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${tab === 'trim'
                 ? 'bg-violet-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               Trim Prep
@@ -1767,7 +1767,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               onClick={() => setTab('pos')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${tab === 'pos'
                 ? 'bg-violet-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               Active POs
@@ -1776,7 +1776,7 @@ const PMOrderEquipmentPageEnhanced = () => {
               onClick={() => setTab('vendors')}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${tab === 'vendors'
                 ? 'bg-violet-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
             >
               <Settings className="w-4 h-4" />
@@ -1899,7 +1899,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                 </div>
 
                                 {po.internal_notes && (
-                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
+                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-zinc-800/50 rounded text-xs">
                                     <p className="text-gray-600 dark:text-gray-400">
                                       <strong>Notes:</strong> {po.internal_notes}
                                     </p>
@@ -1969,7 +1969,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                                     po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
                                       po.status === 'confirmed' ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300' :
-                                        'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                                        'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300'
                                     }`}>
                                     {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
                                   </span>
@@ -2020,7 +2020,7 @@ const PMOrderEquipmentPageEnhanced = () => {
                                 </div>
 
                                 {po.internal_notes && (
-                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-gray-800/50 rounded text-xs">
+                                  <div className="mt-3 p-2 bg-gray-50 dark:bg-zinc-800/50 rounded text-xs">
                                     <p className="text-gray-600 dark:text-gray-400">
                                       <strong>Notes:</strong> {po.internal_notes}
                                     </p>

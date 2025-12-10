@@ -45,7 +45,7 @@ const WireDropsHub = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div style={sectionStyles.card} className="mb-6">
           <div className="text-center mb-8">
@@ -70,7 +70,7 @@ const WireDropsHub = () => {
                   className={`
                     flex items-start gap-4 p-6 rounded-lg border-2 
                     ${colors.border} ${colors.hover}
-                    bg-white dark:bg-gray-800 
+                    bg-white dark:bg-zinc-800 
                     transition-all hover:shadow-lg
                     text-left group
                   `}

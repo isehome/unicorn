@@ -340,7 +340,7 @@ const InventoryManager = ({ projectId }) => {
                                 status.onHand - 1
                               )
                             }
-                            className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                            className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-zinc-800"
                             disabled={saving || status.onHand === 0}
                           >
                             <Minus className="h-4 w-4" />
@@ -357,7 +357,7 @@ const InventoryManager = ({ projectId }) => {
                                   e.target.value
                                 )
                               }
-                              className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-center text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800"
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-center text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800"
                               disabled={saving}
                               min="0"
                             />
@@ -374,7 +374,7 @@ const InventoryManager = ({ projectId }) => {
                                 status.onHand + 1
                               )
                             }
-                            className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                            className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-zinc-800"
                             disabled={saving}
                           >
                             <Plus className="h-4 w-4" />

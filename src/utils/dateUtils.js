@@ -200,15 +200,15 @@ export const getDateStatusClasses = (dateStatus, variant = 'text') => {
   // Not set - always greyed out
   if (status === 'not-set') {
     if (variant === 'text') return 'text-gray-400 dark:text-gray-500';
-    if (variant === 'bg') return 'bg-gray-100 dark:bg-gray-800';
+    if (variant === 'bg') return 'bg-gray-100 dark:bg-zinc-800';
     if (variant === 'border') return 'border-gray-200 dark:border-gray-700';
-    if (variant === 'badge') return 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700';
+    if (variant === 'badge') return 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700';
   }
 
   // Completed - subtle green (greyed out but positive)
   if (status === 'completed') {
     if (variant === 'text') return 'text-gray-500 dark:text-gray-400 line-through';
-    if (variant === 'bg') return 'bg-gray-50 dark:bg-gray-800/50';
+    if (variant === 'bg') return 'bg-gray-50 dark:bg-zinc-800/50';
     if (variant === 'border') return 'border-gray-200 dark:border-gray-700';
     if (variant === 'badge') return 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800 opacity-60';
   }

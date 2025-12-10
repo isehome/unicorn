@@ -113,7 +113,7 @@ export function getWireDropBadgeTextColor(hexColor) {
   const luminance = 0.2126 * linearize(r / 255) + 0.7152 * linearize(g / 255) + 0.0722 * linearize(b / 255);
 
   // Threshold chosen so bright colors get dark text and dark colors get white text
-  return luminance > 0.6 ? '#111827' : '#FFFFFF';
+  return luminance > 0.6 ? '#18181B' : '#FFFFFF';
 }
 
 function isHexColor(value) {

@@ -66,10 +66,10 @@ const SecureDataPage = () => {
 
   // Styles
   const styles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F9FAFB';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F9FAFB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
     
     return {
@@ -402,7 +402,7 @@ const SecureDataPage = () => {
   }
 
   return (
-    <div className={`min-h-screen ${mode === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} pb-20`}>
+    <div className={`min-h-screen ${mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-50'} pb-20`}>
       {/* Security Warning */}
       <div className="px-4 py-3 border-b" style={{ backgroundColor: withAlpha(palette.danger, 0.1) }}>
         <div className="flex items-start gap-2">
@@ -521,7 +521,7 @@ const SecureDataPage = () => {
                       </div>
                       <button
                         onClick={() => handleEdit(item)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                       >
                         <Edit2 size={16} style={styles.textSecondary} />
                       </button>
@@ -539,7 +539,7 @@ const SecureDataPage = () => {
                           </div>
                           <button
                             onClick={() => copyToClipboard(item.username, item.id, 'username')}
-                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-zinc-800"
                           >
                             {copiedItem === `${item.id}-username` ? (
                               <CheckCircle size={14} style={{ color: palette.success }} />
@@ -561,7 +561,7 @@ const SecureDataPage = () => {
                           <div className="flex gap-1">
                             <button
                               onClick={() => togglePasswordVisibility(item.id)}
-                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-zinc-800"
                             >
                               {passwordVisible ? (
                                 <EyeOff size={14} style={styles.textSecondary} />
@@ -571,7 +571,7 @@ const SecureDataPage = () => {
                             </button>
                             <button
                               onClick={() => copyToClipboard(item.password, item.id, 'password')}
-                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+                              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-zinc-800"
                             >
                               {copiedItem === `${item.id}-password` ? (
                                 <CheckCircle size={14} style={{ color: palette.success }} />
@@ -649,7 +649,7 @@ const SecureDataPage = () => {
               </h2>
               <button
                 onClick={() => setShowAddForm(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <X size={20} />
               </button>
@@ -744,7 +744,7 @@ const SecureDataPage = () => {
                   </label>
                   <div className="max-h-40 overflow-y-auto border rounded-lg p-2" style={styles.mutedCard}>
                     {equipment.map(equip => (
-                      <label key={equip.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                      <label key={equip.id} className="flex items-center gap-2 p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded">
                         <input
                           type="checkbox"
                           checked={formData.equipment_ids.includes(equip.id)}
@@ -816,7 +816,7 @@ const SecureDataPage = () => {
               </h2>
               <button
                 onClick={() => setShowAuditModal(false)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 <X size={20} />
               </button>

@@ -65,8 +65,8 @@ const IssueDetail = () => {
   const ui = useMemo(() => {
     const isDark = mode === 'dark';
     return {
-      input: `w-full px-3 py-2 rounded-xl border ${isDark ? 'bg-slate-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
-      select: `w-full px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-slate-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
+      input: `w-full px-3 py-2 rounded-xl border ${isDark ? 'bg-zinc-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
+      select: `w-full px-3 py-2 rounded-xl border pr-8 ${isDark ? 'bg-zinc-900 text-zinc-100 border-zinc-700' : 'bg-white text-zinc-900 border-zinc-300'}`,
       subtle: isDark ? 'text-zinc-400' : 'text-zinc-600',
     };
   }, [mode]);
@@ -1284,7 +1284,7 @@ const IssueDetail = () => {
                 } : {
                   backgroundColor: 'transparent',
                   color: mode === 'dark' ? '#9ca3af' : '#6b7280',
-                  borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                  borderColor: mode === 'dark' ? '#3F3F46' : '#d1d5db',
                   padding: '6px 12px',
                   borderRadius: '0.75rem',
                   fontSize: '0.875rem',
@@ -1337,7 +1337,7 @@ const IssueDetail = () => {
                 } : {
                   backgroundColor: 'transparent',
                   color: mode === 'dark' ? '#9ca3af' : '#6b7280',
-                  borderColor: mode === 'dark' ? '#374151' : '#d1d5db',
+                  borderColor: mode === 'dark' ? '#3F3F46' : '#d1d5db',
                   padding: '6px 12px',
                   borderRadius: '0.75rem',
                   fontSize: '0.875rem',
@@ -1563,8 +1563,8 @@ const IssueDetail = () => {
                 <div
                   className="absolute right-0 mt-1 w-72 rounded-lg border shadow-lg z-50 overflow-hidden"
                   style={{
-                    backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF',
-                    borderColor: mode === 'dark' ? '#374151' : '#E5E7EB'
+                    backgroundColor: mode === 'dark' ? '#27272A' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB'
                   }}
                 >
                   <div className="max-h-64 overflow-y-auto">

@@ -679,7 +679,7 @@ const PartsReceivingPageNew = () => {
   const completedPOs = filteredPOs.filter(po => getPOStatus(po).percent === 100);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 pb-20 transition-colors">
       <div className="w-full px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
@@ -722,7 +722,7 @@ const PartsReceivingPageNew = () => {
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors min-h-[44px] ${
                 phaseFilter === 'all'
                   ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               All Items
@@ -732,7 +732,7 @@ const PartsReceivingPageNew = () => {
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors min-h-[44px] ${
                 phaseFilter === 'prewire'
                   ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               Prewire Only
@@ -742,7 +742,7 @@ const PartsReceivingPageNew = () => {
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors min-h-[44px] ${
                 phaseFilter === 'trim'
                   ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               Trim Only
@@ -780,7 +780,7 @@ const PartsReceivingPageNew = () => {
                     {/* PO Header */}
                     <button
                       onClick={() => togglePO(po.id)}
-                      className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-1">
@@ -911,7 +911,7 @@ const PartsReceivingPageNew = () => {
                   return next;
                 });
               }}
-              className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 mb-3 hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors"
             >
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
                 ✓ Completed POs ({completedPOs.length})
@@ -1041,7 +1041,7 @@ const PartsReceivingPageNew = () => {
       {issueModal.isOpen && issueModal.poInfo && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setIssueModal({ isOpen: false, poInfo: null }); setSelectedPartId(''); }}>
           <div
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6"
+            className="bg-white dark:bg-zinc-800 rounded-xl shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 mb-4">
@@ -1228,7 +1228,7 @@ const LineItem = ({ item, onUpdate, saving }) => {
         ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
         : hasMismatch
         ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
-        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800'
     }`}>
       <div className="flex items-start justify-between mb-2">
         <div className="flex-1 min-w-0">

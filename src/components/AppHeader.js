@@ -24,8 +24,8 @@ const AppHeader = () => {
     background: sectionStyles.header.background,
     borderBottom: sectionStyles.header.borderBottom,
     boxShadow: mode === 'dark'
-      ? '0 16px 32px rgba(2, 6, 23, 0.45)'
-      : '0 16px 28px rgba(79, 70, 229, 0.12)'
+      ? '0 16px 32px rgba(0, 0, 0, 0.45)'
+      : '0 16px 28px rgba(0, 0, 0, 0.08)'
   }), [sectionStyles, mode]);
 
   const showBackButton = !['/', '/pm-dashboard', '/login'].includes(location.pathname);
@@ -76,7 +76,7 @@ const AppHeader = () => {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 dark:bg-slate-900/70 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:shadow-md transition"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 dark:bg-zinc-800/70 text-xs font-medium text-gray-700 dark:text-gray-200 shadow-sm hover:shadow-md transition"
             >
               <ArrowLeft size={16} />
               <span>Back</span>

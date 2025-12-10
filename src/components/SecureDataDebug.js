@@ -101,7 +101,7 @@ const SecureDataDebug = ({ projectId }) => {
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-auto">
+      <div className="bg-white dark:bg-zinc-800 rounded-lg p-6 max-w-4xl max-h-[80vh] overflow-auto">
         <h2 className="text-xl font-bold mb-4 text-red-600">Secure Data Debug Info</h2>
         
         <div className="space-y-4">
@@ -168,7 +168,7 @@ const SecureDataDebug = ({ projectId }) => {
           {/* Raw Debug Data */}
           <details className="border rounded p-3">
             <summary className="cursor-pointer font-semibold">Raw Debug Data (click to expand)</summary>
-            <pre className="text-xs mt-2 bg-gray-100 dark:bg-gray-900 p-2 rounded overflow-auto">
+            <pre className="text-xs mt-2 bg-gray-100 dark:bg-zinc-900 p-2 rounded overflow-auto">
               {JSON.stringify(debugInfo, null, 2)}
             </pre>
           </details>

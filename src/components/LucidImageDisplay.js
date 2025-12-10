@@ -176,7 +176,7 @@ const LucidImageDisplay = ({
       
       {/* Image Display */}
       <div 
-        className="relative w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800"
+        className="relative w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800"
         style={{ height }}
       >
         {loading && (

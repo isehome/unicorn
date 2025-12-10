@@ -115,7 +115,7 @@ const PublicPurchaseOrderPortal = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -123,7 +123,7 @@ const PublicPurchaseOrderPortal = () => {
 
   if (error && !portalData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div className="max-w-md text-center space-y-3">
           <AlertTriangle className="w-10 h-10 text-rose-500 mx-auto" />
           <p className="text-lg font-semibold text-gray-900 dark:text-white">Unable to load PO</p>
@@ -134,7 +134,7 @@ const PublicPurchaseOrderPortal = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Header with company branding and project name */}
         <div className="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
@@ -199,7 +199,7 @@ const PublicPurchaseOrderPortal = () => {
           )}
           <form className="space-y-4" onSubmit={handleSubmit}>
             {formEntries.map((entry, index) => (
-              <div key={entry.id} className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-3">
+              <div key={entry.id} className="p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-xl space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-gray-500">
                     Shipment {index + 1}
@@ -219,7 +219,7 @@ const PublicPurchaseOrderPortal = () => {
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Carrier</label>
                     <select
-                      className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+                      className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm"
                       value={entry.carrier}
                       onChange={(e) => updateEntry(entry.id, 'carrier', e.target.value)}
                     >
@@ -232,7 +232,7 @@ const PublicPurchaseOrderPortal = () => {
                     <label className="text-xs text-gray-500 block mb-1">Tracking Number *</label>
                     <input
                       type="text"
-                      className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+                      className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm"
                       value={entry.trackingNumber}
                       onChange={(e) => updateEntry(entry.id, 'trackingNumber', e.target.value)}
                       placeholder="Enter tracking number"
@@ -243,7 +243,7 @@ const PublicPurchaseOrderPortal = () => {
                   <label className="text-xs text-gray-500 block mb-1">Notes (optional)</label>
                   <input
                     type="text"
-                    className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm"
+                    className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-900 px-3 py-2 text-sm"
                     value={entry.notes}
                     onChange={(e) => updateEntry(entry.id, 'notes', e.target.value)}
                     placeholder="e.g., partial shipment, backorder items, etc."

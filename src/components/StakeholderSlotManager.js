@@ -81,7 +81,7 @@ const StakeholderSlotManager = ({ projectId, theme }) => {
         const canAddMore = assignments.length < slot.max_assignees;
         
         return (
-          <div key={slot.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-800">
+          <div key={slot.id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-zinc-800">
             <div className="flex justify-between items-center mb-3">
               <div>
                 <h3 className="font-medium text-gray-900 dark:text-white">{slot.slot_name}</h3>
@@ -127,7 +127,7 @@ const StakeholderSlotManager = ({ projectId, theme }) => {
             {/* Contact Picker Modal */}
             {showContactPicker === slot.id && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
+                <div className="bg-white dark:bg-zinc-800 p-6 rounded-lg max-w-md w-full max-h-96 overflow-y-auto">
                   <h3 className="text-lg font-medium mb-4 text-gray-900 dark:text-white">Assign to {slot.slot_name}</h3>
                   
                   <div className="space-y-2">

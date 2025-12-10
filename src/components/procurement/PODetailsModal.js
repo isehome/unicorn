@@ -705,21 +705,21 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+        <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
           <div className="flex-1">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               {po ? po.po_number : 'Loading...'}
             </h2>
             {po && (
               <div className="flex items-center gap-2 mt-1">
-                <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'draft' ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300' :
+                <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'draft' ? 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300' :
                   po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                     po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                      'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                      'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300'
                   }`}>
                   {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
                 </span>
@@ -864,7 +864,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               {isEditing ? (
                 <>
                   {showAddressSelector ? (
-                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-zinc-800/50">
                       <ShippingAddressManager
                         embedded={true}
                         onSelect={(address) => {
@@ -895,7 +895,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
               ) : (
                 <>
                   {shippingAddress ? (
-                    <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
                       <div className="flex items-start gap-2">
                         <MapPin className="w-5 h-5 text-gray-600 dark:text-gray-400 mt-0.5" />
                         <div>
@@ -959,7 +959,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
             </div>
 
             {/* Costs */}
-            <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg space-y-3">
+            <div className="bg-gray-50 dark:bg-zinc-800/50 p-4 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Subtotal
@@ -1309,7 +1309,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         )}
 
         {/* Footer */}
-        <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
+        <div className="sticky bottom-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 py-4">
           {/* Mobile: Stack vertically, Desktop: Two columns */}
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
             {/* Left side: Edit/Delete buttons (drafts) or Undo Submit (submitted) */}

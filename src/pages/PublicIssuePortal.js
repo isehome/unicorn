@@ -150,7 +150,7 @@ const PublicIssuePortal = () => {
   const currentStakeholderEmail = (portalData?.stakeholder?.email || '').toLowerCase().trim();
 
   const renderVerification = () => (
-    <form onSubmit={handleVerify} className="max-w-md mx-auto bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
+    <form onSubmit={handleVerify} className="max-w-md mx-auto bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
       <div className="text-center">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Verify your access</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -159,7 +159,7 @@ const PublicIssuePortal = () => {
       </div>
       <input
         type="text"
-        className="w-full text-center text-2xl tracking-widest px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white"
+        className="w-full text-center text-2xl tracking-widest px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-zinc-800 text-gray-900 dark:text-white"
         maxLength={6}
         value={otpCode}
         onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
@@ -172,7 +172,7 @@ const PublicIssuePortal = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div className="flex flex-col items-center gap-2 text-gray-600 dark:text-gray-300">
           <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm">Loading issue…</span>
@@ -183,7 +183,7 @@ const PublicIssuePortal = () => {
 
   if (portalData?.status === 'invalid' || portalData?.status === 'revoked' || portalData?.status === 'expired') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div className="max-w-md text-center space-y-3">
           <AlertTriangle className="w-10 h-10 text-rose-500 mx-auto" />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Link not available</h2>
@@ -196,7 +196,7 @@ const PublicIssuePortal = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
         {/* Header with company branding and project name */}
         <div className="flex items-center justify-between gap-4 border-b border-gray-200 dark:border-gray-700 pb-6">
@@ -304,7 +304,7 @@ const PublicIssuePortal = () => {
                 rows={3}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
+                className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-900 text-sm text-gray-900 dark:text-gray-100 px-3 py-2"
                 placeholder="Share an update or ask a question…"
               />
             </section>

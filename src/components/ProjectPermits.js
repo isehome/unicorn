@@ -335,7 +335,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
 
   if (loading) {
     return (
-      <div className="p-6 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="p-6 bg-gray-50 dark:bg-zinc-900/50 rounded-lg border border-gray-200 dark:border-gray-700">
         <p className="text-sm text-gray-600 dark:text-gray-400">Loading permits...</p>
       </div>
     );
@@ -371,7 +371,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
       )}
 
       {permits.length === 0 ? (
-        <div className="p-6 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
+        <div className="p-6 bg-gray-50 dark:bg-zinc-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-center">
           <FileText className="w-12 h-12 text-gray-400 mx-auto mb-3" />
           <p className="text-sm text-gray-600 dark:text-gray-400">
             No permits added yet. Click "Add Permit" to get started.
@@ -382,7 +382,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
           {permits.map((permit) => (
             <div
               key={permit.id}
-              className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+              className="p-4 bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700"
             >
               {/* Header */}
               <div className="flex justify-between items-start mb-3">

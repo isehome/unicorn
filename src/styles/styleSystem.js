@@ -70,18 +70,35 @@ const stakeholderColors = {
   }
 };
 
+/**
+ * THEME PALETTE TOGGLE
+ *
+ * To switch between Zinc (black/grey) and Slate (blue-tinted) themes:
+ * - Current: ZINC_THEME (neutral black/grey)
+ * - To revert: Change ZINC_THEME values to SLATE_THEME values below
+ *
+ * SLATE_THEME (original blue-tinted dark):
+ * dark: {
+ *   page: '#09090B',
+ *   headerGradient: 'linear-gradient(135deg, #111827 0%, #1E1B4B 50%, #0F172A 100%)',
+ *   card: '#18181B',
+ *   cardMuted: '#111827',
+ * }
+ * light sections.dark.card.background: '#1F2937'
+ * light sections.dark.header.background: 'linear-gradient(135deg, #1F2937 0%, #111827 100%)'
+ */
 const paletteByMode = {
   light: {
     page: '#F4F4F5',
     textPrimary: '#18181B',
     textSecondary: '#52525B',
     subtleText: '#71717A',
-    headerGradient: 'linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 50%, #E0E7FF 100%)',
+    headerGradient: 'linear-gradient(135deg, #FFFFFF 0%, #FAFAFA 50%, #F4F4F5 100%)',
     headerBorder: '#E4E4E7',
-    headerShadow: '0 12px 32px rgba(79, 70, 229, 0.18)',
+    headerShadow: '0 12px 32px rgba(0, 0, 0, 0.08)',
     card: '#FFFFFF',
-    cardMuted: '#F3F4F6',
-    cardShadow: '0 14px 30px rgba(15, 23, 42, 0.08)',
+    cardMuted: '#FAFAFA',
+    cardShadow: '0 14px 30px rgba(0, 0, 0, 0.06)',
     border: '#E4E4E7',
     badgeBg: '#EDE9FE',
     badgeText: '#5B21B6',
@@ -96,34 +113,35 @@ const paletteByMode = {
     warning: brandColors.warning,
     danger: brandColors.danger,
     info: brandColors.info,
-    bottomBarShadow: '0 -20px 40px rgba(15, 23, 42, 0.12)'
+    bottomBarShadow: '0 -20px 40px rgba(0, 0, 0, 0.08)'
   },
   dark: {
-    page: '#09090B',
-    textPrimary: '#FAFAFA',
-    textSecondary: '#A1A1AA',
-    subtleText: '#71717A',
-    headerGradient: 'linear-gradient(135deg, #111827 0%, #1E1B4B 50%, #0F172A 100%)',
-    headerBorder: '#27272A',
-    headerShadow: '0 20px 48px rgba(2, 6, 23, 0.55)',
-    card: '#18181B',
-    cardMuted: '#111827',
-    cardShadow: '0 20px 40px rgba(2, 6, 23, 0.65)',
-    border: '#27272A',
+    // ZINC THEME - Neutral black/grey (matches ShadeManager)
+    page: '#09090B',           // zinc-950
+    textPrimary: '#FAFAFA',    // zinc-50
+    textSecondary: '#A1A1AA',  // zinc-400
+    subtleText: '#71717A',     // zinc-500
+    headerGradient: 'linear-gradient(135deg, #18181B 0%, #27272A 50%, #18181B 100%)', // zinc-900 to zinc-800
+    headerBorder: '#27272A',   // zinc-800
+    headerShadow: '0 20px 48px rgba(0, 0, 0, 0.55)',
+    card: '#18181B',           // zinc-900
+    cardMuted: '#0A0A0A',      // near black
+    cardShadow: '0 20px 40px rgba(0, 0, 0, 0.65)',
+    border: '#27272A',         // zinc-800
     badgeBg: '#8B5CF6',
     badgeText: '#EDE9FE',
-    chipActiveBg: 'rgba(16, 185, 129, 0.18)',
-    chipActiveText: '#34D399',
+    chipActiveBg: 'rgba(148, 175, 50, 0.18)', // using brand success
+    chipActiveText: '#94AF32',  // brand success
     chipIdleBg: 'rgba(39, 39, 42, 0.75)',
     chipIdleText: '#A1A1AA',
     accent: brandColors.primary,
-    accentContrast: '#1C1C1E',
-    accentGradient: 'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 45%, #38BDF8 100%)',
+    accentContrast: '#18181B',
+    accentGradient: 'linear-gradient(135deg, #6D28D9 0%, #8B5CF6 100%)', // simpler violet gradient
     success: brandColors.success,
     warning: brandColors.warning,
     danger: brandColors.danger,
     info: brandColors.info,
-    bottomBarShadow: '0 -24px 60px rgba(2, 6, 23, 0.75)'
+    bottomBarShadow: '0 -24px 60px rgba(0, 0, 0, 0.75)'
   }
 };
 
@@ -322,18 +340,19 @@ export const enhancedStyles = {
       }
     },
     dark: {
+      // ZINC THEME - Neutral black/grey
       header: {
-        background: 'linear-gradient(135deg, #1F2937 0%, #111827 100%)',
-        borderBottom: '1px solid #374151',
+        background: 'linear-gradient(135deg, #18181B 0%, #27272A 100%)', // zinc-900 to zinc-800
+        borderBottom: '1px solid #3F3F46', // zinc-700
         padding: '1.5rem',
       },
       card: {
-        background: '#1F2937',
-        border: '1px solid #374151',
+        background: '#27272A', // zinc-800
+        border: '1px solid #3F3F46', // zinc-700
         borderRadius: '0.75rem',
         padding: '1.25rem',
         marginBottom: '1rem',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.2)',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.3)',
         hover: {
           boxShadow: '0 4px 6px rgba(139, 92, 246, 0.2)',
           transform: 'translateY(-2px)',
@@ -341,12 +360,12 @@ export const enhancedStyles = {
       },
       sectionDivider: {
         height: '1px',
-        background: 'linear-gradient(90deg, transparent, #374151, transparent)',
+        background: 'linear-gradient(90deg, transparent, #3F3F46, transparent)', // zinc-700
         margin: '2rem 0',
       },
       projectCard: {
-        background: '#1F2937',
-        border: '1px solid #374151',
+        background: '#27272A', // zinc-800
+        border: '1px solid #3F3F46', // zinc-700
         borderLeft: '4px solid #8B5CF6',
         borderRadius: '0.5rem',
         padding: '1rem',

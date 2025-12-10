@@ -662,7 +662,7 @@ const createPlaceholderImage = (title) => {
     
     // Title
     ctx.font = 'bold 18px sans-serif';
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = '#3F3F46';
     ctx.fillText(title, canvas.width / 2, canvas.height / 2 + 30);
     
     // Info text

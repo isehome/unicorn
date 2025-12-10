@@ -212,13 +212,13 @@ const SettingsPage = () => {
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Default Workspace</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">Choose which dashboard to show when you log in and tap Home.</p>
         </div>
-        <div className="flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-slate-900/70 shadow-inner p-1">
+        <div className="flex items-center rounded-full border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-zinc-900/70 shadow-inner p-1">
           <button
             type="button"
             onClick={() => handleDefaultWorkspaceChange('technician')}
             className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${defaultWorkspace === 'technician'
               ? 'bg-violet-500 text-white shadow-md'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-zinc-800'
               }`}
           >
             Technician
@@ -228,7 +228,7 @@ const SettingsPage = () => {
             onClick={() => handleDefaultWorkspaceChange('pm')}
             className={`flex-1 px-4 py-2 text-xs font-medium rounded-full transition ${defaultWorkspace === 'pm'
               ? 'bg-violet-500 text-white shadow-md'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-slate-800'
+              : 'text-gray-600 dark:text-gray-300 hover:bg-violet-50 dark:hover:bg-zinc-800'
               }`}
           >
             Project Manager

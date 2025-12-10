@@ -381,7 +381,7 @@ const PMDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors">
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Create New Project Form (Collapsible) */}
         {showNewProjectForm && (
@@ -400,7 +400,7 @@ const PMDashboard = () => {
                     type="text"
                     value={newProject.name}
                     onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="Enter project name"
                   />
                 </div>
@@ -419,7 +419,7 @@ const PMDashboard = () => {
                         client: selectedContact ? (selectedContact.full_name || selectedContact.name || selectedContact.company || '') : ''
                       });
                     }}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select a client contact...</option>
                     {contacts.map(contact => (
@@ -445,7 +445,7 @@ const PMDashboard = () => {
                     type="text"
                     value={newProject.address}
                     onChange={(e) => setNewProject({ ...newProject, address: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="123 Main St, City, State"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -461,7 +461,7 @@ const PMDashboard = () => {
                     type="text"
                     value={newProject.project_number}
                     onChange={(e) => setNewProject({ ...newProject, project_number: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     placeholder="e.g., 2025-001"
                   />
                 </div>
@@ -473,7 +473,7 @@ const PMDashboard = () => {
                   <select
                     value={newProject.phase}
                     onChange={(e) => setNewProject({ ...newProject, phase: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select Phase</option>
                     <option value="Planning">Planning</option>
@@ -491,7 +491,7 @@ const PMDashboard = () => {
                   <select
                     value={newProject.status}
                     onChange={(e) => setNewProject({ ...newProject, status: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="active">Active</option>
                     <option value="on_hold">On Hold</option>
@@ -507,7 +507,7 @@ const PMDashboard = () => {
                   <select
                     value={selectedPMId}
                     onChange={(e) => setSelectedPMId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select a Project Manager...</option>
                     {sortedInternalContacts.map(contact => (
@@ -531,7 +531,7 @@ const PMDashboard = () => {
                   <select
                     value={selectedLeadTechId}
                     onChange={(e) => setSelectedLeadTechId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select a Lead Technician...</option>
                     {sortedInternalContacts.map(contact => (
@@ -564,7 +564,7 @@ const PMDashboard = () => {
                       type="url"
                       value={newProject.wiring_diagram_url}
                       onChange={(e) => setNewProject({ ...newProject, wiring_diagram_url: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                       placeholder="https://..."
                     />
                   </div>
@@ -577,7 +577,7 @@ const PMDashboard = () => {
                       type="url"
                       value={newProject.portal_proposal_url}
                       onChange={(e) => setNewProject({ ...newProject, portal_proposal_url: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                       placeholder="https://..."
                     />
                   </div>
@@ -620,7 +620,7 @@ const PMDashboard = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full sm:w-60 pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white 
+                           bg-white dark:bg-zinc-800 text-gray-900 dark:text-white 
                            focus:ring-2 focus:ring-violet-500 focus:border-transparent
                            placeholder-gray-500 dark:placeholder-gray-400 text-sm sm:text-base"
                 />
@@ -666,7 +666,7 @@ const PMDashboard = () => {
                     key={project.id}
                     onClick={() => handleProjectClick(project.id)}
                     className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md 
-                             transition-all cursor-pointer group bg-white dark:bg-gray-800"
+                             transition-all cursor-pointer group bg-white dark:bg-zinc-800"
                   >
                     {/* Simplified Layout - Project Name + Progress Only */}
                     <div className="space-y-3">

@@ -153,10 +153,10 @@ const WireDropDetail = () => {
   const [printCopies, setPrintCopies] = useState(1);
 
   const styles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F9FAFB';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F9FAFB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
     const subtleText = mode === 'dark' ? '#71717A' : '#6B7280';
 
@@ -1354,7 +1354,7 @@ const WireDropDetail = () => {
     return wireDrop.wire_drop_stages.find(s => s.stage_type === stageType);
   };
 
-  const pageClasses = mode === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-900';
+  const pageClasses = mode === 'dark' ? 'bg-zinc-900 text-gray-100' : 'bg-gray-50 text-gray-900';
 
   if (loading) {
     return (
@@ -1504,7 +1504,7 @@ const WireDropDetail = () => {
                           type="text"
                           value={wireDrop.uid || 'Not assigned'}
                           disabled
-                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60"
+                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-zinc-800 cursor-not-allowed opacity-60"
                           style={styles.input}
                         />
                       </div>
@@ -1516,7 +1516,7 @@ const WireDropDetail = () => {
                           type="text"
                           value={wireDrop.lucid_shape_id || 'Not linked'}
                           disabled
-                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60"
+                          className="w-full px-3 py-2 rounded-lg border bg-gray-100 dark:bg-zinc-800 cursor-not-allowed opacity-60"
                           style={styles.input}
                         />
                       </div>
@@ -1698,7 +1698,7 @@ const WireDropDetail = () => {
                             className="flex-shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all hover:scale-105 hover:shadow-lg"
                             style={{
                               borderColor: primaryRoomEquipment.homekit_qr_url ? '#8B5CF6' : '#D1D5DB',
-                              backgroundColor: primaryRoomEquipment.homekit_qr_url ? 'transparent' : mode === 'dark' ? '#374151' : '#F3F4F6'
+                              backgroundColor: primaryRoomEquipment.homekit_qr_url ? 'transparent' : mode === 'dark' ? '#3F3F46' : '#F3F4F6'
                             }}
                             title={primaryRoomEquipment.homekit_qr_url ? 'View HomeKit QR Code' : 'Add HomeKit QR Code'}
                           >
@@ -1916,7 +1916,7 @@ const WireDropDetail = () => {
                     />
                   ) : (
                     <div
-                      className="px-3 py-2 rounded-lg border min-h-[100px] cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800"
+                      className="px-3 py-2 rounded-lg border min-h-[100px] cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800"
                       style={styles.input}
                       onClick={() => {
                         setEditingNotes(true);
@@ -2809,7 +2809,7 @@ const WireDropDetail = () => {
                     setRoomEquipmentSearch('');
                     setShowAllRooms(false);
                   }}
-                  className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
                 >
                   <X size={20} />
                 </button>
@@ -2889,7 +2889,7 @@ const WireDropDetail = () => {
                               }}
                               className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
                                 ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400'
-                                : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                                : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
                                 }`}
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -2923,7 +2923,7 @@ const WireDropDetail = () => {
                           <div
                             className="mx-auto w-16 h-16 rounded-full flex items-center justify-center"
                             style={{
-                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6'
+                              backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6'
                             }}
                           >
                             <Monitor size={24} className="opacity-40" style={styles.subtleText} />
@@ -3014,7 +3014,7 @@ const WireDropDetail = () => {
                             onClick={() => setShowAllRooms(true)}
                             className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                             style={{
-                              backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6',
+                              backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6',
                               color: palette.accent
                             }}
                           >
@@ -3078,7 +3078,7 @@ const WireDropDetail = () => {
                                     }}
                                     className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
                                       ? 'bg-violet-100 dark:bg-violet-900/30 border-2 border-violet-400'
-                                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 border border-transparent'
+                                      : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
                                       }`}
                                   >
                                     <div className="flex items-start justify-between gap-2">
@@ -3113,7 +3113,7 @@ const WireDropDetail = () => {
                               onClick={() => setShowAllRooms(false)}
                               className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                               style={{
-                                backgroundColor: mode === 'dark' ? '#374151' : '#F3F4F6',
+                                backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6',
                                 color: styles.textSecondary.color
                               }}
                             >
@@ -3142,7 +3142,7 @@ const WireDropDetail = () => {
                 </h3>
                 <button
                   onClick={() => setShowHomeKitQRModal(false)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   <X size={24} style={styles.textPrimary} />
                 </button>

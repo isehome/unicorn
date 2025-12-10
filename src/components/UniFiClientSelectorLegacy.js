@@ -228,7 +228,7 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
           <select
             value={selectedClientMac}
             onChange={(e) => setSelectedClientMac(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-gray-100"
           >
             <option value="">-- Select a device --</option>
             {clients.map(client => {

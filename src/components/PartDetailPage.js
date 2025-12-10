@@ -112,11 +112,11 @@ const PartDetailPage = () => {
     return {
       label: 'text-sm font-medium text-gray-700 dark:text-gray-300',
       input:
-        'mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500',
+        'mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500',
       textArea:
-        'mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500',
+        'mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500',
       sectionTitle: 'text-sm font-semibold uppercase tracking-wide text-violet-500',
-      card: `rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm`,
+      card: `rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900 shadow-sm`,
       accent: palette.accent || '#7C3AED',
       textSecondary: 'text-sm text-gray-500 dark:text-gray-400',
     };
@@ -235,7 +235,7 @@ const PartDetailPage = () => {
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
               formState.is_wire_drop_visible
                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-300'
             }`}
           >
             {formState.is_wire_drop_visible ? 'Visible in wire drop selector' : 'Hidden from wire drop selector'}
@@ -244,7 +244,7 @@ const PartDetailPage = () => {
             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
               formState.is_inventory_item
                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-300'
             }`}
           >
             {formState.is_inventory_item ? 'Inventory tracking enabled' : 'Inventory tracking off'}

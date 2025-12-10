@@ -49,10 +49,10 @@ const SecureDataManager = ({ projectId, onClose }) => {
   const [showPasswords, setShowPasswords] = useState({});
   
   const styles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F9FAFB';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F9FAFB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
     const subtleText = mode === 'dark' ? '#71717A' : '#6B7280';
 

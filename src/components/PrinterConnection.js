@@ -75,9 +75,9 @@ const PrinterConnection = ({ onConnectionChange }) => {
     }
   };
 
-  const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-  const textColor = mode === 'dark' ? '#F9FAFB' : '#111827';
-  const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
+  const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+  const textColor = mode === 'dark' ? '#F9FAFB' : '#18181B';
+  const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
 
   return (
     <div

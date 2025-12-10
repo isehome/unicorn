@@ -97,7 +97,7 @@ const IssuesModule = ({ projectId }) => {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-6">
+    <div className="bg-white dark:bg-zinc-800 rounded-lg p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           Issues ({filteredIssues.length})
@@ -177,7 +177,7 @@ const IssuesModule = ({ projectId }) => {
       {/* Issue Edit Modal */}
       {editMode && selectedIssue && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-xl w-full">
+          <div className="bg-white dark:bg-zinc-800 rounded-lg p-6 max-w-xl w-full">
             <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">Edit Issue</h3>
             <form onSubmit={handleUpdateIssue}>
               <div className="space-y-4">

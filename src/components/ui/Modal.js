@@ -69,7 +69,7 @@ const Modal = ({ isOpen, onClose, children, size = 'md', title, showCloseButton 
             {showCloseButton && (
               <button
                 onClick={onClose}
-                className="ml-auto rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                className="ml-auto rounded-xl p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-zinc-800"
                 type="button"
               >
                 <X size={20} />

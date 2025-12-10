@@ -27,8 +27,9 @@ import ShadeMeasurementModal from './ShadeMeasurementModal';
 import { brandColors, stakeholderColors } from '../../styles/styleSystem';
 import { useShadeManagerTools } from '../../hooks/useShadeManagerTools';
 
-const ShadeManager = () => {
-    const { projectId } = useParams();
+const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
+    const { projectId: routeProjectId } = useParams();
+    const projectId = embeddedProjectId || routeProjectId;
     const navigate = useNavigate();
     const { theme, mode } = useTheme();
     const { user, acquireToken } = useAuth(); // MSAL User
@@ -700,6 +701,7 @@ const ShadeManager = () => {
                     onSave={handleMeasurementSave}
                     currentUser={user}
                     availableMountTypes={availableMountTypes}
+                    isPMView={isPMView}
                 />
             )}
         </div>

@@ -1199,7 +1199,7 @@ const UnifiTestPage = () => {
               onChange={(e) => setLocalControllerIp(e.target.value)}
               placeholder="e.g., 192.168.1.1"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -1218,7 +1218,7 @@ const UnifiTestPage = () => {
               onChange={(e) => setControllerHostname(e.target.value)}
               placeholder="e.g., unifi.local or controller.example.com"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -1237,7 +1237,7 @@ const UnifiTestPage = () => {
               onChange={(e) => setLocalNetworkApiKey(e.target.value)}
               placeholder="Enter Network API key"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-green-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -1367,7 +1367,7 @@ const UnifiTestPage = () => {
                     <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer font-medium">
                       View Client Data
                     </summary>
-                    <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-3 rounded mt-2 overflow-auto max-h-60">
+                    <pre className="text-xs bg-gray-100 dark:bg-zinc-900 p-3 rounded mt-2 overflow-auto max-h-60">
                       {JSON.stringify(result.data, null, 2)}
                     </pre>
                   </details>
@@ -1398,7 +1398,7 @@ const UnifiTestPage = () => {
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter your UniFi API key"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-violet-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -1417,7 +1417,7 @@ const UnifiTestPage = () => {
               onChange={(e) => setManualUrl(e.target.value)}
               placeholder="https://api.ui.com"
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-violet-500 focus:border-transparent
                        placeholder-gray-400 dark:placeholder-gray-500"
             />
@@ -1481,7 +1481,7 @@ const UnifiTestPage = () => {
                 if (project) handleProjectSelect(project);
               }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                        focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             >
               <option value="">Choose a project...</option>
@@ -1493,7 +1493,7 @@ const UnifiTestPage = () => {
             </select>
             
             {selectedProject && (
-              <div className="mt-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-2">
+              <div className="mt-3 p-3 bg-gray-50 dark:bg-zinc-800 rounded-lg space-y-2">
                 {selectedProject.unifi_url ? (
                   <>
                     <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -1522,7 +1522,7 @@ const UnifiTestPage = () => {
       {sites.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
           <div
-            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800 p-2 rounded -m-2"
             onClick={() => setShowDebugInfo(!showDebugInfo)}
           >
             <AlertCircle className="w-5 h-5 text-blue-600" />
@@ -1534,7 +1534,7 @@ const UnifiTestPage = () => {
             </span>
           </div>
           {showDebugInfo && (
-          <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg font-mono text-xs overflow-auto">
+          <div className="p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg font-mono text-xs overflow-auto">
             <p className="mb-2 text-gray-900 dark:text-white font-semibold">API Response Summary:</p>
             <p className="text-gray-700 dark:text-gray-300">Total site entries: {sites.length}</p>
             <p className="text-gray-700 dark:text-gray-300 mb-2">Parsed Console ID: {parsedConsoleId || 'None'}</p>
@@ -1654,7 +1654,7 @@ const UnifiTestPage = () => {
       {sites.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
           <div
-            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800 p-2 rounded -m-2"
             onClick={() => setShowSitesSection(!showSitesSection)}
           >
             <Globe className="w-5 h-5 text-violet-600" />
@@ -1677,7 +1677,7 @@ const UnifiTestPage = () => {
                 value={selectedSite}
                 onChange={handleSiteChange}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                         bg-white dark:bg-zinc-800 text-gray-900 dark:text-white
                          focus:ring-2 focus:ring-violet-500 focus:border-transparent"
               >
                 <option value="">Choose a site...</option>
@@ -1713,7 +1713,7 @@ const UnifiTestPage = () => {
                 className={`p-4 rounded-lg border transition-colors cursor-pointer ${
                   selectedSite === site.hostSiteId
                     ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-300 dark:border-violet-700'
-                    : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
+                    : 'bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-gray-700 hover:border-violet-300'
                 }`}
                 onClick={() => {
                   setSelectedSite(site.hostSiteId);
@@ -1773,7 +1773,7 @@ const UnifiTestPage = () => {
       {selectedSite && devices.length > 0 && (
         <div style={sectionStyles.card} className="p-6">
           <div
-            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded -m-2"
+            className="flex items-center gap-2 mb-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800 p-2 rounded -m-2"
             onClick={() => setShowDevicesSection(!showDevicesSection)}
           >
             <Server className="w-5 h-5 text-blue-600" />
@@ -1798,7 +1798,7 @@ const UnifiTestPage = () => {
                   ? 'text-yellow-700 bg-yellow-50 border-yellow-200 dark:text-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-800'
                   : deviceSource.type === 'error'
                   ? 'text-red-700 bg-red-50 border-red-200 dark:text-red-300 dark:bg-red-900/20 dark:border-red-800'
-                  : 'text-gray-700 bg-gray-50 border-gray-200 dark:text-gray-300 dark:bg-gray-800/40 dark:border-gray-700'
+                  : 'text-gray-700 bg-gray-50 border-gray-200 dark:text-gray-300 dark:bg-zinc-800/40 dark:border-gray-700'
               }`}
             >
               <p className="font-medium">
@@ -1845,7 +1845,7 @@ const UnifiTestPage = () => {
               return (
                 <div
                   key={device.mac || device.id}
-                  className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                  className="p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700"
                 >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -1927,7 +1927,7 @@ const UnifiTestPage = () => {
             {clients.map(client => (
               <div
                 key={client.mac || client.id}
-                className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                className="p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -2067,7 +2067,7 @@ const UnifiTestPage = () => {
                     const fullUrl = result.fullUrl;
 
                     return (
-                    <div key={key} className="bg-white dark:bg-gray-800 rounded p-3 border border-gray-200 dark:border-gray-700">
+                    <div key={key} className="bg-white dark:bg-zinc-800 rounded p-3 border border-gray-200 dark:border-gray-700">
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 space-y-1">
                           <div className="text-xs font-semibold text-blue-600 dark:text-blue-400">{displayLabel}</div>
@@ -2099,7 +2099,7 @@ const UnifiTestPage = () => {
                       {result.data && (
                         <details className="mt-2">
                           <summary className="text-xs text-blue-600 dark:text-blue-400 cursor-pointer">View Raw Data</summary>
-                          <pre className="text-xs bg-gray-100 dark:bg-gray-900 p-2 rounded mt-1 overflow-auto max-h-40">
+                          <pre className="text-xs bg-gray-100 dark:bg-zinc-900 p-2 rounded mt-1 overflow-auto max-h-40">
                             {JSON.stringify(result.data, null, 2)}
                           </pre>
                         </details>
@@ -2209,7 +2209,7 @@ const UnifiTestPage = () => {
                   {(() => {
                     const parsedClients = unifiApi.parseClientData(clientEndpointData);
                     return parsedClients.slice(0, 5).map((client, idx) => (
-                      <div key={idx} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <div key={idx} className="p-3 bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700">
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div>
                             <span className="font-medium text-gray-700 dark:text-gray-300">Hostname:</span>{' '}
@@ -2251,7 +2251,7 @@ const UnifiTestPage = () => {
                             <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">
                               View Raw JSON
                             </summary>
-                            <pre className="mt-2 p-2 bg-gray-100 dark:bg-gray-900 rounded text-xs overflow-auto max-h-60">
+                            <pre className="mt-2 p-2 bg-gray-100 dark:bg-zinc-900 rounded text-xs overflow-auto max-h-60">
                               {JSON.stringify(client._raw, null, 2)}
                             </pre>
                           </details>

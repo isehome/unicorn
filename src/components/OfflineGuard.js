@@ -41,7 +41,7 @@ export function OfflineGuard({ children, pageName = 'this page' }) {
   if (!isOnline && !hasVisitedBefore) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 text-center border border-gray-200 dark:border-gray-700">
+        <div className="max-w-md w-full bg-white dark:bg-zinc-800 rounded-2xl shadow-lg p-8 text-center border border-gray-200 dark:border-gray-700">
           {/* Icon */}
           <div className="mb-6">
             <div className="w-20 h-20 mx-auto bg-amber-100 dark:bg-amber-900/20 rounded-full flex items-center justify-center">

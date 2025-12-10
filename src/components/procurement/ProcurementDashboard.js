@@ -324,7 +324,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
       <button
         type="button"
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full flex items-center justify-between mb-6 hover:bg-gray-50 dark:hover:bg-gray-800/50 p-3 -m-3 rounded-lg transition-colors"
+        className="w-full flex items-center justify-between mb-6 hover:bg-gray-50 dark:hover:bg-zinc-800/50 p-3 -m-3 rounded-lg transition-colors"
       >
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
           <Package className="w-6 h-6 text-violet-600" />
@@ -446,7 +446,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                           className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors cursor-pointer
                         ${isDraft
                               ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
-                              : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                              : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
                             }`}
                         >
                           <div className="flex-1 min-w-0">
@@ -694,7 +694,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                 {/* Issues List */}
                 <div className="space-y-3">
                   {receivingIssues.length === 0 ? (
-                    <div className="text-center py-12 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="text-center py-12 bg-gray-50 dark:bg-zinc-800 rounded-lg">
                       <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
                       <p className="text-gray-600 dark:text-gray-400">No receiving issues</p>
                     </div>
@@ -711,7 +711,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                               ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
                               : isOpen
                                 ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20'
-                                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-gray-700'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3 mb-2">
@@ -755,9 +755,9 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
 
                 {/* Issue Detail & Comments Panel */}
                 {selectedIssue ? (
-                  <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[600px]">
+                  <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[600px]">
                     {/* Issue Header */}
-                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-zinc-900/50">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
@@ -795,7 +795,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                         <p className="text-sm text-gray-500 dark:text-gray-400 italic">No comments yet</p>
                       ) : (
                         issueComments.map(comment => (
-                          <div key={comment.id} className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3">
+                          <div key={comment.id} className="bg-gray-50 dark:bg-zinc-900/50 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-medium text-gray-900 dark:text-white">
                                 {comment.author?.full_name || comment.author?.email || 'Unknown'}
@@ -813,7 +813,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                     </div>
 
                     {/* Add Comment */}
-                    <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
+                    <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-zinc-900/50">
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -821,7 +821,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                           onChange={(e) => setNewComment(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && handleAddComment()}
                           placeholder="Add a comment..."
-                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                          className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
                         />
                         <Button
                           variant="primary"
@@ -835,7 +835,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                     </div>
                   </div>
                 ) : (
-                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center p-12">
+                  <div className="bg-gray-50 dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center p-12">
                     <p className="text-gray-500 dark:text-gray-400 text-center">
                       Select an issue to view details and comments
                     </p>
@@ -878,7 +878,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                   <select
                     value={projectFilter}
                     onChange={(e) => setProjectFilter(e.target.value)}
-                    className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                    className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                   >
                     <option value="all">All Projects</option>
                     {projects.map(proj => (
@@ -908,7 +908,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                         className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg border transition-colors cursor-pointer
                       ${isDraft
                             ? 'border-orange-400 dark:border-orange-600 border-2 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
-                            : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                            : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-zinc-800'
                           }`}
                       >
                         <div className="flex-1 min-w-0">
@@ -993,11 +993,11 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
           {selectedPO && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedPO(null)}>
               <div
-                className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+                <div className="sticky top-0 bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                       {selectedPO.po_number}
@@ -1059,7 +1059,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                     </h3>
                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-gray-50 dark:bg-gray-800/50">
+                        <thead className="bg-gray-50 dark:bg-zinc-800/50">
                           <tr>
                             <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">#</th>
                             <th className="px-3 py-2 text-left text-gray-700 dark:text-gray-300 font-medium">Part Number</th>
@@ -1096,7 +1096,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                   </div>
 
                   {/* Totals */}
-                  <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-lg space-y-2">
+                  <div className="bg-gray-50 dark:bg-zinc-800/50 p-4 rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-700 dark:text-gray-300">Subtotal</span>
                       <span className="text-gray-900 dark:text-white font-semibold">
@@ -1147,7 +1147,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4">
+                <div className="sticky bottom-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-gray-700 px-6 py-4">
                   <div className="flex flex-wrap gap-2 justify-between items-center">
                     <div className="text-sm text-gray-600 dark:text-gray-400">
                       {selectedPO.status !== 'draft' && (

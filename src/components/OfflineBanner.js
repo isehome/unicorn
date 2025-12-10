@@ -52,7 +52,7 @@ export function OfflineBanner({ isOnline, pendingCount = 0, isSyncing = false, o
     if (pendingCount > 0) {
       return 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800';
     }
-    return 'bg-gray-50 border-gray-200 dark:bg-gray-900/20 dark:border-gray-800';
+    return 'bg-gray-50 border-gray-200 dark:bg-zinc-900/20 dark:border-gray-800';
   };
 
   const getIcon = () => {

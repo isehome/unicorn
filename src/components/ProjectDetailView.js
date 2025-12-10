@@ -124,15 +124,15 @@ const ProjectDetailView = () => {
   const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
   const pageClasses = mode === 'dark'
-    ? 'bg-gray-900 text-gray-100'
+    ? 'bg-zinc-900 text-gray-100'
     : 'bg-gray-50 text-gray-900';
 
   const styles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F9FAFB';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F9FAFB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
 
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
     const subtleText = mode === 'dark' ? '#71717A' : '#6B7280';
 
@@ -1721,7 +1721,7 @@ const ProjectDetailView = () => {
                               </p>
                             </div>
                             {/* UID badge on the right */}
-                            <span className="text-xs px-2 py-1 rounded font-mono bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 flex-shrink-0 whitespace-nowrap">
+                            <span className="text-xs px-2 py-1 rounded font-mono bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-400 flex-shrink-0 whitespace-nowrap">
                               {drop.uid || 'NO-UID'}
                             </span>
                           </div>

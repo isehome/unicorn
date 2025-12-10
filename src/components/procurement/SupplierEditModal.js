@@ -335,7 +335,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -371,7 +371,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.name}
                   onChange={(e) => handleChange('name', e.target.value)}
-                  className={`w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white ${
+                  className={`w-full px-3 py-2 border rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white ${
                     nameError
                       ? 'border-red-500 dark:border-red-500'
                       : 'border-gray-300 dark:border-gray-600'
@@ -390,7 +390,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.short_code}
                   onChange={(e) => handleChange('short_code', e.target.value.toUpperCase())}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white uppercase"
                   maxLength={10}
                   required
                 />
@@ -405,7 +405,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                 <select
                   value={formData.payment_terms}
                   onChange={(e) => handleChange('payment_terms', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 >
                   <option value="Net 30">Net 30</option>
                   <option value="Net 45">Net 45</option>
@@ -430,7 +430,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.contact_name}
                   onChange={(e) => handleChange('contact_name', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div className="col-span-2">
@@ -441,7 +441,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.email}
                   onChange={(e) => handleChange('email', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                   placeholder="orders@supplier.com, accounting@supplier.com"
                 />
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -456,7 +456,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => handleChange('phone', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
@@ -474,7 +474,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.address}
                   onChange={(e) => handleChange('address', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div>
@@ -485,7 +485,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.city}
                   onChange={(e) => handleChange('city', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div>
@@ -496,7 +496,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.state}
                   onChange={(e) => handleChange('state', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                   maxLength={2}
                 />
               </div>
@@ -508,7 +508,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.zip}
                   onChange={(e) => handleChange('zip', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div>
@@ -519,7 +519,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.country}
                   onChange={(e) => handleChange('country', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
             </div>
@@ -537,7 +537,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="url"
                   value={formData.website}
                   onChange={(e) => handleChange('website', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                   placeholder="https://"
                 />
               </div>
@@ -549,7 +549,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.account_number}
                   onChange={(e) => handleChange('account_number', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                 />
               </div>
               <div className="col-span-2">
@@ -560,7 +560,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                   type="text"
                   value={formData.shipping_account}
                   onChange={(e) => handleChange('shipping_account', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                   placeholder="FedEx, UPS, etc. account number"
                 />
               </div>
@@ -571,7 +571,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
                 <textarea
                   value={formData.notes}
                   onChange={(e) => handleChange('notes', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                   rows={3}
                 />
               </div>
@@ -625,7 +625,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-md"
             disabled={loading}
           >
             Cancel

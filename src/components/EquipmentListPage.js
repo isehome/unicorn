@@ -221,7 +221,7 @@ const DateDetailModal = ({ isOpen, onClose, title, date, userId, equipmentId, mo
       <div className="absolute inset-0 bg-black/50" />
       <div
         className="relative rounded-xl shadow-xl max-w-sm w-full p-5"
-        style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF' }}
+        style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#FFFFFF' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -309,7 +309,7 @@ const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, o
       <div className="absolute inset-0 bg-black/50" />
       <div
         className="relative rounded-xl shadow-xl max-w-md w-full p-5"
-        style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#FFFFFF' }}
+        style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#FFFFFF' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -325,7 +325,7 @@ const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, o
 
         <div className="space-y-4">
           {/* Equipment Info */}
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+          <div className="p-3 rounded-lg bg-gray-50 dark:bg-zinc-800">
             <p className="font-medium text-gray-900 dark:text-gray-100">{equipment.name}</p>
             {equipment.partNumber && (
               <p className="text-sm text-gray-500 dark:text-gray-400">{equipment.partNumber}</p>
@@ -368,7 +368,7 @@ const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, o
             <select
               value={selectedRoomId}
               onChange={(e) => setSelectedRoomId(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
             >
               <option value="">Select a room...</option>
               {availableRooms.map(room => (
@@ -392,7 +392,7 @@ const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, o
             <button
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+              className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-zinc-800 transition"
             >
               Cancel
             </button>
@@ -529,10 +529,10 @@ const EquipmentListPage = () => {
   };
 
   const cardStyles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F3F4F6';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F3F4F6';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
 
     return {
@@ -917,15 +917,15 @@ const EquipmentListPage = () => {
         style={{
           borderColor: isExpanded || isHighlighted
             ? (mode === 'dark' ? '#7C3AED' : '#A78BFA')
-            : (mode === 'dark' ? '#374151' : '#E5E7EB'),
+            : (mode === 'dark' ? '#3F3F46' : '#E5E7EB'),
           backgroundColor: isHighlighted
-            ? (mode === 'dark' ? '#1E1B4B' : '#F5F3FF')
-            : (mode === 'dark' ? '#111827' : '#F9FAFB')
+            ? (mode === 'dark' ? '#27272A' : '#F5F3FF')
+            : (mode === 'dark' ? '#18181B' : '#F9FAFB')
         }}
       >
         {/* Collapsed Header - Always Visible */}
         <div
-          className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-xl transition"
+          className="px-3 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/50 rounded-xl transition"
           onClick={() => toggleExpanded(item.id)}
         >
           {/* Two-row layout: Name on top, badges below */}
@@ -949,7 +949,7 @@ const EquipmentListPage = () => {
                 className="px-2 py-0.5 text-[10px] font-medium rounded-full flex items-center gap-1"
                 style={item.wireDrops?.length > 0
                   ? { backgroundColor: mode === 'dark' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.15)', color: mode === 'dark' ? '#A78BFA' : '#7C3AED' }
-                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                  : { backgroundColor: mode === 'dark' ? '#27272A' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
                 }
               >
                 <Cable size={10} />
@@ -958,7 +958,7 @@ const EquipmentListPage = () => {
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 item.ordered
                   ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+                  : 'bg-gray-100 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'
               }`}>
                 Ordered
               </span>
@@ -966,7 +966,7 @@ const EquipmentListPage = () => {
                 className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 style={item.received
                   ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
-                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                  : { backgroundColor: mode === 'dark' ? '#27272A' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
                 }
               >
                 Received
@@ -974,7 +974,7 @@ const EquipmentListPage = () => {
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 item.delivered
                   ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400'
-                  : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+                  : 'bg-gray-100 text-gray-400 dark:bg-zinc-800 dark:text-gray-600'
               }`}>
                 Delivered
               </span>
@@ -982,7 +982,7 @@ const EquipmentListPage = () => {
                 className="px-1.5 py-0.5 rounded text-[10px] font-medium"
                 style={item.installed
                   ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' }
-                  : { backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
+                  : { backgroundColor: mode === 'dark' ? '#27272A' : '#F3F4F6', color: mode === 'dark' ? '#4B5563' : '#9CA3AF' }
                 }
               >
                 Installed
@@ -993,7 +993,7 @@ const EquipmentListPage = () => {
 
         {/* Expanded Content */}
         {isExpanded && (
-          <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+          <div className="px-4 pb-4 pt-2 border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
             {/* Equipment Details Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4">
               {item.manufacturer && (
@@ -1029,7 +1029,7 @@ const EquipmentListPage = () => {
             </div>
 
             {/* Status Checkboxes with Clickable Dates */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: mode === 'dark' ? '#1F2937' : '#F3F4F6' }}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#F3F4F6' }}>
               {/* Ordered - Read-only (auto-synced with PO system) */}
               <div className="flex flex-col gap-1">
                 <label className="inline-flex items-center gap-2 cursor-not-allowed" title="Auto-synced with Purchase Orders">
@@ -1148,7 +1148,7 @@ const EquipmentListPage = () => {
                   <ExternalLink size={12} />
                 </a>
               ) : (
-                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-zinc-800 dark:text-gray-500">
                   <FileText size={14} />
                   <span>No Schematic</span>
                 </span>
@@ -1170,7 +1170,7 @@ const EquipmentListPage = () => {
                   </a>
                 ))
               ) : (
-                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500">
+                <span className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-gray-100 text-gray-400 dark:bg-zinc-800 dark:text-gray-500">
                   <BookOpen size={14} />
                   <span>No Install Manual</span>
                 </span>
@@ -1225,7 +1225,7 @@ const EquipmentListPage = () => {
                   e.stopPropagation();
                   openReassignModal(item);
                 }}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
               >
                 <ArrowRightLeft size={14} />
                 <span>Reassign Room</span>
@@ -1243,7 +1243,7 @@ const EquipmentListPage = () => {
             {/* Wire Drop Links */}
             {/* Network Information */}
             {(item.unifiMac || item.unifiIp) && (
-              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Wifi size={14} className="text-blue-500" />
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
@@ -1277,7 +1277,7 @@ const EquipmentListPage = () => {
 
             {/* Wire Drop Links */}
             {item.wireDrops && item.wireDrops.length > 0 && (
-              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#374151' : '#E5E7EB' }}>
+              <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
                 <div className="flex items-center gap-2 mb-2">
                   <Cable size={14} className="text-violet-500" />
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
@@ -1315,7 +1315,7 @@ const EquipmentListPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div
           className="h-12 w-12 animate-spin rounded-full border-b-2"
           style={{ borderColor: palette.accent }}
@@ -1325,7 +1325,7 @@ const EquipmentListPage = () => {
   }
 
   return (
-    <div className={`min-h-screen ${mode === 'dark' ? 'bg-gray-900' : 'bg-gray-50'} pb-20`}>
+    <div className={`min-h-screen ${mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-50'} pb-20`}>
       <section className="px-4 py-4 space-y-4">
         <div className="rounded-2xl border p-4 shadow-sm" style={cardStyles.mutedCard}>
           <div className="space-y-4">
@@ -1338,8 +1338,8 @@ const EquipmentListPage = () => {
                 placeholder="Search by name, part number, manufacturer, or model"
                 className="w-full rounded-lg border pl-10 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 style={{
-                  backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
-                  borderColor: mode === 'dark' ? '#1F2937' : '#E5E7EB',
+                  backgroundColor: mode === 'dark' ? '#18181B' : '#FFFFFF',
+                  borderColor: mode === 'dark' ? '#27272A' : '#E5E7EB',
                   color: cardStyles.textPrimary
                 }}
               />
@@ -1353,8 +1353,8 @@ const EquipmentListPage = () => {
                   onChange={(e) => setSelectedRoom(e.target.value)}
                   className="rounded-lg border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500"
                   style={{
-                    backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
-                    borderColor: mode === 'dark' ? '#1F2937' : '#D1D5DB'
+                    backgroundColor: mode === 'dark' ? '#18181B' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#27272A' : '#D1D5DB'
                   }}
                 >
                   <option value="all">All Rooms</option>
@@ -1373,8 +1373,8 @@ const EquipmentListPage = () => {
                   onChange={(e) => setInstallFilter(e.target.value)}
                   className="rounded-lg border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500"
                   style={{
-                    backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
-                    borderColor: mode === 'dark' ? '#1F2937' : '#D1D5DB'
+                    backgroundColor: mode === 'dark' ? '#18181B' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#27272A' : '#D1D5DB'
                   }}
                 >
                   <option value="all">Head &amp; Room Equipment</option>
@@ -1390,8 +1390,8 @@ const EquipmentListPage = () => {
                   onChange={(e) => setInstalledFilter(e.target.value)}
                   className="rounded-lg border px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-violet-500"
                   style={{
-                    backgroundColor: mode === 'dark' ? '#0F172A' : '#FFFFFF',
-                    borderColor: mode === 'dark' ? '#1F2937' : '#D1D5DB'
+                    backgroundColor: mode === 'dark' ? '#18181B' : '#FFFFFF',
+                    borderColor: mode === 'dark' ? '#27272A' : '#D1D5DB'
                   }}
                 >
                   <option value="all">All Installation Status</option>

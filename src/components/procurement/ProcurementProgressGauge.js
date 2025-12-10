@@ -45,7 +45,7 @@ const ProcurementProgressGauge = ({ equipment = [], phaseName = null }) => {
 
   if (progress.total === 0) {
     return (
-      <div className="p-6 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
+      <div className="p-6 bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-gray-700 rounded-lg">
         <div className="flex items-center gap-3">
           <Package className="w-6 h-6 text-gray-400" />
           <div>
@@ -100,7 +100,7 @@ const ProcurementProgressGauge = ({ equipment = [], phaseName = null }) => {
 
       {/* Breakdown */}
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="bg-white/60 dark:bg-gray-900/30 rounded-lg p-3">
+        <div className="bg-white/60 dark:bg-zinc-900/30 rounded-lg p-3">
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">On Hand</p>
           <p className="text-lg font-semibold text-green-600 dark:text-green-400">
             {equipment.reduce((sum, item) => {
@@ -110,7 +110,7 @@ const ProcurementProgressGauge = ({ equipment = [], phaseName = null }) => {
             }, 0)}
           </p>
         </div>
-        <div className="bg-white/60 dark:bg-gray-900/30 rounded-lg p-3">
+        <div className="bg-white/60 dark:bg-zinc-900/30 rounded-lg p-3">
           <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Ordered (Submitted)</p>
           <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
             {equipment.reduce((sum, item) => {

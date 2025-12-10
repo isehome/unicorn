@@ -1846,4 +1846,55 @@ WITH CHECK (true);
 
 Add new Supabase linter issues or technical debt items here as they arise.
 
---- |
+---
+
+## User Capability Levels (TODO)
+
+**Status:** Planned - needs implementation
+
+### Overview
+
+The application needs a proper user capabilities/roles system to control access to features based on user role. Currently using ad-hoc checks (like `isPMView` prop).
+
+### Proposed Roles
+
+| Role | Description | Capabilities |
+|------|-------------|--------------|
+| **PM (Project Manager)** | Full project oversight | View all M1/M2 data unblinded, manage stakeholders, approve changes, full edit access |
+| **Technician** | Field worker | Enter M1/M2 measurements (blinded from other tech's data), upload photos, add comments |
+| **Designer** | External stakeholder | Review shades via public portal, approve/reject designs, select fabrics |
+| **Admin** | System administrator | All PM capabilities + system settings, user management |
+| **Viewer** | Read-only access | View project info, reports (no editing) |
+
+### Implementation Considerations
+
+1. **Database Schema**
+   - Add `user_roles` table with role definitions
+   - Add `project_user_roles` junction table for per-project role assignments
+   - Consider global roles vs per-project roles
+
+2. **Auth Context Enhancement**
+   - Extend `useAuth` hook to include user capabilities
+   - Add `hasCapability(capability)` helper function
+   - Cache capabilities to avoid repeated lookups
+
+3. **Component Updates**
+   - Replace `isPMView` with capability checks
+   - Add capability guards to sensitive components
+   - Update navigation/menus based on capabilities
+
+4. **Shade Measurement Blinding**
+   - Currently: `isPMView` prop controls blinding
+   - Future: Check `canViewAllMeasurements` capability
+
+5. **Migration Path**
+   - Default existing users to appropriate roles based on current behavior
+   - Add admin UI for role management
+
+### Related Files
+- `src/contexts/AuthContext.js` - Auth state management
+- `src/components/Shades/ShadeMeasurementModal.js` - Uses `isPMView` for blinding
+- `src/components/Shades/ShadeManager.js` - Passes `isPMView` prop
+- `src/components/PMProjectView.js` - Embeds ShadeManager with PM capabilities
+
+---

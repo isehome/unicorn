@@ -109,11 +109,11 @@ const PartsListPage = () => {
 
   const styles = useMemo(() => {
     const palette = theme.palette;
-    const backgroundPrimary = mode === 'dark' ? '#111827' : '#FFFFFF';
-    const backgroundMuted = mode === 'dark' ? '#1F2937' : '#F9FAFB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const backgroundPrimary = mode === 'dark' ? '#18181B' : '#FFFFFF';
+    const backgroundMuted = mode === 'dark' ? '#27272A' : '#F9FAFB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#D1D5DB' : '#4B5563';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
 
     return {
       card: {
@@ -311,7 +311,7 @@ const PartsListPage = () => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => handleInventoryChange(part.id, Math.max(0, currentInventory - 1))}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
               title="Decrease quantity"
             >
               −
@@ -324,12 +324,12 @@ const PartsListPage = () => {
               className={`w-16 px-2 py-2 text-sm text-center border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 ${
                 inventoryModified
                   ? 'border-green-500 bg-green-50 dark:bg-green-900/30 font-semibold text-green-700 dark:text-green-300'
-                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white'
+                  : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white'
               }`}
             />
             <button
               onClick={() => handleInventoryChange(part.id, currentInventory + 1)}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-xl font-bold transition-colors"
               title="Increase quantity"
             >
               +
@@ -542,7 +542,7 @@ const PartsListPage = () => {
               </span>
             )}
             {part.is_inventory_item === false && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-slate-500/10 text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-500/10 text-zinc-600 dark:text-zinc-300">
                 Inventory Off
               </span>
             )}
@@ -639,7 +639,7 @@ const PartsListPage = () => {
           className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             phaseFilter === 'all'
               ? 'bg-violet-600 text-white dark:bg-violet-500'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
           }`}
         >
           All Parts
@@ -649,7 +649,7 @@ const PartsListPage = () => {
           className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             phaseFilter === 'prewire'
               ? 'bg-orange-600 text-white dark:bg-orange-500'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
           }`}
         >
           <Wrench className="w-4 h-4 inline mr-1" />
@@ -660,7 +660,7 @@ const PartsListPage = () => {
           className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             phaseFilter === 'trim'
               ? 'bg-violet-600 text-white dark:bg-violet-500'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
           }`}
         >
           Trim Prep
@@ -675,7 +675,7 @@ const PartsListPage = () => {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search by part number, model, manufacturer, or description"
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
         </div>
         <span className="text-xs font-medium px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400">
@@ -728,7 +728,7 @@ const PartsListPage = () => {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="w-full max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+          <div className="w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold" style={{ color: styles.textPrimary }}>
@@ -752,7 +752,7 @@ const PartsListPage = () => {
                     required
                     value={formData.part_number}
                     onChange={(event) => handleFormChange('part_number', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                     placeholder="e.g., IS-CTRL-001"
                   />
                 </label>
@@ -762,7 +762,7 @@ const PartsListPage = () => {
                     type="text"
                     value={formData.name}
                     onChange={(event) => handleFormChange('name', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                     placeholder="Display name"
                   />
                 </label>
@@ -774,7 +774,7 @@ const PartsListPage = () => {
                     type="text"
                     value={formData.manufacturer}
                     onChange={(event) => handleFormChange('manufacturer', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                   />
                 </label>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -783,7 +783,7 @@ const PartsListPage = () => {
                     type="text"
                     value={formData.model}
                     onChange={(event) => handleFormChange('model', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                   />
                 </label>
               </div>
@@ -794,7 +794,7 @@ const PartsListPage = () => {
                     type="text"
                     value={formData.category}
                     onChange={(event) => handleFormChange('category', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                     placeholder="e.g., Network"
                   />
                 </label>
@@ -805,7 +805,7 @@ const PartsListPage = () => {
                       type="text"
                       value={formData.unit_of_measure}
                       onChange={(event) => handleFormChange('unit_of_measure', event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                   </label>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -815,7 +815,7 @@ const PartsListPage = () => {
                       min="0"
                       value={formData.quantity_on_hand}
                       onChange={(event) => handleFormChange('quantity_on_hand', event.target.value)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                   </label>
                 </div>
@@ -826,7 +826,7 @@ const PartsListPage = () => {
                   value={formData.description}
                   onChange={(event) => handleFormChange('description', event.target.value)}
                   rows={3}
-                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                   placeholder="Short summary or installation notes"
                 />
               </label>

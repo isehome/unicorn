@@ -116,7 +116,7 @@ const WireDropsModule = ({ projectId }) => {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-6">
+    <div className="bg-white dark:bg-zinc-800 rounded-lg p-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           Wire Drops ({wireDrops.length})
@@ -129,7 +129,7 @@ const WireDropsModule = ({ projectId }) => {
               placeholder="Search drops..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+              className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
             />
           </div>
           <Button variant="primary" size="sm" icon={Plus} onClick={handleAddWireDrop}>
@@ -148,7 +148,7 @@ const WireDropsModule = ({ projectId }) => {
             <div className="flex justify-between items-start">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">
+                  <span className="text-xs font-mono bg-gray-100 dark:bg-zinc-800 px-2 py-1 rounded">
                     {drop.uid}
                   </span>
                   <h3 className="font-semibold text-gray-900 dark:text-white">
@@ -172,7 +172,7 @@ const WireDropsModule = ({ projectId }) => {
                         e.stopPropagation();
                         handlePhotoUpload(drop.id, 'prewire_photo');
                       }}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
                     >
                       <Camera className="w-4 h-4 text-violet-500" />
                     </button>
@@ -183,7 +183,7 @@ const WireDropsModule = ({ projectId }) => {
                             e.stopPropagation();
                             setFullscreenImage(drop.prewire_photo);
                           }}
-                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
                         >
                           <Eye className="w-4 h-4 text-blue-500" />
                         </button>
@@ -212,7 +212,7 @@ const WireDropsModule = ({ projectId }) => {
                         e.stopPropagation();
                         handlePhotoUpload(drop.id, 'installed_photo');
                       }}
-                      className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                      className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
                     >
                       <Camera className="w-4 h-4 text-violet-500" />
                     </button>
@@ -223,7 +223,7 @@ const WireDropsModule = ({ projectId }) => {
                             e.stopPropagation();
                             setFullscreenImage(drop.installed_photo);
                           }}
-                          className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                          className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
                         >
                           <Eye className="w-4 h-4 text-blue-500" />
                         </button>
@@ -249,7 +249,7 @@ const WireDropsModule = ({ projectId }) => {
       {/* Wire Drop Details Modal */}
       {showDetails && selectedDrop && (
         <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+          <div className="bg-white dark:bg-zinc-800 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{selectedDrop.name} Details</h2>
               <button onClick={() => setShowDetails(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">

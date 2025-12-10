@@ -198,7 +198,7 @@ const ProjectReportsSection = ({ projectId }) => {
               }`}
               style={{
                 backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                borderColor: isSelected ? '#8b5cf6' : isDark ? '#374151' : '#e5e7eb'
+                borderColor: isSelected ? '#8b5cf6' : isDark ? '#3F3F46' : '#e5e7eb'
               }}
             >
               <div className="flex items-start gap-3">
@@ -218,7 +218,7 @@ const ProjectReportsSection = ({ projectId }) => {
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+                    <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
                       {report.label}
                     </span>
                     {!report.available && (
@@ -253,9 +253,9 @@ const ProjectReportsSection = ({ projectId }) => {
             style={{ backgroundColor: isDark ? '#1f2937' : '#ffffff' }}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
               <div>
-                <h3 className="text-lg font-semibold" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+                <h3 className="text-lg font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
                   {previewMode === 'full' ? 'Project Status Report' : 'Stakeholder Email Preview'}
                 </h3>
                 <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
@@ -263,7 +263,7 @@ const ProjectReportsSection = ({ projectId }) => {
                   {reportData.project?.fullAddress && ` - ${reportData.project.fullAddress}`}
                 </p>
               </div>
-              <button onClick={closePreview} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+              <button onClick={closePreview} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
@@ -299,7 +299,7 @@ const ProjectReportsSection = ({ projectId }) => {
             </div>
 
             {/* Summary Stats Bar */}
-            <div className="flex gap-3 p-4 border-b flex-wrap" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+            <div className="flex gap-3 p-4 border-b flex-wrap" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30">
                 <span className="text-lg font-bold text-amber-600 dark:text-amber-400">{reportData.summary?.externalCount || 0}</span>
                 <span className="text-sm text-amber-600 dark:text-amber-400">External</span>
@@ -308,7 +308,7 @@ const ProjectReportsSection = ({ projectId }) => {
                 <span className="text-lg font-bold text-blue-600 dark:text-blue-400">{reportData.summary?.internalCount || 0}</span>
                 <span className="text-sm text-blue-600 dark:text-blue-400">Internal</span>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-zinc-800">
                 <Users className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                 <span className="text-sm text-gray-600 dark:text-gray-400">{reportData.summary?.stakeholderCount || 0} stakeholders</span>
               </div>
@@ -411,7 +411,7 @@ const ProjectReportsSection = ({ projectId }) => {
 
                         {/* Issues List */}
                         {isExpanded && (
-                          <div className="divide-y" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+                          <div className="divide-y" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
                             {group.issues.map((issue) => (
                               <div
                                 key={issue.id}
@@ -425,7 +425,7 @@ const ProjectReportsSection = ({ projectId }) => {
                                         BLOCKED
                                       </span>
                                     )}
-                                    <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+                                    <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
                                       {issue.title}
                                     </span>
                                     {issue.description && (
@@ -454,19 +454,19 @@ const ProjectReportsSection = ({ projectId }) => {
 
                   {/* Unassigned Issues */}
                   {(reportData.unassignedIssues || []).length > 0 && (
-                    <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
-                      <div className="p-3" style={{ backgroundColor: isDark ? '#374151' : '#f3f4f6' }}>
-                        <span className="font-semibold" style={{ color: isDark ? '#9ca3af' : '#374151' }}>
+                    <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                      <div className="p-3" style={{ backgroundColor: isDark ? '#3F3F46' : '#f3f4f6' }}>
+                        <span className="font-semibold" style={{ color: isDark ? '#9ca3af' : '#3F3F46' }}>
                           Unassigned Issues
                         </span>
                         <span className="text-sm ml-2 px-2 py-1 bg-white dark:bg-gray-700 rounded-md" style={{ color: '#666' }}>
                           {reportData.unassignedIssues.length}
                         </span>
                       </div>
-                      <div className="divide-y" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+                      <div className="divide-y" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
                         {reportData.unassignedIssues.map((issue) => (
                           <div key={issue.id} className="p-3" style={{ backgroundColor: isDark ? '#1f2937' : '#fff' }}>
-                            <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+                            <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
                               {issue.title}
                             </span>
                           </div>
@@ -502,7 +502,7 @@ const ProjectReportsSection = ({ projectId }) => {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-between gap-3 p-4 border-t" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+            <div className="flex items-center justify-between gap-3 p-4 border-t" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
               <div className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
                 {previewMode === 'full'
                   ? 'Click a stakeholder to preview their personalized email'

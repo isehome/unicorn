@@ -317,7 +317,7 @@ const PublicShadePortal = () => {
     title: {
       fontSize: '20px',
       fontWeight: '600',
-      color: '#111827',
+      color: '#18181B',
       margin: 0
     },
     input: {
@@ -329,7 +329,7 @@ const PublicShadePortal = () => {
       borderRadius: '12px',
       border: '1px solid #d1d5db',
       backgroundColor: '#f9fafb',
-      color: '#111827',
+      color: '#18181B',
       boxSizing: 'border-box'
     },
     button: {
@@ -379,13 +379,13 @@ const PublicShadePortal = () => {
     statValue: {
       fontSize: '28px',
       fontWeight: '700',
-      color: '#111827',
+      color: '#18181B',
       margin: 0
     },
     sectionTitle: {
       fontSize: '18px',
       fontWeight: '600',
-      color: '#111827',
+      color: '#18181B',
       margin: '0 0 12px 0'
     },
     roomButton: {
@@ -401,7 +401,7 @@ const PublicShadePortal = () => {
     },
     roomName: {
       fontWeight: '600',
-      color: '#111827',
+      color: '#18181B',
       marginRight: '8px'
     },
     roomCount: {
@@ -426,7 +426,7 @@ const PublicShadePortal = () => {
     },
     shadeName: {
       fontWeight: '500',
-      color: '#111827',
+      color: '#18181B',
       marginRight: '8px'
     },
     shadeDetails: {
@@ -440,7 +440,7 @@ const PublicShadePortal = () => {
     dimensionText: {
       fontSize: '14px',
       fontWeight: '500',
-      color: '#111827'
+      color: '#18181B'
     },
     mountText: {
       fontSize: '12px',
@@ -517,7 +517,7 @@ const PublicShadePortal = () => {
           <div style={{ color: '#f43f5e', marginBottom: '16px' }}>
             <AlertTriangleIcon />
           </div>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>{errorTitle}</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#18181B', marginBottom: '8px' }}>{errorTitle}</h2>
           <p style={{ fontSize: '14px', color: '#6b7280' }}>
             {errorMessage}
           </p>
@@ -530,7 +530,7 @@ const PublicShadePortal = () => {
   const renderVerification = () => (
     <form onSubmit={handleVerify} style={{ ...styles.card, maxWidth: '400px', margin: '0 auto', padding: '24px' }}>
       <div style={{ textAlign: 'center', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '8px' }}>Verify your access</h2>
+        <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#18181B', marginBottom: '8px' }}>Verify your access</h2>
         <p style={{ fontSize: '14px', color: '#6b7280' }}>
           Enter the six-digit code from your invitation email to view the window covering selections.
         </p>
@@ -791,7 +791,7 @@ const PublicShadePortal = () => {
                                     <div style={{ marginBottom: '12px' }}>
                                       {commentsByShade[shade.id].map(comment => (
                                         <div key={comment.id} style={{ padding: '8px', backgroundColor: '#ffffff', borderRadius: '6px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
-                                          <p style={{ fontSize: '13px', color: '#111827', margin: 0 }}>{comment.text}</p>
+                                          <p style={{ fontSize: '13px', color: '#18181B', margin: 0 }}>{comment.text}</p>
                                           <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', margin: 0 }}>
                                             by <span style={{ fontWeight: '500', color: comment.email === stakeholder?.email ? '#15803d' : '#8b5cf6' }}>{comment.author}</span>
                                             {' '}• {new Date(comment.createdAt).toLocaleString()}
@@ -817,7 +817,7 @@ const PublicShadePortal = () => {
                                         borderRadius: '6px',
                                         fontSize: '14px',
                                         backgroundColor: '#ffffff',
-                                        color: '#111827'
+                                        color: '#18181B'
                                       }}
                                       onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {

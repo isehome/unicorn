@@ -430,7 +430,7 @@ const WireDropsList = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 flex items-center justify-center">
         <Loader className="w-8 h-8 animate-spin text-violet-500 dark:text-violet-300" />
       </div>
     );
@@ -438,7 +438,7 @@ const WireDropsList = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 flex items-center justify-center">
         <div className="text-center space-y-4">
           <p className="text-sm text-rose-500 dark:text-rose-300">{error}</p>
           {/* Error state - user will use app bar back button */}
@@ -448,7 +448,7 @@ const WireDropsList = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">
       <div className="w-full px-3 sm:px-4 py-6">
         <div style={sectionStyles.card}>
           {/* Bulk actions bar */}
@@ -503,14 +503,14 @@ const WireDropsList = () => {
                 placeholder="Search by name, room, location, or type..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
               />
             </div>
             {availableFloors.length > 0 && (
               <select
                 value={selectedFloor}
                 onChange={(e) => setSelectedFloor(e.target.value)}
-                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
               >
                 <option value="">All Floors</option>
                 {availableFloors.map(floor => (
@@ -733,7 +733,7 @@ const WireDropsList = () => {
       {/* Bulk Delete Confirmation Modal */}
       {showBulkDeleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
               <AlertTriangle size={20} className="text-red-500" />
               Delete {selectedDropIds.length} Wire Drop{selectedDropIds.length !== 1 ? 's' : ''}?

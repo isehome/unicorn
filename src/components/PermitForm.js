@@ -173,7 +173,7 @@ function PermitForm({ projectId, permit, onSubmit, onCancel }) {
           onChange={handleChange}
           required
           disabled={loading}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
           placeholder="Enter permit number"
         />
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -192,7 +192,7 @@ function PermitForm({ projectId, permit, onSubmit, onCancel }) {
           onChange={handleChange}
           disabled={loading}
           rows={3}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed resize-none"
           placeholder="Optional notes about this permit"
         />
       </div>
@@ -205,7 +205,7 @@ function PermitForm({ projectId, permit, onSubmit, onCancel }) {
 
         {/* Show existing document if available and not marked for removal */}
         {existingDocument && !removeExistingDocument && !documentFile && (
-          <div className="mb-3 flex items-center gap-2 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900/50">
+          <div className="mb-3 flex items-center gap-2 p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-zinc-900/50">
             <FileText className="w-5 h-5 text-red-500 flex-shrink-0" />
             <span className="flex-1 text-sm text-gray-700 dark:text-gray-300 truncate">
               {existingDocument.name}
@@ -292,7 +292,7 @@ function PermitForm({ projectId, permit, onSubmit, onCancel }) {
               value={formData.rough_in_date}
               onChange={handleChange}
               disabled={loading}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -307,7 +307,7 @@ function PermitForm({ projectId, permit, onSubmit, onCancel }) {
               value={formData.final_inspection_date}
               onChange={handleChange}
               disabled={loading}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         </div>

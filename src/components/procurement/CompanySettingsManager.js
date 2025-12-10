@@ -210,7 +210,7 @@ const CompanySettingsManager = () => {
             type="text"
             value={formData.company_name}
             onChange={(e) => handleInputChange('company_name', e.target.value)}
-            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
             placeholder="Your Company LLC"
             required
           />
@@ -227,7 +227,7 @@ const CompanySettingsManager = () => {
 
           {formData.company_logo_url ? (
             <div className="flex items-start gap-4">
-              <div className="w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 flex items-center justify-center p-2">
+              <div className="w-32 h-32 rounded-lg border-2 border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-zinc-800 flex items-center justify-center p-2">
                 <img
                   src={formData.company_logo_url}
                   alt="Company Logo"
@@ -279,7 +279,7 @@ const CompanySettingsManager = () => {
                 type="text"
                 value={formData.orders_contact_name}
                 onChange={(e) => handleInputChange('orders_contact_name', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="John Doe"
               />
             </div>
@@ -289,7 +289,7 @@ const CompanySettingsManager = () => {
                 type="email"
                 value={formData.orders_contact_email}
                 onChange={(e) => handleInputChange('orders_contact_email', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="orders@company.com"
               />
             </div>
@@ -299,7 +299,7 @@ const CompanySettingsManager = () => {
                 type="tel"
                 value={formData.orders_contact_phone}
                 onChange={(e) => handleInputChange('orders_contact_phone', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="(555) 123-4567"
               />
             </div>
@@ -319,7 +319,7 @@ const CompanySettingsManager = () => {
                 type="text"
                 value={formData.accounting_contact_name}
                 onChange={(e) => handleInputChange('accounting_contact_name', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="Jane Smith"
               />
             </div>
@@ -329,7 +329,7 @@ const CompanySettingsManager = () => {
                 type="email"
                 value={formData.accounting_contact_email}
                 onChange={(e) => handleInputChange('accounting_contact_email', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="accounting@company.com"
               />
             </div>
@@ -339,7 +339,7 @@ const CompanySettingsManager = () => {
                 type="tel"
                 value={formData.accounting_contact_phone}
                 onChange={(e) => handleInputChange('accounting_contact_phone', e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
                 placeholder="(555) 123-4567"
               />
             </div>

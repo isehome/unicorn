@@ -77,7 +77,7 @@ const VendorManagement = () => {
 
       {/* Vendor List */}
       {suppliers.length === 0 ? (
-        <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+        <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-zinc-900/50 rounded-lg">
           No vendors added yet. Click "Add Vendor" to get started.
         </div>
       ) : (
@@ -85,7 +85,7 @@ const VendorManagement = () => {
           {suppliers.map((supplier) => (
             <div
               key={supplier.id}
-              className="p-4 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-300 dark:hover:border-violet-700 transition-colors"
+              className="p-4 bg-gray-50 dark:bg-zinc-900/50 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-violet-300 dark:hover:border-violet-700 transition-colors"
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1">

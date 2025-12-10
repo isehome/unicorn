@@ -39,7 +39,7 @@ const EmbedModal = ({ isOpen, onClose, documentId, page }) => {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-sm">
-      <div className={`relative w-full max-w-5xl overflow-hidden rounded-2xl shadow-2xl ${mode === 'dark' ? 'bg-gray-900' : 'bg-white'}`}>
+      <div className={`relative w-full max-w-5xl overflow-hidden rounded-2xl shadow-2xl ${mode === 'dark' ? 'bg-zinc-900' : 'bg-white'}`}>
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-black/70"
@@ -59,7 +59,7 @@ const EmbedModal = ({ isOpen, onClose, documentId, page }) => {
           )}
         </div>
 
-        <div className={`flex h-[70vh] items-center justify-center ${mode === 'dark' ? 'bg-gray-950' : 'bg-gray-50'}`}>
+        <div className={`flex h-[70vh] items-center justify-center ${mode === 'dark' ? 'bg-zinc-950' : 'bg-gray-50'}`}>
           {embedUrl ? (
             <>
               <iframe
@@ -235,7 +235,7 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
           ctx.fillText('📄', canvas.width / 2, canvas.height / 2 - 20);
 
           ctx.font = 'bold 16px sans-serif';
-          ctx.fillStyle = mode === 'dark' ? '#e5e7eb' : '#374151';
+          ctx.fillStyle = mode === 'dark' ? '#e5e7eb' : '#3F3F46';
           ctx.fillText(page.title, canvas.width / 2, canvas.height / 2 + 36);
 
           ctx.font = '12px sans-serif';

@@ -49,7 +49,7 @@ const CircularProgressGauge = ({
   };
 
   const progressColor = getColor(normalizedPercentage);
-  const backgroundColor = 'rgb(71, 85, 105)'; // Visible gray background (slate-600)
+  const backgroundColor = 'rgb(71, 85, 105)'; // Visible gray background (zinc-500)
 
   return (
     <div className="flex flex-col items-center">

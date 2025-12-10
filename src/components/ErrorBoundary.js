@@ -46,7 +46,7 @@ class ErrorBoundary extends React.Component {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
       return (
-        <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        <div className={`min-h-screen flex items-center justify-center p-4 ${isDark ? 'bg-zinc-900' : 'bg-gray-50'}`}>
           <div className={`max-w-md w-full rounded-2xl p-6 shadow-xl border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
             <div className="flex items-center gap-3 mb-4">
               <div className={`p-3 rounded-full ${isDark ? 'bg-red-900/30' : 'bg-red-100'}`}>
@@ -64,7 +64,7 @@ class ErrorBoundary extends React.Component {
 
             {/* Error details (collapsible) */}
             {this.state.error && (
-              <details className={`mb-4 p-3 rounded-lg text-sm ${isDark ? 'bg-gray-900' : 'bg-gray-100'}`}>
+              <details className={`mb-4 p-3 rounded-lg text-sm ${isDark ? 'bg-zinc-900' : 'bg-gray-100'}`}>
                 <summary className={`cursor-pointer font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                   Technical Details
                 </summary>

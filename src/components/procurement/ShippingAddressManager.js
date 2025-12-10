@@ -478,7 +478,7 @@ const ShippingAddressManager = ({
               className={`p-4 cursor-pointer transition-colors ${
                 onSelect && selectedAddressId === address.id
                   ? 'border-2 border-violet-500 bg-violet-50 dark:bg-violet-900/20'
-                  : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  : 'hover:bg-gray-50 dark:hover:bg-zinc-800/50'
               }`}
               onClick={() => onSelect && onSelect(address)}
             >

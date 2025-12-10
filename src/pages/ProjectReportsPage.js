@@ -266,9 +266,9 @@ const ProjectReportsPage = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
       {/* Project Status Gauges - Full Milestone Display */}
-      <div className="rounded-2xl border p-6" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+      <div className="rounded-2xl border p-6" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+          <h2 className="text-lg font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
             Project Progress
           </h2>
           <div className="flex items-center gap-4">
@@ -295,7 +295,7 @@ const ProjectReportsPage = () => {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-2 border-b pb-2 flex-wrap" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
+      <div className="flex items-center gap-2 border-b pb-2 flex-wrap" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
         {[
           { id: 'overview', label: 'Overview', icon: TrendingUp },
           { id: 'issues', label: 'Issues', icon: AlertCircle, count: issueStats?.open },
@@ -308,7 +308,7 @@ const ProjectReportsPage = () => {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
               activeTab === tab.id
                 ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
             }`}
             style={{ color: activeTab !== tab.id ? (isDark ? '#9ca3af' : '#6b7280') : undefined }}
           >
@@ -390,8 +390,8 @@ const ProjectReportsPage = () => {
 
           {/* Milestone Timeline */}
           {milestoneProgress?.milestones && (
-            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#374151' : '#e5e7eb' }}>
-              <h3 className="font-semibold mb-4 flex items-center gap-2" style={{ color: isDark ? '#f9fafb' : '#111827' }}>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+              <h3 className="font-semibold mb-4 flex items-center gap-2" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
                 <Calendar className="w-5 h-5 text-violet-500" />
                 Project Timeline
               </h3>
@@ -404,7 +404,7 @@ const ProjectReportsPage = () => {
                         ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                         : idx === milestoneProgress.completedCount
                         ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 ring-2 ring-violet-500'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                        : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400'
                     }`}
                   >
                     {milestone.completed ? (
@@ -426,7 +426,7 @@ const ProjectReportsPage = () => {
       {activeTab === 'issues' && (
         <div className="space-y-4">
           {/* Filters Bar */}
-          <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#374151' : '#e5e7eb'}` }}>
+          <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#3F3F46' : '#e5e7eb'}` }}>
             <div className="flex items-center gap-4 flex-wrap">
               {/* Stakeholder Filter */}
               <div className="flex items-center gap-2">
@@ -434,8 +434,8 @@ const ProjectReportsPage = () => {
                 <select
                   value={stakeholderFilter}
                   onChange={(e) => setStakeholderFilter(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-gray-800"
-                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#111827' }}
+                  className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-zinc-800"
+                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#18181B' }}
                 >
                   <option value="all">All Stakeholders ({stakeholders.length})</option>
                   <option value="external">External Only</option>
@@ -461,8 +461,8 @@ const ProjectReportsPage = () => {
                 <select
                   value={issueStatusFilter}
                   onChange={(e) => setIssueStatusFilter(e.target.value)}
-                  className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-gray-800"
-                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#111827' }}
+                  className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-zinc-800"
+                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#18181B' }}
                 >
                   <option value="all">All Statuses</option>
                   <option value="open">Open Only</option>
@@ -513,7 +513,7 @@ const ProjectReportsPage = () => {
               >
                 {/* Stakeholder Header */}
                 <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
                   onClick={() => toggleStakeholder(group.stakeholder.id)}
                 >
                   <div className="flex items-center gap-3">
@@ -591,7 +591,7 @@ const ProjectReportsPage = () => {
                           return { backgroundColor: '#dc262620', color: '#dc2626', border: '1px solid #dc262640' };
                         } else {
                           return {
-                            backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                            backgroundColor: isDark ? '#3F3F46' : '#f3f4f6',
                             color: isDark ? '#d1d5db' : '#6b7280',
                             border: `1px solid ${isDark ? '#4b5563' : '#e5e7eb'}`
                           };
@@ -629,9 +629,9 @@ const ProjectReportsPage = () => {
 
           {/* Unassigned Issues */}
           {issueReportData?.unassignedIssues?.length > 0 && stakeholderFilter === 'all' && (
-            <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? '#374151' : '#e5e7eb' }}>
-              <div className="p-4" style={{ backgroundColor: isDark ? '#374151' : '#f3f4f6' }}>
-                <span className="font-semibold text-lg" style={{ color: isDark ? '#9ca3af' : '#374151' }}>
+            <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+              <div className="p-4" style={{ backgroundColor: isDark ? '#3F3F46' : '#f3f4f6' }}>
+                <span className="font-semibold text-lg" style={{ color: isDark ? '#9ca3af' : '#3F3F46' }}>
                   Unassigned Issues
                 </span>
                 <span className="text-sm ml-3 px-3 py-1 bg-white dark:bg-gray-700 rounded-lg" style={{ color: '#666' }}>
@@ -648,7 +648,7 @@ const ProjectReportsPage = () => {
                       return { backgroundColor: '#ef444420', color: '#ef4444', border: '1px solid #ef444440' };
                     } else {
                       return {
-                        backgroundColor: isDark ? '#374151' : '#f3f4f6',
+                        backgroundColor: isDark ? '#3F3F46' : '#f3f4f6',
                         color: isDark ? '#d1d5db' : '#6b7280',
                         border: `1px solid ${isDark ? '#4b5563' : '#e5e7eb'}`
                       };
@@ -732,8 +732,8 @@ const ProjectReportsPage = () => {
 
           {/* By Floor */}
           {wireDropProgress?.byFloor && Object.keys(wireDropProgress.byFloor).length > 0 && (
-            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#374151' : '#e5e7eb' }}>
-              <h3 className="font-semibold mb-4" style={{ color: isDark ? '#f9fafb' : '#111827' }}>By Floor</h3>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+              <h3 className="font-semibold mb-4" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>By Floor</h3>
               <div className="space-y-3">
                 {Object.entries(wireDropProgress.byFloor).map(([floor, data]) => (
                   <div key={floor} className="flex items-center gap-4">

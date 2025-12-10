@@ -135,7 +135,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
             value={schematicUrl}
             onChange={(e) => setSchematicUrl(e.target.value)}
             placeholder="https://example.com/schematic.pdf"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
           />
           {schematicUrl && (
             <a
@@ -173,7 +173,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
                   type="url"
                   value={url}
                   onChange={(e) => handleEditInstallManual(index, e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
                 />
                 <a
                   href={url}
@@ -210,7 +210,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
               }
             }}
             placeholder="https://example.com/install-guide.pdf"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
           />
           <Button
             variant="secondary"
@@ -246,7 +246,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
                   type="url"
                   value={url}
                   onChange={(e) => handleEditTechnicalManual(index, e.target.value)}
-                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
                 />
                 <a
                   href={url}
@@ -283,7 +283,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
               }
             }}
             placeholder="https://example.com/technical-specs.pdf"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
           />
           <Button
             variant="secondary"

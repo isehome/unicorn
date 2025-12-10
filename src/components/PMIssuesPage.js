@@ -60,7 +60,7 @@ const IssueCard = memo(({ issue, onClick, sectionStyles, isDark, showStakeholder
           } else {
             // Default for 'open' and other statuses
             return {
-              backgroundColor: isDark ? '#374151' : '#f3f4f6',
+              backgroundColor: isDark ? '#3F3F46' : '#f3f4f6',
               color: isDark ? '#d1d5db' : '#6b7280',
               border: `1px solid ${isDark ? '#4b5563' : '#e5e7eb'}`
             };
@@ -105,7 +105,7 @@ const PMIssuesPage = () => {
   const isDark = mode === 'dark';
   const selectClass = useMemo(() => 
     `px-3 py-2 rounded-xl border pr-8 ${
-      isDark ? 'bg-slate-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'
+      isDark ? 'bg-zinc-900 text-gray-100 border-gray-700' : 'bg-white text-gray-900 border-gray-300'
     }`,
     [isDark]
   );
@@ -343,7 +343,7 @@ const PMIssuesPage = () => {
           
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800">
+              <thead className="bg-gray-50 dark:bg-zinc-800">
                 <tr>
                   <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Stakeholder</th>
                   <th className="px-4 py-2 text-left text-gray-700 dark:text-gray-300">Role</th>
@@ -355,7 +355,7 @@ const PMIssuesPage = () => {
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {stakeholderReport.map((stakeholder) => (
-                  <tr key={stakeholder.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <tr key={stakeholder.id} className="hover:bg-gray-50 dark:hover:bg-zinc-800">
                     <td className="px-4 py-3">
                       <button
                         onClick={() => setStakeholderFilter(stakeholder.name)}
@@ -433,9 +433,9 @@ const PMIssuesPage = () => {
             placeholder="Search issues..."
             className="w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
             style={{
-              backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-              borderColor: isDark ? '#374151' : '#E5E7EB',
-              color: isDark ? '#F9FAFB' : '#111827'
+              backgroundColor: isDark ? '#27272A' : '#FFFFFF',
+              borderColor: isDark ? '#3F3F46' : '#E5E7EB',
+              color: isDark ? '#F9FAFB' : '#18181B'
             }}
           />
         </div>

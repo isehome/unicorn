@@ -231,7 +231,7 @@ const LucidDiagnostic = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors pb-20">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* Header */}
         <div style={sectionStyles.card} className="mb-6 p-6">
@@ -260,7 +260,7 @@ const LucidDiagnostic = () => {
                 value={documentUrl}
                 onChange={(e) => setDocumentUrl(e.target.value)}
                 placeholder="https://lucid.app/lucidchart/YOUR-DOC-ID/edit"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -409,7 +409,7 @@ const LucidDiagnostic = () => {
                           <summary className="text-xs cursor-pointer text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
                             View details
                           </summary>
-                          <pre className="mt-2 p-2 bg-gray-900 dark:bg-black text-green-400 text-xs rounded overflow-x-auto">
+                          <pre className="mt-2 p-2 bg-zinc-900 dark:bg-black text-green-400 text-xs rounded overflow-x-auto">
                             {JSON.stringify(result.data, null, 2)}
                           </pre>
                         </details>
@@ -452,7 +452,7 @@ const LucidDiagnostic = () => {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Pages</p>
                 <div className="space-y-2">
                   {metadata.pages.map((page, index) => (
-                    <div key={page.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                    <div key={page.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-zinc-800 rounded">
                       <div>
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
                           {page.title || `Page ${index + 1}`}
@@ -483,7 +483,7 @@ const LucidDiagnostic = () => {
               {contents.pages.map((page, index) => (
                 <div
                   key={page.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800 rounded-lg"
                 >
                   <div className="flex-1">
                     <p className="font-medium text-gray-900 dark:text-white">
@@ -603,7 +603,7 @@ const LucidDiagnostic = () => {
                     <select
                       value={embedMethod}
                       onChange={(e) => setEmbedMethod(e.target.value)}
-                      className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-zinc-800 text-gray-900 dark:text-white"
                     >
                       <option value="token">Token (No public share needed)</option>
                       <option value="cookie">Cookie (User must have access)</option>

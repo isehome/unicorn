@@ -201,7 +201,7 @@ const ProjectEquipmentManager = ({
     }
 
     return groupedEquipment.map(({ roomName, isHeadEnd, items }) => (
-      <div key={roomName} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <div key={roomName} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-zinc-900">
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -216,7 +216,7 @@ const ProjectEquipmentManager = ({
           {items.map((item) => (
             <div
               key={item.id}
-              className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800"
+              className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm shadow-sm dark:border-gray-700 dark:bg-zinc-800"
             >
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -428,7 +428,7 @@ const ProjectEquipmentManager = ({
               Rooms overview
             </h4>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm shadow-sm dark:border-gray-700 dark:bg-zinc-900">
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Head-end rooms are highlighted in purple within the wire drop selector.
             </p>

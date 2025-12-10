@@ -214,7 +214,7 @@ const PartsReceivingPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pb-20 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 pb-20 transition-colors">
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Error/Success Messages */}
         {error && (
@@ -237,7 +237,7 @@ const PartsReceivingPage = () => {
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
                 phase === 'prewire'
                   ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               Prewire Items
@@ -247,7 +247,7 @@ const PartsReceivingPage = () => {
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-colors ${
                 phase === 'trim'
                   ? 'bg-violet-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
               }`}
             >
               Trim Items
@@ -305,7 +305,7 @@ const PartsReceivingPage = () => {
                         ? 'border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/10'
                         : isPartial
                         ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/10'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800'
                     }`}
                   >
                     {/* Item Header */}

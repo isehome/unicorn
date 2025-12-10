@@ -1287,7 +1287,7 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
-**Last Updated:** 2024-12-08
+**Last Updated:** 2025-12-08
 
 ## Overview
 
@@ -1296,6 +1296,98 @@ The AI integration in Unicorn follows the **"Copilot" Architecture**.
 - **Rule**: The AI acts as a **Power User**, using "Tools" to navigate, click buttons, and save data. It DOES NOT access the database directly.
 - **Safety**: App logic (validations, state) remains the source of truth.
 - **Platform**: Gemini Live API via WebSocket (real-time audio streaming).
+
+## Gemini Live API Configuration
+
+**API Endpoint:** `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent`
+
+**CRITICAL: Use v1beta (not v1alpha)** - The v1beta API is the official documented version.
+
+### Naming Convention
+The Gemini API uses **camelCase** for all field names:
+```javascript
+// ✅ CORRECT - camelCase
+{
+    setup: {
+        model: "models/gemini-2.5-flash-native-audio-preview-09-2025",
+        generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { ... }
+        },
+        realtimeInputConfig: { ... },
+        systemInstruction: { ... }
+    }
+}
+
+// ❌ WRONG - snake_case (will cause errors!)
+{
+    setup: {
+        model: "...",
+        generation_config: { ... },  // NO!
+        realtime_input_config: { ... }  // NO!
+    }
+}
+```
+
+### Available Models
+| Model ID | Description | Status |
+|----------|-------------|--------|
+| `gemini-2.5-flash-native-audio-preview-09-2025` | Latest, best audio quality | **Recommended** |
+| `gemini-2.0-flash-live-001` | Stable fallback | Deprecated Dec 2025 |
+
+Users can select their model in Settings > AI Copilot Settings.
+
+### VAD (Voice Activity Detection) Settings
+```javascript
+realtimeInputConfig: {
+    automaticActivityDetection: {
+        disabled: false,
+        // Use full enum names (not just "LOW" or "HIGH")
+        startOfSpeechSensitivity: "START_SENSITIVITY_LOW",   // Less sensitive to background noise
+        endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",      // Waits longer before ending turn
+        prefixPaddingMs: 100,   // Wait before committing speech start
+        silenceDurationMs: 500  // Silence duration before end of speech
+    }
+}
+```
+
+### Tool Declaration Format
+```javascript
+// Tools declared in setup config
+config.setup.tools = [{
+    functionDeclarations: [
+        {
+            name: "tool_name",
+            description: "What this tool does",
+            parameters: {
+                type: "object",
+                properties: {
+                    param1: { type: "string", description: "..." }
+                },
+                required: ["param1"]
+            }
+        }
+    ]
+}];
+```
+
+### Tool Response Format
+```javascript
+// When Gemini calls a tool, respond with:
+{
+    toolResponse: {
+        functionResponses: [
+            {
+                id: "call_id_from_gemini",
+                name: "tool_name",
+                response: { success: true, data: "..." }
+            }
+        ]
+    }
+}
+```
+
+**Official Documentation:** https://ai.google.dev/api/live
 
 ## Architecture Diagram
 
@@ -1373,20 +1465,36 @@ Provides **location awareness** and **global navigation** tools.
 
 ### 3. Page-Specific Tool Hooks
 
+**useShadeManagerTools (`src/hooks/useShadeManagerTools.js`)**
+Registered when user is on the shade list page.
+
+| Tool | Description |
+|------|-------------|
+| `get_shades_overview` | Get total shades, pending count, grouped by room |
+| `list_shades_in_room` | List all shades in a specific room |
+| `open_shade_for_measuring` | Open a shade by name or next pending in room |
+| `get_next_pending_shade` | Get info about next shade that needs measuring |
+| `expand_room` | Expand/collapse a room section in the list |
+
 **useShadeTools (`src/hooks/useShadeTools.js`)**
 Registered when user is in the Shade measurement modal.
 
 | Tool | Description |
 |------|-------------|
 | `set_measurement` | Record a dimension (e.g., "top width", "left height") |
-| `get_current_context` | Get shade name, room, current values |
-| `save_and_close` | Save measurements and close modal |
+| `get_shade_context` | Get shade name, room, quoted dimensions, measurement status |
+| `read_back_measurements` | Read all recorded measurements for verification |
+| `clear_measurement` | Clear/reset a specific measurement |
+| `save_shade_measurements` | Save and complete the shade |
+| `close_without_saving` | Cancel and close the modal |
 
 ### 4. User Settings (`src/components/UserSettings/AISettings.js`)
 - **Persona Config**: "Field Partner" (brief) vs "Teacher" (detailed)
 - **Voice Selection**: Puck, Charon, Kore, Fenrir, Aoede
+- **Model Selection**: Choose between Gemini 2.5 Flash (recommended) or 2.0 Flash Live
 - **Custom Instructions**: User-defined context for AI
 - **Audio Diagnostics**: Test speaker and microphone
+- **Conversation Transcript**: Copyable log of AI responses for debugging
 
 ## How Tools Work
 
@@ -1396,21 +1504,23 @@ const myTool = {
     name: "tool_name",
     description: "What this tool does - be specific for AI",
     parameters: {
-        type: "OBJECT",
+        type: "object",  // lowercase!
         properties: {
             paramName: {
-                type: "STRING", // or "NUMBER", "BOOLEAN"
+                type: "string", // or "number", "boolean" (lowercase)
                 description: "What this parameter is for"
             }
         },
         required: ["paramName"] // Optional
     },
     execute: async ({ paramName }) => {
-        // Do something
+        // Do something - this runs locally when Gemini calls the tool
         return { success: true, message: "Done" };
     }
 };
 ```
+
+**Note:** Gemini Live API does NOT support dynamic tool updates mid-session. Tools are declared in the setup config only. New tools registered after session start won't be available until the next session.
 
 ### Registering Tools
 ```javascript
@@ -1497,11 +1607,15 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
+| WebSocket 1007 error | Wrong VAD enum values | Use `START_SENSITIVITY_LOW` / `END_SENSITIVITY_HIGH` (not just "LOW"/"HIGH") |
+| WebSocket 1007 error | snake_case field names | Use camelCase: `generationConfig`, `realtimeInputConfig`, etc. |
+| WebSocket 1007 error | Wrong API version | Use `v1beta` not `v1alpha` |
 | "Blob data unexpected" | Old code before fix | Update VoiceCopilotContext.js |
 | No audio output | AudioContext suspended | Ensure user taps to start (iOS requirement) |
 | Audio level 0% | Mic permission denied | Check browser permissions |
 | WebSocket error | Invalid API key | Check REACT_APP_GEMINI_API_KEY in Vercel |
-| Tools not working | Not registered | Check status before registering |
+| Tools not working | Not registered before session | Tools must be registered before startSession() |
+| Tools not working mid-session | Dynamic tool registration | Gemini doesn't support adding tools mid-session; restart session |
 
 ## Key Files
 
@@ -1509,9 +1623,10 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 |------|---------|
 | `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
 | `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
-| `src/hooks/useShadeTools.js` | Shade measurement tools |
+| `src/hooks/useShadeManagerTools.js` | Shade list page tools (overview, open shade) |
+| `src/hooks/useShadeTools.js` | Shade measurement modal tools |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
-| `src/components/UserSettings/AISettings.js` | Voice/persona settings |
+| `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics |
 
 ## Environment Variables
 
@@ -1668,4 +1783,118 @@ CREATE TABLE shade_comments (
 | Project shows null | RLS blocking service role | Add policy: `CREATE POLICY service_role_select ON projects FOR SELECT TO service_role USING (true);` |
 | Fabric link doesn't search | Using `/search` not `/search/results` | Change URL to `/search/results?q=` |
 | Link doesn't open | Missing stopPropagation | Add `onClick={(e) => e.stopPropagation()}` |
-| Orphaned links | Project deleted | Run cleanup: `DELETE FROM shade_public_access_links WHERE project_id NOT IN (SELECT id FROM projects);` |
+| Orphaned links | Project deleted | Run cleanup: `DELETE FROM shade_public_access_links WHERE project_id NOT IN (SELECT id FROM projects);`
+
+---
+
+# PART 5: TODO / KNOWN ISSUES
+
+## Supabase Security Linter Issues (Logged 2025-12-10)
+
+**Status:** Deferred - needs careful review to avoid breaking production
+
+### Issue 1: SECURITY DEFINER Views (13 views)
+
+These views bypass RLS by running with creator's permissions. May be intentional for MSAL auth pattern.
+
+**Affected views:**
+- `issue_stakeholder_tags_detailed`
+- `issues_with_stats`
+- `project_equipment_global_parts`
+- `wire_drops_with_network_info`
+- `project_milestone_status`
+- `purchase_orders_summary`
+- `project_equipment_with_rooms`
+- `equipment_for_po`
+- `searchable_contacts`
+- `project_contacts_view`
+- `time_logs_active`
+- `time_logs_summary`
+- `project_stakeholders_detailed`
+
+**Action needed:** Review each view to determine if SECURITY DEFINER is intentional. If not, recreate with `security_invoker = true`.
+
+### Issue 2: RLS Disabled on Public Tables (7 tables)
+
+These tables have NO Row Level Security - anyone with the anon key can read/write all data.
+
+**Affected tables:**
+- `shipping_addresses`
+- `app_preferences`
+- `project_contacts`
+- `issue_project_contacts`
+- `project_assignments`
+- `stakeholder_slots`
+- `issue_assignments`
+
+**Action needed:** Enable RLS and add policies following the MSAL pattern (include `anon, authenticated` roles).
+
+**Fix template:**
+```sql
+-- Enable RLS
+ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY;
+
+-- Add permissive policy (MSAL pattern)
+CREATE POLICY "Allow all for anon and authenticated"
+ON public.{table_name}
+FOR ALL TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+```
+
+### Future Issues
+
+Add new Supabase linter issues or technical debt items here as they arise.
+
+---
+
+## User Capability Levels (TODO)
+
+**Status:** Planned - needs implementation
+
+### Overview
+
+The application needs a proper user capabilities/roles system to control access to features based on user role. Currently using ad-hoc checks (like `isPMView` prop).
+
+### Proposed Roles
+
+| Role | Description | Capabilities |
+|------|-------------|--------------|
+| **PM (Project Manager)** | Full project oversight | View all M1/M2 data unblinded, manage stakeholders, approve changes, full edit access |
+| **Technician** | Field worker | Enter M1/M2 measurements (blinded from other tech's data), upload photos, add comments |
+| **Designer** | External stakeholder | Review shades via public portal, approve/reject designs, select fabrics |
+| **Admin** | System administrator | All PM capabilities + system settings, user management |
+| **Viewer** | Read-only access | View project info, reports (no editing) |
+
+### Implementation Considerations
+
+1. **Database Schema**
+   - Add `user_roles` table with role definitions
+   - Add `project_user_roles` junction table for per-project role assignments
+   - Consider global roles vs per-project roles
+
+2. **Auth Context Enhancement**
+   - Extend `useAuth` hook to include user capabilities
+   - Add `hasCapability(capability)` helper function
+   - Cache capabilities to avoid repeated lookups
+
+3. **Component Updates**
+   - Replace `isPMView` with capability checks
+   - Add capability guards to sensitive components
+   - Update navigation/menus based on capabilities
+
+4. **Shade Measurement Blinding**
+   - Currently: `isPMView` prop controls blinding
+   - Future: Check `canViewAllMeasurements` capability
+
+5. **Migration Path**
+   - Default existing users to appropriate roles based on current behavior
+   - Add admin UI for role management
+
+### Related Files
+- `src/contexts/AuthContext.js` - Auth state management
+- `src/components/Shades/ShadeMeasurementModal.js` - Uses `isPMView` for blinding
+- `src/components/Shades/ShadeManager.js` - Passes `isPMView` prop
+- `src/components/PMProjectView.js` - Embeds ShadeManager with PM capabilities
+
+---

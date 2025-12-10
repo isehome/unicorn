@@ -80,14 +80,14 @@ const TodosListPage = () => {
   }, [viewMode, fetchCalendar]);
 
   const pageClasses = mode === 'dark'
-    ? 'bg-gray-900 text-gray-100'
+    ? 'bg-zinc-900 text-gray-100'
     : 'bg-gray-50 text-gray-900';
 
   const styles = useMemo(() => {
-    const cardBackground = mode === 'dark' ? '#1F2937' : '#FFFFFF';
-    const mutedBackground = mode === 'dark' ? '#111827' : '#F9FAFB';
-    const borderColor = mode === 'dark' ? '#374151' : '#E5E7EB';
-    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#111827';
+    const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+    const mutedBackground = mode === 'dark' ? '#18181B' : '#F9FAFB';
+    const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+    const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
     const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
     const subtleText = mode === 'dark' ? '#71717A' : '#6B7280';
 
