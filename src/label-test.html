@@ -237,28 +237,17 @@
         // --- RENDER LOGIC ---
 
         const generateWireDropLabelBitmap = async (wireDrop) => {
+            // --- TEMPORARY CALIBRATION LOGIC START ---
             // Brady M211 printer resolution: 203 DPI
             const DPI = 203;
 
-            // Inputs
-            const widthInput = document.getElementById('width');
-            const heightInput = document.getElementById('height');
-            const marginTopInput = document.getElementById('marginTop');
-            const marginBottomInput = document.getElementById('marginBottom');
-
-            const LABEL_WIDTH_INCHES = parseFloat(widthInput.value);
-            const LABEL_HEIGHT_INCHES = parseFloat(heightInput.value);
-            const MARGIN_TOP_INCHES = parseFloat(marginTopInput.value);
-            const MARGIN_BOTTOM_INCHES = parseFloat(marginBottomInput.value);
+            // Dimensions
+            const LABEL_WIDTH_INCHES = 2.25;
+            const LABEL_HEIGHT_INCHES = 0.75;
 
             // Convert to pixels
             const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI);
             const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI);
-            const MARGIN_TOP = Math.floor(MARGIN_TOP_INCHES * DPI);
-            const MARGIN_BOTTOM = Math.floor(MARGIN_BOTTOM_INCHES * DPI);
-
-            // Calculate Safe Printable Area
-            const SAFE_HEIGHT = HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
 
             // Create canvas
             const canvas = document.createElement('canvas');
@@ -266,255 +255,118 @@
             canvas.height = HEIGHT;
             const ctx = canvas.getContext('2d');
 
-            // White background
+            // 1. Background
             ctx.fillStyle = '#FFFFFF';
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-            // Flag-style layout: QR (45%) | GAP (10%) | TEXT (45%)
-            const QR_SECTION_WIDTH = Math.floor(WIDTH * 0.45);
-            const GAP_SECTION_WIDTH = Math.floor(WIDTH * 0.10);
-            const TEXT_SECTION_WIDTH = WIDTH - QR_SECTION_WIDTH - GAP_SECTION_WIDTH;
-
-            // Draw center line in the gap section
-            const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 3]);
-            ctx.beginPath();
-            ctx.moveTo(centerLineX, MARGIN_TOP);
-            ctx.lineTo(centerLineX, HEIGHT - MARGIN_BOTTOM);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // LEFT SECTION: QR Code
-            // Limit content to 0.75" from center
-            const LIMIT_INCHES = 0.75;
-            const LIMIT_PX = Math.floor(LIMIT_INCHES * DPI);
-
-            // Maximize size within SAFE_HEIGHT
-            const qrSize = Math.floor(SAFE_HEIGHT * 0.95);
-            // Align Left Edge to -0.75" from center
-            const qrX = centerLineX - LIMIT_PX;
-            const qrY = MARGIN_TOP + Math.floor((SAFE_HEIGHT - qrSize) / 2);
-
-            try {
-                const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
-                    width: qrSize,
-                    margin: 0,
-                    errorCorrectionLevel: 'H',
-                    color: { dark: '#000000', light: '#FFFFFF' },
-                });
-                const qrImage = await loadImage(qrDataUrl);
-                ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
-            } catch (error) {
-                console.error('Error generating QR code:', error);
-                ctx.fillStyle = '#FF0000';
-                ctx.fillRect(qrX, qrY, qrSize, qrSize);
-            }
-
-            // RIGHT SECTION: Text Information
-            // Move text closer to center line (10px padding)
-            const textStartX = centerLineX + 10;
-            // Constrain Right Edge to +0.75" from center
-            const textEndXLimit = centerLineX + LIMIT_PX;
-            const textWidth = textEndXLimit - textStartX;
-            const textStartY = MARGIN_TOP;
+            // 2. Settings for Ruler
+            const CENTER_X = WIDTH / 2;
+            const CENTER_Y = HEIGHT / 2;
 
             ctx.fillStyle = '#000000';
-            ctx.textAlign = 'left';
+            ctx.strokeStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
 
-            // 1. Drop Name (Top) - Unchanged
-            ctx.font = 'bold 20px Arial';
-            const mainText = wireDrop.drop_name || 'No Name';
-            const mainLines = wrapText(ctx, mainText, textWidth);
-            let currentY = textStartY + 18;
-
-            mainLines.forEach((line, index) => {
-                if (index < 3) {
-                    ctx.fillText(line, textStartX, currentY);
-                    currentY += 22;
-                }
-            });
-
-            // Bottom Section Calculation (Working Upwards from Bottom)
-            let bottomY = HEIGHT - MARGIN_BOTTOM - 4;
-
-            // 3. Drop ID / UID (Now at the very BOTTOM, Smaller, Non-Bold)
-            ctx.font = '10px Arial'; // Removed bold, reduced size
-            const uidLines = wrapText(ctx, wireDrop.uid || 'NO-UID', textWidth);
-
-            for (let i = uidLines.length - 1; i >= 0; i--) {
-                ctx.fillText(uidLines[i], textStartX, bottomY);
-                bottomY -= 12; // Smaller line height for smaller font
-            }
-
-            // 2. Wire Type / Drop Type (Now ABOVE the UID)
-            bottomY -= 4; // Gap between UID and Type
-            ctx.font = '16px Arial';
-            const wireType = wireDrop.wire_type || 'N/A';
-            const dropType = wireDrop.drop_type || 'N/A';
-            const typeText = `${wireType} / ${dropType}`;
-            const typeLines = wrapText(ctx, typeText, textWidth);
-
-            for (let i = typeLines.length - 1; i >= 0; i--) {
-                ctx.fillText(typeLines[i], textStartX, bottomY);
-                bottomY -= 18;
-            }
-
-            // --- VISUALIZE HARDWARE MARGINS ---
-            // The user wants to see where we CANNOT print.
-            // We are currently limiting content to +/- 0.75" from center (LIMIT_PX).
-            // Everything outside this limit is considered the "Unprintable Margin".
-
-            const leftMarginWidth = centerLineX - LIMIT_PX;
-            const rightMarginStart = centerLineX + LIMIT_PX;
-            const rightMarginWidth = WIDTH - rightMarginStart;
-
-            ctx.save();
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.15)'; // Light red transparent
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-            ctx.lineWidth = 1;
-
-            // Left Unprintable Area
-            if (leftMarginWidth > 0) {
-                ctx.fillRect(0, 0, leftMarginWidth, HEIGHT);
-                ctx.strokeRect(0, 0, leftMarginWidth, HEIGHT);
-
-                // Label
-                ctx.save();
-                ctx.fillStyle = 'red';
-                ctx.font = 'bold 10px Arial';
-                ctx.translate(15, HEIGHT / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.textAlign = 'center';
-                ctx.fillText("UNPRINTABLE", 0, 0);
-                ctx.restore();
-            }
-
-            // Right Unprintable Area
-            if (rightMarginWidth > 0) {
-                ctx.fillRect(rightMarginStart, 0, rightMarginWidth, HEIGHT);
-                ctx.strokeRect(rightMarginStart, 0, rightMarginWidth, HEIGHT);
-
-                // Label
-                ctx.save();
-                ctx.fillStyle = 'red';
-                ctx.font = 'bold 10px Arial';
-                ctx.translate(WIDTH - 15, HEIGHT / 2);
-                ctx.rotate(Math.PI / 2);
-                ctx.textAlign = 'center';
-                ctx.fillText("UNPRINTABLE", 0, 0);
-                ctx.restore();
-            }
-            ctx.restore();
-
-            // --- GRID & COORDINATES (Origin: Bottom Center) ---
-
-            // Grid Settings
-            const GRID_SPACING_INCH = 0.1;
-            const GRID_SPACING_PX = GRID_SPACING_INCH * DPI;
-
-            ctx.save();
-            ctx.strokeStyle = 'rgba(0, 200, 255, 0.3)'; // Light blue transparent
-            ctx.lineWidth = 1;
-            ctx.font = '9px Arial';
-            ctx.fillStyle = 'rgba(0, 150, 200, 0.8)';
-
-            // Draw Vertical Grid Lines (X-axis)
-            // Go Right from Center
-            for (let x = centerLineX; x < WIDTH; x += GRID_SPACING_PX) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, HEIGHT);
-                ctx.stroke();
-                // Label
-                const val = ((x - centerLineX) / DPI).toFixed(1);
-                if (val !== "0.0") ctx.fillText(val, x + 2, HEIGHT - 2);
-            }
-            // Go Left from Center
-            for (let x = centerLineX; x > 0; x -= GRID_SPACING_PX) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, HEIGHT);
-                ctx.stroke();
-                // Label
-                const val = ((x - centerLineX) / DPI).toFixed(1);
-                if (val !== "0.0") ctx.fillText(val, x + 2, HEIGHT - 2);
-            }
-
-            // Draw Horizontal Grid Lines (Y-axis)
-            // Go Up from Bottom
-            for (let y = HEIGHT; y > 0; y -= GRID_SPACING_PX) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(WIDTH, y);
-                ctx.stroke();
-                // Label
-                const val = ((HEIGHT - y) / DPI).toFixed(1);
-                if (val !== "0.0") ctx.fillText(val, 2, y - 2);
-            }
-            ctx.restore();
-
-            // Draw Axes (Stronger Lines)
-            ctx.save();
-            ctx.strokeStyle = 'rgba(0, 0, 255, 0.5)';
+            // Draw Horizontal Line (X-Axis) across the middle
             ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, CENTER_Y);
+            ctx.lineTo(WIDTH, CENTER_Y);
+            ctx.stroke();
 
-            // Y-Axis (Center Line) - already drawn as dashed black, let's highlight it
-            // X-Axis (Bottom Edge)
+            // Draw Top/Bottom border lines to clearly see vertical cutoff
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(WIDTH, 0); // Top edge
+            ctx.stroke();
+
             ctx.beginPath();
             ctx.moveTo(0, HEIGHT);
-            ctx.lineTo(WIDTH, HEIGHT);
+            ctx.lineTo(WIDTH, HEIGHT); // Bottom edge
             ctx.stroke();
-            ctx.restore();
 
-            // --- MEASUREMENTS (Coordinates) ---
+            // Draw Vertical Center Line
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(CENTER_X, 0);
+            ctx.lineTo(CENTER_X, HEIGHT);
+            ctx.stroke();
 
-            // QR Coordinates
-            const qrLeftX = (qrX - centerLineX) / DPI;
-            const qrRightX = ((qrX + qrSize) - centerLineX) / DPI;
+            // --- DRAW TICKS ---
+            const STEP_INCHES = 0.05;
+            const STEP_PX = STEP_INCHES * DPI;
 
-            // Text Coordinates
-            // Recalculate max width for text
-            let maxLineWidth = 0;
-            [...mainLines, ...typeLines, ...uidLines].forEach(line => {
-                const w = ctx.measureText(line).width;
-                if (w > maxLineWidth) maxLineWidth = w;
-            });
+            // Function to draw tick
+            const drawTick = (x, labelValue, isMajor) => {
+                const tickHeight = isMajor ? (HEIGHT * 0.6) : (HEIGHT * 0.3); // Major ticks are taller
+                const topY = (HEIGHT - tickHeight) / 2;
+                const bottomY = topY + tickHeight;
 
-            const textLeftX = (textStartX - centerLineX) / DPI;
-            const textRightX = ((textStartX + maxLineWidth) - centerLineX) / DPI;
+                ctx.lineWidth = isMajor ? 2 : 1;
+                ctx.beginPath();
+                ctx.moveTo(x, topY);
+                ctx.lineTo(x, bottomY);
+                ctx.stroke();
 
-            // Draw Measurement Markers
-            ctx.save();
+                // Draw Label for Major Ticks (every 0.1")
+                if (isMajor) {
+                    ctx.font = 'bold 16px Arial';
+                    // Label above the line
+                    ctx.fillText(labelValue.toFixed(1), x, topY - 18);
+                    // Label below the line
+                    ctx.fillText(labelValue.toFixed(1), x, bottomY + 4);
+                }
+            };
+
+            // 1. Go Right from Center
+            let dist = 0;
+            for (let x = CENTER_X; x <= WIDTH; x += STEP_PX) {
+                const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099;
+                drawTick(x, dist, isMajor);
+                dist += 0.05;
+            }
+
+            // 2. Go Left from Center
+            dist = 0;
+            for (let x = CENTER_X; x >= 0; x -= STEP_PX) {
+                if (x !== CENTER_X) {
+                    const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099;
+                    drawTick(x, dist, isMajor);
+                }
+                dist += 0.05;
+            }
+
+            // --- DRAW "SAFE ZONE" MARKERS (Visual Reference Only) ---
+            const LIMIT_PX = 0.75 * DPI;
+            const leftSafe = CENTER_X - LIMIT_PX;
+            const rightSafe = CENTER_X + LIMIT_PX;
+
             ctx.strokeStyle = 'red';
+            ctx.lineWidth = 1;
+
+            ctx.beginPath(); ctx.moveTo(leftSafe, 0); ctx.lineTo(leftSafe, HEIGHT); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(rightSafe, 0); ctx.lineTo(rightSafe, HEIGHT); ctx.stroke();
+
+            // Safe Zone Labels
             ctx.fillStyle = 'red';
             ctx.font = '10px Arial';
+            ctx.fillText("OLD (0.75)", leftSafe, HEIGHT - 14);
+            ctx.fillText("OLD (0.75)", rightSafe, HEIGHT - 14);
 
-            // QR Left Marker
-            ctx.beginPath(); ctx.moveTo(qrX, HEIGHT / 2 - 10); ctx.lineTo(qrX, HEIGHT / 2 + 10); ctx.stroke();
-            ctx.fillText(qrLeftX.toFixed(3), qrX - 20, HEIGHT / 2);
-
-            // Text Right Marker
-            const textEndX = textStartX + maxLineWidth;
-            ctx.beginPath(); ctx.moveTo(textEndX, HEIGHT / 2 - 10); ctx.lineTo(textEndX, HEIGHT / 2 + 10); ctx.stroke();
-            ctx.fillText(textRightX.toFixed(3), textEndX + 5, HEIGHT / 2);
-
-            ctx.restore();
-
+            // --- RETURN DATA ---
             return {
                 dataUrl: canvas.toDataURL(),
                 width: WIDTH,
                 height: HEIGHT,
-                marginTop: MARGIN_TOP,
-                marginBottom: MARGIN_BOTTOM,
+                marginTop: 0, // Not relevant for ruler
+                marginBottom: 0,
                 measurements: {
-                    qrLeft: qrLeftX.toFixed(3),
-                    qrRight: qrRightX.toFixed(3),
-                    textLeft: textLeftX.toFixed(3),
-                    textRight: textRightX.toFixed(3)
+                    qrLeft: "0", qrRight: "0", textLeft: "0", textRight: "0" // Dummy values
                 }
             };
+            // --- TEMPORARY CALIBRATION LOGIC END ---
         };
 
         const loadImage = (dataUrl) => {

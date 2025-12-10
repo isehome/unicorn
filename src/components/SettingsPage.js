@@ -7,7 +7,9 @@ import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut } from 'lucide-react';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, Ruler } from 'lucide-react';
 import AISettings from './UserSettings/AISettings';
+import labelRenderService from '../services/labelRenderService';
 
 const SettingsPage = () => {
   const { mode } = useTheme();
@@ -22,7 +24,9 @@ const SettingsPage = () => {
     sdkInitialized,
     isIOSSafari,
     connectPrinter,
-    disconnectPrinter
+    connectPrinter,
+    disconnectPrinter,
+    printLabel
   } = usePrinter();
 
   // Default workspace mode - stored in localStorage
@@ -192,9 +196,28 @@ const SettingsPage = () => {
                 </p>
               )}
               {connected && (
-                <p className="text-green-600 dark:text-green-400 font-medium">
-                  ✓ Ready to print from Wire Drops pages
-                </p>
+                <div className="space-y-2">
+                  <p className="text-green-600 dark:text-green-400 font-medium">
+                    ✓ Ready to print from Wire Drops pages
+                  </p>
+                  <Button
+                    onClick={async () => {
+                      try {
+                        const bitmap = await labelRenderService.generateCalibrationLabelBitmap();
+                        await printLabel(bitmap, 1, true);
+                      } catch (e) {
+                        console.error(e);
+                        alert('Test Print Failed: ' + e.message);
+                      }
+                    }}
+                    variant="secondary"
+                    size="sm"
+                    className="w-full sm:w-auto mt-2"
+                    icon={Ruler}
+                  >
+                    Print Calibration Ruler
+                  </Button>
+                </div>
               )}
             </div>
           </div>

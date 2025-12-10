@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
  * Generate Calibration Label with Ruler
  * Replaces standard label generation for margin testing
  */
-const generateCalibrationLabelBitmap = async () => {
+export const generateCalibrationLabelBitmap = async () => {
   // Brady M211 printer resolution: 203 DPI
   const DPI = 203;
 
@@ -136,12 +136,6 @@ const generateCalibrationLabelBitmap = async () => {
  * @returns {Promise<HTMLImageElement>} Label bitmap
  */
 export const generateWireDropLabelBitmap = async (wireDrop) => {
-  // --- TEMPORARY OVERRIDE ---
-  // Returning calibration label instead of standard label
-  return await generateCalibrationLabelBitmap();
-
-  /*
-  // ORIGINAL CODE COMMENTED OUT TEMPORARILY
   // Brady M211 printer resolution: 203 DPI
   const DPI = 203;
 
@@ -269,7 +263,6 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   // No border drawn as per request
 
   return await canvasToImage(canvas);
-  */
 };
 
 /**
@@ -363,4 +356,5 @@ export const generateLabelPreview = async (wireDrop) => {
 export default {
   generateWireDropLabelBitmap,
   generateLabelPreview,
+  generateCalibrationLabelBitmap
 };
