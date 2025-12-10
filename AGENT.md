@@ -1783,4 +1783,67 @@ CREATE TABLE shade_comments (
 | Project shows null | RLS blocking service role | Add policy: `CREATE POLICY service_role_select ON projects FOR SELECT TO service_role USING (true);` |
 | Fabric link doesn't search | Using `/search` not `/search/results` | Change URL to `/search/results?q=` |
 | Link doesn't open | Missing stopPropagation | Add `onClick={(e) => e.stopPropagation()}` |
-| Orphaned links | Project deleted | Run cleanup: `DELETE FROM shade_public_access_links WHERE project_id NOT IN (SELECT id FROM projects);` |
+| Orphaned links | Project deleted | Run cleanup: `DELETE FROM shade_public_access_links WHERE project_id NOT IN (SELECT id FROM projects);`
+
+---
+
+# PART 5: TODO / KNOWN ISSUES
+
+## Supabase Security Linter Issues (Logged 2025-12-10)
+
+**Status:** Deferred - needs careful review to avoid breaking production
+
+### Issue 1: SECURITY DEFINER Views (13 views)
+
+These views bypass RLS by running with creator's permissions. May be intentional for MSAL auth pattern.
+
+**Affected views:**
+- `issue_stakeholder_tags_detailed`
+- `issues_with_stats`
+- `project_equipment_global_parts`
+- `wire_drops_with_network_info`
+- `project_milestone_status`
+- `purchase_orders_summary`
+- `project_equipment_with_rooms`
+- `equipment_for_po`
+- `searchable_contacts`
+- `project_contacts_view`
+- `time_logs_active`
+- `time_logs_summary`
+- `project_stakeholders_detailed`
+
+**Action needed:** Review each view to determine if SECURITY DEFINER is intentional. If not, recreate with `security_invoker = true`.
+
+### Issue 2: RLS Disabled on Public Tables (7 tables)
+
+These tables have NO Row Level Security - anyone with the anon key can read/write all data.
+
+**Affected tables:**
+- `shipping_addresses`
+- `app_preferences`
+- `project_contacts`
+- `issue_project_contacts`
+- `project_assignments`
+- `stakeholder_slots`
+- `issue_assignments`
+
+**Action needed:** Enable RLS and add policies following the MSAL pattern (include `anon, authenticated` roles).
+
+**Fix template:**
+```sql
+-- Enable RLS
+ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY;
+
+-- Add permissive policy (MSAL pattern)
+CREATE POLICY "Allow all for anon and authenticated"
+ON public.{table_name}
+FOR ALL TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+```
+
+### Future Issues
+
+Add new Supabase linter issues or technical debt items here as they arise.
+
+--- |

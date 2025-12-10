@@ -1,5 +1,133 @@
 import QRCode from 'qrcode';
 
+// --- TEMPORARY CALIBRATION LOGIC START ---
+/**
+ * Generate Calibration Label with Ruler
+ * Replaces standard label generation for margin testing
+ */
+const generateCalibrationLabelBitmap = async () => {
+  // Brady M211 printer resolution: 203 DPI
+  const DPI = 203;
+
+  // Dimensions
+  const LABEL_WIDTH_INCHES = 2.25;
+  const LABEL_HEIGHT_INCHES = 0.75;
+
+  // Convert to pixels
+  const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI);
+  const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI);
+
+  // Create canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
+  const ctx = canvas.getContext('2d');
+
+  // 1. Background
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  // 2. Settings for Ruler
+  const CENTER_X = WIDTH / 2;
+  const CENTER_Y = HEIGHT / 2;
+
+  ctx.fillStyle = '#000000';
+  ctx.strokeStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Draw Horizontal Line (X-Axis) across the middle
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, CENTER_Y);
+  ctx.lineTo(WIDTH, CENTER_Y);
+  ctx.stroke();
+
+  // Draw Top/Bottom border lines to clearly see vertical cutoff
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(WIDTH, 0); // Top edge
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(0, HEIGHT);
+  ctx.lineTo(WIDTH, HEIGHT); // Bottom edge
+  ctx.stroke();
+
+  // Draw Vertical Center Line
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(CENTER_X, 0);
+  ctx.lineTo(CENTER_X, HEIGHT);
+  ctx.stroke();
+
+  // --- DRAW TICKS ---
+  const STEP_INCHES = 0.05;
+  const STEP_PX = STEP_INCHES * DPI;
+
+  // Function to draw tick
+  const drawTick = (x, labelValue, isMajor) => {
+    const tickHeight = isMajor ? (HEIGHT * 0.6) : (HEIGHT * 0.3); // Major ticks are taller
+    const topY = (HEIGHT - tickHeight) / 2;
+    const bottomY = topY + tickHeight;
+
+    ctx.lineWidth = isMajor ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(x, topY);
+    ctx.lineTo(x, bottomY);
+    ctx.stroke();
+
+    // Draw Label for Major Ticks (every 0.1")
+    if (isMajor) {
+      ctx.font = 'bold 16px Arial';
+      // Label above the line
+      ctx.fillText(labelValue.toFixed(1), x, topY - 18);
+      // Label below the line
+      ctx.fillText(labelValue.toFixed(1), x, bottomY + 4);
+    }
+  };
+
+  // 1. Go Right from Center
+  let dist = 0;
+  for (let x = CENTER_X; x <= WIDTH; x += STEP_PX) {
+    const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099;
+    drawTick(x, dist, isMajor);
+    dist += 0.05;
+  }
+
+  // 2. Go Left from Center
+  dist = 0;
+  for (let x = CENTER_X; x >= 0; x -= STEP_PX) {
+    if (x !== CENTER_X) {
+      const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099;
+      drawTick(x, dist, isMajor);
+    }
+    dist += 0.05;
+  }
+
+  // --- DRAW "SAFE ZONE" MARKERS (Visual Reference Only) ---
+  const LIMIT_PX = 0.75 * DPI;
+  const leftSafe = CENTER_X - LIMIT_PX;
+  const rightSafe = CENTER_X + LIMIT_PX;
+
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 1;
+
+  ctx.beginPath(); ctx.moveTo(leftSafe, 0); ctx.lineTo(leftSafe, HEIGHT); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rightSafe, 0); ctx.lineTo(rightSafe, HEIGHT); ctx.stroke();
+
+  // Safe Zone Labels
+  ctx.fillStyle = 'red';
+  ctx.font = '10px Arial';
+  ctx.fillText("OLD (0.75)", leftSafe, HEIGHT - 14);
+  ctx.fillText("OLD (0.75)", rightSafe, HEIGHT - 14);
+
+  return await canvasToImage(canvas);
+};
+// --- TEMPORARY CALIBRATION LOGIC END ---
+
+
 /**
  * Generate wire drop label as bitmap image
  * Label size: 2.25" x 0.75" at 203 DPI (M211 printer resolution)
@@ -8,6 +136,12 @@ import QRCode from 'qrcode';
  * @returns {Promise<HTMLImageElement>} Label bitmap
  */
 export const generateWireDropLabelBitmap = async (wireDrop) => {
+  // --- TEMPORARY OVERRIDE ---
+  // Returning calibration label instead of standard label
+  return await generateCalibrationLabelBitmap();
+
+  /*
+  // ORIGINAL CODE COMMENTED OUT TEMPORARILY
   // Brady M211 printer resolution: 203 DPI
   const DPI = 203;
 
@@ -135,6 +269,7 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   // No border drawn as per request
 
   return await canvasToImage(canvas);
+  */
 };
 
 /**

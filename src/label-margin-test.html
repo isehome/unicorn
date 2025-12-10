@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label Margin Calibration</title>
+    <!-- QRCode Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .card {
+            background: white;
+            padding: 50px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+        }
+
+        .label-preview-container {
+            margin: 20px 0;
+            display: inline-block;
+            border: 1px dashed #ccc;
+            padding: 10px;
+            background: #eee;
+        }
+
+        .label-preview {
+            border: 1px solid #000;
+            display: block;
+            background: white;
+            /* No shadow to clearer see edges */
+        }
+
+        .info {
+            text-align: left;
+            width: 100%;
+            max-width: 600px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #e8f4fd;
+            border: 1px solid #b6e0fe;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #0c5460;
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        h2 { margin-bottom: 10px; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>Label Margin Calibration Tool</h2>
+            <p>This tool generates a label with a "ruler" pattern extending to the very edges of the canvas.<br>
+            Print this label to physically measure the printer's unprintable margins.</p>
+            
+            <div class="controls">
+                <button onclick="renderCalibrationLabel()">Generate Calibration Label</button>
+            </div>
+
+            <div id="output">
+                <!-- Preview will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CALIBRATION LOGIC ---
+
+        const generateCalibrationLabelBitmap = async () => {
+            // Brady M211 printer resolution: 203 DPI
+            const DPI = 203;
+
+            // Dimensions
+            const LABEL_WIDTH_INCHES = 2.25;
+            const LABEL_HEIGHT_INCHES = 0.75;
+
+            // Convert to pixels
+            const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI);
+            const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI);
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // 2. Settings for Ruler
+            const CENTER_X = WIDTH / 2;
+            const CENTER_Y = HEIGHT / 2;
+            
+            ctx.fillStyle = '#000000';
+            ctx.strokeStyle = '#000000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+
+            // Draw Horizontal Line (X-Axis) across the middle
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, CENTER_Y);
+            ctx.lineTo(WIDTH, CENTER_Y);
+            ctx.stroke();
+
+            // Draw Top/Bottom border lines to clearly see vertical cutoff
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(WIDTH, 0); // Top edge
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(0, HEIGHT);
+            ctx.lineTo(WIDTH, HEIGHT); // Bottom edge
+            ctx.stroke();
+
+            // Draw Vertical Center Line
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(CENTER_X, 0);
+            ctx.lineTo(CENTER_X, HEIGHT);
+            ctx.stroke();
+
+            // --- DRAW TICKS ---
+            const STEP_INCHES = 0.05;
+            const STEP_PX = STEP_INCHES * DPI;
+
+            // Function to draw tick
+            const drawTick = (x, labelValue, isMajor) => {
+                const tickHeight = isMajor ? (HEIGHT * 0.6) : (HEIGHT * 0.3); // Major ticks are taller
+                const topY = (HEIGHT - tickHeight) / 2;
+                const bottomY = topY + tickHeight;
+
+                ctx.lineWidth = isMajor ? 2 : 1;
+                ctx.beginPath();
+                ctx.moveTo(x, topY);
+                ctx.lineTo(x, bottomY);
+                ctx.stroke();
+
+                // Draw Label for Major Ticks (every 0.1")
+                if (isMajor) {
+                    ctx.font = 'bold 16px Arial';
+                    // Label above the line
+                    ctx.fillText(labelValue.toFixed(1), x, topY - 18);
+                    // Label below the line (redundant for readability if cut off)
+                    ctx.fillText(labelValue.toFixed(1), x, bottomY + 4);
+                }
+            };
+
+            // 1. Go Right from Center
+            let dist = 0;
+            // Loop until we hit the edge
+            for (let x = CENTER_X; x <= WIDTH; x += STEP_PX) {
+                const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099; // roughly every 0.1
+                drawTick(x, dist, isMajor);
+                dist += 0.05;
+            }
+
+            // 2. Go Left from Center
+            dist = 0; // reset
+            for (let x = CENTER_X; x >= 0; x -= STEP_PX) {
+                // Don't redraw center (handled by loop start, but it's fine)
+                if (x !== CENTER_X) {
+                   const isMajor = Math.abs(dist % 0.1) < 0.001 || Math.abs(dist % 0.1) > 0.099;
+                   drawTick(x, dist, isMajor);
+                }
+                dist += 0.05;
+            }
+            
+            // --- DRAW "SAFE ZONE" MARKERS (Visual Reference Only) ---
+            // Current limit is 0.75"
+            const LIMIT_PX = 0.75 * DPI;
+            const leftSafe = CENTER_X - LIMIT_PX;
+            const rightSafe = CENTER_X + LIMIT_PX;
+            
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 1;
+            
+            // Left Safe Line
+            ctx.beginPath(); ctx.moveTo(leftSafe, 0); ctx.lineTo(leftSafe, HEIGHT); ctx.stroke();
+            // Right Safe Line
+            ctx.beginPath(); ctx.moveTo(rightSafe, 0); ctx.lineTo(rightSafe, HEIGHT); ctx.stroke();
+            
+            // Safe Zone Label
+            ctx.fillStyle = 'red';
+            ctx.font = '10px Arial';
+            ctx.fillText("OLD LIMIT (0.75\")", leftSafe, HEIGHT - 12);
+            ctx.fillText("OLD LIMIT (0.75\")", rightSafe, HEIGHT - 12);
+
+            return canvas.toDataURL();
+        };
+
+        async function renderCalibrationLabel() {
+            const output = document.getElementById('output');
+            output.innerHTML = 'Generating...';
+            
+            try {
+                const dataUrl = await generateCalibrationLabelBitmap();
+                output.innerHTML = `
+                    <div class="label-preview-container">
+                         <img src="${dataUrl}" class="label-preview" title="Calibration Label">
+                    </div>
+                    <div class="info">
+                        <strong>How to use:</strong>
+                        <ol>
+                            <li>Print this label using the M211.</li>
+                            <li>Look at the printed label. Ideally, you should see ticks going all the way to the edge.</li>
+                            <li>Note the <strong>last visible number</strong> or tick mark on both left and right sides.</li>
+                            <li>That number represents the actual printable distance from the center.</li>
+                            <li>Example: If the print cuts off at "0.9", then our safe printable width is 0.9" from center (1.8" total).</li>
+                        </ol>
+                        <p><strong>Note:</strong> Red lines indicate the current configured limit (0.75"). We want to see how far past the red lines we can print.</p>
+                    </div>
+                `;
+            } catch (e) {
+                console.error(e);
+                output.innerText = "Error: " + e.message;
+            }
+        }
+        
+        // Auto-render on load
+        window.onload = renderCalibrationLabel;
+
+    </script>
+</body>
+</html>
