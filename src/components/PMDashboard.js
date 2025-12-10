@@ -264,28 +264,14 @@ const PMDashboard = () => {
     }
   };
 
-  // Filter internal contacts by role for dropdowns
-  const pmContacts = useMemo(() => {
-    const role = (r) => r?.toLowerCase() || '';
-    return internalContacts.filter(contact =>
-      role(contact.role).includes('project manager') ||
-      role(contact.role).includes('program manager') ||
-      role(contact.role) === 'pm' ||
-      role(contact.role).includes('manager') ||
-      role(contact.department).includes('management')
-    );
-  }, [internalContacts]);
-
-  const techContacts = useMemo(() => {
-    const role = (r) => r?.toLowerCase() || '';
-    return internalContacts.filter(contact =>
-      role(contact.role).includes('technician') ||
-      role(contact.role).includes('tech') ||
-      role(contact.role).includes('installer') ||
-      role(contact.role).includes('engineer') ||
-      role(contact.department).includes('technical') ||
-      role(contact.department).includes('operations')
-    );
+  // Sort internal contacts alphabetically by name for dropdowns
+  // Show ALL internal contacts (not filtered by role) - user can pick anyone
+  const sortedInternalContacts = useMemo(() => {
+    return [...internalContacts].sort((a, b) => {
+      const nameA = (a.full_name || a.name || '').toLowerCase();
+      const nameB = (b.full_name || b.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
   }, [internalContacts]);
 
   // Get role IDs for stakeholder assignment
@@ -524,25 +510,16 @@ const PMDashboard = () => {
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select a Project Manager...</option>
-                    {pmContacts.length > 0 ? (
-                      pmContacts.map(contact => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.full_name || contact.name || 'Unnamed'}
-                          {contact.email && ` (${contact.email})`}
-                        </option>
-                      ))
-                    ) : (
-                      internalContacts.map(contact => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.full_name || contact.name || 'Unnamed'}
-                          {contact.role && ` - ${contact.role}`}
-                        </option>
-                      ))
-                    )}
+                    {sortedInternalContacts.map(contact => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.full_name || contact.name || 'Unnamed'}
+                        {contact.role && ` - ${contact.role}`}
+                      </option>
+                    ))}
                   </select>
-                  {pmContacts.length === 0 && internalContacts.length === 0 && (
+                  {sortedInternalContacts.length === 0 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                      No internal contacts found. Add contacts with "Project Manager" role.
+                      No internal contacts found. Add internal contacts first.
                     </p>
                   )}
                 </div>
@@ -557,25 +534,16 @@ const PMDashboard = () => {
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                   >
                     <option value="">Select a Lead Technician...</option>
-                    {techContacts.length > 0 ? (
-                      techContacts.map(contact => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.full_name || contact.name || 'Unnamed'}
-                          {contact.email && ` (${contact.email})`}
-                        </option>
-                      ))
-                    ) : (
-                      internalContacts.map(contact => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.full_name || contact.name || 'Unnamed'}
-                          {contact.role && ` - ${contact.role}`}
-                        </option>
-                      ))
-                    )}
+                    {sortedInternalContacts.map(contact => (
+                      <option key={contact.id} value={contact.id}>
+                        {contact.full_name || contact.name || 'Unnamed'}
+                        {contact.role && ` - ${contact.role}`}
+                      </option>
+                    ))}
                   </select>
-                  {techContacts.length === 0 && internalContacts.length === 0 && (
+                  {sortedInternalContacts.length === 0 && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                      No internal contacts found. Add contacts with "Technician" role.
+                      No internal contacts found. Add internal contacts first.
                     </p>
                   )}
                 </div>

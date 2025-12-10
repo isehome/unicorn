@@ -428,21 +428,39 @@ export const projectStakeholdersService = {
     try {
       if (!supabase) throw new Error('Supabase not configured');
 
+      // Use upsert to handle duplicates gracefully
+      // Constraint: unique (project_id, contact_id, stakeholder_role_id)
       const { data, error } = await supabase
         .from('project_stakeholders')
-        .insert([{
-          project_id: projectId,
-          contact_id: contactId,
-          stakeholder_role_id: roleId,
-          is_primary: options.isPrimary || false,
-          assignment_notes: options.notes || null
-        }])
+        .upsert(
+          [{
+            project_id: projectId,
+            contact_id: contactId,
+            stakeholder_role_id: roleId,
+            is_primary: options.isPrimary || false,
+            assignment_notes: options.notes || null
+          }],
+          {
+            onConflict: 'project_id,contact_id,stakeholder_role_id',
+            ignoreDuplicates: false // Update if exists (to set is_primary)
+          }
+        )
         .select()
         .single();
 
+      // Ignore duplicate key errors silently
+      if (error && error.code === '23505') {
+        console.log('Stakeholder already exists, skipping duplicate');
+        return null;
+      }
       if (error) throw error;
       return data;
     } catch (error) {
+      // Also catch duplicate key errors at this level
+      if (error.code === '23505') {
+        console.log('Stakeholder already exists, skipping duplicate');
+        return null;
+      }
       handleError(error, 'Failed to add stakeholder to project');
     }
   },
