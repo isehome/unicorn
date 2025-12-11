@@ -24,6 +24,15 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
     const [headerMountType, setHeaderMountType] = useState(shade?.mount_type || '');
     const [headerHeadrailStyle, setHeaderHeadrailStyle] = useState(shade?.headrail_style || '');
 
+    // Shared shade-level fields (not per-measurement)
+    const [orderedWidth, setOrderedWidth] = useState(shade?.ordered_width || '');
+    const [orderedHeight, setOrderedHeight] = useState(shade?.ordered_height || '');
+    const [orderedDepth, setOrderedDepth] = useState(shade?.ordered_depth || '');
+    const [pocketWidth, setPocketWidth] = useState(shade?.pocket_width || '');
+    const [pocketHeight, setPocketHeight] = useState(shade?.pocket_height || '');
+    const [pocketDepth, setPocketDepth] = useState(shade?.pocket_depth || '');
+    const [installationNotes, setInstallationNotes] = useState(shade?.installation_notes || '');
+
     // Comments state
     const [comments, setComments] = useState([]);
     const [loadingComments, setLoadingComments] = useState(false);
@@ -50,25 +59,16 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
     const [activeTab, setActiveTab] = useState(getDefaultTab);
 
-    // Helper to get initial values based on tab
+    // Helper to get initial values based on tab (only measurement-specific fields)
     const getInitialValues = (targetShade, set) => ({
-        width: targetShade?.[`${set}_width`] || '',
-        height: targetShade?.[`${set}_height`] || '',
-        mountDepth: targetShade?.[`${set}_mount_depth`] || '',
-        mountType: targetShade?.[`${set}_mount_type`] || targetShade?.mount_type || '', // Fallback to quoted mount type logic if M1/M2 are empty, but typically start empty? No, better start with quote. Or maybe empty. Plan didn't specify. Let's pre-fill with quote if empty.
-
         widthTop: targetShade?.[`${set}_measure_width_top`] || '',
         widthMiddle: targetShade?.[`${set}_measure_width_middle`] || '',
         widthBottom: targetShade?.[`${set}_measure_width_bottom`] || '',
         heightLeft: targetShade?.[`${set}_measure_height_left`] || '',
         heightCenter: targetShade?.[`${set}_measure_height_center`] || '',
         heightRight: targetShade?.[`${set}_measure_height_right`] || '',
-
-        pocketWidth: targetShade?.[`${set}_pocket_width`] || '',
-        pocketHeight: targetShade?.[`${set}_pocket_height`] || '',
-        pocketDepth: targetShade?.[`${set}_pocket_depth`] || '',
-
-        notes: targetShade?.[`${set}_obstruction_notes`] || '',
+        mountDepth: targetShade?.[`${set}_mount_depth`] || '',
+        mountType: targetShade?.[`${set}_mount_type`] || targetShade?.mount_type || '',
         photos: targetShade?.[`${set}_photos`] || []
     });
 
@@ -81,37 +81,53 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         }
     }, [shade, activeTab]);
 
-    // Sync header fields when shade changes
+    // Sync header and shared fields when shade changes
     useEffect(() => {
         if (shade) {
             setHeaderMountType(shade.mount_type || '');
             setHeaderHeadrailStyle(shade.headrail_style || '');
+            setOrderedWidth(shade.ordered_width || '');
+            setOrderedHeight(shade.ordered_height || '');
+            setOrderedDepth(shade.ordered_depth || '');
+            setPocketWidth(shade.pocket_width || '');
+            setPocketHeight(shade.pocket_height || '');
+            setPocketDepth(shade.pocket_depth || '');
+            setInstallationNotes(shade.installation_notes || '');
         }
     }, [shade]);
 
-    // Auto-save header field (mount_type or headrail_style on the shade record itself)
-    const autoSaveHeaderField = useCallback(async (field, value) => {
+    // Auto-save shade-level field (not per-measurement)
+    const autoSaveShadeField = useCallback(async (field, value) => {
         if (!shade?.id) return;
         try {
             await supabase
                 .from('project_shades')
                 .update({ [field]: value })
                 .eq('id', shade.id);
-            console.log(`[ShadeMeasurementModal] Auto-saved header ${field} = ${value}`);
+            console.log(`[ShadeMeasurementModal] Auto-saved ${field} = ${value}`);
         } catch (err) {
-            console.error(`[ShadeMeasurementModal] Auto-save header failed for ${field}:`, err);
+            console.error(`[ShadeMeasurementModal] Auto-save failed for ${field}:`, err);
         }
     }, [shade?.id]);
 
     const handleHeaderMountTypeChange = (value) => {
         setHeaderMountType(value);
-        autoSaveHeaderField('mount_type', value);
+        autoSaveShadeField('mount_type', value);
     };
 
     const handleHeaderHeadrailStyleChange = (value) => {
         setHeaderHeadrailStyle(value);
-        autoSaveHeaderField('headrail_style', value);
+        autoSaveShadeField('headrail_style', value);
     };
+
+    // Handlers for shared shade-level fields
+    const handleOrderedWidthChange = (value) => { setOrderedWidth(value); autoSaveShadeField('ordered_width', value); };
+    const handleOrderedHeightChange = (value) => { setOrderedHeight(value); autoSaveShadeField('ordered_height', value); };
+    const handleOrderedDepthChange = (value) => { setOrderedDepth(value); autoSaveShadeField('ordered_depth', value); };
+    const handlePocketWidthChange = (value) => { setPocketWidth(value); autoSaveShadeField('pocket_width', value); };
+    const handlePocketHeightChange = (value) => { setPocketHeight(value); autoSaveShadeField('pocket_height', value); };
+    const handlePocketDepthChange = (value) => { setPocketDepth(value); autoSaveShadeField('pocket_depth', value); };
+    const handleInstallationNotesChange = (value) => { setInstallationNotes(value); autoSaveShadeField('installation_notes', value); };
 
     // Load comments when comments tab is selected
     useEffect(() => {
@@ -213,12 +229,9 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         activeTab,
         shade,
         onClose,
-        onSave: () => handleSaveClick(), // Use the wrapper to include validation if needed? Or just direct onSave(formData, activeTab)
-        setActiveField  // Pass for visual highlighting when AI sets a field
+        onSave: () => handleSaveClick(),
+        setActiveField
     });
-    // Fix: We need to pass the real save logic or specific wrapper. 
-    // The existing handleSaveClick relies on state 'formData' which is available.
-    // So passing handleSaveClick is correct because it wraps parameters.
 
     const handlePhotoUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -261,17 +274,17 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
+            <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
 
-                {/* Header Section with Specs */}
-                <div className={`p-4 border-b space-y-4 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                {/* Fixed Header Section */}
+                <div className={`flex-shrink-0 p-4 border-b space-y-4 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className={`text-lg font-semibold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
                                 Verify Measurements
                             </h2>
                             <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                {shade?.name} • {shade?.room?.name} • <span className="font-medium text-violet-500">{shade?.technology}</span>
+                                {shade?.name} • {shade?.room?.name || 'Unassigned'} • <span className="font-medium text-violet-500">{shade?.technology}</span>
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -281,7 +294,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                         </div>
                     </div>
 
-                    {/* Master Info Header */}
+                    {/* Master Info Header - Quoted specs */}
                     <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-blue-50/50 border-blue-100'}`}>
                         {/* Row 1: Quoted dimensions and Fabric */}
                         <div className="grid grid-cols-4 gap-4 mb-4">
@@ -356,10 +369,44 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             </div>
                         </div>
                     </div>
+
+                    {/* Final Ordered Dimensions - Shared across measurements */}
+                    <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
+                        <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
+                            <Ruler size={16} /> Final Ordered Dimensions
+                        </h4>
+                        <div className="grid grid-cols-3 gap-4">
+                            <InputFinal label="Width" value={orderedWidth} onChange={handleOrderedWidthChange} mode={mode} />
+                            <InputFinal label="Height" value={orderedHeight} onChange={handleOrderedHeightChange} mode={mode} />
+                            <InputFinal label="Depth" value={orderedDepth} onChange={handleOrderedDepthChange} mode={mode} />
+                        </div>
+                    </div>
+
+                    {/* Installation & Pockets - Shared across measurements */}
+                    <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                        <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Installation & Pockets</h4>
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-3 gap-4">
+                                <InputFinal label="Pocket Width" value={pocketWidth} onChange={handlePocketWidthChange} mode={mode} />
+                                <InputFinal label="Pocket Height" value={pocketHeight} onChange={handlePocketHeightChange} mode={mode} />
+                                <InputFinal label="Pocket Depth" value={pocketDepth} onChange={handlePocketDepthChange} mode={mode} />
+                            </div>
+                            <div>
+                                <label className={`block text-xs font-medium mb-1.5 text-zinc-500`}>Installation Notes</label>
+                                <textarea
+                                    value={installationNotes}
+                                    onChange={e => handleInstallationNotesChange(e.target.value)}
+                                    rows={2}
+                                    placeholder="Enter any installation notes, obstructions, or special instructions..."
+                                    className={`w-full px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Tabs */}
-                <div className={`flex border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
+                <div className={`flex-shrink-0 flex border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-200'}`}>
                     <button
                         onClick={() => setActiveTab('m1')}
                         className={`flex-1 p-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'm1'
@@ -398,13 +445,13 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                     </button>
                 </div>
 
-                {/* Main Content Area */}
-                <div className="p-6">
+                {/* Scrollable Content Area */}
+                <div className="flex-1 overflow-y-auto p-6">
                     {activeTab === 'comments' ? (
                         /* Comments Tab Content */
                         <div className="space-y-4">
                             {/* Comments List */}
-                            <div className={`rounded-xl border p-4 min-h-[300px] max-h-[400px] overflow-y-auto ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                            <div className={`rounded-xl border p-4 min-h-[200px] max-h-[300px] overflow-y-auto ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
                                 {loadingComments ? (
                                     <div className="flex items-center justify-center h-32 text-zinc-400">Loading comments...</div>
                                 ) : comments.length === 0 ? (
@@ -481,7 +528,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             </div>
                         </div>
                     ) : showBlinded ? (
-                        <div className="h-64 flex flex-col items-center justify-center text-center border rounded-xl border-dashed border-zinc-300 dark:border-zinc-700">
+                        <div className="h-48 flex flex-col items-center justify-center text-center border rounded-xl border-dashed border-zinc-300 dark:border-zinc-700">
                             <Lock size={48} className="text-zinc-300 mb-4" />
                             <h3 className="text-lg font-medium text-zinc-500">
                                 {activeTab === 'm1' ? 'Measure 1' : 'Measure 2'} is Complete
@@ -493,109 +540,54 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Left Column: Validation & Photos */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left Column: Rough Opening Measurements */}
                             <div className="space-y-6">
-                                {/* Width/Height Validations */}
-                                <div className="space-y-6">
-                                    <div className="space-y-3">
-                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Width</label>
-                                        <div className="space-y-2">
-                                            <InputGroup label="Top" value={formData.widthTop} onChange={v => handleChange('widthTop', v)} mode={mode} highlighted={activeField === 'widthTop'} />
-                                            <InputGroup label="Middle" value={formData.widthMiddle} onChange={v => handleChange('widthMiddle', v)} mode={mode} highlighted={activeField === 'widthMiddle'} />
-                                            <InputGroup label="Bottom" value={formData.widthBottom} onChange={v => handleChange('widthBottom', v)} mode={mode} highlighted={activeField === 'widthBottom'} />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Height</label>
-                                        <div className="space-y-2">
-                                            <InputGroup label="Left" value={formData.heightLeft} onChange={v => handleChange('heightLeft', v)} mode={mode} highlighted={activeField === 'heightLeft'} />
-                                            <InputGroup label="Center" value={formData.heightCenter} onChange={v => handleChange('heightCenter', v)} mode={mode} highlighted={activeField === 'heightCenter'} />
-                                            <InputGroup label="Right" value={formData.heightRight} onChange={v => handleChange('heightRight', v)} mode={mode} highlighted={activeField === 'heightRight'} />
-                                        </div>
+                                <div className="space-y-3">
+                                    <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Width</label>
+                                    <div className="space-y-2">
+                                        <InputGroup label="Top" value={formData.widthTop} onChange={v => handleChange('widthTop', v)} mode={mode} highlighted={activeField === 'widthTop'} />
+                                        <InputGroup label="Middle" value={formData.widthMiddle} onChange={v => handleChange('widthMiddle', v)} mode={mode} highlighted={activeField === 'widthMiddle'} />
+                                        <InputGroup label="Bottom" value={formData.widthBottom} onChange={v => handleChange('widthBottom', v)} mode={mode} highlighted={activeField === 'widthBottom'} />
                                     </div>
                                 </div>
-
-                                {/* Photos */}
-                                <div>
-                                    <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
-                                        Verification Photos {activeTab === 'm1' ? '(M1)' : '(M2)'}
-                                    </label>
-                                    <div className="space-y-3">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {formData.photos?.map((url, i) => (
-                                                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                                                    <img src={url} alt="Rough opening" className="w-full h-full object-cover" />
-                                                </a>
-                                            ))}
-                                        </div>
-                                        <label className={`flex items-center justify-center gap-2 w-full p-3 border border-dashed rounded-lg cursor-pointer transition-colors ${mode === 'dark' ? 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800' : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
-                                            }`}>
-                                            <Camera size={18} className="text-zinc-400" />
-                                            <span className="text-sm text-zinc-500">{uploading ? 'Uploading...' : 'Add Photo'}</span>
-                                            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
-                                        </label>
+                                <div className="space-y-3">
+                                    <label className={`text-xs font-medium uppercase ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>Rough Opening Height</label>
+                                    <div className="space-y-2">
+                                        <InputGroup label="Left" value={formData.heightLeft} onChange={v => handleChange('heightLeft', v)} mode={mode} highlighted={activeField === 'heightLeft'} />
+                                        <InputGroup label="Center" value={formData.heightCenter} onChange={v => handleChange('heightCenter', v)} mode={mode} highlighted={activeField === 'heightCenter'} />
+                                        <InputGroup label="Right" value={formData.heightRight} onChange={v => handleChange('heightRight', v)} mode={mode} highlighted={activeField === 'heightRight'} />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Right Column: Final Specs & Install */}
-                            <div className="space-y-6">
-                                {/* Final Dimensions (The "Order" Specs) */}
-                                <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
-                                    <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
-                                        <Ruler size={16} /> Final Ordered Dimensions
-                                    </h4>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <InputFinal label="Width" value={formData.width} onChange={v => handleChange('width', v)} mode={mode} />
-                                        <InputFinal label="Height" value={formData.height} onChange={v => handleChange('height', v)} mode={mode} />
-                                        <InputFinal label="Depth" value={formData.mountDepth} onChange={v => handleChange('mountDepth', v)} mode={mode} />
+                            {/* Right Column: Photos */}
+                            <div>
+                                <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>
+                                    Verification Photos {activeTab === 'm1' ? '(M1)' : '(M2)'}
+                                </label>
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {formData.photos?.map((url, i) => (
+                                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
+                                                <img src={url} alt="Rough opening" className="w-full h-full object-cover" />
+                                            </a>
+                                        ))}
                                     </div>
-                                </div>
-
-                                {/* Installation / Pockets */}
-                                <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
-                                    <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Installation & Pockets</h4>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-medium mb-1.5 text-zinc-500">Verified Mount Type</label>
-                                            <select
-                                                value={formData.mountType || ''}
-                                                onChange={e => handleChange('mountType', e.target.value)}
-                                                className={`w-full px-3 py-2 rounded-lg border font-semibold ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white focus:border-violet-500' : 'bg-white border-zinc-300 text-black focus:border-violet-500'}`}
-                                            >
-                                                <option value="">Select...</option>
-                                                {availableMountTypes.map(type => (
-                                                    <option key={type} value={type}>{type} Mount</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <InputFinal label="Pocket Width" value={formData.pocketWidth} onChange={v => handleChange('pocketWidth', v)} mode={mode} />
-                                            <InputFinal label="Pocket Height" value={formData.pocketHeight} onChange={v => handleChange('pocketHeight', v)} mode={mode} />
-                                            <InputFinal label="Pocket Depth" value={formData.pocketDepth} onChange={v => handleChange('pocketDepth', v)} mode={mode} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Notes */}
-                                <div>
-                                    <label className={`block text-sm font-medium mb-2 ${mode === 'dark' ? 'text-zinc-300' : 'text-zinc-700'}`}>Obstruction Notes</label>
-                                    <textarea
-                                        value={formData.notes}
-                                        onChange={e => handleChange('notes', e.target.value)}
-                                        rows={3}
-                                        placeholder="Enter any validation notes..."
-                                        className={`w-full px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
-                                    />
+                                    <label className={`flex items-center justify-center gap-2 w-full p-3 border border-dashed rounded-lg cursor-pointer transition-colors ${mode === 'dark' ? 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800' : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
+                                        }`}>
+                                        <Camera size={18} className="text-zinc-400" />
+                                        <span className="text-sm text-zinc-500">{uploading ? 'Uploading...' : 'Add Photo'}</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
+                                    </label>
                                 </div>
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className={`p-4 border-t flex justify-end gap-3 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                {/* Fixed Footer */}
+                <div className={`flex-shrink-0 p-4 border-t flex justify-end gap-3 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     {!showBlinded && activeTab !== 'comments' && (
                         <Button variant="primary" icon={Save} onClick={handleSaveClick}>
@@ -671,7 +663,5 @@ const InputFinal = ({ label, value, onChange, mode }) => (
         />
     </div>
 );
-
-
 
 export default ShadeMeasurementModal;

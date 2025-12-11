@@ -98,7 +98,7 @@ class SharePointStorageService {
       // Get shade details for naming
       const { data: shade, error: shadeError } = await supabase
         .from('project_shades')
-        .select('name, room(name)')
+        .select('name, room:project_rooms(name)')
         .eq('id', shadeId)
         .single();
 
