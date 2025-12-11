@@ -528,7 +528,8 @@ const ShadeDetailPage = () => {
                             onChange={e => handleInstallationNotesChange(e.target.value)}
                             rows={2}
                             placeholder="Notes, obstructions, special instructions..."
-                            className={`w-full px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                            className={`w-full px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                            style={{ fontSize: '16px' }}
                         />
                     </div>
                 </div>
@@ -651,7 +652,8 @@ const ShadeDetailPage = () => {
                                     value={newComment}
                                     onChange={(e) => setNewComment(e.target.value)}
                                     placeholder="Add a comment..."
-                                    className={`flex-1 px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                    className={`flex-1 px-3 py-2 rounded-lg border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                    style={{ fontSize: '16px' }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
                                             e.preventDefault();
