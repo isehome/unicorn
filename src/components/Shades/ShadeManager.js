@@ -23,7 +23,6 @@ import { notifyShadeReviewRequest, processPendingShadeNotifications } from '../.
 import { shadePublicAccessService } from '../../services/shadePublicAccessService';
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
-import ShadeMeasurementModal from './ShadeMeasurementModal';
 import { brandColors, stakeholderColors } from '../../styles/styleSystem';
 import { useShadeManagerTools } from '../../hooks/useShadeManagerTools';
 
@@ -54,8 +53,6 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
 
     // Component State
     const [expandedRooms, setExpandedRooms] = useState(new Set());
-    const [selectedShade, setSelectedShade] = useState(null);
-    const [showMeasureModal, setShowMeasureModal] = useState(false);
 
     // Fetch Designers (Project Team)
     useEffect(() => {
@@ -286,21 +283,8 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
     };
 
     const handleOpenMeasurement = (shade) => {
-        setSelectedShade(shade);
-        setShowMeasureModal(true);
-    };
-
-    const handleMeasurementSave = async (measurements, set = 'm1') => {
-        try {
-            if (!user?.id) throw new Error('User required');
-            await projectShadeService.updateMeasurements(selectedShade.id, measurements, user.id, set);
-            setShowMeasureModal(false);
-            // setSelectedShade(null); // Removed as per instruction
-            loadShades(); // Refresh list to show updated status
-        } catch (err) {
-            console.error('Failed to save measurements:', err);
-            alert('Failed to save: ' + err.message);
-        }
+        // Navigate to the new shade detail page instead of opening modal
+        navigate(`/projects/${projectId}/shades/${shade.id}`);
     };
 
     // Helper to calculate Delta
@@ -361,9 +345,9 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
 
     // Voice AI Tools for shade list navigation
     const handleSelectShadeForMeasuring = useCallback((shade) => {
-        setSelectedShade(shade);
-        setShowMeasureModal(true);
-    }, []);
+        // Navigate to the shade detail page
+        navigate(`/projects/${projectId}/shades/${shade.id}`);
+    }, [navigate, projectId]);
 
     useShadeManagerTools({
         shades,
@@ -692,18 +676,6 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
                 </div>
             </div>
 
-            {/* Measurement Modal */}
-            {selectedShade && (
-                <ShadeMeasurementModal
-                    isOpen={showMeasureModal}
-                    onClose={() => setShowMeasureModal(false)}
-                    shade={selectedShade}
-                    onSave={handleMeasurementSave}
-                    currentUser={user}
-                    availableMountTypes={availableMountTypes}
-                    isPMView={isPMView}
-                />
-            )}
         </div>
     );
 };

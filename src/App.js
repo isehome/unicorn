@@ -57,6 +57,7 @@ const PublicPurchaseOrderPortal = lazy(() => import('./pages/PublicPurchaseOrder
 const PublicShadePortal = lazy(() => import('./pages/PublicShadePortal'));
 const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
 const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
+const ShadeDetailPage = lazy(() => import('./components/Shades/ShadeDetailPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -298,6 +299,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <ShadeManager />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/shades/:shadeId"
+                element={
+                  <ProtectedRoute>
+                    <ShadeDetailPage />
                   </ProtectedRoute>
                 }
               />
