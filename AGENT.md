@@ -111,7 +111,48 @@ Photos stored in SharePoint with structure:
 {project_url}/issues/{Issue_Title}/{timestamp}.jpg
 ```
 
-### 6. Integrations
+### 6. Shade Management System
+
+Shades are window treatments (blinds/shades) that go through a verification process similar to wire drops.
+
+**Verification Flow:**
+```
+Import from Lutron CSV → Create Shades → M1 Measurement → M2 Measurement → Design Review → Export
+```
+
+**Measurement Sets (Blind Verification):**
+| Set | Purpose | Done By |
+|-----|---------|---------|
+| **M1** | Initial field measurement | Technician 1 |
+| **M2** | Second verification measurement | Technician 2 (different from M1) |
+
+**Measurement Fields per Set:**
+- **Width:** 3 fields (Top, Middle, Bottom) - measures at different heights
+- **Height:** 1 field (single measurement)
+- **Mount Depth:** 1 field
+- **Mount Type:** Verified mount style (inside/outside/ceiling)
+- **Obstruction Notes:** Text notes about installation concerns
+- **Pocket Dimensions:** Width, Height, Depth (optional)
+
+**Photo Storage:**
+Photos are stored in `shade_photos` table with full SharePoint metadata for thumbnail generation:
+- `shade_id` - Links to project_shades
+- `project_id` - For RLS and organization
+- `measurement_set` - 'm1' or 'm2'
+- `sharepoint_drive_id` - For Graph API thumbnail requests
+- `sharepoint_item_id` - For Graph API thumbnail requests
+- `photo_url` - Full SharePoint URL
+
+**Key Files:**
+| Purpose | File |
+|---------|------|
+| Shade detail page | `src/components/Shades/ShadeDetailPage.js` |
+| Shade list/manager | `src/components/Shades/ShadeManager.js` |
+| Photo CRUD service | `src/services/shadePhotoService.js` |
+| Measurement service | `src/services/projectShadeService.js` |
+| Photo table migration | `database/migrations/20251211_create_shade_photos.sql` |
+
+### 7. Integrations
 
 | Integration | Purpose |
 |-------------|---------|
@@ -129,6 +170,8 @@ Photos stored in SharePoint with structure:
 | `projects` | Project records |
 | `wire_drops` | Cable drop locations |
 | `wire_drop_stages` | Stage completion tracking |
+| `project_shades` | Shade measurements (M1/M2 fields) |
+| `shade_photos` | Shade verification photos with SharePoint metadata |
 | `project_equipment` | Equipment per project |
 | `global_parts` | Master parts catalog |
 | `purchase_orders` | PO headers |
@@ -146,6 +189,8 @@ Photos stored in SharePoint with structure:
 | Wire drop logic | `src/services/wireDropService.js` |
 | Milestone calculations | `src/services/milestoneService.js` |
 | Equipment management | `src/services/projectEquipmentService.js` |
+| Shade detail page | `src/components/Shades/ShadeDetailPage.js` |
+| Shade photos service | `src/services/shadePhotoService.js` |
 | Auth context | `src/contexts/AuthContext.js` |
 | Theme context | `src/contexts/ThemeContext.js` |
 | Style system | `src/styles/styleSystem.js` |
@@ -634,6 +679,30 @@ const getMapUrl = (address) => {
   </div>
 </div>
 ```
+
+### Shade Detail Page Layout
+The ShadeDetailPage follows a specific layout order. **Do not reorder these sections:**
+
+```
+1. Header (Shade Name + Room)
+2. Quoted Specs (from Lutron CSV - read only)
+3. Installation & Pockets (mount depth, pocket dimensions)
+4. Final Ordered Dimensions (computed from M1/M2)
+5. Install Photos (photo gallery with upload)
+6. Comments (collapsible section, NOT a tab)
+7. Measure 1 / Measure 2 Tabs (at the bottom)
+   - Width: 3 fields (Top, Middle, Bottom)
+   - Height: 1 field (single measurement)
+   - Mount Depth
+   - Mark Complete button (toggleable)
+```
+
+**Key Requirements:**
+- Use full page, NOT a modal (modals have scroll/accessibility issues on mobile)
+- All fields auto-save (no save button needed)
+- Mark Complete is a toggleable button (can undo completion)
+- Photos use `shade_photos` table for proper metadata storage
+- Comments section is collapsible (not a tab)
 
 ### AppHeader - Page Title & Back Button
 The AppHeader component (`src/components/AppHeader.js`) handles the top navigation bar globally.
@@ -1134,6 +1203,19 @@ iOS Safari zooms in when the font size of an input is less than 16px. **Always u
 />
 ```
 
+### Viewport Meta Tag (index.html)
+
+The viewport meta tag must include `maximum-scale=1.0` and `user-scalable=no` to prevent iOS Safari from zooming:
+
+```html
+<!-- In public/index.html -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+```
+
+**Both are required:**
+- 16px font on inputs prevents auto-zoom on focus
+- Viewport meta prevents manual pinch-zoom and double-tap zoom
+
 ### Touch-Friendly Buttons
 
 All buttons must be touch-friendly with proper event handling:
@@ -1239,9 +1321,12 @@ Before any feature is complete, test on a real phone:
 | Photos not loading | Verify SharePoint URL on project |
 | RLS errors | Add `anon` to policy |
 | Wrong milestone % | Check `required_for_prewire` flags |
-| Page zooms on iOS input | Add `style={{ fontSize: '16px' }}` to input |
+| Page zooms on iOS input | Add `style={{ fontSize: '16px' }}` to input AND update viewport meta |
 | Buttons unresponsive on mobile | Add `onTouchEnd` handler with `e.preventDefault()` |
 | Form resets on mobile | Track state redundantly with pendingValue pattern |
+| Shade photos no thumbnails | Ensure `sharepoint_drive_id` and `sharepoint_item_id` are saved |
+| Modal scroll issues | Use full page instead of modal for complex forms |
+| Mark Complete not working | Must be a clickable button, not a static div |
 
 ---
 
@@ -1477,16 +1562,18 @@ Registered when user is on the shade list page.
 | `expand_room` | Expand/collapse a room section in the list |
 
 **useShadeTools (`src/hooks/useShadeTools.js`)**
-Registered when user is in the Shade measurement modal.
+Registered when user is on the ShadeDetailPage.
 
 | Tool | Description |
 |------|-------------|
-| `set_measurement` | Record a dimension (e.g., "top width", "left height") |
+| `set_measurement` | Record a dimension (e.g., "top width", "middle width", "bottom width", "height") |
 | `get_shade_context` | Get shade name, room, quoted dimensions, measurement status |
 | `read_back_measurements` | Read all recorded measurements for verification |
 | `clear_measurement` | Clear/reset a specific measurement |
-| `save_shade_measurements` | Save and complete the shade |
-| `close_without_saving` | Cancel and close the modal |
+| `mark_measurement_complete` | Mark M1 or M2 as complete |
+| `go_back` | Navigate back to shade list |
+
+**Note:** Width requires 3 measurements (Top, Middle, Bottom). Height is a single measurement.
 
 ### 4. User Settings (`src/components/UserSettings/AISettings.js`)
 - **Persona Config**: "Field Partner" (brief) vs "Teacher" (detailed)
@@ -1624,9 +1711,10 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 | `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
 | `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
 | `src/hooks/useShadeManagerTools.js` | Shade list page tools (overview, open shade) |
-| `src/hooks/useShadeTools.js` | Shade measurement modal tools |
+| `src/hooks/useShadeTools.js` | ShadeDetailPage tools (measurements, mark complete) |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
 | `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics |
+| `src/components/Shades/ShadeDetailPage.js` | Full page shade measurement (replaced modal) |
 
 ## Environment Variables
 
@@ -1893,8 +1981,8 @@ The application needs a proper user capabilities/roles system to control access 
 
 ### Related Files
 - `src/contexts/AuthContext.js` - Auth state management
-- `src/components/Shades/ShadeMeasurementModal.js` - Uses `isPMView` for blinding
-- `src/components/Shades/ShadeManager.js` - Passes `isPMView` prop
+- `src/components/Shades/ShadeDetailPage.js` - Full page shade measurement (replaced ShadeMeasurementModal)
+- `src/components/Shades/ShadeManager.js` - Navigates to ShadeDetailPage
 - `src/components/PMProjectView.js` - Embeds ShadeManager with PM capabilities
 
 ---
