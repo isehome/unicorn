@@ -181,9 +181,27 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
 
     // Prevent body scroll when modal is open
     useEffect(() => {
+        // Store original styles
+        const originalOverflow = document.body.style.overflow;
+        const originalPosition = document.body.style.position;
+        const originalTop = document.body.style.top;
+        const originalWidth = document.body.style.width;
+        const scrollY = window.scrollY;
+
+        // Lock the body in place
         document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollY}px`;
+        document.body.style.width = '100%';
+
         return () => {
-            document.body.style.overflow = 'unset';
+            // Restore original styles
+            document.body.style.overflow = originalOverflow;
+            document.body.style.position = originalPosition;
+            document.body.style.top = originalTop;
+            document.body.style.width = originalWidth;
+            // Restore scroll position
+            window.scrollTo(0, scrollY);
         };
     }, []);
 
@@ -267,13 +285,24 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         onSave(formData, activeTab);
     };
 
+    // Prevent touch scroll on backdrop
+    const handleBackdropTouchMove = useCallback((e) => {
+        // Only prevent if touch is on the backdrop, not the modal content
+        if (e.target === e.currentTarget) {
+            e.preventDefault();
+        }
+    }, []);
+
     if (!isOpen) return null;
 
     // Render logic for blinding - check current tab against blinding state
     const showBlinded = (activeTab === 'm1' && isM1Blind) || (activeTab === 'm2' && isM2Blind);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onTouchMove={handleBackdropTouchMove}
+        >
             <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
 
                 {/* Fixed Header Section */}
