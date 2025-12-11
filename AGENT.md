@@ -120,6 +120,15 @@ Shades are window treatments (blinds/shades) that go through a verification proc
 Import from Lutron CSV → Create Shades → M1 Measurement → M2 Measurement → Design Review → Export
 ```
 
+**Intelligent Import Logic:**
+The system uses a robust 2-stage import process to handle various CSV types (Lutron v1, v2, Webster, etc.):
+1. **Header Parsing:**
+   - **Static Mapping:** Checks known aliases first (e.g., "System Mount" = "mount_type").
+   - **AI Fallback:** If critical headers are missing, sends headers to `api/parse-lutron-headers.js` (Gemini Flash) to determine mapping.
+2. **Room Matching:**
+   - **Exact Match:** Checks existing project room names.
+   - **AI Fuzzy Match:** Uses Gemini (`api/match-rooms.js`) to map "Living Rm" -> "Living Room" or suggest new standard names.
+
 **Measurement Sets (Blind Verification):**
 | Set | Purpose | Done By |
 |-----|---------|---------|
@@ -149,7 +158,11 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | Shade detail page | `src/components/Shades/ShadeDetailPage.js` |
 | Shade list/manager | `src/components/Shades/ShadeManager.js` |
 | Photo CRUD service | `src/services/shadePhotoService.js` |
+| Shade list/manager | `src/components/Shades/ShadeManager.js` |
+| Photo CRUD service | `src/services/shadePhotoService.js` |
 | Measurement service | `src/services/projectShadeService.js` |
+| Header Parsing API | `api/parse-lutron-headers.js` |
+| Room Matching API | `api/match-rooms.js` |
 | Photo table migration | `database/migrations/20251211_create_shade_photos.sql` |
 
 ### 7. Integrations

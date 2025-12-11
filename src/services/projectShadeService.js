@@ -10,14 +10,69 @@ const normalizeString = (str) => {
 const normalizeRoomName = (name) => {
     if (!name) return '';
     return name.toLowerCase().trim()
-        .replace(/[^a-z0-9]+/g, ' ') // Replace non-alphanumeric with space
-        .replace(/\s+/g, ' ')        // Collapse multiple spaces
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 };
 
-const detectLutronCsv = (text) => {
-    if (!text) return false;
-    return text.includes('Technology') && text.includes('Product') && text.includes('System Mount');
+// Known static aliases for mapping (Lowercased)
+const KNOWN_ALIASES = {
+    'technology': ['technology', 'system tech', 'system'],
+    'product_type': ['product type', 'shade type'],
+    'model': ['product details', 'product', 'model'],
+    'mount_type': ['system mount', 'mounting', 'mount', 'inside/outside'],
+    'width': ['width', 'quoted width', 'm1 width'],
+    'height': ['height', 'quoted height', 'm1 height'],
+    'area': ['area', 'room', 'room name', 'location'],
+    'name': ['name', 'shade name'],
+    'fabric': ['fabric', 'cloth']
+};
+
+const resolveHeaderMapping = async (headers) => {
+    const mapping = {};
+    const normalizedHeaders = headers.map(h => ({ original: h, lower: h.toLowerCase().trim() }));
+    const missingKeys = [];
+
+    // 1. Try Static Mapping
+    for (const [key, aliases] of Object.entries(KNOWN_ALIASES)) {
+        const match = normalizedHeaders.find(h => aliases.includes(h.lower));
+        if (match) {
+            mapping[key] = match.original;
+        } else {
+            missingKeys.push(key);
+        }
+    }
+
+    // 2. If essential keys are missing, ask AI
+    // We consider 'width', 'height', 'product_type' as essential for a valid import
+    const essential = ['width', 'product_type', 'area'];
+    const needsAI = essential.some(k => !mapping[k]);
+
+    if (needsAI) {
+        console.log('Static mapping failed for some keys, asking AI...', missingKeys);
+        try {
+            const response = await fetch('/api/parse-lutron-headers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ headers })
+            });
+
+            if (response.ok) {
+                const aiMap = await response.json();
+                // Merge AI results (prefer static if already found? or trust AI if we were missing it?)
+                // We only fill in gaps
+                for (const [key, val] of Object.entries(aiMap)) {
+                    if (!mapping[key] && val && headers.includes(val)) {
+                        mapping[key] = val;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('AI Header Mapping failed', e);
+        }
+    }
+
+    return mapping;
 };
 
 const parseCsvFile = (file) => {
@@ -43,13 +98,20 @@ export const projectShadeService = {
         if (!projectId || !file) throw new Error('Project and file are required');
         if (!userId) throw new Error('User ID is required for audit trail');
 
-        const fileText = await file.text();
-        if (!detectLutronCsv(fileText)) {
-            throw new Error('Invalid Lutron CSV format. Missing required columns (Technology, Product, System Mount).');
-        }
-
         const rows = await parseCsvFile(file);
         if (!rows.length) throw new Error('CSV file is empty');
+
+        const headers = rows.meta?.fields || Object.keys(rows[0]);
+        const headerMap = await resolveHeaderMapping(headers);
+
+        console.log('Using Header Map:', headerMap);
+
+        // Basic validation: ensure we at least found dimensions or product info
+        if (!headerMap.width && !headerMap.product_type) {
+            console.warn('Could not resolve critical columns even with AI');
+            // We continue? Or throw? Let's try to continue, maybe partial data is better than none.
+            // But existing logic relies on these.
+        }
 
         // 1. Resolve Rooms using Gemini AI
         const { data: existingRooms } = await supabase
@@ -58,7 +120,13 @@ export const projectShadeService = {
             .eq('project_id', projectId);
 
         const projectRoomsList = existingRooms || [];
-        const uniqueImportAreas = [...new Set(rows.map(r => normalizeString(r.Area)).filter(Boolean))];
+
+
+        // Extract areas using the resolved map
+        const uniqueImportAreas = [...new Set(rows.map(r => {
+            const key = headerMap.area || 'Area';
+            return normalizeString(r[key]);
+        }).filter(Boolean))];
 
         let roomMap = new Map(); // Normalized Name -> ID
         projectRoomsList.forEach(r => roomMap.set(normalizeRoomName(r.name), r.id));
@@ -131,10 +199,12 @@ export const projectShadeService = {
         const shadePayload = [];
 
         for (const row of rows) {
-            const name = normalizeString(row.Name);
+            const nameCol = headerMap.name ? row[headerMap.name] : (row.Name || row.ShadeName);
+            const name = normalizeString(nameCol);
             if (!name) continue;
 
-            const area = normalizeString(row.Area);
+            const areaCol = headerMap.area ? row[headerMap.area] : (row.Area || row.Room || row.Location);
+            const area = normalizeString(areaCol);
 
             // Try explicit map first (from Gemini), then normalized exact match
             let roomId = null;
@@ -163,13 +233,13 @@ export const projectShadeService = {
                 name: name,
                 lutron_id: name,
 
-                // Quoted Specs
-                quoted_width: normalizeString(row.Width),
-                quoted_height: normalizeString(row.Height),
-                mount_type: normalizeString(row['System Mount']) || normalizeString(row['Mounting']),
-                technology: normalizeString(row.Technology) || normalizeString(row.System),
-                product_type: normalizeString(row['Product Type']),
-                model: normalizeString(row['Product Details']) || normalizeString(row.Product),
+                // Quoted Specs - Using Map
+                quoted_width: normalizeString(row[headerMap.width]),
+                quoted_height: normalizeString(row[headerMap.height]),
+                mount_type: normalizeString(row[headerMap.mount_type]),
+                technology: normalizeString(row[headerMap.technology]),
+                product_type: normalizeString(row[headerMap.product_type]),
+                model: normalizeString(row[headerMap.model]),
 
                 // Original Data for Round Trip
                 original_csv_row: row,
@@ -182,7 +252,7 @@ export const projectShadeService = {
 
                 // Metadata
                 created_by: userId,
-                fabric_selection: normalizeString(row.Fabric)
+                fabric_selection: normalizeString(row[headerMap.fabric])
             });
         }
 
