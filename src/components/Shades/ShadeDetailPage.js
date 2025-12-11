@@ -340,25 +340,45 @@ const ShadeDetailPage = () => {
         }
     };
 
-    // Mark measurement complete
-    const handleMarkComplete = async () => {
-        try {
-            const updates = {
-                [`${activeTab}_complete`]: true,
-                [`${activeTab}_date`]: new Date().toISOString(),
-                [`${activeTab}_by`]: user?.id,
-                updated_at: new Date().toISOString()
-            };
+    // Loading state for mark complete
+    const [markingComplete, setMarkingComplete] = useState(false);
 
-            await supabase
+    // Mark/unmark measurement complete
+    const handleMarkComplete = async () => {
+        const isCurrentlyComplete = shade?.[`${activeTab}_complete`];
+
+        try {
+            setMarkingComplete(true);
+
+            const updates = isCurrentlyComplete
+                ? {
+                    // Unmark complete
+                    [`${activeTab}_complete`]: false,
+                    [`${activeTab}_date`]: null,
+                    [`${activeTab}_by`]: null,
+                    updated_at: new Date().toISOString()
+                }
+                : {
+                    // Mark complete
+                    [`${activeTab}_complete`]: true,
+                    [`${activeTab}_date`]: new Date().toISOString(),
+                    [`${activeTab}_by`]: user?.id,
+                    updated_at: new Date().toISOString()
+                };
+
+            const { error } = await supabase
                 .from('project_shades')
                 .update(updates)
                 .eq('id', shadeId);
 
+            if (error) throw error;
+
             await loadShade();
         } catch (err) {
             console.error('[ShadeDetailPage] Mark complete failed:', err);
-            alert('Failed to mark complete: ' + err.message);
+            alert('Failed to update: ' + err.message);
+        } finally {
+            setMarkingComplete(false);
         }
     };
 
@@ -757,22 +777,26 @@ const ShadeDetailPage = () => {
                                     />
                                 </div>
 
-                                {!shade?.[`${activeTab}_complete`] && (
-                                    <button
-                                        onClick={handleMarkComplete}
-                                        className="w-full mt-4 py-3 bg-violet-500 hover:bg-violet-600 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                                    >
+                                {/* Mark Complete Button - always clickable to toggle */}
+                                <button
+                                    onClick={handleMarkComplete}
+                                    disabled={markingComplete}
+                                    className={`w-full mt-4 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
+                                        shade?.[`${activeTab}_complete`]
+                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                                            : 'bg-violet-500 hover:bg-violet-600 text-white'
+                                    } ${markingComplete ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    {markingComplete ? (
+                                        <Loader2 size={18} className="animate-spin" />
+                                    ) : (
                                         <CheckCircle size={18} />
-                                        Mark {activeTab === 'm1' ? 'M1' : 'M2'} Complete
-                                    </button>
-                                )}
-
-                                {shade?.[`${activeTab}_complete`] && (
-                                    <div className="mt-4 py-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2">
-                                        <CheckCircle size={18} />
-                                        {activeTab === 'm1' ? 'M1' : 'M2'} Complete
-                                    </div>
-                                )}
+                                    )}
+                                    {shade?.[`${activeTab}_complete`]
+                                        ? `${activeTab === 'm1' ? 'M1' : 'M2'} Complete (tap to undo)`
+                                        : `Mark ${activeTab === 'm1' ? 'M1' : 'M2'} Complete`
+                                    }
+                                </button>
                             </div>
                         )}
                     </div>
