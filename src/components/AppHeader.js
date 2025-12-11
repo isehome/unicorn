@@ -39,6 +39,7 @@ const AppHeader = () => {
     if (p.startsWith('/project/') && p.includes('/issues/')) return 'Issue Details';
     if (p.startsWith('/project/')) return 'Technician Project Detail';
     if (p.startsWith('/issues')) return 'Issues';
+    if (p.includes('/todos/')) return 'Todo Details';
     if (p.startsWith('/todos')) return 'To-dos';
     if (p.startsWith('/people')) return 'People';
     if (p.startsWith('/parts/')) return 'Part Details';

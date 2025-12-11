@@ -52,7 +52,6 @@ import { enhancedStyles, stakeholderColors } from '../styles/styleSystem';
 import { projectRoomsService } from '../services/projectRoomsService';
 import { normalizeRoomName } from '../utils/roomUtils';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
-import TodoDetailModal from './TodoDetailModal';
 import EquipmentManager from './EquipmentManager';
 import SecureDataManager from './SecureDataManager';
 import LucidChartCarousel from './LucidChartCarousel';
@@ -217,8 +216,6 @@ const ProjectDetailView = () => {
   const [pendingRoleId, setPendingRoleId] = useState('');
   const [editingStakeholder, setEditingStakeholder] = useState(null);
   const [creatingNewContact, setCreatingNewContact] = useState(false);
-  const [selectedTodo, setSelectedTodo] = useState(null);
-  const [showTodoModal, setShowTodoModal] = useState(false);
   const [showEquipmentManager, setShowEquipmentManager] = useState(false);
   const [showSecureDataManager, setShowSecureDataManager] = useState(false);
   const [milestonePercentages, setMilestonePercentages] = useState({});
@@ -1328,66 +1325,7 @@ const ProjectDetailView = () => {
   };
 
   const handleOpenTodoDetail = (todo) => {
-    setSelectedTodo(todo);
-    setShowTodoModal(true);
-  };
-
-  const handleSaveTodo = async (todoId, updatedData = {}) => {
-    const targetId = todoId || selectedTodo?.id;
-    if (!targetId) return;
-
-    try {
-      await projectTodosService.update(targetId, updatedData);
-      setTodos(prev => prev.map(t => 
-        t.id === targetId 
-          ? { 
-              ...t, 
-              ...updatedData,
-              completed: updatedData.is_complete !== undefined ? updatedData.is_complete : t.completed,
-              dueBy: updatedData.due_by !== undefined ? updatedData.due_by : t.dueBy,
-              doBy: updatedData.do_by !== undefined ? updatedData.do_by : t.doBy
-            }
-          : t
-      ));
-      setShowTodoModal(false);
-      setSelectedTodo(null);
-    } catch (error) {
-      console.error('Failed to save todo:', error);
-      alert('Failed to save changes');
-    }
-  };
-
-  const handleDeleteTodoFromModal = async () => {
-    if (!selectedTodo) return;
-    const confirmed = window.confirm('Are you sure you want to delete this todo?');
-    if (!confirmed) return;
-    
-    try {
-      await projectTodosService.remove(selectedTodo.id);
-      setTodos(prev => prev.filter(t => t.id !== selectedTodo.id));
-      setShowTodoModal(false);
-      setSelectedTodo(null);
-    } catch (error) {
-      console.error('Failed to delete todo:', error);
-      alert('Failed to delete todo');
-    }
-  };
-
-  const handleToggleTodoFromModal = async () => {
-    if (!selectedTodo) return;
-    
-    try {
-      await projectTodosService.toggleCompletion(selectedTodo.id, !selectedTodo.completed);
-      setTodos(prev => prev.map(t => 
-        t.id === selectedTodo.id 
-          ? { ...t, completed: !selectedTodo.completed }
-          : t
-      ));
-      setSelectedTodo(prev => ({ ...prev, completed: !prev.completed }));
-    } catch (error) {
-      console.error('Failed to toggle todo:', error);
-      alert('Failed to toggle completion status');
-    }
+    navigate(`/projects/${id}/todos/${todo.id}`);
   };
 
   const handleReorderTodos = async (targetId) => {
@@ -2152,21 +2090,6 @@ const ProjectDetailView = () => {
           openLink={openLink}
         />
       </div>
-
-      {showTodoModal && selectedTodo && (
-        <TodoDetailModal
-          todo={selectedTodo}
-          onClose={() => {
-            setShowTodoModal(false);
-            setSelectedTodo(null);
-          }}
-          onSave={handleSaveTodo}
-          onDelete={handleDeleteTodoFromModal}
-          onToggleComplete={handleToggleTodoFromModal}
-          styles={styles}
-          palette={palette}
-        />
-      )}
 
       {showEquipmentManager && (
         <EquipmentManager

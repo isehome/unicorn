@@ -58,6 +58,7 @@ const PublicShadePortal = lazy(() => import('./pages/PublicShadePortal'));
 const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
 const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 const ShadeDetailPage = lazy(() => import('./components/Shades/ShadeDetailPage'));
+const TodoDetailPage = lazy(() => import('./components/TodoDetailPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -339,6 +340,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <TodosListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/todos/:todoId"
+                element={
+                  <ProtectedRoute>
+                    <TodoDetailPage />
                   </ProtectedRoute>
                 }
               />

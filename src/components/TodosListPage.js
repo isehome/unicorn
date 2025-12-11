@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
@@ -6,7 +7,6 @@ import { projectStakeholdersService, projectTodosService } from '../services/sup
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
 import { CheckSquare, Square, Calendar, List, Plus } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import TodoDetailModal from './TodoDetailModal';
 import CalendarDayView from './dashboard/CalendarDayView';
 
 const importanceRanking = {
@@ -32,6 +32,7 @@ const TodosListPage = () => {
   const authContext = useAuth();
   const { user } = authContext;
   const { theme, mode } = useTheme();
+  const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
   const [loading, setLoading] = useState(true);
@@ -40,8 +41,6 @@ const TodosListPage = () => {
   const [error, setError] = useState('');
   const [projects, setProjects] = useState([]);
   const [projectFilter, setProjectFilter] = useState('all');
-  const [selectedTodo, setSelectedTodo] = useState(null);
-  const [showTodoModal, setShowTodoModal] = useState(false);
   const [updatingTodoId, setUpdatingTodoId] = useState(null);
   const dragId = useRef(null);
   const [missingSort, setMissingSort] = useState(false);
@@ -256,60 +255,7 @@ const TodosListPage = () => {
   };
 
   const handleOpenTodoDetail = (todo) => {
-    setSelectedTodo(todo);
-    setShowTodoModal(true);
-  };
-
-  const handleSaveTodo = async (todoId, updatedData) => {
-    try {
-      await projectTodosService.update(todoId, updatedData);
-      setTodos(prev => prev.map(t =>
-        t.id === todoId
-          ? {
-              ...t,
-              ...updatedData,
-              completed: updatedData.is_complete !== undefined ? updatedData.is_complete : t.completed,
-              dueBy: updatedData.due_by !== undefined ? updatedData.due_by : t.dueBy,
-              doBy: updatedData.do_by !== undefined ? updatedData.do_by : t.doBy,
-              doByTime: updatedData.do_by_time !== undefined ? updatedData.do_by_time : t.doByTime,
-              plannedHours: updatedData.planned_hours !== undefined ? updatedData.planned_hours : t.plannedHours,
-              calendarEventId: updatedData.calendar_event_id !== undefined ? updatedData.calendar_event_id : t.calendarEventId
-            }
-          : t
-      ));
-      setShowTodoModal(false);
-      setSelectedTodo(null);
-      // Refresh calendar to show updated todo
-      if (viewMode === 'calendar') {
-        fetchCalendar();
-      }
-    } catch (error) {
-      console.error('Failed to save todo:', error);
-      alert('Failed to save changes');
-    }
-  };
-
-  const handleDeleteTodoFromModal = async (todoId) => {
-    await handleDeleteTodo(todoId);
-    setShowTodoModal(false);
-    setSelectedTodo(null);
-  };
-
-  const handleToggleTodoFromModal = async (todo) => {
-    if (!todo) return;
-    
-    try {
-      await projectTodosService.toggleCompletion(todo.id, !todo.completed);
-      setTodos(prev => prev.map(t => 
-        t.id === todo.id 
-          ? { ...t, completed: !todo.completed }
-          : t
-      ));
-      setSelectedTodo(prev => ({ ...prev, completed: !prev.completed }));
-    } catch (error) {
-      console.error('Failed to toggle todo:', error);
-      alert('Failed to toggle completion status');
-    }
+    navigate(`/projects/${todo.project_id}/todos/${todo.id}`);
   };
 
   const onDragStart = (e, id) => {
@@ -660,20 +606,6 @@ const TodosListPage = () => {
         )}
       </div>
 
-      {showTodoModal && selectedTodo && (
-        <TodoDetailModal
-          todo={selectedTodo}
-          onClose={() => {
-            setShowTodoModal(false);
-            setSelectedTodo(null);
-          }}
-          onUpdate={(todoId, data) => handleSaveTodo(todoId, data)}
-          onDelete={handleDeleteTodoFromModal}
-          onToggleComplete={handleToggleTodoFromModal}
-          styles={styles}
-          palette={palette}
-        />
-      )}
     </div>
   );
 };
