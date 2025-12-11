@@ -260,18 +260,20 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
             // Dynamically import service
             const { sharePointStorageService } = await import('../../services/sharePointStorageService');
 
-            const metadata = await sharePointStorageService.uploadShadePhoto(
+            const result = await sharePointStorageService.uploadShadePhoto(
                 shade.project_id,
                 shade.id,
                 activeTab,
                 file
             );
 
-            // Store full metadata object for thumbnail fetching
-            // metadata contains: { url, driveId, itemId, name, webUrl, size }
+            // result is metadata object: { url, driveId, itemId, name, webUrl, size }
+            // Store just the URL for simplicity - thumbnails will be fetched via API
+            const photoData = typeof result === 'string' ? result : result;
+
             setFormData(prev => ({
                 ...prev,
-                photos: [...(prev.photos || []), metadata]
+                photos: [...(prev.photos || []), photoData]
             }));
         } catch (error) {
             console.error('Upload failed:', error);
@@ -305,7 +307,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
             onTouchMove={handleBackdropTouchMove}
         >
-            <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
+            <div className={`w-full max-w-4xl h-[90vh] rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
 
                 {/* Fixed Header Section - Compact */}
                 <div className={`flex-shrink-0 p-4 border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
@@ -367,7 +369,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                 </div>
 
                 {/* Scrollable Content Area */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
                     {activeTab === 'comments' ? (
                         /* Comments Tab Content */
                         <div className="space-y-4">

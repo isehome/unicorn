@@ -127,8 +127,8 @@ class SharePointStorageService {
       // Upload to SharePoint
       const metadata = await this.uploadToSharePoint(uploadRoot, subPath, filename, file);
 
-      // Return URL (metadata.url)
-      return metadata.url;
+      // Return full metadata object for thumbnail fetching
+      return metadata;
 
     } catch (error) {
       console.error('Failed to upload shade photo:', error);
