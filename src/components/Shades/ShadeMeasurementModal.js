@@ -305,8 +305,8 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
         >
             <div className={`w-full max-w-4xl max-h-[90vh] rounded-2xl shadow-xl flex flex-col ${mode === 'dark' ? 'bg-zinc-900 border border-zinc-700' : 'bg-white'}`}>
 
-                {/* Fixed Header Section */}
-                <div className={`flex-shrink-0 p-4 border-b space-y-4 ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
+                {/* Fixed Header Section - Compact */}
+                <div className={`flex-shrink-0 p-4 border-b ${mode === 'dark' ? 'border-zinc-800' : 'border-zinc-100'}`}>
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className={`text-lg font-semibold ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
@@ -320,116 +320,6 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             <button onClick={onClose} className={`p-2 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800 text-zinc-400' : 'hover:bg-zinc-100 text-zinc-500'}`}>
                                 <X size={20} />
                             </button>
-                        </div>
-                    </div>
-
-                    {/* Master Info Header - Quoted specs */}
-                    <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-blue-50/50 border-blue-100'}`}>
-                        {/* Row 1: Quoted dimensions and Fabric */}
-                        <div className="grid grid-cols-4 gap-4 mb-4">
-                            <div>
-                                <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Width</span>
-                                <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_width}"</span>
-                            </div>
-                            <div>
-                                <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Height</span>
-                                <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_height}"</span>
-                            </div>
-                            <div className="col-span-2">
-                                <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Fabric</span>
-                                <div className="flex items-center gap-2">
-                                    {shade?.fabric_selection ? (
-                                        <a
-                                            href={`https://www.lutronfabrics.com/us/en/search/results?q=${encodeURIComponent(shade.fabric_selection)}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className={`font-medium truncate hover:underline flex items-center gap-1 ${mode === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}
-                                        >
-                                            {shade.fabric_selection}
-                                            <ExternalLink size={12} />
-                                        </a>
-                                    ) : (
-                                        <span className={`font-medium truncate ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
-                                            Not Selected
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        {/* Row 2: Mount Type and Headrail Style dropdowns */}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Mount Type</span>
-                                <select
-                                    value={headerMountType}
-                                    onChange={(e) => handleHeaderMountTypeChange(e.target.value)}
-                                    className={`w-full px-3 py-1.5 rounded-lg border text-sm font-medium ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'}`}
-                                    style={{ fontSize: '16px' }}
-                                >
-                                    <option value="">Select...</option>
-                                    {MOUNT_TYPES.map(type => (
-                                        <option key={type} value={type}>{type}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <div className="flex items-center gap-1.5 mb-1">
-                                    <span className="text-xs text-zinc-400 uppercase tracking-wider">Headrail Style</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowHeadrailInfo(true)}
-                                        className={`p-0.5 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200' : 'hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600'}`}
-                                        title="View headrail style options"
-                                    >
-                                        <Info size={14} />
-                                    </button>
-                                </div>
-                                <select
-                                    value={headerHeadrailStyle}
-                                    onChange={(e) => handleHeaderHeadrailStyleChange(e.target.value)}
-                                    className={`w-full px-3 py-1.5 rounded-lg border text-sm font-medium ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'}`}
-                                    style={{ fontSize: '16px' }}
-                                >
-                                    <option value="">Select...</option>
-                                    {HEADRAIL_STYLES.map(style => (
-                                        <option key={style} value={style}>{style}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Final Ordered Dimensions - Shared across measurements */}
-                    <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
-                        <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
-                            <Ruler size={16} /> Final Ordered Dimensions
-                        </h4>
-                        <div className="grid grid-cols-3 gap-4">
-                            <InputFinal label="Width" value={orderedWidth} onChange={handleOrderedWidthChange} mode={mode} />
-                            <InputFinal label="Height" value={orderedHeight} onChange={handleOrderedHeightChange} mode={mode} />
-                            <InputFinal label="Depth" value={orderedDepth} onChange={handleOrderedDepthChange} mode={mode} />
-                        </div>
-                    </div>
-
-                    {/* Installation & Pockets - Shared across measurements */}
-                    <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
-                        <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Installation & Pockets</h4>
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-3 gap-4">
-                                <InputFinal label="Pocket Width" value={pocketWidth} onChange={handlePocketWidthChange} mode={mode} />
-                                <InputFinal label="Pocket Height" value={pocketHeight} onChange={handlePocketHeightChange} mode={mode} />
-                                <InputFinal label="Pocket Depth" value={pocketDepth} onChange={handlePocketDepthChange} mode={mode} />
-                            </div>
-                            <div>
-                                <label className={`block text-xs font-medium mb-1.5 text-zinc-500`}>Installation Notes</label>
-                                <textarea
-                                    value={installationNotes}
-                                    onChange={e => handleInstallationNotesChange(e.target.value)}
-                                    rows={2}
-                                    placeholder="Enter any installation notes, obstructions, or special instructions..."
-                                    className={`w-full px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
-                                />
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -475,7 +365,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                 </div>
 
                 {/* Scrollable Content Area */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     {activeTab === 'comments' ? (
                         /* Comments Tab Content */
                         <div className="space-y-4">
@@ -569,7 +459,117 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                             </p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            {/* Quoted Specs Section */}
+                            <div className={`p-3 sm:p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-blue-50/50 border-blue-100'}`}>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-3">
+                                    <div>
+                                        <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Width</span>
+                                        <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_width}"</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Quoted Height</span>
+                                        <span className={`font-medium ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>{shade?.quoted_height}"</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Fabric</span>
+                                        <div className="flex items-center gap-2">
+                                            {shade?.fabric_selection ? (
+                                                <a
+                                                    href={`https://www.lutronfabrics.com/us/en/search/results?q=${encodeURIComponent(shade.fabric_selection)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`font-medium truncate hover:underline flex items-center gap-1 ${mode === 'dark' ? 'text-violet-400' : 'text-violet-600'}`}
+                                                >
+                                                    {shade.fabric_selection}
+                                                    <ExternalLink size={12} />
+                                                </a>
+                                            ) : (
+                                                <span className={`font-medium truncate ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-900'}`}>
+                                                    Not Selected
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                                    <div>
+                                        <span className="text-xs text-zinc-400 uppercase tracking-wider block mb-1">Mount Type</span>
+                                        <select
+                                            value={headerMountType}
+                                            onChange={(e) => handleHeaderMountTypeChange(e.target.value)}
+                                            className={`w-full px-3 py-1.5 rounded-lg border text-sm font-medium ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                            style={{ fontSize: '16px' }}
+                                        >
+                                            <option value="">Select...</option>
+                                            {MOUNT_TYPES.map(type => (
+                                                <option key={type} value={type}>{type}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <span className="text-xs text-zinc-400 uppercase tracking-wider">Headrail Style</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowHeadrailInfo(true)}
+                                                className={`p-0.5 rounded-full transition-colors ${mode === 'dark' ? 'hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200' : 'hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600'}`}
+                                                title="View headrail style options"
+                                            >
+                                                <Info size={14} />
+                                            </button>
+                                        </div>
+                                        <select
+                                            value={headerHeadrailStyle}
+                                            onChange={(e) => handleHeaderHeadrailStyleChange(e.target.value)}
+                                            className={`w-full px-3 py-1.5 rounded-lg border text-sm font-medium ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                            style={{ fontSize: '16px' }}
+                                        >
+                                            <option value="">Select...</option>
+                                            {HEADRAIL_STYLES.map(style => (
+                                                <option key={style} value={style}>{style}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Final Ordered Dimensions */}
+                            <div className={`p-3 sm:p-4 rounded-xl border ${mode === 'dark' ? 'bg-violet-900/10 border-violet-800/30' : 'bg-violet-50 border-violet-100'}`}>
+                                <h4 className={`text-sm font-semibold mb-3 flex items-center gap-2 ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
+                                    <Ruler size={16} /> Final Ordered Dimensions
+                                </h4>
+                                <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                                    <InputFinal label="Width" value={orderedWidth} onChange={handleOrderedWidthChange} mode={mode} />
+                                    <InputFinal label="Height" value={orderedHeight} onChange={handleOrderedHeightChange} mode={mode} />
+                                    <InputFinal label="Depth" value={orderedDepth} onChange={handleOrderedDepthChange} mode={mode} />
+                                </div>
+                            </div>
+
+                            {/* Installation & Pockets */}
+                            <div className={`p-3 sm:p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-zinc-50 border-zinc-200'}`}>
+                                <h4 className={`text-sm font-semibold mb-3 ${mode === 'dark' ? 'text-zinc-200' : 'text-zinc-700'}`}>Installation & Pockets</h4>
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                                        <InputFinal label="Pocket Width" value={pocketWidth} onChange={handlePocketWidthChange} mode={mode} />
+                                        <InputFinal label="Pocket Height" value={pocketHeight} onChange={handlePocketHeightChange} mode={mode} />
+                                        <InputFinal label="Pocket Depth" value={pocketDepth} onChange={handlePocketDepthChange} mode={mode} />
+                                    </div>
+                                    <div>
+                                        <label className={`block text-xs font-medium mb-1.5 text-zinc-500`}>Installation Notes</label>
+                                        <textarea
+                                            value={installationNotes}
+                                            onChange={e => handleInstallationNotesChange(e.target.value)}
+                                            rows={2}
+                                            placeholder="Enter any installation notes, obstructions, or special instructions..."
+                                            className={`w-full px-3 py-2 rounded-lg border text-sm ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-zinc-100' : 'bg-white border-zinc-300 text-zinc-900'}`}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Rough Opening Measurements */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                             {/* Left Column: Rough Opening Measurements */}
                             <div className="space-y-6">
                                 <div className="space-y-3">
@@ -611,6 +611,7 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                     </label>
                                 </div>
                             </div>
+                        </div>
                         </div>
                     )}
                 </div>
