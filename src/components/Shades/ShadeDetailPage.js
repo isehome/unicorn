@@ -61,9 +61,11 @@ const ShadeDetailPage = () => {
     // Measurement tab state
     const [activeTab, setActiveTab] = useState('m1');
 
-    // Simplified measurement form (single width/height instead of 3 each)
+    // Measurement form - 3 widths (top, middle, bottom), 1 height, mount depth
     const [formData, setFormData] = useState({
-        width: '',
+        widthTop: '',
+        widthMiddle: '',
+        widthBottom: '',
         height: '',
         mountDepth: ''
     });
@@ -107,7 +109,9 @@ const ShadeDetailPage = () => {
             // Initialize measurement form
             const set = data.m1_complete && !data.m2_complete ? 'm2' : 'm1';
             setFormData({
-                width: data?.[`${set}_width`] || data?.[`${set}_measure_width_middle`] || '',
+                widthTop: data?.[`${set}_measure_width_top`] || '',
+                widthMiddle: data?.[`${set}_measure_width_middle`] || '',
+                widthBottom: data?.[`${set}_measure_width_bottom`] || '',
                 height: data?.[`${set}_height`] || data?.[`${set}_measure_height_center`] || '',
                 mountDepth: data?.[`${set}_mount_depth`] || ''
             });
@@ -164,7 +168,9 @@ const ShadeDetailPage = () => {
     useEffect(() => {
         if (shade && (activeTab === 'm1' || activeTab === 'm2')) {
             setFormData({
-                width: shade?.[`${activeTab}_width`] || shade?.[`${activeTab}_measure_width_middle`] || '',
+                widthTop: shade?.[`${activeTab}_measure_width_top`] || '',
+                widthMiddle: shade?.[`${activeTab}_measure_width_middle`] || '',
+                widthBottom: shade?.[`${activeTab}_measure_width_bottom`] || '',
                 height: shade?.[`${activeTab}_height`] || shade?.[`${activeTab}_measure_height_center`] || '',
                 mountDepth: shade?.[`${activeTab}_mount_depth`] || ''
             });
@@ -198,9 +204,11 @@ const ShadeDetailPage = () => {
 
         autoSaveTimerRef.current = setTimeout(async () => {
             try {
-                // Map simplified fields to database columns
+                // Map form fields to database columns
                 const fieldMapping = {
-                    'width': `${activeTab}_width`,
+                    'widthTop': `${activeTab}_measure_width_top`,
+                    'widthMiddle': `${activeTab}_measure_width_middle`,
+                    'widthBottom': `${activeTab}_measure_width_bottom`,
                     'height': `${activeTab}_height`,
                     'mountDepth': `${activeTab}_mount_depth`
                 };
@@ -703,17 +711,36 @@ const ShadeDetailPage = () => {
                                 <p className="text-zinc-500 text-sm">Data masked for blind verification</p>
                             </div>
                         ) : (
-                            <div className="space-y-3">
-                                <p className={`text-xs uppercase font-medium ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
-                                    Rough Opening Measurements
-                                </p>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <InputField
-                                        label="Width"
-                                        value={formData.width}
-                                        onChange={(v) => handleMeasurementChange('width', v)}
-                                        mode={mode}
-                                    />
+                            <div className="space-y-4">
+                                {/* Width measurements - 3 fields */}
+                                <div>
+                                    <p className={`text-xs uppercase font-medium mb-2 ${mode === 'dark' ? 'text-zinc-500' : 'text-zinc-400'}`}>
+                                        Rough Opening Width
+                                    </p>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        <InputField
+                                            label="Top"
+                                            value={formData.widthTop}
+                                            onChange={(v) => handleMeasurementChange('widthTop', v)}
+                                            mode={mode}
+                                        />
+                                        <InputField
+                                            label="Middle"
+                                            value={formData.widthMiddle}
+                                            onChange={(v) => handleMeasurementChange('widthMiddle', v)}
+                                            mode={mode}
+                                        />
+                                        <InputField
+                                            label="Bottom"
+                                            value={formData.widthBottom}
+                                            onChange={(v) => handleMeasurementChange('widthBottom', v)}
+                                            mode={mode}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Height and Mount Depth - single fields */}
+                                <div className="grid grid-cols-2 gap-3">
                                     <InputField
                                         label="Height"
                                         value={formData.height}
