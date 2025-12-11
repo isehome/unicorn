@@ -89,8 +89,7 @@ const ShadeDetailPage = () => {
                 .from('project_shades')
                 .select(`
                     *,
-                    room:project_rooms(id, name),
-                    equipment:project_equipment(id, name, equipment_type)
+                    room:project_rooms(id, name)
                 `)
                 .eq('id', shadeId)
                 .single();
@@ -461,7 +460,7 @@ const ShadeDetailPage = () => {
                                 </p>
                             </div>
                         </div>
-                        {shade?.equipment && (
+                        {shade?.equipment_id && (
                             <div className={`text-xs px-2 py-1 rounded ${mode === 'dark' ? 'bg-violet-900/30 text-violet-300' : 'bg-violet-100 text-violet-700'}`}>
                                 Linked to Equipment
                             </div>

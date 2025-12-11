@@ -36,34 +36,25 @@ CREATE INDEX IF NOT EXISTS idx_shade_photos_not_deleted ON shade_photos(shade_id
 -- Enable RLS
 ALTER TABLE shade_photos ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies (same pattern as other tables)
-CREATE POLICY "Users can view shade photos for their projects" ON shade_photos
-    FOR SELECT USING (
-        project_id IN (
-            SELECT project_id FROM project_members WHERE user_id = auth.uid()
-        )
-    );
+-- RLS Policies (same pattern as project_shades table)
+CREATE POLICY "Users can view shade_photos"
+    ON shade_photos FOR SELECT
+    USING ( EXISTS (
+        SELECT 1 FROM projects
+        WHERE projects.id = shade_photos.project_id
+    ));
 
-CREATE POLICY "Users can insert shade photos for their projects" ON shade_photos
-    FOR INSERT WITH CHECK (
-        project_id IN (
-            SELECT project_id FROM project_members WHERE user_id = auth.uid()
-        )
-    );
+CREATE POLICY "Users can insert shade_photos"
+    ON shade_photos FOR INSERT
+    WITH CHECK (true);
 
-CREATE POLICY "Users can update shade photos for their projects" ON shade_photos
-    FOR UPDATE USING (
-        project_id IN (
-            SELECT project_id FROM project_members WHERE user_id = auth.uid()
-        )
-    );
+CREATE POLICY "Users can update shade_photos"
+    ON shade_photos FOR UPDATE
+    USING (true);
 
-CREATE POLICY "Users can delete shade photos for their projects" ON shade_photos
-    FOR DELETE USING (
-        project_id IN (
-            SELECT project_id FROM project_members WHERE user_id = auth.uid()
-        )
-    );
+CREATE POLICY "Users can delete shade_photos"
+    ON shade_photos FOR DELETE
+    USING (true);
 
 -- Add comment for documentation
 COMMENT ON TABLE shade_photos IS 'Stores verification photos for shade measurements with full SharePoint metadata for thumbnail generation and deletion';
