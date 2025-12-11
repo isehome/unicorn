@@ -87,6 +87,27 @@ module.exports = async (req, res) => {
         res.status(200).json({ success: true });
         return;
       }
+      case 'thumbnail': {
+        // Get thumbnail URL for the file
+        const size = req.body.size || 'medium';
+        const thumbnailData = await graph(token, `/drives/${driveId}/items/${itemId}/thumbnails/0/${size}`);
+        if (thumbnailData && thumbnailData.url) {
+          res.status(200).json({ url: thumbnailData.url });
+        } else {
+          res.status(404).json({ error: 'Thumbnail not found' });
+        }
+        return;
+      }
+      case 'content': {
+        // Get a download URL for the file content
+        const item = await graph(token, `/drives/${driveId}/items/${itemId}?select=@microsoft.graph.downloadUrl`);
+        if (item && item['@microsoft.graph.downloadUrl']) {
+          res.status(200).json({ downloadUrl: item['@microsoft.graph.downloadUrl'] });
+        } else {
+          res.status(404).json({ error: 'Download URL not found' });
+        }
+        return;
+      }
       default:
         res.status(400).json({ error: `Unsupported action: ${action}` });
         return;

@@ -260,16 +260,18 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
             // Dynamically import service
             const { sharePointStorageService } = await import('../../services/sharePointStorageService');
 
-            const publicUrl = await sharePointStorageService.uploadShadePhoto(
+            const metadata = await sharePointStorageService.uploadShadePhoto(
                 shade.project_id,
                 shade.id,
                 activeTab,
                 file
             );
 
+            // Store full metadata object for thumbnail fetching
+            // metadata contains: { url, driveId, itemId, name, webUrl, size }
             setFormData(prev => ({
                 ...prev,
-                photos: [...(prev.photos || []), publicUrl]
+                photos: [...(prev.photos || []), metadata]
             }));
         } catch (error) {
             console.error('Upload failed:', error);
@@ -597,10 +599,8 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
                                 </label>
                                 <div className="space-y-3">
                                     <div className="grid grid-cols-2 gap-2">
-                                        {formData.photos?.map((url, i) => (
-                                            <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
-                                                <img src={url} alt="Rough opening" className="w-full h-full object-cover" />
-                                            </a>
+                                        {formData.photos?.map((photo, i) => (
+                                            <SharePointThumbnail key={i} photo={photo} mode={mode} />
                                         ))}
                                     </div>
                                     <label className={`flex items-center justify-center gap-2 w-full p-3 border border-dashed rounded-lg cursor-pointer transition-colors ${mode === 'dark' ? 'border-zinc-700 hover:border-zinc-500 hover:bg-zinc-800' : 'border-zinc-300 hover:border-zinc-400 hover:bg-zinc-50'
@@ -693,5 +693,104 @@ const InputFinal = ({ label, value, onChange, mode }) => (
         />
     </div>
 );
+
+// SharePoint thumbnail component that fetches via Graph API
+const SharePointThumbnail = ({ photo, mode }) => {
+    const [thumbnailUrl, setThumbnailUrl] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+
+    // Get the link URL for opening the full image
+    const linkUrl = typeof photo === 'string' ? photo : (photo?.webUrl || photo?.url);
+    const driveId = typeof photo === 'object' ? photo?.driveId : null;
+    const itemId = typeof photo === 'object' ? photo?.itemId : null;
+
+    useEffect(() => {
+        const fetchThumbnail = async () => {
+            // If it's just a URL string (legacy), try using it directly
+            if (typeof photo === 'string') {
+                setThumbnailUrl(photo);
+                setLoading(false);
+                return;
+            }
+
+            // If we have driveId and itemId, fetch thumbnail via API
+            if (driveId && itemId) {
+                try {
+                    const response = await fetch('/api/graph-file', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            action: 'thumbnail',
+                            driveId,
+                            itemId,
+                            size: 'medium'
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        setThumbnailUrl(data.url);
+                    } else {
+                        // Fallback to download URL
+                        const contentResponse = await fetch('/api/graph-file', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'content',
+                                driveId,
+                                itemId
+                            })
+                        });
+                        if (contentResponse.ok) {
+                            const contentData = await contentResponse.json();
+                            setThumbnailUrl(contentData.downloadUrl);
+                        } else {
+                            setError(true);
+                        }
+                    }
+                } catch (err) {
+                    console.error('Failed to fetch thumbnail:', err);
+                    setError(true);
+                }
+            } else if (photo?.url) {
+                // If we have a URL but no driveId/itemId, use the URL directly
+                setThumbnailUrl(photo.url);
+            } else {
+                setError(true);
+            }
+            setLoading(false);
+        };
+
+        fetchThumbnail();
+    }, [photo, driveId, itemId]);
+
+    if (loading) {
+        return (
+            <div className={`aspect-video rounded-lg flex items-center justify-center ${mode === 'dark' ? 'bg-zinc-800' : 'bg-zinc-100'}`}>
+                <div className="w-5 h-5 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (error || !thumbnailUrl) {
+        return (
+            <div className={`aspect-video rounded-lg flex items-center justify-center border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-zinc-100 border-zinc-200'}`}>
+                <Camera size={24} className="text-zinc-400" />
+            </div>
+        );
+    }
+
+    return (
+        <a href={linkUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-zinc-100 rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700">
+            <img
+                src={thumbnailUrl}
+                alt="Verification photo"
+                className="w-full h-full object-cover"
+                onError={() => setError(true)}
+            />
+        </a>
+    );
+};
 
 export default ShadeMeasurementModal;
