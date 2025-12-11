@@ -135,13 +135,20 @@ export const generateCalibrationLabelBitmap = async () => {
  * @param {Object} wireDrop - Wire drop data
  * @returns {Promise<HTMLImageElement>} Label bitmap
  */
+/**
+ * Generate wire drop label as bitmap image
+ * Label size: 1.75" x 0.75" at 203 DPI (M211 printer resolution)
+ *
+ * @param {Object} wireDrop - Wire drop data
+ * @returns {Promise<HTMLImageElement>} Label bitmap
+ */
 export const generateWireDropLabelBitmap = async (wireDrop) => {
   // Brady M211 printer resolution: 203 DPI
   const DPI = 203;
 
-  // Label dimensions in inches (Standard Continuous Label Width)
-  // We use 1.5" based on visual optimization (reduced from 2.25")
-  const LABEL_WIDTH_INCHES = 1.5;
+  // Label dimensions in inches
+  // Updated to 1.75" based on visual optimization
+  const LABEL_WIDTH_INCHES = 1.75;
   const LABEL_HEIGHT_INCHES = 0.75;
 
   // Convert to pixels
@@ -166,12 +173,17 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
   // Flag-style layout: QR (45%) | GAP (10%) | TEXT (45%)
-  const QR_SECTION_WIDTH = Math.floor(WIDTH * 0.45);
-  const GAP_SECTION_WIDTH = Math.floor(WIDTH * 0.10);
-  const TEXT_SECTION_WIDTH = WIDTH - QR_SECTION_WIDTH - GAP_SECTION_WIDTH;
+  // Symmetrical around the Cut/Center line
+  const QR_SECTION_WIDTH_RATIO = 0.45;
+  const GAP_SECTION_WIDTH_RATIO = 0.10;
+
+  const QR_SECTION_WIDTH = Math.floor(WIDTH * QR_SECTION_WIDTH_RATIO);
+  const GAP_SECTION_WIDTH = Math.floor(WIDTH * GAP_SECTION_WIDTH_RATIO);
 
   // Draw center line in the gap section
   const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
+
+  // Draw the actual printed separator (subtle dashed line)
   ctx.strokeStyle = '#000000';
   ctx.lineWidth = 2;
   ctx.setLineDash([5, 3]);
@@ -181,15 +193,16 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // LEFT SECTION: QR Code
-  // Limit content to 0.75" from center
-  const LIMIT_INCHES_LEFT = 0.75;
-  const LIMIT_PX_LEFT = Math.floor(LIMIT_INCHES_LEFT * DPI);
-
-  // Maximize size within SAFE_HEIGHT
+  // --- LEFT SECTION: QR Code ---
+  // Determine QR Size (based on Safe Height)
   const qrSize = Math.floor(SAFE_HEIGHT * 0.95);
-  // Align Left Edge to -0.75" from center
-  const qrX = centerLineX - LIMIT_PX_LEFT;
+
+  // Place QR code with a specific gap from CenterLine.
+  const GAP_FROM_CENTER_INCHES = 0.1;
+  const GAP_PX = Math.floor(GAP_FROM_CENTER_INCHES * DPI);
+
+  // QR Right Edge should be at (CenterLine - GAP)
+  const qrX = centerLineX - GAP_PX - qrSize;
   const qrY = MARGIN_TOP + Math.floor((SAFE_HEIGHT - qrSize) / 2);
 
   try {
@@ -207,15 +220,12 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
     ctx.fillRect(qrX, qrY, qrSize, qrSize);
   }
 
-  // RIGHT SECTION: Text Information
-  // Move text closer to center line (10px padding)
-  const textStartX = centerLineX + 10;
+  // --- RIGHT SECTION: Text Information ---
+  // Symmetrical Margin: Text should start at (CenterLine + GAP)
+  const textStartX = centerLineX + GAP_PX;
 
-  // Constrain Right Edge to +0.749" from center (User Request)
-  const LIMIT_INCHES_RIGHT = 0.749;
-  const LIMIT_PX_RIGHT = Math.floor(LIMIT_INCHES_RIGHT * DPI);
-
-  const textEndXLimit = centerLineX + LIMIT_PX_RIGHT;
+  // Calculate available width
+  const textEndXLimit = WIDTH - 10; // 10px from right edge
   const textWidth = textEndXLimit - textStartX;
   const textStartY = MARGIN_TOP;
 
@@ -259,8 +269,6 @@ export const generateWireDropLabelBitmap = async (wireDrop) => {
     ctx.fillText(typeLines[i], textStartX, bottomY);
     bottomY -= 18;
   }
-
-  // No border drawn as per request
 
   return await canvasToImage(canvas);
 };

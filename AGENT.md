@@ -811,6 +811,13 @@ const MyComponent = () => {
   // user.id = Microsoft Graph user ID (UUID)
   // user.displayName = "Steve Blansette" (display name from Microsoft)
 
+#### ⚠️ DATABASE RULE: NO Foreign Keys to auth.users!
+Since we use Microsoft (MSAL) User IDs, they are **NOT** present in Supabase's `auth.users` table.
+
+- **❌ NEVER** create a foreign key to `auth.users` (e.g. `references auth.users(id)`)
+- **✅ ALWAYS** just store the UUID as `uuid` (e.g. `created_by uuid`)
+- The app handles the user linking; the database should just store the ID.
+
   const handleAction = async () => {
     // Pass user explicitly to service functions
     await myService.updateSomething(itemId, user.id);

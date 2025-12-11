@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label Margin Adjustment Test</title>
+    <!-- QRCode Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .dimension-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center;
+            background: #e6f3ff;
+            /* Light blue to distinguish from old test */
+            padding: 15px;
+            border-radius: 6px;
+            justify-content: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #444;
+        }
+
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .label-preview-container {
+            position: relative;
+            margin: 20px 0;
+            display: inline-block;
+        }
+
+        .label-preview {
+            border: 1px solid #ccc;
+            display: block;
+            background: white;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            /* Scale up for visibility if needed, but keeping 1:1 for accuracy */
+        }
+
+        /* Visual guide for non-printable area */
+        .guide-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .center-line-guide {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 0;
+            border-left: 1px dashed rgba(0, 0, 255, 0.5);
+        }
+
+        button {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .info {
+            text-align: left;
+            width: 100%;
+            max-width: 600px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #e6fffa;
+            border: 1px solid #b2f5ea;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #234e52;
+        }
+
+        .counter {
+            font-weight: bold;
+            font-size: 18px;
+            color: #4b5563;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>PROPOSED Label Layout (1.75" Width)</h1>
+        <p>Testing symmetrical margins around center line.</p>
+
+        <div class="controls">
+            <div class="dimension-controls">
+                <div class="control-group">
+                    <label for="width">Label Width (in)</label>
+                    <input type="number" id="width" value="1.75" step="0.05" style="padding: 5px; width: 80px;">
+                </div>
+                <div class="control-group">
+                    <label for="height">Label Height (in)</label>
+                    <input type="number" id="height" value="0.75" step="0.05" style="padding: 5px; width: 80px;"
+                        disabled>
+                </div>
+                <button onclick="renderCurrent()">Update Preview</button>
+            </div>
+
+            <div class="nav-controls">
+                <button onclick="prevLabel()" id="prevBtn">← Previous</button>
+                <span class="counter" id="counter">1 / 5</span>
+                <button onclick="nextLabel()" id="nextBtn">Next →</button>
+            </div>
+        </div>
+
+        <div id="output"></div>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const testCases = [
+            {
+                "uid": "LONG-NAME-TEST",
+                "room_name": "Master Bedroom",
+                "drop_name": "Master Bedroom North Wall Speaker Left Channel",
+                "wire_type": "16/2",
+                "drop_type": "Speaker"
+            },
+            {
+                "uid": "PATIOA-S-9557",
+                "room_name": "Patio and Outside",
+                "drop_name": "Patio and Outside Speaker 9",
+                "wire_type": "16/2",
+                "drop_type": "Speaker"
+            },
+            {
+                "uid": "LIVING-IP-3284",
+                "room_name": "Living Room",
+                "drop_name": "IP",
+                "wire_type": "Cat 6e",
+                "drop_type": "IP/Data"
+            },
+            {
+                "uid": "LIVING-L-8871",
+                "room_name": "Living Room",
+                "drop_name": "Living Room Lutron 3",
+                "wire_type": "Lutron Red",
+                "drop_type": "Lutron"
+            },
+            {
+                "uid": "GAMERO-AP-6479",
+                "room_name": "Game Room",
+                "drop_name": "AP",
+                "wire_type": "Cat 6e",
+                "drop_type": "Access Point"
+            }
+        ];
+
+        let currentIndex = 0;
+
+        // --- RENDER LOGIC ---
+
+        const generateWireDropLabelBitmap = async (wireDrop) => {
+            // Brady M211 printer resolution: 203 DPI
+            const DPI = 203;
+
+            // --- USER ADJUSTABLE INPUTS ---
+            const LABEL_WIDTH_INCHES = parseFloat(document.getElementById('width').value);
+            const LABEL_HEIGHT_INCHES = 0.75;
+
+            // Convert to pixels
+            const WIDTH = Math.floor(LABEL_WIDTH_INCHES * DPI);
+            const HEIGHT = Math.floor(LABEL_HEIGHT_INCHES * DPI);
+
+            // Margins
+            const MARGIN_TOP = Math.floor(0.125 * DPI);
+            const MARGIN_BOTTOM = Math.floor(0.05 * DPI);
+
+            // Calculate Safe Printable Area
+            const SAFE_HEIGHT = HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
+
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            // White background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // --- LAYOUT LOGIC ---
+            // Flag-style layout: QR (45%) | GAP (10%) | TEXT (45%)
+            // BUT NOW we are modifying to be symmetrical around the Cut/Center line
+
+            const QR_SECTION_WIDTH_RATIO = 0.45;
+            const GAP_SECTION_WIDTH_RATIO = 0.10;
+
+            const QR_SECTION_WIDTH = Math.floor(WIDTH * QR_SECTION_WIDTH_RATIO);
+            const GAP_SECTION_WIDTH = Math.floor(WIDTH * GAP_SECTION_WIDTH_RATIO);
+
+            // Draw center line in the gap section
+            const centerLineX = QR_SECTION_WIDTH + (GAP_SECTION_WIDTH / 2);
+
+            // Draw Visual Helper for Center Line
+            ctx.strokeStyle = '#0000ff';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(centerLineX, 0);
+            ctx.lineTo(centerLineX, HEIGHT);
+            ctx.stroke();
+
+            // Restore context for content
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]); // solid line for printed separator if we wanted it, but let's stick to the subtle one
+
+            // Draw the actual printed separator (smaller)
+            ctx.setLineDash([5, 3]);
+            ctx.beginPath();
+            ctx.moveTo(centerLineX, MARGIN_TOP);
+            ctx.lineTo(centerLineX, HEIGHT - MARGIN_BOTTOM);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+
+            // --- LEFT SECTION: QR Code ---
+            // We want the QR code to be effectively 'printed' but we need to know its right edge to calculate margin.
+            // Old logic:
+            // const LIMIT_INCHES_LEFT = 0.75;
+            // const qrSize = Math.floor(SAFE_HEIGHT * 0.95);
+            // const qrX = centerLineX - LIMIT_PX_LEFT; <--- This was placing it relative to center line
+
+            // New Logic: 
+            // 1. Determine QR Size (based on Safe Height)
+            const qrSize = Math.floor(SAFE_HEIGHT * 0.95);
+
+            // 2. Place QR code. Let's place it such that its RIGHT edge has a specific margin from CenterLine.
+            // OR keep the absolute positioning logic but measure the resulting gap.
+            // Let's stick to the "LIMIT_INCHES_LEFT" logic if that was "distance from center".
+
+            // Actually, let's just place the QR Code comfortably to the left of the center line.
+            // If the user wants SYMMETRY, we should define a "GAP" from the center line.
+            // Let's say we want 0.1" gap.
+
+            const GAP_FROM_CENTER_INCHES = 0.1; // Adjustable?
+            const GAP_PX = Math.floor(GAP_FROM_CENTER_INCHES * DPI);
+
+            // QR Right Edge should be at (CenterLine - GAP)
+            const qrX = centerLineX - GAP_PX - qrSize;
+            const qrY = MARGIN_TOP + Math.floor((SAFE_HEIGHT - qrSize) / 2);
+
+            try {
+                const qrDataUrl = await QRCode.toDataURL(wireDrop.uid || 'NO-UID', {
+                    width: qrSize,
+                    margin: 0,
+                    errorCorrectionLevel: 'H',
+                    color: { dark: '#000000', light: '#FFFFFF' },
+                });
+                const qrImage = await loadImage(qrDataUrl);
+                ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                ctx.fillStyle = '#FF0000';
+                ctx.fillRect(qrX, qrY, qrSize, qrSize);
+            }
+
+            // --- RIGHT SECTION: Text Information ---
+            // Symmetrical Margin: Text should start at (CenterLine + GAP)
+            // This ensures Margin Left of Center == Margin Right of Center
+
+            const textStartX = centerLineX + GAP_PX;
+
+            // Calculate available width
+            // We need to define where the "Printable Area" ends on the right.
+            // If we assume symmetry around the center of the LABEL ISH?
+            // Or just use the full width?
+            // "I would like this margin to be the same as the margin between the righ side of the QR code and the center line."
+
+            const textEndXLimit = WIDTH - 10; // 10px from right edge?
+            const textWidth = textEndXLimit - textStartX;
+            const textStartY = MARGIN_TOP;
+
+            ctx.fillStyle = '#000000';
+            ctx.textAlign = 'left';
+
+            // 1. Drop Name (Top)
+            ctx.font = 'bold 20px Arial';
+            const mainText = wireDrop.drop_name || 'No Name';
+            const mainLines = wrapText(ctx, mainText, textWidth);
+            let currentY = textStartY + 18;
+
+            mainLines.forEach((line, index) => {
+                if (index < 3) {
+                    ctx.fillText(line, textStartX, currentY);
+                    currentY += 22;
+                }
+            });
+
+            // Bottom Section Calculation (Working Upwards from Bottom)
+            let bottomY = HEIGHT - MARGIN_BOTTOM - 4;
+
+            // 3. Drop ID / UID (Now at the very BOTTOM, Smaller, Non-Bold)
+            ctx.font = '10px Arial';
+            const uidLines = wrapText(ctx, wireDrop.uid || 'NO-UID', textWidth);
+
+            for (let i = uidLines.length - 1; i >= 0; i--) {
+                ctx.fillText(uidLines[i], textStartX, bottomY);
+                bottomY -= 12; // Smaller line height for smaller font
+            }
+
+            // 2. Wire Type / Drop Type (Now ABOVE the UID)
+            bottomY -= 4; // Gap between UID and Type
+            ctx.font = '16px Arial';
+            const wireType = wireDrop.wire_type || 'N/A';
+            const dropType = wireDrop.drop_type || 'N/A';
+            const typeText = `${wireType} / ${dropType}`;
+            const typeLines = wrapText(ctx, typeText, textWidth);
+
+            for (let i = typeLines.length - 1; i >= 0; i--) {
+                ctx.fillText(typeLines[i], textStartX, bottomY);
+                bottomY -= 18;
+            }
+
+            // --- Measurements for Display ---
+            const qrRightEdgeDist = (centerLineX - (qrX + qrSize));
+            const textLeftEdgeDist = (textStartX - centerLineX);
+            const qrRightEdgeDistIn = qrRightEdgeDist / DPI;
+            const textLeftEdgeDistIn = textLeftEdgeDist / DPI;
+
+            // Return data
+            return {
+                dataUrl: canvas.toDataURL(),
+                width: WIDTH,
+                height: HEIGHT,
+                centerLineX: centerLineX,
+                measurements: {
+                    qrGapPx: qrRightEdgeDist.toFixed(1),
+                    qrGapIn: qrRightEdgeDistIn.toFixed(3),
+                    textGapPx: textLeftEdgeDist.toFixed(1),
+                    textGapIn: textLeftEdgeDistIn.toFixed(3),
+                    symmetry: Math.abs(qrRightEdgeDist - textLeftEdgeDist) < 1 ? "PERFECT" : "OFF"
+                }
+            };
+        };
+
+        const loadImage = (dataUrl) => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = dataUrl;
+            });
+        };
+
+        const wrapText = (ctx, text, maxWidth) => {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+
+            words.forEach(word => {
+                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                const metrics = ctx.measureText(testLine);
+
+                if (metrics.width > maxWidth && currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            });
+
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines;
+        };
+
+        // --- UI LOGIC ---
+
+        async function renderCurrent() {
+            const output = document.getElementById('output');
+            const data = testCases[currentIndex];
+            const counter = document.getElementById('counter');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+
+            // Get user width
+            const widthVal = document.getElementById('width').value;
+
+            output.innerHTML = '<div class="card">Generating...</div>';
+
+            try {
+                const result = await generateWireDropLabelBitmap(data);
+
+                output.innerHTML = `
+                    <div class="card">
+                        <div class="label-preview-container">
+                            <img src="${result.dataUrl}" alt="Label" class="label-preview">
+                            <div class="guide-overlay">
+                                <div class="center-line-guide" style="left: ${result.centerLineX}px;"></div>
+                            </div>
+                        </div>
+                        <div class="info">
+                            <h3>Symmetry Check</h3>
+                            <p><strong>QR Right to Center:</strong> ${result.measurements.qrGapPx}px (${result.measurements.qrGapIn}")</p>
+                            <p><strong>Center to Text Left:</strong> ${result.measurements.textGapPx}px (${result.measurements.textGapIn}")</p>
+                            <p><strong>Status:</strong> <span style="font-weight:bold; color:${result.measurements.symmetry === 'PERFECT' ? 'green' : 'red'}">${result.measurements.symmetry}</span></p>
+                            <hr>
+                            <p>Physical Width: ${widthVal}"</p>
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                output.innerHTML = `<div class="card" style="color:red">Error: ${e.message}</div>`;
+                console.error(e);
+            }
+
+            counter.textContent = `${currentIndex + 1} / ${testCases.length}`;
+            prevBtn.disabled = currentIndex === 0;
+            nextBtn.disabled = currentIndex === testCases.length - 1;
+        }
+
+        function nextLabel() {
+            if (currentIndex < testCases.length - 1) {
+                currentIndex++;
+                renderCurrent();
+            }
+        }
+
+        function prevLabel() {
+            if (currentIndex > 0) {
+                currentIndex--;
+                renderCurrent();
+            }
+        }
+
+        window.onload = renderCurrent;
+    </script>
+</body>
+
+</html>
