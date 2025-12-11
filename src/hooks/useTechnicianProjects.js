@@ -137,9 +137,12 @@ export const useTechnicianProjects = (projects, userProjectIds, user) => {
   const displayedProjects = useMemo(() => {
     if (!projects) return [];
     if (!showMyProjects) return projects;
-    if (!userProjectIds?.length) return [];
 
-    const idSet = new Set(userProjectIds);
+    // userProjectIds should be an array of UUIDs
+    const ids = Array.isArray(userProjectIds) ? userProjectIds : [];
+    if (ids.length === 0) return [];
+
+    const idSet = new Set(ids);
     return projects.filter((project) => idSet.has(project.id));
   }, [projects, showMyProjects, userProjectIds]);
 

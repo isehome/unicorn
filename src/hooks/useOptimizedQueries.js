@@ -262,15 +262,24 @@ export const useDashboardData = (userEmail, authContext) => {
   const counts = useQuery({
     queryKey: ['dashboard-counts', userEmail],
     queryFn: async () => {
-      if (!userEmail) return { openIssues: 0, openTodos: 0 };
+      if (!userEmail) return { todos: { open: 0, total: 0 }, issues: { open: 0, blocked: 0 } };
 
-      // We can now use the length of userTodos if available, or fetch counts separately
-      // For now, keeping the count logic but it could be optimized to use userTodos.data.length
       const projectIds = await projectStakeholdersService.getInternalProjectIdsByEmail(userEmail);
 
-      if (!projectIds.length) return { openIssues: 0, openTodos: 0 };
+      if (!projectIds.length) return { todos: { open: 0, total: 0 }, issues: { open: 0, blocked: 0 } };
 
-      const [issuesCount, todosCount] = await Promise.all([
+      const [openTodos, totalTodos, openIssues, blockedIssues] = await Promise.all([
+        supabase
+          .from('project_todos')
+          .select('id', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .eq('is_complete', false)
+          .then(res => res.count || 0),
+        supabase
+          .from('project_todos')
+          .select('id', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .then(res => res.count || 0),
         supabase
           .from('issues')
           .select('id', { count: 'exact', head: true })
@@ -278,13 +287,16 @@ export const useDashboardData = (userEmail, authContext) => {
           .neq('status', 'resolved')
           .then(res => res.count || 0),
         supabase
-          .from('project_todos')
+          .from('issues')
           .select('id', { count: 'exact', head: true })
           .in('project_id', projectIds)
-          .eq('is_complete', false)
+          .eq('status', 'blocked')
           .then(res => res.count || 0)
       ]);
-      return { openIssues: issuesCount, openTodos: todosCount };
+      return {
+        todos: { open: openTodos, total: totalTodos },
+        issues: { open: openIssues, blocked: blockedIssues }
+      };
     },
     enabled: !!userEmail,
     staleTime: 3 * 60 * 1000,

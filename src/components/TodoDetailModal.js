@@ -703,9 +703,9 @@ const TodoDetailModal = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex items-center justify-between flex-shrink-0"
+        <div className="px-4 sm:px-6 py-4 border-t flex-shrink-0"
           style={{ borderColor: styles.card.borderColor }}>
-          <div>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <Button
               variant="danger"
               size="sm"
@@ -714,34 +714,34 @@ const TodoDetailModal = ({
             >
               Delete
             </Button>
-          </div>
 
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onToggleComplete(todo)}
-              disabled={saving}
-            >
-              {todo?.completed ? 'Mark Open' : 'Mark Complete'}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={onClose}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleSave}
-              loading={saving}
-              disabled={saving}
-            >
-              Save Changes
-            </Button>
+            <div className="flex flex-wrap gap-2 justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onToggleComplete(todo)}
+                disabled={saving}
+              >
+                {todo?.completed ? 'Mark Open' : 'Complete'}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onClose}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSave}
+                loading={saving}
+                disabled={saving}
+              >
+                Save
+              </Button>
+            </div>
           </div>
         </div>
       </div>

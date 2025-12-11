@@ -4,8 +4,8 @@ import Button from '../ui/Button';
 
 // Time slot height in pixels
 const HOUR_HEIGHT = 60;
-const START_HOUR = 8;  // 8 AM
-const END_HOUR = 18;   // 6 PM
+const START_HOUR = 6;  // 6 AM
+const END_HOUR = 22;   // 10 PM
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 
 // Importance colors for todos
