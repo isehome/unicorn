@@ -10,11 +10,13 @@
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
-// Lazy-load Notion client to avoid crashes when API key is missing
+// Import at top level so Vercel bundles the dependency
+const { Client } = require('@notionhq/client');
+
+// Lazy-initialize Notion client (only when API key is available)
 let notion = null;
 function getNotionClient() {
   if (!notion && process.env.NOTION_API_KEY) {
-    const { Client } = require('@notionhq/client');
     notion = new Client({ auth: process.env.NOTION_API_KEY });
   }
   return notion;

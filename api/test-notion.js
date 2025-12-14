@@ -5,6 +5,9 @@
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
+// Import at top level so Vercel bundles the dependency
+const { Client } = require('@notionhq/client');
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -14,7 +17,7 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  // Check if API key is configured BEFORE requiring the client
+  // Check if API key is configured
   if (!process.env.NOTION_API_KEY) {
     return res.status(200).json({
       success: false,
@@ -32,8 +35,6 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Only require the client after we know the API key exists
-    const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
     // Try to search for anything - this tests the connection
