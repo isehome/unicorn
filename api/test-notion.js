@@ -1,13 +1,12 @@
 /**
  * Test Notion Connection Endpoint
  *
- * Used to verify that the Notion integration is properly configured.
+ * Uses native fetch() instead of @notionhq/client to avoid Vercel bundling issues.
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
-// Static require to force Vercel to bundle the module
-// (dynamic imports are not traced by Vercel's bundler)
-const { Client } = require('@notionhq/client');
+const NOTION_API_BASE = 'https://api.notion.com/v1';
+const NOTION_VERSION = '2022-06-28';
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -37,18 +36,33 @@ module.exports = async (req, res) => {
     });
   }
 
-  // API key exists - try to use Notion
+  // API key exists - try to use Notion with native fetch
   try {
-    const notion = new Client({ auth: apiKey });
-
-    // Try to search for anything - this tests the connection
-    const response = await notion.search({
-      query: '',
-      page_size: 5
+    const response = await fetch(`${NOTION_API_BASE}/search`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Notion-Version': NOTION_VERSION,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: '',
+        page_size: 5
+      })
     });
 
-    const pageCount = response.results.length;
-    const pageNames = response.results.map(page => {
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw {
+        code: errorData.code || response.status,
+        message: errorData.message || `HTTP ${response.status}: ${response.statusText}`
+      };
+    }
+
+    const data = await response.json();
+    const pageCount = data.results?.length || 0;
+
+    const pageNames = (data.results || []).map(page => {
       const titleProp = page.properties?.Name || page.properties?.title || page.properties?.Title;
       if (titleProp?.title?.[0]?.plain_text) {
         return titleProp.title[0].plain_text;
@@ -70,10 +84,10 @@ module.exports = async (req, res) => {
     console.error('[test-notion] Error:', error);
 
     let hint = 'Check Notion integration settings.';
-    if (error.code === 'unauthorized') {
+    if (error.code === 'unauthorized' || error.code === 401) {
       hint = 'Invalid API key. Generate a new one at notion.so/my-integrations';
-    } else if (error.code === 'MODULE_NOT_FOUND' || error.message?.includes('Cannot find module')) {
-      hint = 'Notion client library not available. This may be a deployment issue.';
+    } else if (error.code === 'restricted_resource') {
+      hint = 'API key is valid but no pages are shared. Share pages with the integration in Notion.';
     }
 
     return res.status(200).json({

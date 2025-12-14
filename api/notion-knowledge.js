@@ -1,6 +1,8 @@
 /**
  * Notion Knowledge Base API
  *
+ * Uses native fetch() instead of @notionhq/client to avoid Vercel bundling issues.
+ *
  * Queries Intelligent Systems' Notion workspace for:
  * - Company procedures/SOPs
  * - Product documentation
@@ -10,18 +12,8 @@
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
-// Static require to force Vercel to bundle the module
-// (dynamic imports are not traced by Vercel's bundler)
-const { Client } = require('@notionhq/client');
-
-// Lazy-initialize Notion client (only when API key is available)
-let notion = null;
-function getNotionClient() {
-  if (!notion && process.env.NOTION_API_KEY) {
-    notion = new Client({ auth: process.env.NOTION_API_KEY });
-  }
-  return notion;
-}
+const NOTION_API_BASE = 'https://api.notion.com/v1';
+const NOTION_VERSION = '2022-06-28';
 
 // Your Notion database IDs (configure in Vercel env vars)
 const DATABASES = {
@@ -30,6 +22,33 @@ const DATABASES = {
   procedures: process.env.NOTION_PROCEDURES_DATABASE_ID,
   troubleshooting: process.env.NOTION_TROUBLESHOOTING_DATABASE_ID
 };
+
+// Helper to make Notion API requests
+async function notionFetch(endpoint, options = {}) {
+  const apiKey = process.env.NOTION_API_KEY;
+  if (!apiKey) {
+    throw new Error('NOTION_API_KEY not configured');
+  }
+
+  const response = await fetch(`${NOTION_API_BASE}${endpoint}`, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Notion-Version': NOTION_VERSION,
+      'Content-Type': 'application/json',
+      ...options.headers
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const error = new Error(errorData.message || `HTTP ${response.status}`);
+    error.code = errorData.code || response.status;
+    throw error;
+  }
+
+  return response.json();
+}
 
 module.exports = async (req, res) => {
   // CORS headers
@@ -60,21 +79,21 @@ module.exports = async (req, res) => {
     switch (action) {
       case 'search':
         return await handleSearch(res, query, category);
-      
+
       case 'get_page':
         return await handleGetPage(res, pageId);
-      
+
       case 'list_category':
         return await handleListCategory(res, category);
-      
+
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
   } catch (error) {
     console.error('[Notion API Error]', error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'Failed to query Notion',
-      details: error.message 
+      details: error.message
     });
   }
 };
@@ -88,22 +107,24 @@ async function handleSearch(res, query, category) {
   }
 
   // Search across all connected pages
-  const client = getNotionClient();
-  const searchResults = await client.search({
-    query: query,
-    filter: {
-      property: 'object',
-      value: 'page'
-    },
-    page_size: 10
+  const searchResults = await notionFetch('/search', {
+    method: 'POST',
+    body: JSON.stringify({
+      query: query,
+      filter: {
+        property: 'object',
+        value: 'page'
+      },
+      page_size: 10
+    })
   });
 
   // Extract and format results
   const results = await Promise.all(
-    searchResults.results.map(async (page) => {
+    (searchResults.results || []).map(async (page) => {
       const title = extractTitle(page);
       const content = await getPagePreview(page.id);
-      
+
       return {
         id: page.id,
         title: title,
@@ -130,8 +151,7 @@ async function handleGetPage(res, pageId) {
     return res.status(400).json({ error: 'Page ID is required' });
   }
 
-  const client = getNotionClient();
-  const page = await client.pages.retrieve({ page_id: pageId });
+  const page = await notionFetch(`/pages/${pageId}`);
   const blocks = await getAllBlocks(pageId);
   const content = blocksToText(blocks);
 
@@ -149,31 +169,34 @@ async function handleGetPage(res, pageId) {
  */
 async function handleListCategory(res, category) {
   const databaseId = DATABASES[category];
-  
+
   if (!databaseId) {
-    const client = getNotionClient();
-    const searchResults = await client.search({
-      query: category,
-      filter: { property: 'object', value: 'page' },
-      page_size: 20
+    const searchResults = await notionFetch('/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        query: category,
+        filter: { property: 'object', value: 'page' },
+        page_size: 20
+      })
     });
-    
-    const results = searchResults.results.map(page => ({
+
+    const results = (searchResults.results || []).map(page => ({
       id: page.id,
       title: extractTitle(page),
       url: page.url
     }));
-    
+
     return res.status(200).json({ success: true, results });
   }
 
-  const client = getNotionClient();
-  const response = await client.databases.query({
-    database_id: databaseId,
-    page_size: 50
+  const response = await notionFetch(`/databases/${databaseId}/query`, {
+    method: 'POST',
+    body: JSON.stringify({
+      page_size: 50
+    })
   });
 
-  const results = response.results.map(page => ({
+  const results = (response.results || []).map(page => ({
     id: page.id,
     title: extractTitle(page),
     properties: extractProperties(page)
@@ -210,15 +233,13 @@ function extractProperties(page) {
 async function getAllBlocks(pageId) {
   const blocks = [];
   let cursor;
-  const client = getNotionClient();
 
   do {
-    const response = await client.blocks.children.list({
-      block_id: pageId,
-      start_cursor: cursor,
-      page_size: 100
-    });
-    blocks.push(...response.results);
+    const params = new URLSearchParams({ page_size: '100' });
+    if (cursor) params.set('start_cursor', cursor);
+
+    const response = await notionFetch(`/blocks/${pageId}/children?${params}`);
+    blocks.push(...(response.results || []));
     cursor = response.has_more ? response.next_cursor : null;
   } while (cursor);
 
@@ -228,12 +249,8 @@ async function getAllBlocks(pageId) {
 // Helper: Get preview (first few blocks)
 async function getPagePreview(pageId) {
   try {
-    const client = getNotionClient();
-    const response = await client.blocks.children.list({
-      block_id: pageId,
-      page_size: 5
-    });
-    return blocksToText(response.results).slice(0, 500);
+    const response = await notionFetch(`/blocks/${pageId}/children?page_size=5`);
+    return blocksToText(response.results || []).slice(0, 500);
   } catch {
     return '';
   }
@@ -244,7 +261,7 @@ function blocksToText(blocks) {
   return blocks.map(block => {
     const type = block.type;
     const content = block[type];
-    
+
     if (content?.rich_text) {
       return content.rich_text.map(t => t.plain_text).join('');
     }
