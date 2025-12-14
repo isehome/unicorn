@@ -10,13 +10,11 @@
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
-// Import at top level so Vercel bundles the dependency
-const { Client } = require('@notionhq/client');
-
 // Lazy-initialize Notion client (only when API key is available)
 let notion = null;
-function getNotionClient() {
+async function getNotionClient() {
   if (!notion && process.env.NOTION_API_KEY) {
+    const { Client } = await import('@notionhq/client');
     notion = new Client({ auth: process.env.NOTION_API_KEY });
   }
   return notion;
@@ -87,7 +85,8 @@ async function handleSearch(res, query, category) {
   }
 
   // Search across all connected pages
-  const searchResults = await getNotionClient().search({
+  const client = await getNotionClient();
+  const searchResults = await client.search({
     query: query,
     filter: {
       property: 'object',
@@ -128,7 +127,8 @@ async function handleGetPage(res, pageId) {
     return res.status(400).json({ error: 'Page ID is required' });
   }
 
-  const page = await getNotionClient().pages.retrieve({ page_id: pageId });
+  const client = await getNotionClient();
+  const page = await client.pages.retrieve({ page_id: pageId });
   const blocks = await getAllBlocks(pageId);
   const content = blocksToText(blocks);
 
@@ -148,7 +148,8 @@ async function handleListCategory(res, category) {
   const databaseId = DATABASES[category];
   
   if (!databaseId) {
-    const searchResults = await getNotionClient().search({
+    const client = await getNotionClient();
+    const searchResults = await client.search({
       query: category,
       filter: { property: 'object', value: 'page' },
       page_size: 20
@@ -163,7 +164,8 @@ async function handleListCategory(res, category) {
     return res.status(200).json({ success: true, results });
   }
 
-  const response = await getNotionClient().databases.query({
+  const client = await getNotionClient();
+  const response = await client.databases.query({
     database_id: databaseId,
     page_size: 50
   });
@@ -205,9 +207,10 @@ function extractProperties(page) {
 async function getAllBlocks(pageId) {
   const blocks = [];
   let cursor;
-  
+  const client = await getNotionClient();
+
   do {
-    const response = await getNotionClient().blocks.children.list({
+    const response = await client.blocks.children.list({
       block_id: pageId,
       start_cursor: cursor,
       page_size: 100
@@ -215,14 +218,15 @@ async function getAllBlocks(pageId) {
     blocks.push(...response.results);
     cursor = response.has_more ? response.next_cursor : null;
   } while (cursor);
-  
+
   return blocks;
 }
 
 // Helper: Get preview (first few blocks)
 async function getPagePreview(pageId) {
   try {
-    const response = await getNotionClient().blocks.children.list({
+    const client = await getNotionClient();
+    const response = await client.blocks.children.list({
       block_id: pageId,
       page_size: 5
     });

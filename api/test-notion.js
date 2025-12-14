@@ -5,9 +5,6 @@
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
-// Import at top level so Vercel bundles the dependency
-const { Client } = require('@notionhq/client');
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -18,7 +15,9 @@ module.exports = async (req, res) => {
   }
 
   // Check if API key is configured
-  if (!process.env.NOTION_API_KEY) {
+  const apiKey = process.env.NOTION_API_KEY;
+
+  if (!apiKey) {
     return res.status(200).json({
       success: false,
       error: 'NOTION_API_KEY not configured',
@@ -34,8 +33,11 @@ module.exports = async (req, res) => {
     });
   }
 
+  // API key exists - try to use Notion
   try {
-    const notion = new Client({ auth: process.env.NOTION_API_KEY });
+    // Dynamic import to avoid bundling issues
+    const { Client } = await import('@notionhq/client');
+    const notion = new Client({ auth: apiKey });
 
     // Try to search for anything - this tests the connection
     const response = await notion.search({
@@ -45,7 +47,6 @@ module.exports = async (req, res) => {
 
     const pageCount = response.results.length;
     const pageNames = response.results.map(page => {
-      // Extract title from page
       const titleProp = page.properties?.Name || page.properties?.title || page.properties?.Title;
       if (titleProp?.title?.[0]?.plain_text) {
         return titleProp.title[0].plain_text;
@@ -60,22 +61,22 @@ module.exports = async (req, res) => {
       pageCount: pageCount,
       samplePages: pageNames.slice(0, 3),
       hint: pageCount === 0
-        ? 'No pages found. Make sure you shared pages with the integration in Notion (click "..." → "Connections" on each page).'
-        : `Found ${pageCount} accessible page(s). The integration can search and read these.`
+        ? 'No pages found. Make sure you shared pages with the integration in Notion.'
+        : `Found ${pageCount} accessible page(s).`
     });
   } catch (error) {
     console.error('[test-notion] Error:', error);
 
     let hint = 'Check Notion integration settings.';
     if (error.code === 'unauthorized') {
-      hint = 'Invalid API key. Generate a new one at https://www.notion.so/my-integrations and update NOTION_API_KEY in Vercel.';
-    } else if (error.code === 'restricted_resource') {
-      hint = 'The integration cannot access any pages. Share pages with it in Notion.';
+      hint = 'Invalid API key. Generate a new one at notion.so/my-integrations';
+    } else if (error.code === 'MODULE_NOT_FOUND' || error.message?.includes('Cannot find module')) {
+      hint = 'Notion client library not available. This may be a deployment issue.';
     }
 
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
-      error: error.message,
+      error: error.message || 'Unknown error',
       code: error.code,
       hint: hint
     });
