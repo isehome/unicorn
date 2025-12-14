@@ -5,8 +5,6 @@
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
-const { Client } = require('@notionhq/client');
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -16,16 +14,26 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  // Check if API key is configured
+  // Check if API key is configured BEFORE requiring the client
   if (!process.env.NOTION_API_KEY) {
-    return res.status(500).json({
+    return res.status(200).json({
       success: false,
       error: 'NOTION_API_KEY not configured',
-      hint: 'Add NOTION_API_KEY to your Vercel environment variables. Get it from https://www.notion.so/my-integrations'
+      hint: 'Add NOTION_API_KEY to your Vercel environment variables. Get it from https://www.notion.so/my-integrations',
+      steps: [
+        '1. Go to https://www.notion.so/my-integrations',
+        '2. Create a new integration called "Unicorn Copilot"',
+        '3. Copy the Internal Integration Secret',
+        '4. Go to Vercel project settings → Environment Variables',
+        '5. Add NOTION_API_KEY with the secret value',
+        '6. Redeploy or wait for next deploy'
+      ]
     });
   }
 
   try {
+    // Only require the client after we know the API key exists
+    const { Client } = require('@notionhq/client');
     const notion = new Client({ auth: process.env.NOTION_API_KEY });
 
     // Try to search for anything - this tests the connection

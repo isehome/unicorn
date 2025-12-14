@@ -1,21 +1,24 @@
 /**
  * Notion Knowledge Base API
- * 
+ *
  * Queries Intelligent Systems' Notion workspace for:
  * - Company procedures/SOPs
  * - Product documentation
  * - Troubleshooting guides
  * - Best practices
- * 
+ *
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
-const { Client } = require('@notionhq/client');
-
-// Initialize Notion client
-const notion = new Client({
-  auth: process.env.NOTION_API_KEY
-});
+// Lazy-load Notion client to avoid crashes when API key is missing
+let notion = null;
+function getNotionClient() {
+  if (!notion && process.env.NOTION_API_KEY) {
+    const { Client } = require('@notionhq/client');
+    notion = new Client({ auth: process.env.NOTION_API_KEY });
+  }
+  return notion;
+}
 
 // Your Notion database IDs (configure in Vercel env vars)
 const DATABASES = {
@@ -30,13 +33,22 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
+
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Check if Notion is configured
+  if (!process.env.NOTION_API_KEY) {
+    return res.status(200).json({
+      success: false,
+      error: 'Notion not configured',
+      message: 'NOTION_API_KEY environment variable is not set'
+    });
   }
 
   try {
@@ -73,7 +85,7 @@ async function handleSearch(res, query, category) {
   }
 
   // Search across all connected pages
-  const searchResults = await notion.search({
+  const searchResults = await getNotionClient().search({
     query: query,
     filter: {
       property: 'object',
@@ -114,7 +126,7 @@ async function handleGetPage(res, pageId) {
     return res.status(400).json({ error: 'Page ID is required' });
   }
 
-  const page = await notion.pages.retrieve({ page_id: pageId });
+  const page = await getNotionClient().pages.retrieve({ page_id: pageId });
   const blocks = await getAllBlocks(pageId);
   const content = blocksToText(blocks);
 
@@ -134,7 +146,7 @@ async function handleListCategory(res, category) {
   const databaseId = DATABASES[category];
   
   if (!databaseId) {
-    const searchResults = await notion.search({
+    const searchResults = await getNotionClient().search({
       query: category,
       filter: { property: 'object', value: 'page' },
       page_size: 20
@@ -149,7 +161,7 @@ async function handleListCategory(res, category) {
     return res.status(200).json({ success: true, results });
   }
 
-  const response = await notion.databases.query({
+  const response = await getNotionClient().databases.query({
     database_id: databaseId,
     page_size: 50
   });
@@ -193,7 +205,7 @@ async function getAllBlocks(pageId) {
   let cursor;
   
   do {
-    const response = await notion.blocks.children.list({
+    const response = await getNotionClient().blocks.children.list({
       block_id: pageId,
       start_cursor: cursor,
       page_size: 100
@@ -208,7 +220,7 @@ async function getAllBlocks(pageId) {
 // Helper: Get preview (first few blocks)
 async function getPagePreview(pageId) {
   try {
-    const response = await notion.blocks.children.list({
+    const response = await getNotionClient().blocks.children.list({
       block_id: pageId,
       page_size: 5
     });
