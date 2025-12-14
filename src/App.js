@@ -20,7 +20,15 @@ import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
 import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
 import { useAgentContext } from './hooks/useAgentContext';
+import { useKnowledgeTools } from './hooks/useKnowledgeTools';
 import './index.css';
+
+// Component to load knowledge tools for the voice copilot
+// Must be rendered inside VoiceCopilotProvider
+function KnowledgeToolsLoader() {
+  useKnowledgeTools();
+  return null;
+}
 
 // Lazy load all route components
 const TechnicianDashboard = lazy(() => import('./components/TechnicianDashboard'));
@@ -416,6 +424,7 @@ function App() {
         <AuthProvider>
           <PrinterProvider>
             <VoiceCopilotProvider>
+              <KnowledgeToolsLoader />
               <PhotoViewerProvider>
                 <Router>
                   <AppRoutes />
