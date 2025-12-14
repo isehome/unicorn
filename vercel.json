@@ -1,5 +1,13 @@
 {
   "version": 2,
+  "functions": {
+    "api/notion-knowledge.js": {
+      "includeFiles": "node_modules/@notionhq/**"
+    },
+    "api/test-notion.js": {
+      "includeFiles": "node_modules/@notionhq/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
