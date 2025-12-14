@@ -10,11 +10,14 @@
  * Used by the Gemini Voice Copilot to answer technician questions.
  */
 
+// Static require to force Vercel to bundle the module
+// (dynamic imports are not traced by Vercel's bundler)
+const { Client } = require('@notionhq/client');
+
 // Lazy-initialize Notion client (only when API key is available)
 let notion = null;
-async function getNotionClient() {
+function getNotionClient() {
   if (!notion && process.env.NOTION_API_KEY) {
-    const { Client } = await import('@notionhq/client');
     notion = new Client({ auth: process.env.NOTION_API_KEY });
   }
   return notion;
@@ -85,7 +88,7 @@ async function handleSearch(res, query, category) {
   }
 
   // Search across all connected pages
-  const client = await getNotionClient();
+  const client = getNotionClient();
   const searchResults = await client.search({
     query: query,
     filter: {
@@ -127,7 +130,7 @@ async function handleGetPage(res, pageId) {
     return res.status(400).json({ error: 'Page ID is required' });
   }
 
-  const client = await getNotionClient();
+  const client = getNotionClient();
   const page = await client.pages.retrieve({ page_id: pageId });
   const blocks = await getAllBlocks(pageId);
   const content = blocksToText(blocks);
@@ -148,7 +151,7 @@ async function handleListCategory(res, category) {
   const databaseId = DATABASES[category];
   
   if (!databaseId) {
-    const client = await getNotionClient();
+    const client = getNotionClient();
     const searchResults = await client.search({
       query: category,
       filter: { property: 'object', value: 'page' },
@@ -164,7 +167,7 @@ async function handleListCategory(res, category) {
     return res.status(200).json({ success: true, results });
   }
 
-  const client = await getNotionClient();
+  const client = getNotionClient();
   const response = await client.databases.query({
     database_id: databaseId,
     page_size: 50
@@ -207,7 +210,7 @@ function extractProperties(page) {
 async function getAllBlocks(pageId) {
   const blocks = [];
   let cursor;
-  const client = await getNotionClient();
+  const client = getNotionClient();
 
   do {
     const response = await client.blocks.children.list({
@@ -225,7 +228,7 @@ async function getAllBlocks(pageId) {
 // Helper: Get preview (first few blocks)
 async function getPagePreview(pageId) {
   try {
-    const client = await getNotionClient();
+    const client = getNotionClient();
     const response = await client.blocks.children.list({
       block_id: pageId,
       page_size: 5

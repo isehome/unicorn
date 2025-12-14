@@ -5,6 +5,10 @@
  * Visit: https://your-app.vercel.app/api/test-notion
  */
 
+// Static require to force Vercel to bundle the module
+// (dynamic imports are not traced by Vercel's bundler)
+const { Client } = require('@notionhq/client');
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -35,8 +39,6 @@ module.exports = async (req, res) => {
 
   // API key exists - try to use Notion
   try {
-    // Dynamic import to avoid bundling issues
-    const { Client } = await import('@notionhq/client');
     const notion = new Client({ auth: apiKey });
 
     // Try to search for anything - this tests the connection
