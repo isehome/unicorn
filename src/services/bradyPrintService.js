@@ -4,6 +4,10 @@ let bradySdk = null;
 let isInitialized = false;
 let printerStatusCallback = null;
 
+// Print queue management to prevent concurrent print jobs
+let printQueue = [];
+let isPrinting = false;
+
 /**
  * Initialize Brady SDK
  * @param {Function} callback - Called when printer status updates
@@ -104,7 +108,75 @@ export const disconnectPrinter = async () => {
 };
 
 /**
- * Print a label bitmap
+ * Internal function to execute the actual print job
+ */
+const executePrintJob = async (bitmap, copies, cutAfterPrint) => {
+  console.log('[BradySDK] Executing print job...', {
+    bitmapType: bitmap?.constructor?.name,
+    bitmapSrc: bitmap?.src?.substring(0, 50),
+    width: bitmap?.width,
+    height: bitmap?.height,
+    copies,
+    cutAfterPrint
+  });
+
+  // Ensure the image is fully loaded
+  if (bitmap instanceof HTMLImageElement && !bitmap.complete) {
+    console.log('[BradySDK] Waiting for image to load...');
+    await new Promise((resolve, reject) => {
+      bitmap.onload = resolve;
+      bitmap.onerror = reject;
+    });
+  }
+
+  // Set number of copies
+  bradySdk.setCopies(copies);
+  console.log('[BradySDK] Set copies to:', copies);
+
+  // Set cut option (1 = cut after each label, 0 = cut at end of job, 2 = never cut)
+  bradySdk.setCutOption(cutAfterPrint ? 1 : 0);
+  console.log('[BradySDK] Set cut option to:', cutAfterPrint ? 1 : 0);
+
+  // Print the bitmap (no offset needed for centered printing)
+  console.log('[BradySDK] Calling printBitmap...');
+  const success = await bradySdk.printBitmap(bitmap);
+  console.log('[BradySDK] Print result:', success);
+
+  if (!success) {
+    throw new Error('Print job failed - SDK returned false');
+  }
+
+  return true;
+};
+
+/**
+ * Process the print queue sequentially
+ */
+const processQueue = async () => {
+  if (isPrinting || printQueue.length === 0) {
+    return;
+  }
+
+  isPrinting = true;
+  const job = printQueue.shift();
+
+  try {
+    const result = await executePrintJob(job.bitmap, job.copies, job.cutAfterPrint);
+    job.resolve(result);
+  } catch (error) {
+    job.reject(error);
+  } finally {
+    isPrinting = false;
+    // Process next job in queue
+    if (printQueue.length > 0) {
+      // Small delay between jobs to let the printer settle
+      setTimeout(() => processQueue(), 500);
+    }
+  }
+};
+
+/**
+ * Print a label bitmap (queued to prevent concurrent job conflicts)
  * @param {HTMLImageElement} bitmap - Image element to print
  * @param {number} copies - Number of copies (default: 1)
  * @param {boolean} cutAfterPrint - Cut after printing (default: true)
@@ -118,47 +190,21 @@ export const printLabel = async (bitmap, copies = 1, cutAfterPrint = true) => {
     throw new Error('Printer not connected. Please connect to a printer first.');
   }
 
-  try {
-    console.log('[BradySDK] Printing label...', {
-      bitmapType: bitmap?.constructor?.name,
-      bitmapSrc: bitmap?.src?.substring(0, 50),
-      width: bitmap?.width,
-      height: bitmap?.height,
+  console.log('[BradySDK] Queueing print job... Queue length:', printQueue.length, 'Currently printing:', isPrinting);
+
+  return new Promise((resolve, reject) => {
+    // Add job to queue
+    printQueue.push({
+      bitmap,
       copies,
-      cutAfterPrint
+      cutAfterPrint,
+      resolve,
+      reject
     });
 
-    // Ensure the image is fully loaded
-    if (bitmap instanceof HTMLImageElement && !bitmap.complete) {
-      console.log('[BradySDK] Waiting for image to load...');
-      await new Promise((resolve, reject) => {
-        bitmap.onload = resolve;
-        bitmap.onerror = reject;
-      });
-    }
-
-    // Set number of copies
-    bradySdk.setCopies(copies);
-    console.log('[BradySDK] Set copies to:', copies);
-
-    // Set cut option (1 = cut after each label, 0 = cut at end of job, 2 = never cut)
-    bradySdk.setCutOption(cutAfterPrint ? 1 : 0);
-    console.log('[BradySDK] Set cut option to:', cutAfterPrint ? 1 : 0);
-
-    // Print the bitmap (no offset needed for centered printing)
-    console.log('[BradySDK] Calling printBitmap...');
-    const success = await bradySdk.printBitmap(bitmap);
-    console.log('[BradySDK] Print result:', success);
-
-    if (!success) {
-      throw new Error('Print job failed - SDK returned false');
-    }
-
-    return true;
-  } catch (error) {
-    console.error('[BradySDK] Error printing label:', error);
-    throw new Error(`Print failed: ${error.message || error}`);
-  }
+    // Start processing if not already running
+    processQueue();
+  });
 };
 
 /**
@@ -194,6 +240,29 @@ export const getPrinterStatus = () => {
   };
 };
 
+/**
+ * Get print queue status
+ */
+export const getQueueStatus = () => {
+  return {
+    queueLength: printQueue.length,
+    isPrinting
+  };
+};
+
+/**
+ * Clear the print queue (use with caution - pending jobs will be cancelled)
+ */
+export const clearQueue = () => {
+  const cancelledCount = printQueue.length;
+  printQueue.forEach(job => {
+    job.reject(new Error('Print queue cleared'));
+  });
+  printQueue = [];
+  console.log(`[BradySDK] Cleared ${cancelledCount} jobs from queue`);
+  return cancelledCount;
+};
+
 export default {
   initializeBradySdk,
   isSupportedBrowser,
@@ -203,4 +272,6 @@ export default {
   printLabel,
   feedLabel,
   getPrinterStatus,
+  getQueueStatus,
+  clearQueue,
 };

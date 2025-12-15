@@ -38,6 +38,7 @@ const PMProjectView = lazy(() => import('./components/PMProjectView'));
 const PMIssuesPage = lazy(() => import('./components/PMIssuesPage'));
 const IssueDetail = lazy(() => import('./components/IssueDetail'));
 const PeopleManagement = lazy(() => import('./components/PeopleManagement'));
+const ContactDetailPage = lazy(() => import('./components/ContactDetailPage'));
 const WireDropsList = lazy(() => import('./components/WireDropsList'));
 const WireDropNew = lazy(() => import('./components/WireDropNew'));
 const WireDropDetail = lazy(() => import('./components/WireDropDetail'));
@@ -170,6 +171,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <PeopleManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/contacts/:contactId"
+                element={
+                  <ProtectedRoute>
+                    <ContactDetailPage />
                   </ProtectedRoute>
                 }
               />

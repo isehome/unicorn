@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
-import { Plus, Trash2, User, Building, Loader, Search, X } from 'lucide-react';
+import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight } from 'lucide-react';
 
 const PeopleManagement = () => {
+  const navigate = useNavigate();
   const { theme, mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
@@ -247,13 +249,18 @@ const PeopleManagement = () => {
                 return (
                   <div
                     key={person.id}
-                    className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 hover:shadow-md transition-all"
+                    onClick={() => navigate(`/contacts/${person.id}`)}
+                    className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4 hover:shadow-md hover:border-violet-300 dark:hover:border-violet-600 transition-all cursor-pointer"
                   >
                     <div className="flex items-start gap-4">
                       <button
-                        onClick={() => handleEdit(person)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(person);
+                        }}
                         className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
                         style={{ backgroundColor: person.is_internal ? `${palette.accent}20` : `${palette.success}20` }}
+                        title="Quick edit contact"
                       >
                         <User className="w-8 h-8" style={{ color: person.is_internal ? palette.accent : palette.success }} />
                       </button>
@@ -269,6 +276,7 @@ const PeopleManagement = () => {
                             <div>
                               <a
                                 href={`mailto:${person.email}`}
+                                onClick={(e) => e.stopPropagation()}
                                 className="inline text-sm text-violet-600 dark:text-violet-400 hover:underline"
                               >
                                 {person.email}
@@ -279,6 +287,7 @@ const PeopleManagement = () => {
                             <div>
                               <a
                                 href={`tel:${person.phone}`}
+                                onClick={(e) => e.stopPropagation()}
                                 className="inline text-sm text-violet-600 dark:text-violet-400 hover:underline"
                               >
                                 {person.phone}
@@ -297,6 +306,7 @@ const PeopleManagement = () => {
                                 href={getMapUrl(displayAddress)}
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
                                 className="inline text-sm text-violet-600 dark:text-violet-400 hover:underline"
                               >
                                 {displayAddress}
@@ -305,6 +315,7 @@ const PeopleManagement = () => {
                           )}
                         </div>
                       </div>
+                      <ChevronRight className="w-5 h-5 text-zinc-400 flex-shrink-0 self-center" />
                     </div>
                   </div>
                 );

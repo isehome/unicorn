@@ -42,7 +42,8 @@ import {
   ChevronDown,
   ChevronRight,
   QrCode,
-  Search as SearchIcon
+  Search as SearchIcon,
+  Blinds
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -79,6 +80,13 @@ const WireDropDetail = () => {
   const [primaryRoomEquipmentId, setPrimaryRoomEquipmentId] = useState(null);
   const [showAllRooms, setShowAllRooms] = useState(false);
   const [showAllHeadEquipment, setShowAllHeadEquipment] = useState(false);
+
+  // Shade states
+  const [projectShades, setProjectShades] = useState([]);
+  const [linkedShadeId, setLinkedShadeId] = useState(null);
+  const [showShadeDropdown, setShowShadeDropdown] = useState(false);
+  const [shadeSearch, setShadeSearch] = useState('');
+  const [savingShade, setSavingShade] = useState(false);
 
   // Equipment dropdown states
   const [showRoomEquipmentDropdown, setShowRoomEquipmentDropdown] = useState(false);
@@ -336,6 +344,30 @@ const WireDropDetail = () => {
     }
   }, []);
 
+  // Load project shades for shade linking
+  const loadProjectShades = useCallback(async (projectId) => {
+    if (!projectId) return;
+    try {
+      const shades = await wireDropService.getProjectShades(projectId);
+      setProjectShades(shades || []);
+    } catch (err) {
+      console.error('Failed to load project shades:', err);
+    }
+  }, []);
+
+  // Load linked shade for this wire drop
+  const loadLinkedShade = useCallback(async () => {
+    if (!id) return;
+    try {
+      const links = await wireDropService.getWireDropShades(id);
+      // For room_end, we expect at most 1 shade
+      const roomEndLink = links.find(l => l.link_side === 'room_end' || !l.link_side);
+      setLinkedShadeId(roomEndLink?.project_shade?.id || null);
+    } catch (err) {
+      console.error('Failed to load linked shade:', err);
+    }
+  }, [id]);
+
   const loadWireDrop = useCallback(async () => {
     try {
       setLoading(true);
@@ -436,10 +468,12 @@ const WireDropDetail = () => {
       loadProjectEquipmentOptions(wireDrop.project_id);
       loadSwitches(wireDrop.project_id);
       loadProjectRooms(wireDrop.project_id);
+      loadProjectShades(wireDrop.project_id);
+      loadLinkedShade();
       loadAssociatedIssues();
       loadAvailableIssues();
     }
-  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms]);
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms, loadProjectShades, loadLinkedShade]);
 
   useEffect(() => {
     if (!activeViewerPhoto) {
@@ -1775,6 +1809,106 @@ const WireDropDetail = () => {
                           icon={Monitor}
                         >
                           Add Equipment
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Shade Section */}
+                {!editing && showQrCard && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                        Linked Shade
+                      </h4>
+                    </div>
+
+                    {linkedShadeId ? (
+                      (() => {
+                        const shade = projectShades.find(s => s.id === linkedShadeId);
+                        if (!shade) return null;
+                        return (
+                          <div
+                            className="rounded-xl border p-4"
+                            style={{
+                              ...styles.mutedCard,
+                              borderColor: mode === 'dark' ? '#F59E0B' : '#FBBF24',
+                              borderWidth: 2
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <button
+                                  onClick={() => navigate(`/projects/${wireDrop.project_id}/shades/${shade.id}`)}
+                                  className="font-semibold text-base mb-1 text-left hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+                                  style={styles.textPrimary}
+                                  title="View Shade Details"
+                                >
+                                  {shade.name}
+                                </button>
+                                {shade.technology && (
+                                  <p className="text-sm mb-1" style={styles.textSecondary}>
+                                    {shade.technology}
+                                  </p>
+                                )}
+                                {(shade.quoted_width || shade.quoted_height) && (
+                                  <p className="text-xs" style={styles.subtleText}>
+                                    {shade.quoted_width}" × {shade.quoted_height}"
+                                  </p>
+                                )}
+                                {shade.room?.name && (
+                                  <p className="text-xs mt-1" style={styles.subtleText}>
+                                    <span className="inline-flex items-center gap-1">
+                                      <Blinds size={12} />
+                                      {shade.room.name}
+                                    </span>
+                                  </p>
+                                )}
+
+                                {/* Status indicators */}
+                                <div className="mt-2 pt-2 border-t flex flex-wrap gap-2" style={{ borderColor: styles.card.borderColor }}>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${shade.ordered ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
+                                    {shade.ordered ? 'Ordered' : 'Not Ordered'}
+                                  </span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${shade.received ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
+                                    {shade.received ? 'Received' : 'Not Received'}
+                                  </span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${shade.installed ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
+                                    {shade.installed ? 'Installed' : 'Not Installed'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Change Shade Button */}
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setShowShadeDropdown(true)}
+                                icon={Edit}
+                              >
+                                Change
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div
+                        className="rounded-xl border p-4 text-center"
+                        style={styles.mutedCard}
+                      >
+                        <Blinds size={24} className="mx-auto mb-2 opacity-30" style={styles.subtleText} />
+                        <p className="text-sm mb-3" style={styles.subtleText}>
+                          No shade linked
+                        </p>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => setShowShadeDropdown(true)}
+                          icon={Blinds}
+                        >
+                          Add Shade
                         </Button>
                       </div>
                     )}
@@ -3121,6 +3255,232 @@ const WireDropDetail = () => {
                               Hide Other Rooms
                             </button>
                           </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Shade Selection Modal */}
+        {showShadeDropdown && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div
+              className="rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+              style={styles.card}
+            >
+              {/* Header */}
+              <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: styles.card.borderColor }}>
+                <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                  Select Shade
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowShadeDropdown(false);
+                    setShadeSearch('');
+                  }}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="p-4 border-b" style={{ borderColor: styles.card.borderColor }}>
+                <div className="relative">
+                  <SearchIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search shades..."
+                    value={shadeSearch}
+                    onChange={(e) => setShadeSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+                    style={styles.input}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Shade List */}
+              <div className="flex-1 overflow-y-auto">
+                {(() => {
+                  const searchLower = shadeSearch.toLowerCase().trim();
+                  const dropRoomName = wireDrop?.room_name?.toLowerCase().trim() || '';
+
+                  // Filter and sort shades - same room first
+                  const filteredShades = projectShades
+                    .filter(shade =>
+                      !searchLower ||
+                      shade.name?.toLowerCase().includes(searchLower) ||
+                      shade.technology?.toLowerCase().includes(searchLower) ||
+                      shade.room?.name?.toLowerCase().includes(searchLower)
+                    )
+                    .sort((a, b) => {
+                      // Same room shades first
+                      const aInRoom = a.room?.name?.toLowerCase().trim() === dropRoomName;
+                      const bInRoom = b.room?.name?.toLowerCase().trim() === dropRoomName;
+                      if (aInRoom && !bInRoom) return -1;
+                      if (!aInRoom && bInRoom) return 1;
+                      return (a.name || '').localeCompare(b.name || '');
+                    });
+
+                  const sameRoomShades = filteredShades.filter(s => s.room?.name?.toLowerCase().trim() === dropRoomName);
+                  const otherRoomShades = filteredShades.filter(s => s.room?.name?.toLowerCase().trim() !== dropRoomName);
+
+                  if (filteredShades.length === 0) {
+                    return (
+                      <div className="p-6 text-center">
+                        <Blinds size={32} className="mx-auto mb-2 opacity-30" style={styles.subtleText} />
+                        <p className="text-sm" style={styles.subtleText}>
+                          {searchLower ? 'No matching shades found' : 'No shades in this project'}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {/* Same Room Shades */}
+                      {sameRoomShades.length > 0 && (
+                        <div className="p-3">
+                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                            {wireDrop?.room_name || 'This Room'}
+                          </div>
+                          {sameRoomShades.map(shade => (
+                            <button
+                              key={shade.id}
+                              onClick={async () => {
+                                setSavingShade(true);
+                                try {
+                                  await wireDropService.updateShadeLinks(id, 'room_end', [shade.id], user?.id);
+                                  setLinkedShadeId(shade.id);
+                                  setShowShadeDropdown(false);
+                                  setShadeSearch('');
+                                } catch (err) {
+                                  console.error('[Shade] Failed to link shade:', err);
+                                  alert(`Failed to link shade: ${err.message}`);
+                                } finally {
+                                  setSavingShade(false);
+                                }
+                              }}
+                              disabled={savingShade}
+                              className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
+                                linkedShadeId === shade.id
+                                  ? 'bg-amber-100 dark:bg-amber-900/30 border-2 border-amber-400'
+                                  : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                    {shade.name}
+                                  </div>
+                                  {shade.technology && (
+                                    <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                      {shade.technology}
+                                    </div>
+                                  )}
+                                  {(shade.quoted_width || shade.quoted_height) && (
+                                    <div className="text-[10px] mt-0.5" style={styles.subtleText}>
+                                      {shade.quoted_width}" × {shade.quoted_height}"
+                                    </div>
+                                  )}
+                                </div>
+                                {linkedShadeId === shade.id && (
+                                  <CheckCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Other Room Shades */}
+                      {otherRoomShades.length > 0 && (
+                        <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                            Other Rooms
+                          </div>
+                          {otherRoomShades.map(shade => (
+                            <button
+                              key={shade.id}
+                              onClick={async () => {
+                                setSavingShade(true);
+                                try {
+                                  await wireDropService.updateShadeLinks(id, 'room_end', [shade.id], user?.id);
+                                  setLinkedShadeId(shade.id);
+                                  setShowShadeDropdown(false);
+                                  setShadeSearch('');
+                                } catch (err) {
+                                  console.error('[Shade] Failed to link shade:', err);
+                                  alert(`Failed to link shade: ${err.message}`);
+                                } finally {
+                                  setSavingShade(false);
+                                }
+                              }}
+                              disabled={savingShade}
+                              className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${
+                                linkedShadeId === shade.id
+                                  ? 'bg-amber-100 dark:bg-amber-900/30 border-2 border-amber-400'
+                                  : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                    {shade.name}
+                                  </div>
+                                  {shade.room?.name && (
+                                    <div className="text-xs truncate mt-0.5 text-amber-600 dark:text-amber-400">
+                                      {shade.room.name}
+                                    </div>
+                                  )}
+                                  {shade.technology && (
+                                    <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                      {shade.technology}
+                                    </div>
+                                  )}
+                                </div>
+                                {linkedShadeId === shade.id && (
+                                  <CheckCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Remove Shade Link Button */}
+                      {linkedShadeId && (
+                        <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Remove this shade link?')) return;
+                              setSavingShade(true);
+                              try {
+                                await wireDropService.updateShadeLinks(id, 'room_end', [], user?.id);
+                                setLinkedShadeId(null);
+                                setShowShadeDropdown(false);
+                                setShadeSearch('');
+                              } catch (err) {
+                                console.error('[Shade] Failed to remove shade:', err);
+                                alert(`Failed to remove shade: ${err.message}`);
+                              } finally {
+                                setSavingShade(false);
+                              }
+                            }}
+                            disabled={savingShade}
+                            className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10"
+                          >
+                            <Trash2 size={16} />
+                            Remove Shade Link
+                          </button>
                         </div>
                       )}
                     </>

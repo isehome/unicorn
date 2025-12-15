@@ -1001,6 +1001,223 @@ class WireDropService {
     }
   }
 
+  // =========================================================================
+  // SHADE LINKING METHODS
+  // =========================================================================
+
+  /**
+   * Get shades linked to a wire drop
+   * @param {string} wireDropId - Wire drop UUID
+   * @returns {Promise<Array>} Array of linked shades
+   */
+  async getWireDropShades(wireDropId) {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drop_shade_links')
+        .select(`
+          id,
+          link_side,
+          sort_order,
+          project_shade:project_shade_id (
+            id,
+            name,
+            room_id,
+            technology,
+            quoted_width,
+            quoted_height,
+            ordered,
+            received,
+            installed,
+            room:project_rooms(id, name)
+          )
+        `)
+        .eq('wire_drop_id', wireDropId)
+        .order('sort_order');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('[wireDropService] Failed to get wire drop shades:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available shades for a project (for linking to wire drops)
+   * @param {string} projectId - Project UUID
+   * @returns {Promise<Array>} Array of project shades
+   */
+  async getProjectShades(projectId) {
+    try {
+      const { data, error } = await supabase
+        .from('project_shades')
+        .select(`
+          id,
+          name,
+          room_id,
+          technology,
+          quoted_width,
+          quoted_height,
+          ordered,
+          received,
+          installed,
+          room:project_rooms(id, name)
+        `)
+        .eq('project_id', projectId)
+        .order('name');
+
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('[wireDropService] Failed to get project shades:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update shade links for a wire drop
+   * @param {string} wireDropId - Wire drop UUID
+   * @param {string} linkSide - 'room_end' or 'head_end'
+   * @param {string[]} shadeIds - Array of shade UUIDs to link
+   * @param {string} userId - Current user UUID
+   */
+  async updateShadeLinks(wireDropId, linkSide, shadeIds = [], userId = null) {
+    try {
+      console.log('[wireDropService] updateShadeLinks called:', {
+        wireDropId,
+        linkSide,
+        shadeIds
+      });
+
+      // Get previously linked shade IDs
+      const { data: previousLinks } = await supabase
+        .from('wire_drop_shade_links')
+        .select('project_shade_id')
+        .eq('wire_drop_id', wireDropId)
+        .eq('link_side', linkSide);
+
+      const previousShadeIds = (previousLinks || []).map(l => l.project_shade_id);
+
+      // Delete existing links for this side
+      const { error: deleteError } = await supabase
+        .from('wire_drop_shade_links')
+        .delete()
+        .eq('wire_drop_id', wireDropId)
+        .eq('link_side', linkSide);
+
+      if (deleteError) throw deleteError;
+
+      // Insert new links
+      if (shadeIds && shadeIds.length > 0) {
+        const linksToInsert = shadeIds.map((shadeId, index) => ({
+          wire_drop_id: wireDropId,
+          project_shade_id: shadeId,
+          link_side: linkSide,
+          sort_order: index,
+          created_by: userId
+        }));
+
+        const { error: insertError } = await supabase
+          .from('wire_drop_shade_links')
+          .insert(linksToInsert);
+
+        if (insertError) throw insertError;
+      }
+
+      // Mark newly linked shades as installed if trim_out is complete
+      if (shadeIds && shadeIds.length > 0) {
+        const newlyLinked = shadeIds.filter(id => !previousShadeIds.includes(id));
+        if (newlyLinked.length > 0) {
+          const { data: trimStage } = await supabase
+            .from('wire_drop_stages')
+            .select('completed')
+            .eq('wire_drop_id', wireDropId)
+            .eq('stage_type', 'trim_out')
+            .single();
+
+          if (trimStage?.completed) {
+            console.log(`[wireDropService] Trim complete - marking ${newlyLinked.length} shade(s) as installed`);
+            await this.markShadesInstalled(newlyLinked, true, userId);
+          }
+        }
+      }
+
+      // Unmark unlinked shades if they have no other wire drop links
+      const unlinkedIds = previousShadeIds.filter(id => !shadeIds.includes(id));
+      if (unlinkedIds.length > 0) {
+        await this.checkAndUnmarkShades(unlinkedIds);
+      }
+
+      console.log('[wireDropService] updateShadeLinks completed successfully');
+      return true;
+    } catch (error) {
+      console.error('[wireDropService] Failed to update shade links:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark shades as installed or not installed
+   * @param {string[]} shadeIds - Array of shade UUIDs
+   * @param {boolean} installed - Whether to mark as installed
+   * @param {string} userId - Current user UUID
+   */
+  async markShadesInstalled(shadeIds, installed = true, userId = null) {
+    if (!shadeIds || shadeIds.length === 0) return;
+
+    try {
+      const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
+
+      const updates = {
+        installed,
+        installed_at: installed ? new Date().toISOString() : null,
+        installed_by: installed ? validUserId : null
+      };
+
+      const { error } = await supabase
+        .from('project_shades')
+        .update(updates)
+        .in('id', shadeIds);
+
+      if (error) throw error;
+      console.log(`[wireDropService] Marked ${shadeIds.length} shade(s) as installed=${installed}`);
+    } catch (error) {
+      console.error('[wireDropService] markShadesInstalled error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if unlinked shades have any other wire drop connections
+   * If not, unmark them as installed
+   * @param {string[]} shadeIds - Array of shade UUIDs to check
+   */
+  async checkAndUnmarkShades(shadeIds) {
+    if (!shadeIds || shadeIds.length === 0) return;
+
+    try {
+      for (const shadeId of shadeIds) {
+        const { data: remainingLinks, error } = await supabase
+          .from('wire_drop_shade_links')
+          .select('id')
+          .eq('project_shade_id', shadeId)
+          .limit(1);
+
+        if (error) {
+          console.warn(`[wireDropService] Error checking shade links for ${shadeId}:`, error);
+          continue;
+        }
+
+        if (!remainingLinks || remainingLinks.length === 0) {
+          console.log(`[wireDropService] Shade ${shadeId} has no more wire drop links, unmarking as installed`);
+          await this.markShadesInstalled([shadeId], false, null);
+        }
+      }
+    } catch (error) {
+      console.error('[wireDropService] checkAndUnmarkShades error:', error);
+    }
+  }
+
   /**
    * Check if unlinked equipment has any other wire drop connections
    * If not, unmark them as installed

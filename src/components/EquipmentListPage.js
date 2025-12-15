@@ -3,10 +3,11 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2 } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
+import { secureDataService } from '../services/equipmentService';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -399,6 +400,318 @@ const RoomReassignModal = ({ isOpen, onClose, equipment, rooms, currentRoomId, o
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+// Equipment Credentials Section - Inline expandable credentials for equipment
+const EquipmentCredentialsSection = ({ equipmentId, projectId, mode, user }) => {
+  const [credentials, setCredentials] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [visiblePasswords, setVisiblePasswords] = useState({});
+  const [copiedField, setCopiedField] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    data_type: 'credentials',
+    username: '',
+    password: '',
+    url: '',
+    notes: ''
+  });
+
+  const loadCredentials = useCallback(async () => {
+    if (!equipmentId) return;
+    setLoading(true);
+    try {
+      const data = await secureDataService.getForProjectEquipment(equipmentId);
+      setCredentials(data || []);
+    } catch (error) {
+      console.error('Failed to load equipment credentials:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [equipmentId]);
+
+  useEffect(() => {
+    loadCredentials();
+  }, [loadCredentials]);
+
+  const handleCopy = async (text, fieldId) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const togglePasswordVisibility = (id) => {
+    setVisiblePasswords(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formData.name.trim()) return;
+
+    try {
+      if (editingId) {
+        await secureDataService.update(editingId, formData);
+      } else {
+        await secureDataService.createForProjectEquipment(projectId, equipmentId, formData, user?.id);
+      }
+      await loadCredentials();
+      setShowAddForm(false);
+      setEditingId(null);
+      setFormData({ name: '', data_type: 'credentials', username: '', password: '', url: '', notes: '' });
+    } catch (error) {
+      console.error('Failed to save credential:', error);
+      alert(error.message || 'Failed to save credential');
+    }
+  };
+
+  const handleEdit = (cred) => {
+    setFormData({
+      name: cred.name || '',
+      data_type: cred.data_type || 'credentials',
+      username: cred.username || '',
+      password: cred.password || '',
+      url: cred.url || '',
+      notes: cred.notes || ''
+    });
+    setEditingId(cred.id);
+    setShowAddForm(true);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this credential?')) return;
+    try {
+      await secureDataService.delete(id);
+      await loadCredentials();
+    } catch (error) {
+      console.error('Failed to delete credential:', error);
+    }
+  };
+
+  const handleCancel = () => {
+    setShowAddForm(false);
+    setEditingId(null);
+    setFormData({ name: '', data_type: 'credentials', username: '', password: '', url: '', notes: '' });
+  };
+
+  if (loading) {
+    return (
+      <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Key size={14} className="animate-pulse" />
+          <span>Loading credentials...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pt-3 border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Key size={14} className="text-amber-500" />
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+            Credentials ({credentials.length})
+          </span>
+        </div>
+        {!showAddForm && (
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 dark:text-violet-400"
+          >
+            <Plus size={14} />
+            Add
+          </button>
+        )}
+      </div>
+
+      {/* Credentials List */}
+      {credentials.length > 0 && !showAddForm && (
+        <div className="space-y-2">
+          {credentials.map(cred => (
+            <div
+              key={cred.id}
+              className="p-3 rounded-lg text-xs"
+              style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#F9FAFB' }}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{cred.name}</p>
+                  <p className="text-gray-500 dark:text-gray-400 capitalize">{cred.data_type}</p>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => handleEdit(cred)}
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
+                    title="Edit"
+                  >
+                    <Edit2 size={12} className="text-gray-500" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(cred.id)}
+                    className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded"
+                    title="Delete"
+                  >
+                    <Trash2 size={12} className="text-red-500" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                {cred.username && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Username:</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-gray-900 dark:text-gray-100">{cred.username}</span>
+                      <button
+                        onClick={() => handleCopy(cred.username, `user-${cred.id}`)}
+                        className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
+                      >
+                        {copiedField === `user-${cred.id}` ? (
+                          <CheckCircle2 size={12} className="text-green-500" />
+                        ) : (
+                          <Copy size={12} className="text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {cred.password && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Password:</span>
+                    <div className="flex items-center gap-1">
+                      <span className="font-mono text-gray-900 dark:text-gray-100">
+                        {visiblePasswords[cred.id] ? cred.password : '••••••••'}
+                      </span>
+                      <button
+                        onClick={() => togglePasswordVisibility(cred.id)}
+                        className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
+                      >
+                        {visiblePasswords[cred.id] ? (
+                          <EyeOff size={12} className="text-gray-400" />
+                        ) : (
+                          <Eye size={12} className="text-gray-400" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleCopy(cred.password, `pass-${cred.id}`)}
+                        className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
+                      >
+                        {copiedField === `pass-${cred.id}` ? (
+                          <CheckCircle2 size={12} className="text-green-500" />
+                        ) : (
+                          <Copy size={12} className="text-gray-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {cred.url && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">URL:</span>
+                    <a
+                      href={cred.url.startsWith('http') ? cred.url : `https://${cred.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-violet-600 dark:text-violet-400 hover:underline truncate max-w-[200px]"
+                    >
+                      {cred.url}
+                    </a>
+                  </div>
+                )}
+                {cred.notes && (
+                  <p className="text-gray-500 dark:text-gray-400 italic mt-1">{cred.notes}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {credentials.length === 0 && !showAddForm && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+          No credentials linked to this equipment
+        </p>
+      )}
+
+      {/* Add/Edit Form */}
+      {showAddForm && (
+        <form onSubmit={handleSubmit} className="space-y-3 p-3 rounded-lg" style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#F9FAFB' }}>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              placeholder="Name *"
+              value={formData.name}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+              className="px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700"
+              required
+            />
+            <select
+              value={formData.data_type}
+              onChange={(e) => setFormData(prev => ({ ...prev, data_type: e.target.value }))}
+              className="px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700"
+            >
+              <option value="credentials">Credentials</option>
+              <option value="network">Network</option>
+              <option value="api_key">API Key</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              placeholder="Username"
+              value={formData.username}
+              onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+              className="px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700"
+            />
+            <input
+              type="text"
+              placeholder="Password"
+              value={formData.password}
+              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+              className="px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700"
+            />
+          </div>
+          <input
+            type="text"
+            placeholder="URL (optional)"
+            value={formData.url}
+            onChange={(e) => setFormData(prev => ({ ...prev, url: e.target.value }))}
+            className="w-full px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700"
+          />
+          <textarea
+            placeholder="Notes (optional)"
+            value={formData.notes}
+            onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+            rows={2}
+            className="w-full px-2 py-1.5 text-xs rounded border dark:bg-zinc-800 dark:border-zinc-700 resize-none"
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-zinc-700 hover:bg-gray-300 dark:hover:bg-zinc-600"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-3 py-1 text-xs rounded bg-violet-600 text-white hover:bg-violet-700"
+            >
+              {editingId ? 'Update' : 'Add'}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 };
@@ -1307,6 +1620,14 @@ const EquipmentListPage = () => {
                 </div>
               </div>
             )}
+
+            {/* Equipment Credentials */}
+            <EquipmentCredentialsSection
+              equipmentId={item.id}
+              projectId={projectId}
+              mode={mode}
+              user={user}
+            />
           </div>
         )}
       </div>

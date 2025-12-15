@@ -33,7 +33,8 @@ import {
   ChevronDown,
   ChevronRight,
   Truck,
-  AlertTriangle
+  AlertTriangle,
+  Blinds
 } from 'lucide-react';
 
 const PartsReceivingPageNew = () => {
@@ -56,11 +57,121 @@ const PartsReceivingPageNew = () => {
   const [submittingIssue, setSubmittingIssue] = useState(false);
   const [openIssuesByPO, setOpenIssuesByPO] = useState({}); // Track open issues by PO number
 
+  // Shade receiving state
+  const [shades, setShades] = useState([]);
+  const [shadesExpanded, setShadesExpanded] = useState(true);
+  const [savingShadeId, setSavingShadeId] = useState(null);
+
   useEffect(() => {
     if (projectId) {
       loadPurchaseOrders();
+      loadShades();
     }
   }, [projectId]);
+
+  // Load shades that are ordered (for receiving)
+  const loadShades = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('project_shades')
+        .select(`
+          *,
+          room:rooms(name),
+          shade_batch:project_shade_batches(original_filename)
+        `)
+        .eq('project_id', projectId)
+        .eq('ordered', true)
+        .order('room_id', { ascending: true })
+        .order('shade_name', { ascending: true });
+
+      if (error) throw error;
+      setShades(data || []);
+    } catch (err) {
+      console.error('Failed to load shades:', err);
+    }
+  };
+
+  // Mark shade as received
+  const handleShadeReceived = async (shadeId, received) => {
+    if (!user?.id) {
+      setError('You must be logged in to receive shades.');
+      return;
+    }
+
+    try {
+      setSavingShadeId(shadeId);
+      setError(null);
+
+      const updateData = {
+        received,
+        received_at: received ? new Date().toISOString() : null,
+        received_by: received ? user.id : null
+      };
+
+      const { error: updateError } = await supabase
+        .from('project_shades')
+        .update(updateData)
+        .eq('id', shadeId);
+
+      if (updateError) throw updateError;
+
+      // Update local state
+      setShades(prev => prev.map(s =>
+        s.id === shadeId ? { ...s, ...updateData } : s
+      ));
+
+      setSuccessMessage(received ? 'Shade marked as received' : 'Shade marked as not received');
+      setTimeout(() => setSuccessMessage(null), 2000);
+    } catch (err) {
+      console.error('Failed to update shade:', err);
+      setError(err.message || 'Failed to update shade');
+    } finally {
+      setSavingShadeId(null);
+    }
+  };
+
+  // Receive all shades at once
+  const handleReceiveAllShades = async () => {
+    const unreceived = shades.filter(s => !s.received);
+    if (unreceived.length === 0) return;
+
+    if (!window.confirm(`Mark all ${unreceived.length} shades as received?`)) return;
+
+    if (!user?.id) {
+      setError('You must be logged in to receive shades.');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError(null);
+
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from('project_shades')
+        .update({
+          received: true,
+          received_at: now,
+          received_by: user.id
+        })
+        .eq('project_id', projectId)
+        .eq('ordered', true)
+        .eq('received', false);
+
+      if (updateError) throw updateError;
+
+      // Reload shades
+      await loadShades();
+
+      setSuccessMessage(`${unreceived.length} shades marked as received`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Failed to receive all shades:', err);
+      setError(err.message || 'Failed to receive shades');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const loadPurchaseOrders = async () => {
     try {
@@ -892,6 +1003,103 @@ const PartsReceivingPageNew = () => {
           </div>
         )}
 
+        {/* Shade Receiving Section */}
+        {shades.length > 0 && (
+          <div className="mb-6">
+            <button
+              onClick={() => setShadesExpanded(!shadesExpanded)}
+              className="w-full flex items-center justify-between p-3 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 mb-3 hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Blinds className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Shades ({shades.filter(s => s.received).length}/{shades.length} Received)
+                </h2>
+              </div>
+              {shadesExpanded ? (
+                <ChevronDown className="w-5 h-5 text-gray-400" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-400" />
+              )}
+            </button>
+
+            {shadesExpanded && (
+              <div style={sectionStyles.card} className="overflow-hidden">
+                {/* Receive All Button */}
+                {shades.some(s => !s.received) && (
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                    <Button
+                      variant="primary"
+                      icon={PackageCheck}
+                      onClick={handleReceiveAllShades}
+                      disabled={saving}
+                      className="w-full"
+                    >
+                      Receive All Shades ({shades.filter(s => !s.received).length} remaining)
+                    </Button>
+                  </div>
+                )}
+
+                {/* Shade List */}
+                <div className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {shades.map((shade) => {
+                    const isSaving = savingShadeId === shade.id;
+                    return (
+                      <div
+                        key={shade.id}
+                        className={`p-4 flex items-center justify-between ${
+                          shade.received
+                            ? 'bg-green-50 dark:bg-green-900/20'
+                            : 'bg-white dark:bg-zinc-800'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-medium text-gray-900 dark:text-white text-sm truncate">
+                              {shade.shade_name || 'Unnamed Shade'}
+                            </h4>
+                            {shade.received && (
+                              <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
+                            {shade.room?.name || 'No Room'} • {shade.technology || 'Unknown'}
+                            {shade.ordered_width && shade.ordered_height && (
+                              <> • {shade.ordered_width}" × {shade.ordered_height}"</>
+                            )}
+                          </p>
+                          {shade.shade_batch?.original_filename && (
+                            <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
+                              From: {shade.shade_batch.original_filename}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleShadeReceived(shade.id, !shade.received)}
+                          disabled={isSaving || saving}
+                          className={`ml-3 px-4 py-2 rounded-lg text-sm font-medium min-h-[44px] min-w-[100px] transition-colors ${
+                            shade.received
+                              ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          } disabled:opacity-50`}
+                        >
+                          {isSaving ? (
+                            <Loader className="w-4 h-4 animate-spin mx-auto" />
+                          ) : shade.received ? (
+                            'Undo'
+                          ) : (
+                            'Receive'
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Completed POs */}
         {completedPOs.length > 0 && (
           <div>
@@ -1018,14 +1226,14 @@ const PartsReceivingPageNew = () => {
         )}
 
         {/* Empty State */}
-        {filteredPOs.length === 0 && (
+        {filteredPOs.length === 0 && shades.length === 0 && (
           <div style={sectionStyles.card} className="text-center py-12">
             <Truck className="w-16 h-16 mx-auto mb-4 text-gray-400" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No Purchase Orders
+              Nothing to Receive
             </h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Create a purchase order to start receiving equipment
+              No purchase orders or ordered shades to receive
             </p>
             <Button
               variant="primary"

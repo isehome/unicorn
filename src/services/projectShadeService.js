@@ -451,10 +451,30 @@ export const projectShadeService = {
     },
 
     /**
+     * Check for shades that need dimension validation before export
+     * Returns { validated: [], unvalidated: [] }
+     */
+    async checkExportReadiness(projectId) {
+        const { data: shades, error } = await supabase
+            .from('project_shades')
+            .select('id, name, shade_name, dimensions_validated, ordered_width, ordered_height, approval_status')
+            .eq('project_id', projectId)
+            .eq('approval_status', 'approved');
+
+        if (error) throw error;
+
+        const validated = shades.filter(s => s.dimensions_validated && s.ordered_width && s.ordered_height);
+        const unvalidated = shades.filter(s => !s.dimensions_validated || !s.ordered_width || !s.ordered_height);
+
+        return { validated, unvalidated, total: shades.length };
+    },
+
+    /**
      * Generate CSV data for export (Round-Trip)
      * Formats it exactly like the Lutron import but with updated values
+     * Only exports shades with validated dimensions
      */
-    async getExportData(projectId) {
+    async getExportData(projectId, includeUnvalidated = false) {
         const { data: shades, error } = await supabase
             .from('project_shades')
             .select('*, room:project_rooms(name)')
@@ -462,8 +482,13 @@ export const projectShadeService = {
 
         if (error) throw error;
 
+        // Filter to only validated shades unless explicitly including unvalidated
+        const exportShades = includeUnvalidated
+            ? shades
+            : shades.filter(s => s.dimensions_validated && s.ordered_width && s.ordered_height);
+
         // Map back to CSV format
-        return shades.map(shade => ({
+        return exportShades.map(shade => ({
             'Area': shade.room?.name,
             'Name': shade.name,
             'Quantity': 1, // Shades are always 1:1 in this system
@@ -471,15 +496,16 @@ export const projectShadeService = {
             'Product Type': shade.product_type,
             'Product': shade.model, // Rough mapping
             'Product Details': shade.model,
-            // Prioritize M2 (Verified 2) -> M1 (Verified 1) -> Quoted
-            'Width': shade.m2_width || shade.m1_width || shade.quoted_width,
-            'Height': shade.m2_height || shade.m1_height || shade.quoted_height,
+            // Prioritize validated ordered dimensions -> M2 -> M1 -> Quoted
+            'Width': shade.ordered_width || shade.m2_width || shade.m1_width || shade.quoted_width,
+            'Height': shade.ordered_height || shade.m2_height || shade.m1_height || shade.quoted_height,
             'System Mount': shade.m2_mount_type || shade.m1_mount_type || shade.mount_type,
             'Fabric': shade.fabric_selection,
             'Technology': shade.technology,
             // Status fields to help the user know what's changed
             'Status': shade.approval_status === 'approved' ? 'Approved' : 'Pending',
-            'Field Verified': shade.m2_complete ? 'M2 Complete' : (shade.m1_complete ? 'M1 Complete' : 'No')
+            'Field Verified': shade.m2_complete ? 'M2 Complete' : (shade.m1_complete ? 'M1 Complete' : 'No'),
+            'Dimensions Validated': shade.dimensions_validated ? 'Yes' : 'No'
         }));
     }
 };

@@ -11,7 +11,9 @@ import {
     ChevronDown,
     Search,
     Filter,
-    Settings
+    Settings,
+    ShoppingCart,
+    Package
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -53,6 +55,7 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
 
     // Component State
     const [expandedRooms, setExpandedRooms] = useState(new Set());
+    const [markingOrdered, setMarkingOrdered] = useState(false);
 
     // Fetch Designers (Project Team)
     useEffect(() => {
@@ -258,13 +261,38 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
 
     const handleExport = async () => {
         try {
-            const data = await projectShadeService.getExportData(projectId);
-            if (!data || data.length === 0) {
-                alert('No shades to export');
+            // First check for unvalidated shades
+            const readiness = await projectShadeService.checkExportReadiness(projectId);
+
+            if (readiness.total === 0) {
+                alert('No approved shades to export. Shades must be approved before exporting.');
                 return;
             }
 
-            // Convert to CSV
+            // Warn about unvalidated shades
+            let includeUnvalidated = false;
+            if (readiness.unvalidated.length > 0) {
+                const unvalidatedNames = readiness.unvalidated
+                    .slice(0, 5)
+                    .map(s => s.shade_name || s.name)
+                    .join('\n  • ');
+                const moreCount = readiness.unvalidated.length > 5 ? `\n  ... and ${readiness.unvalidated.length - 5} more` : '';
+
+                const message = `${readiness.unvalidated.length} shade(s) have not been validated:\n  • ${unvalidatedNames}${moreCount}\n\n` +
+                    `Only ${readiness.validated.length} of ${readiness.total} approved shades have validated dimensions.\n\n` +
+                    `Click OK to export only validated shades, or Cancel to go back and validate dimensions first.`;
+
+                if (!window.confirm(message)) {
+                    return;
+                }
+            }
+
+            const data = await projectShadeService.getExportData(projectId, includeUnvalidated);
+            if (!data || data.length === 0) {
+                alert('No validated shades to export. Please validate shade dimensions before exporting.');
+                return;
+            }
+
             // Convert to CSV
             const csv = Papa.unparse(data);
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -281,6 +309,56 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
             alert('Failed to export CSV: ' + err.message);
         }
     };
+
+    // Mark all approved shades as ordered
+    const handleMarkAsOrdered = async () => {
+        const approvedShades = shades.filter(s => s.approval_status === 'approved' && !s.ordered);
+        if (approvedShades.length === 0) {
+            alert('No approved shades to mark as ordered. Only approved shades can be marked as ordered.');
+            return;
+        }
+
+        if (!window.confirm(`Mark ${approvedShades.length} approved shade(s) as ordered?\n\nThis will move them to the receiving workflow.`)) {
+            return;
+        }
+
+        setMarkingOrdered(true);
+        try {
+            const now = new Date().toISOString();
+            const { error } = await supabase
+                .from('project_shades')
+                .update({
+                    ordered: true,
+                    ordered_at: now,
+                    ordered_by: user.id
+                })
+                .eq('project_id', projectId)
+                .eq('approval_status', 'approved')
+                .eq('ordered', false);
+
+            if (error) throw error;
+
+            // Reload shades
+            loadShades();
+            alert(`${approvedShades.length} shade(s) marked as ordered!`);
+        } catch (err) {
+            console.error('Failed to mark shades as ordered:', err);
+            alert('Failed to mark shades as ordered: ' + err.message);
+        } finally {
+            setMarkingOrdered(false);
+        }
+    };
+
+    // Get ordering stats for display
+    const orderingStats = useMemo(() => {
+        const total = shades.length;
+        const approved = shades.filter(s => s.approval_status === 'approved').length;
+        const ordered = shades.filter(s => s.ordered).length;
+        const received = shades.filter(s => s.received).length;
+        const installed = shades.filter(s => s.installed).length;
+        const pendingOrder = shades.filter(s => s.approval_status === 'approved' && !s.ordered).length;
+        return { total, approved, ordered, received, installed, pendingOrder };
+    }, [shades]);
 
     const handleOpenMeasurement = (shade) => {
         // Navigate to the new shade detail page instead of opening modal
@@ -520,6 +598,53 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
                                 <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
                                     Export Order
                                 </Button>
+                                <Button
+                                    variant="primary"
+                                    size="sm"
+                                    icon={ShoppingCart}
+                                    onClick={handleMarkAsOrdered}
+                                    disabled={markingOrdered || orderingStats.pendingOrder === 0}
+                                >
+                                    {markingOrdered ? 'Marking...' : `Mark Ordered (${orderingStats.pendingOrder})`}
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Procurement Stats */}
+                    {shades.length > 0 && (
+                        <div className={`p-3 border-t ${mode === 'dark' ? 'border-zinc-700 bg-zinc-700/50' : 'border-zinc-200 bg-zinc-50'}`}>
+                            <div className="flex flex-wrap gap-4 text-xs">
+                                <div className="flex items-center gap-1.5">
+                                    <div className={`w-2 h-2 rounded-full ${mode === 'dark' ? 'bg-zinc-500' : 'bg-zinc-400'}`} />
+                                    <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                        Total: {orderingStats.total}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                    <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                        Approved: {orderingStats.approved}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-violet-500" />
+                                    <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                        Ordered: {orderingStats.ordered}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                    <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                        Received: {orderingStats.received}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="w-2 h-2 rounded-full bg-green-500" />
+                                    <span className={mode === 'dark' ? 'text-zinc-400' : 'text-zinc-600'}>
+                                        Installed: {orderingStats.installed}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     )}

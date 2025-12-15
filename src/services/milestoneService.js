@@ -289,6 +289,7 @@ class MilestoneService {
   /**
    * Calculate Trim Orders percentage
    * Counts ONLY parts with submitted POs (NOT inventory on hand)
+   * Also includes shades that have been marked as ordered
    * 100% when ALL required trim parts have been ordered
    */
   async calculateTrimOrdersPercentage(projectId) {
@@ -327,6 +328,14 @@ class MilestoneService {
 
       if (poError) throw poError;
 
+      // Load shades for this project (shades are trim-phase items)
+      const { data: shades, error: shadeError } = await supabase
+        .from('project_shades')
+        .select('id, ordered, approval_status')
+        .eq('project_id', projectId);
+
+      if (shadeError) throw shadeError;
+
       // Create map of submitted PO quantities (exclude drafts)
       const submittedPOMap = new Map();
       (pos || []).forEach(po => {
@@ -343,19 +352,7 @@ class MilestoneService {
         item.global_part?.required_for_prewire !== true
       );
 
-      console.log('[milestoneService] calculateTrimOrdersPercentage:', {
-        totalEquipment: equipment?.length,
-        trimItemsCount: trimItems.length,
-        posLoaded: pos?.length,
-        posWithItems: pos?.filter(p => p.items?.length > 0).length
-      });
-
-      if (trimItems.length === 0) {
-        return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
-      }
-
-      // Calculate parts ORDERED (from submitted POs only - NOT inventory on hand)
-      // The "Orders" gauge should only show actual orders, not inventory
+      // Calculate EQUIPMENT ordered
       let totalPartsRequired = 0;
       let partsOrdered = 0;
 
@@ -364,14 +361,33 @@ class MilestoneService {
         const ordered = submittedPOMap.get(item.id) || 0;
 
         totalPartsRequired += required;
-        // Only count parts that have been ordered (capped at required)
         partsOrdered += Math.min(required, ordered);
       });
 
-      console.log('[milestoneService] Trim orders breakdown:', {
+      // Add SHADES to totals (each shade counts as 1 part)
+      // Only count approved shades as "requiring order"
+      const approvedShades = (shades || []).filter(s => s.approval_status === 'approved');
+      const orderedShades = approvedShades.filter(s => s.ordered === true);
+
+      const totalShades = approvedShades.length;
+      const shadesOrdered = orderedShades.length;
+
+      totalPartsRequired += totalShades;
+      partsOrdered += shadesOrdered;
+
+      console.log('[milestoneService] calculateTrimOrdersPercentage:', {
+        totalEquipment: equipment?.length,
+        trimItemsCount: trimItems.length,
+        posLoaded: pos?.length,
+        totalShades,
+        shadesOrdered,
         totalPartsRequired,
         partsOrdered
       });
+
+      if (totalPartsRequired === 0) {
+        return { percentage: 0, itemCount: 0, totalItems: 0, partsAccountedFor: 0, totalParts: 0 };
+      }
 
       const percentage = totalPartsRequired > 0
         ? Math.round((partsOrdered / totalPartsRequired) * 100)
@@ -379,9 +395,9 @@ class MilestoneService {
 
       return {
         percentage,
-        itemCount: trimItems.length,
-        totalItems: trimItems.length,
-        partsAccountedFor: partsOrdered, // Parts with submitted orders
+        itemCount: trimItems.length + totalShades,
+        totalItems: trimItems.length + totalShades,
+        partsAccountedFor: partsOrdered, // Parts with submitted orders + ordered shades
         totalParts: totalPartsRequired
       };
     } catch (error) {
@@ -393,7 +409,7 @@ class MilestoneService {
   /**
    * Calculate Trim Receiving percentage
    * 100% when ALL trim parts are fully received (received_quantity >= planned_quantity)
-   * Includes items from both POs and inventory
+   * Includes items from both POs and inventory, plus shades
    * Returns parts count (not line items) to match Orders gauge
    */
   async calculateTrimReceivingPercentage(projectId) {
@@ -412,6 +428,14 @@ class MilestoneService {
 
       if (error) throw error;
 
+      // Load shades for this project (shades are trim-phase items)
+      const { data: shades, error: shadeError } = await supabase
+        .from('project_shades')
+        .select('id, ordered, received, approval_status')
+        .eq('project_id', projectId);
+
+      if (shadeError) throw shadeError;
+
       // Filter to trim items that have planned quantities
       // This includes items from POs AND inventory
       const trimItems = (equipment || []).filter(item =>
@@ -419,11 +443,7 @@ class MilestoneService {
         (item.planned_quantity || 0) > 0
       );
 
-      if (trimItems.length === 0) {
-        return { percentage: 0, itemCount: 0, totalItems: 0, partsReceived: 0, totalParts: 0 };
-      }
-
-      // Calculate parts received vs total parts required (not line items)
+      // Calculate EQUIPMENT received
       let totalPartsRequired = 0;
       let partsReceived = 0;
 
@@ -432,9 +452,31 @@ class MilestoneService {
         const received = item.received_quantity || 0;
 
         totalPartsRequired += required;
-        // Count parts received (capped at required to not exceed 100%)
         partsReceived += Math.min(required, received);
       });
+
+      // Add SHADES to totals (each shade counts as 1 part)
+      // Only count ordered shades (they must be ordered first to be received)
+      const orderedShades = (shades || []).filter(s => s.ordered === true);
+      const receivedShades = orderedShades.filter(s => s.received === true);
+
+      const totalShadesOrdered = orderedShades.length;
+      const shadesReceived = receivedShades.length;
+
+      totalPartsRequired += totalShadesOrdered;
+      partsReceived += shadesReceived;
+
+      console.log('[milestoneService] calculateTrimReceivingPercentage:', {
+        trimItemsCount: trimItems.length,
+        totalShadesOrdered,
+        shadesReceived,
+        totalPartsRequired,
+        partsReceived
+      });
+
+      if (totalPartsRequired === 0) {
+        return { percentage: 0, itemCount: 0, totalItems: 0, partsReceived: 0, totalParts: 0 };
+      }
 
       const percentage = totalPartsRequired > 0
         ? Math.round((partsReceived / totalPartsRequired) * 100)
@@ -443,14 +485,14 @@ class MilestoneService {
       // Also include legacy itemCount/totalItems for backwards compatibility
       const itemsReceived = trimItems.filter(item =>
         (item.received_quantity || 0) >= (item.planned_quantity || 0)
-      ).length;
+      ).length + shadesReceived;
 
       return {
         percentage,
         itemCount: itemsReceived,
-        totalItems: trimItems.length,
-        partsReceived, // NEW: actual parts count received
-        totalParts: totalPartsRequired // NEW: total parts required
+        totalItems: trimItems.length + totalShadesOrdered,
+        partsReceived, // actual parts count received (including shades)
+        totalParts: totalPartsRequired // total parts required (including ordered shades)
       };
     } catch (error) {
       console.error('Error calculating trim receiving percentage:', error);
@@ -478,7 +520,7 @@ class MilestoneService {
 
   /**
    * Calculate Trim stages percentage
-   * Combined formula: (completed wire drops + installed equipment) / (total wire drops + total equipment)
+   * Combined formula: (completed wire drops + installed equipment + installed shades) / (total wire drops + total equipment + total shades)
    *
    * Wire drop completion:
    *   - is_auxiliary = true: Auto-completes (spare wires don't block progress)
@@ -487,6 +529,10 @@ class MilestoneService {
    * Equipment installation:
    *   - installed = true (manual toggle), OR
    *   - Linked to wire drop with completed trim_out
+   *
+   * Shade installation:
+   *   - installed = true (when shade is physically installed)
+   *   - OR linked to wire drop with completed trim_out via wire_drop_shade_links
    */
   async calculateTrimPercentage(projectId) {
     try {
@@ -580,12 +626,64 @@ class MilestoneService {
         return false;
       }).length;
 
+      // ===== SHADES =====
+      // Get all ordered shades for this project (only ordered shades count for installation tracking)
+      const { data: shades, error: shadeError } = await supabase
+        .from('project_shades')
+        .select('id, installed, ordered')
+        .eq('project_id', projectId)
+        .eq('ordered', true);
+
+      if (shadeError) throw shadeError;
+
+      const totalShades = (shades || []).length;
+
+      // Get shade links to check for wire drop completion
+      const shadeIds = (shades || []).map(s => s.id);
+      let shadesWithCompletedTrimOut = new Set();
+
+      if (shadeIds.length > 0 && wireDropIds.length > 0) {
+        const { data: shadeLinks } = await supabase
+          .from('wire_drop_shade_links')
+          .select('project_shade_id, wire_drop_id')
+          .in('project_shade_id', shadeIds)
+          .eq('link_side', 'room_end');
+
+        // Build a set of shade IDs that are linked to completed wire drops
+        (shadeLinks || []).forEach(link => {
+          if (completedWireDropIds.has(link.wire_drop_id)) {
+            shadesWithCompletedTrimOut.add(link.project_shade_id);
+          }
+        });
+      }
+
+      // Count installed shades:
+      // - Has installed=true in DB (manual toggle), OR
+      // - Is linked to a wire drop with completed trim_out
+      const installedShadesCount = (shades || []).filter(shade => {
+        if (shadesWithCompletedTrimOut.has(shade.id)) return true;
+        if (shade.installed === true) return true;
+        return false;
+      }).length;
+
       // ===== COMBINED CALCULATION =====
-      const totalItems = totalWireDrops + totalEquipment;
+      const totalItems = totalWireDrops + totalEquipment + totalShades;
       if (totalItems === 0) return 0;
 
-      const completedItems = completedWireDropCount + installedEquipmentCount;
+      const completedItems = completedWireDropCount + installedEquipmentCount + installedShadesCount;
       const percentage = Math.round((completedItems / totalItems) * 100);
+
+      console.log('[milestoneService] calculateTrimPercentage:', {
+        totalWireDrops,
+        completedWireDropCount,
+        totalEquipment,
+        installedEquipmentCount,
+        totalShades,
+        installedShadesCount,
+        totalItems,
+        completedItems,
+        percentage
+      });
 
       return percentage;
     } catch (error) {
