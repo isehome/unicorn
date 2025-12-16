@@ -68,6 +68,7 @@ const ProjectReportsPage = lazy(() => import('./pages/ProjectReportsPage'));
 const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 const ShadeDetailPage = lazy(() => import('./components/Shades/ShadeDetailPage'));
 const TodoDetailPage = lazy(() => import('./components/TodoDetailPage'));
+const HeadEndToolsPage = lazy(() => import('./components/HeadEndToolsPage'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -253,6 +254,14 @@ const AppRoutes = () => {
                     <OfflineGuard pageName="Wire Drop details">
                       <WireDropDetail />
                     </OfflineGuard>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/wire-drops/:wireDropId/head-end-tools"
+                element={
+                  <ProtectedRoute>
+                    <HeadEndToolsPage />
                   </ProtectedRoute>
                 }
               />

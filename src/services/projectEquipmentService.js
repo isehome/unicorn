@@ -1504,15 +1504,19 @@ export const projectEquipmentService = {
     // NOTE: This only tracks receiving shipments at office/warehouse.
     // "Delivered" status is manually set by technicians when they move items to job site.
     if (typeof receivedQty === 'number' && receivedQty >= 0) {
-      const maxAllowed = Math.max(
-        current.ordered_quantity || 0,
-        current.planned_quantity || 0
-      );
+      const orderedAmount = current.ordered_quantity || 0;
 
-      if (receivedQty > maxAllowed) {
+      // Cannot receive items that haven't been ordered
+      if (receivedQty > 0 && orderedAmount === 0) {
         throw new Error(
-          `Cannot receive ${receivedQty} units. Maximum allowed is ${maxAllowed} ` +
-          `(ordered: ${current.ordered_quantity || 0}, planned: ${current.planned_quantity || 0})`
+          'Cannot receive items that have not been ordered. Please create a PO first.'
+        );
+      }
+
+      // Cannot receive more than ordered
+      if (receivedQty > orderedAmount) {
+        throw new Error(
+          `Cannot receive ${receivedQty} units. Only ${orderedAmount} units were ordered.`
         );
       }
 

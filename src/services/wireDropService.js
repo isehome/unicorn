@@ -610,6 +610,24 @@ class WireDropService {
   }
 
   /**
+   * Undo commission stage (mark as not completed)
+   */
+  async undoCommission(wireDropId) {
+    try {
+      return await this.updateStage(wireDropId, 'commission', {
+        completed: false,
+        completed_by: null,
+        completed_at: null,
+        notes: null,
+        stage_data: null
+      });
+    } catch (error) {
+      console.error('Failed to undo commission:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update room end equipment information
    */
   async updateRoomEnd(wireDropId, roomEndData) {

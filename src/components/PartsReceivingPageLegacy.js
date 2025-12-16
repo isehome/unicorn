@@ -149,18 +149,25 @@ const PartsReceivingPage = () => {
   };
 
   const handleQuickReceive = async (item) => {
+    // Prevent receiving items that haven't been ordered
+    const orderedQty = item.ordered_quantity || 0;
+    if (orderedQty === 0) {
+      setError('Cannot receive items that have not been ordered. Please create a PO first.');
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
 
       await projectEquipmentService.updateProcurementQuantities(item.id, {
-        receivedQty: item.ordered_quantity || item.planned_quantity || 0
+        receivedQty: orderedQty
       });
 
       // Update local state
       setEquipment(prev => prev.map(eq =>
         eq.id === item.id
-          ? { ...eq, received_quantity: eq.ordered_quantity || eq.planned_quantity || 0 }
+          ? { ...eq, received_quantity: orderedQty }
           : eq
       ));
 

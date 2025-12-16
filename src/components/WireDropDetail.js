@@ -43,7 +43,8 @@ import {
   ChevronRight,
   QrCode,
   Search as SearchIcon,
-  Blinds
+  Blinds,
+  Plus
 } from 'lucide-react';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 import labelRenderService from '../services/labelRenderService';
@@ -989,6 +990,23 @@ const WireDropDetail = () => {
     } catch (err) {
       console.error('Error completing commission:', err);
       alert('Failed to complete commission');
+    } finally {
+      setCompletingCommission(false);
+    }
+  };
+
+  const handleUndoCommission = async () => {
+    if (!window.confirm('Are you sure you want to undo the commissioned status? This will mark the wire drop as not commissioned.')) {
+      return;
+    }
+
+    try {
+      setCompletingCommission(true);
+      await wireDropService.undoCommission(id);
+      await loadWireDrop(); // Reload to get updated stages
+    } catch (err) {
+      console.error('Error undoing commission:', err);
+      alert('Failed to undo commission');
     } finally {
       setCompletingCommission(false);
     }
@@ -2254,7 +2272,7 @@ const WireDropDetail = () => {
                   <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => setActiveTab('head-end')}
+                    onClick={() => navigate(`/projects/${wireDrop.project_id}/wire-drops/${id}/head-end-tools`)}
                     className="w-full md:w-auto"
                   >
                     Open Head End Tools
@@ -2573,11 +2591,23 @@ const WireDropDetail = () => {
                 {commissionStage?.completed ? (
                   <div className="space-y-3">
                     <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle size={16} className="text-green-500" />
-                        <span className="font-medium text-green-700 dark:text-green-300">
-                          Commissioned
-                        </span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle size={16} className="text-green-500" />
+                          <span className="font-medium text-green-700 dark:text-green-300">
+                            Commissioned
+                          </span>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleUndoCommission}
+                          loading={completingCommission}
+                          disabled={completingCommission}
+                          className="text-xs"
+                        >
+                          Undo
+                        </Button>
                       </div>
                       {commissionStage.completed_at && (
                         <div className="text-xs space-y-1 text-green-600 dark:text-green-400">
@@ -2639,15 +2669,6 @@ const WireDropDetail = () => {
                     <Server size={20} />
                     Head End Equipment
                   </h3>
-                  <Button
-                    variant="primary"
-                    icon={Save}
-                    size="sm"
-                    onClick={handleSaveHeadEnd}
-                    disabled={savingHeadEquipment || equipmentLoading}
-                  >
-                    {savingHeadEquipment ? 'Saving…' : 'Save Head End'}
-                  </Button>
                 </div>
 
                 {equipmentError && (
@@ -2688,9 +2709,18 @@ const WireDropDetail = () => {
                               </button>
                               <button
                                 type="button"
-                                onClick={(event) => {
+                                onClick={async (event) => {
                                   event.stopPropagation();
-                                  toggleHeadEquipment(item.id);
+                                  // Remove the equipment and save immediately
+                                  const newSelection = headEquipmentSelection.filter(id => id !== item.id);
+                                  try {
+                                    await wireDropService.updateEquipmentLinks(id, 'head_end', newSelection, user?.id);
+                                    setHeadEquipmentSelection(newSelection);
+                                    await loadWireDrop();
+                                  } catch (err) {
+                                    console.error('Failed to remove head end equipment:', err);
+                                    alert(err.message || 'Failed to remove equipment');
+                                  }
                                 }}
                                 className="text-purple-600 hover:text-purple-800 dark:text-purple-200 dark:hover:text-purple-100"
                               >
@@ -2702,107 +2732,15 @@ const WireDropDetail = () => {
                       )}
                     </div>
 
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                          Head-end racks in this project
-                        </label>
-
-                        {headEquipmentCatalog.headEndAvailable.length === 0 ? (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            All head-end equipment is already linked to this drop. Add more equipment from the Head End catalog to make it available here.
-                          </p>
-                        ) : (
-                          <div className="space-y-2">
-                            {headEquipmentCatalog.headEndAvailable.map((item) => (
-                              <button
-                                key={item.id}
-                                onClick={() => toggleHeadEquipment(item.id)}
-                                className="w-full text-left p-3 rounded-lg transition-all border-2 border-transparent hover:bg-purple-50 hover:border-purple-200 dark:hover:bg-purple-900/10 dark:hover:border-purple-500/30"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1">
-                                    <div className="font-medium text-gray-900 dark:text-gray-100">
-                                      {item.name}
-                                    </div>
-                                    {(item.manufacturer || item.model) && (
-                                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                                        {[item.manufacturer, item.model].filter(Boolean).join(' ')}
-                                      </div>
-                                    )}
-                                    {item.part_number && (
-                                      <div className="text-[11px] text-gray-500 dark:text-gray-500">
-                                        P/N: {item.part_number}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex flex-col items-end gap-1">
-                                    {item.location && (
-                                      <span className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                        {item.location}
-                                      </span>
-                                    )}
-                                    <span className="text-[11px] text-purple-700 dark:text-purple-300">
-                                      Tap to link
-                                    </span>
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {headEquipmentCatalog.hasOtherRooms && (
-                        <div className="pt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full mb-2"
-                            onClick={() => setShowAllHeadEquipment((prev) => !prev)}
-                          >
-                            {showAllHeadEquipment ? 'Hide Other Rooms' : 'Show Equipment from Other Rooms'}
-                          </Button>
-
-                          {showAllHeadEquipment && (
-                            <div className="space-y-3">
-                              {headEquipmentCatalog.otherRooms.map(({ roomName, items }) => (
-                                <div key={roomName}>
-                                  <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
-                                    {roomName}
-                                  </p>
-                                  <div className="space-y-1">
-                                    {items.map((item) => (
-                                      <button
-                                        key={item.id}
-                                        onClick={() => toggleHeadEquipment(item.id)}
-                                        className="w-full text-left p-3 rounded-lg transition-all border-2 border-dashed border-gray-200 hover:border-purple-200 dark:border-gray-700 dark:hover:border-purple-500/40"
-                                      >
-                                        <div className="flex items-center justify-between gap-3">
-                                          <div>
-                                            <div className="font-medium text-gray-900 dark:text-gray-100">
-                                              {item.name}
-                                            </div>
-                                            {(item.manufacturer || item.model) && (
-                                              <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                                                {[item.manufacturer, item.model].filter(Boolean).join(' ')}
-                                              </div>
-                                            )}
-                                          </div>
-                                          <span className="text-[11px] text-purple-700 dark:text-purple-300">
-                                            Link
-                                          </span>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    {/* Add Equipment Button */}
+                    <Button
+                      variant="secondary"
+                      icon={Plus}
+                      className="w-full"
+                      onClick={() => setShowHeadEquipmentDropdown(true)}
+                    >
+                      Add Head End Equipment
+                    </Button>
                   </>
                 )}
               </div>
@@ -3245,6 +3183,263 @@ const WireDropDetail = () => {
                           <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
                             <button
                               onClick={() => setShowAllRooms(false)}
+                              className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                              style={{
+                                backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6',
+                                color: styles.textSecondary.color
+                              }}
+                            >
+                              <ChevronDown size={16} className="rotate-180" />
+                              Hide Other Rooms
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Head End Equipment Dropdown Modal */}
+        {showHeadEquipmentDropdown && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div
+              className="rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+              style={styles.card}
+            >
+              {/* Header */}
+              <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: styles.card.borderColor }}>
+                <h3 className="text-lg font-semibold" style={styles.textPrimary}>
+                  Select Head End Equipment
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowHeadEquipmentDropdown(false);
+                    setHeadEquipmentSearch('');
+                    setShowAllHeadEquipment(false);
+                  }}
+                  className="p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="p-4 border-b" style={{ borderColor: styles.card.borderColor }}>
+                <div className="relative">
+                  <SearchIcon
+                    size={16}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Search equipment..."
+                    value={headEquipmentSearch}
+                    onChange={(e) => setHeadEquipmentSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm"
+                    style={styles.input}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Equipment List */}
+              <div className="flex-1 overflow-y-auto">
+                {(() => {
+                  const searchLower = headEquipmentSearch.toLowerCase().trim();
+
+                  // Filter head-end equipment
+                  const filteredHeadEnd = headEquipmentCatalog.headEndAvailable.filter(item =>
+                    !searchLower ||
+                    item.name?.toLowerCase().includes(searchLower) ||
+                    item.manufacturer?.toLowerCase().includes(searchLower) ||
+                    item.model?.toLowerCase().includes(searchLower) ||
+                    item.part_number?.toLowerCase().includes(searchLower)
+                  );
+
+                  return (
+                    <>
+                      {/* Head End Equipment */}
+                      {filteredHeadEnd.length > 0 && (
+                        <div className="p-3">
+                          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                            Head End Racks
+                          </div>
+                          {filteredHeadEnd.map((item) => {
+                            const isSelected = headEquipmentSelection.includes(item.id);
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={async () => {
+                                  try {
+                                    // Add equipment to selection
+                                    const newSelection = [...headEquipmentSelection, item.id];
+                                    await wireDropService.updateEquipmentLinks(id, 'head_end', newSelection, user?.id);
+                                    setHeadEquipmentSelection(newSelection);
+                                    await loadWireDrop();
+                                    // Close dropdown after selection
+                                    setShowHeadEquipmentDropdown(false);
+                                    setHeadEquipmentSearch('');
+                                    setShowAllHeadEquipment(false);
+                                  } catch (err) {
+                                    console.error('Failed to add head end equipment:', err);
+                                    alert(err.message || 'Failed to add equipment');
+                                  }
+                                }}
+                                className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
+                                  ? 'bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-400'
+                                  : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                      {item.name}
+                                    </div>
+                                    {(item.manufacturer || item.model) && (
+                                      <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                        {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                      </div>
+                                    )}
+                                    {item.part_number && (
+                                      <div className="text-[10px] mt-0.5" style={styles.subtleText}>
+                                        P/N: {item.part_number}
+                                      </div>
+                                    )}
+                                    {item.location && (
+                                      <div className="text-[10px] mt-0.5 text-purple-600 dark:text-purple-400">
+                                        {item.location}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {isSelected && (
+                                    <CheckCircle size={16} className="text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* No results */}
+                      {filteredHeadEnd.length === 0 && !showAllHeadEquipment && (
+                        <div className="p-6 text-center space-y-3">
+                          <div
+                            className="mx-auto w-16 h-16 rounded-full flex items-center justify-center"
+                            style={{
+                              backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6'
+                            }}
+                          >
+                            <Server size={24} className="opacity-40" style={styles.subtleText} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium mb-1" style={styles.textPrimary}>
+                              No head end equipment available
+                            </p>
+                            <p className="text-xs" style={styles.subtleText}>
+                              {searchLower
+                                ? 'Try a different search term'
+                                : 'All head end equipment is already linked'}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Show Equipment from Other Rooms */}
+                      {headEquipmentCatalog.hasOtherRooms && !showAllHeadEquipment && (
+                        <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                          <button
+                            onClick={() => setShowAllHeadEquipment(true)}
+                            className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                            style={{
+                              backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6',
+                              color: styles.textSecondary.color
+                            }}
+                          >
+                            <ChevronDown size={16} />
+                            Show Equipment from Other Rooms
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Other Rooms (When Expanded) */}
+                      {showAllHeadEquipment && headEquipmentCatalog.hasOtherRooms && (
+                        <div className="border-t" style={{ borderColor: styles.card.borderColor }}>
+                          {headEquipmentCatalog.otherRooms.map(({ roomName, items }) => {
+                            const filteredRoomItems = items.filter(item =>
+                              !searchLower ||
+                              item.name?.toLowerCase().includes(searchLower) ||
+                              item.manufacturer?.toLowerCase().includes(searchLower) ||
+                              item.model?.toLowerCase().includes(searchLower) ||
+                              item.part_number?.toLowerCase().includes(searchLower)
+                            );
+
+                            if (filteredRoomItems.length === 0) return null;
+
+                            return (
+                              <div key={roomName} className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide" style={styles.subtleText}>
+                                  {roomName}
+                                </div>
+                                {filteredRoomItems.map((item) => {
+                                  const isSelected = headEquipmentSelection.includes(item.id);
+                                  return (
+                                    <button
+                                      key={item.id}
+                                      onClick={async () => {
+                                        try {
+                                          const newSelection = [...headEquipmentSelection, item.id];
+                                          await wireDropService.updateEquipmentLinks(id, 'head_end', newSelection, user?.id);
+                                          setHeadEquipmentSelection(newSelection);
+                                          await loadWireDrop();
+                                          setShowHeadEquipmentDropdown(false);
+                                          setHeadEquipmentSearch('');
+                                          setShowAllHeadEquipment(false);
+                                        } catch (err) {
+                                          console.error('Failed to add head end equipment:', err);
+                                          alert(err.message || 'Failed to add equipment');
+                                        }
+                                      }}
+                                      className={`w-full text-left p-3 rounded-lg transition-all mb-1 ${isSelected
+                                        ? 'bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-400'
+                                        : 'hover:bg-gray-50 dark:hover:bg-zinc-800 border border-transparent'
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="font-medium text-sm truncate" style={styles.textPrimary}>
+                                            {item.name}
+                                          </div>
+                                          {(item.manufacturer || item.model) && (
+                                            <div className="text-xs truncate mt-0.5" style={styles.subtleText}>
+                                              {[item.manufacturer, item.model].filter(Boolean).join(' ')}
+                                            </div>
+                                          )}
+                                          {item.part_number && (
+                                            <div className="text-[10px] mt-0.5" style={styles.subtleText}>
+                                              P/N: {item.part_number}
+                                            </div>
+                                          )}
+                                        </div>
+                                        {isSelected && (
+                                          <CheckCircle size={16} className="text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                                        )}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+
+                          {/* Hide Button */}
+                          <div className="p-3 border-t" style={{ borderColor: styles.card.borderColor }}>
+                            <button
+                              onClick={() => setShowAllHeadEquipment(false)}
                               className="w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                               style={{
                                 backgroundColor: mode === 'dark' ? '#3F3F46' : '#F3F4F6',
