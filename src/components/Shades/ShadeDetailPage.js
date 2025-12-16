@@ -315,17 +315,103 @@ const ShadeDetailPage = () => {
         }
     }, [designReviewExpanded, loadComments]);
 
-    // Cleanup timers on unmount
+    // Track pending saves for flush on unmount
+    const pendingSavesRef = useRef(new Map());
+
+    // Flush all pending saves immediately (for unmount or blur)
+    const flushPendingSaves = useCallback(async () => {
+        const saves = Array.from(pendingSavesRef.current.entries());
+        if (saves.length === 0) return;
+
+        console.log('[ShadeDetailPage] Flushing pending saves:', saves.map(s => s[0]));
+        pendingSavesRef.current.clear();
+
+        try {
+            const updates = {};
+            saves.forEach(([field, value]) => {
+                updates[field] = value;
+            });
+            updates.updated_at = new Date().toISOString();
+
+            await supabase
+                .from('project_shades')
+                .update(updates)
+                .eq('id', shadeId);
+
+            console.log('[ShadeDetailPage] Flushed saves successfully');
+        } catch (err) {
+            console.error('[ShadeDetailPage] Flush save failed:', err);
+        }
+    }, [shadeId]);
+
+    // Handle beforeunload to save pending changes when browser navigates away
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            const saves = Array.from(pendingSavesRef.current.entries());
+            if (saves.length > 0) {
+                // Try to save synchronously using sendBeacon if available
+                const updates = {};
+                saves.forEach(([field, value]) => {
+                    updates[field] = value;
+                });
+                updates.updated_at = new Date().toISOString();
+
+                // Use sendBeacon for reliable save on page unload
+                if (navigator.sendBeacon) {
+                    const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/project_shades?id=eq.${shadeId}`;
+                    const headers = {
+                        'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal'
+                    };
+                    const blob = new Blob([JSON.stringify(updates)], { type: 'application/json' });
+                    // Note: sendBeacon doesn't support custom headers well, so this is best-effort
+                    navigator.sendBeacon(url, blob);
+                }
+
+                // Also show warning if there are unsaved changes
+                e.preventDefault();
+                e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [shadeId]);
+
+    // Cleanup timers and flush saves on unmount (React navigation)
     useEffect(() => {
         return () => {
+            // Clear all timers
             if (installationNotesTimerRef.current) clearTimeout(installationNotesTimerRef.current);
             if (pocketTimerRef.current) clearTimeout(pocketTimerRef.current);
             if (orderedWidthTimerRef.current) clearTimeout(orderedWidthTimerRef.current);
             if (orderedHeightTimerRef.current) clearTimeout(orderedHeightTimerRef.current);
             if (orderedDepthTimerRef.current) clearTimeout(orderedDepthTimerRef.current);
             if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+
+            // Flush any pending saves immediately on unmount
+            // Note: This uses a synchronous approach since async doesn't work reliably in cleanup
+            const saves = Array.from(pendingSavesRef.current.entries());
+            if (saves.length > 0 && shadeId) {
+                const updates = {};
+                saves.forEach(([field, value]) => {
+                    updates[field] = value;
+                });
+                updates.updated_at = new Date().toISOString();
+
+                // Fire and forget - best effort save on unmount
+                supabase
+                    .from('project_shades')
+                    .update(updates)
+                    .eq('id', shadeId)
+                    .then(() => console.log('[ShadeDetailPage] Unmount save completed'))
+                    .catch(err => console.error('[ShadeDetailPage] Unmount save failed:', err));
+            }
         };
-    }, []);
+    }, [shadeId]);
 
     // Handle tab change - reload form data for new measurement set
     useEffect(() => {
@@ -361,32 +447,33 @@ const ShadeDetailPage = () => {
         }
     }, [shadeId]);
 
-    // Auto-save measurement field (debounced)
+    // Auto-save measurement field (debounced with pending tracking)
     const autoSaveMeasurementField = useCallback((field, value) => {
         if (!shadeId) return;
+
+        const fieldMapping = {
+            'widthTop': `${activeTab}_measure_width_top`,
+            'widthMiddle': `${activeTab}_measure_width_middle`,
+            'widthBottom': `${activeTab}_measure_width_bottom`,
+            'height': `${activeTab}_height`,
+            'mountDepth': `${activeTab}_mount_depth`,
+            'obstructionNotes': `${activeTab}_obstruction_notes`
+        };
+
+        const dbColumn = fieldMapping[field];
+        if (!dbColumn) return;
+
+        // Track as pending save
+        pendingSavesRef.current.set(dbColumn, value);
 
         if (autoSaveTimerRef.current) {
             clearTimeout(autoSaveTimerRef.current);
         }
 
         autoSaveTimerRef.current = setTimeout(async () => {
+            pendingSavesRef.current.delete(dbColumn);
             setSaving(true);
             try {
-                const fieldMapping = {
-                    'widthTop': `${activeTab}_measure_width_top`,
-                    'widthMiddle': `${activeTab}_measure_width_middle`,
-                    'widthBottom': `${activeTab}_measure_width_bottom`,
-                    'height': `${activeTab}_height`,
-                    'mountDepth': `${activeTab}_mount_depth`,
-                    'obstructionNotes': `${activeTab}_obstruction_notes`
-                };
-
-                const dbColumn = fieldMapping[field];
-                if (!dbColumn) {
-                    setSaving(false);
-                    return;
-                }
-
                 await supabase
                     .from('project_shades')
                     .update({ [dbColumn]: value, updated_at: new Date().toISOString() })
@@ -439,48 +526,64 @@ const ShadeDetailPage = () => {
         autoSaveShadeField('headrail_style', value);
     };
 
-    // Pocket field handlers (debounced)
+    // Pocket field handlers (debounced with pending tracking)
     const handlePocketChange = useCallback((field, value) => {
         if (field === 'width') setPocketWidth(value);
         if (field === 'height') setPocketHeight(value);
         if (field === 'depth') setPocketDepth(value);
 
+        const dbField = `pocket_${field}`;
+        pendingSavesRef.current.set(dbField, value);
+
         if (pocketTimerRef.current) clearTimeout(pocketTimerRef.current);
         pocketTimerRef.current = setTimeout(() => {
-            autoSaveShadeField(`pocket_${field}`, value);
+            pendingSavesRef.current.delete(dbField);
+            autoSaveShadeField(dbField, value);
         }, 500);
     }, [autoSaveShadeField]);
 
-    // Installation notes handler (debounced)
+    // Installation notes handler (debounced with pending tracking)
     const handleInstallationNotesChange = useCallback((value) => {
         setInstallationNotes(value);
+        pendingSavesRef.current.set('install_instructions', value);
+
         if (installationNotesTimerRef.current) clearTimeout(installationNotesTimerRef.current);
         installationNotesTimerRef.current = setTimeout(() => {
+            pendingSavesRef.current.delete('install_instructions');
             autoSaveShadeField('install_instructions', value);
         }, 500);
     }, [autoSaveShadeField]);
 
-    // Final dimension handlers (debounced)
+    // Final dimension handlers (debounced with pending tracking)
     const handleOrderedWidthChange = useCallback((value) => {
         setOrderedWidth(value);
+        pendingSavesRef.current.set('ordered_width', value);
+
         if (orderedWidthTimerRef.current) clearTimeout(orderedWidthTimerRef.current);
         orderedWidthTimerRef.current = setTimeout(() => {
+            pendingSavesRef.current.delete('ordered_width');
             autoSaveShadeField('ordered_width', value);
         }, 500);
     }, [autoSaveShadeField]);
 
     const handleOrderedHeightChange = useCallback((value) => {
         setOrderedHeight(value);
+        pendingSavesRef.current.set('ordered_height', value);
+
         if (orderedHeightTimerRef.current) clearTimeout(orderedHeightTimerRef.current);
         orderedHeightTimerRef.current = setTimeout(() => {
+            pendingSavesRef.current.delete('ordered_height');
             autoSaveShadeField('ordered_height', value);
         }, 500);
     }, [autoSaveShadeField]);
 
     const handleOrderedDepthChange = useCallback((value) => {
         setOrderedDepth(value);
+        pendingSavesRef.current.set('ordered_depth', value);
+
         if (orderedDepthTimerRef.current) clearTimeout(orderedDepthTimerRef.current);
         orderedDepthTimerRef.current = setTimeout(() => {
+            pendingSavesRef.current.delete('ordered_depth');
             autoSaveShadeField('ordered_depth', value);
         }, 500);
     }, [autoSaveShadeField]);
