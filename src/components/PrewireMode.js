@@ -491,28 +491,36 @@ const PrewireMode = () => {
                     className="p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      {/* Badge */}
-                      <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
+                      {/* Badge - clickable to open wire drop details */}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/wire-drops/${drop.id}`)}
+                        className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
                         style={{
                           backgroundColor: badgeColor,
                           border: '2px solid rgba(17, 24, 39, 0.08)',
                           color: badgeTextColor
                         }}
+                        title="Open wire drop details"
                       >
                         <span className="text-sm font-bold">{badgeLetter}</span>
-                      </div>
+                      </button>
 
-                      {/* Drop info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-zinc-900 dark:text-white truncate">
+                      {/* Drop info - clickable to open wire drop details */}
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/wire-drops/${drop.id}`)}
+                        className="flex-1 min-w-0 text-left"
+                        title="Open wire drop details"
+                      >
+                        <h3 className="font-semibold text-zinc-900 dark:text-white truncate hover:text-violet-600 dark:hover:text-violet-400 transition-colors">
                           {drop.drop_name || 'Unnamed Drop'}
                         </h3>
                         <p className="text-sm text-zinc-600 dark:text-zinc-400">
                           {drop.room_name}
                           {drop.wire_type && ` • ${drop.wire_type}`}
                         </p>
-                      </div>
+                      </button>
 
                       {/* Actions - Print Labels (left) and Photo (right) */}
                       <div className="flex items-center gap-3 flex-shrink-0">
