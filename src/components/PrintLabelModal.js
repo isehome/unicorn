@@ -31,12 +31,13 @@ const PrintLabelModal = ({
 
     setLastPrintStatus(null);
     try {
-      const success = await onPrint(wireDrop, copies);
-      if (success) {
-        setLastPrintStatus('success');
-      } else {
-        setLastPrintStatus('error');
-      }
+      await onPrint(wireDrop, copies);
+      // If no error thrown, print succeeded - close modal
+      setLastPrintStatus('success');
+      // Auto-close after brief success message
+      setTimeout(() => {
+        handleClose();
+      }, 800);
     } catch (err) {
       console.error('Print error:', err);
       setLastPrintStatus('error');

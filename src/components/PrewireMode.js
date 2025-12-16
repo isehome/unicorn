@@ -216,7 +216,8 @@ const PrewireMode = () => {
     setPrintModalOpen(true);
   };
 
-  // Handle print labels with printer response verification
+  // Handle print labels - if no exception is thrown, consider it successful
+  // Note: Brady SDK printBitmap can return false even when print succeeds
   const handlePrintLabels = async (drop, copies) => {
     setPrintingDropId(drop.id);
 
@@ -225,26 +226,22 @@ const PrewireMode = () => {
       const bitmap = await labelRenderService.generateWireDropLabelBitmap(drop);
 
       // Print with specified copies and cut after each
-      // printerPrintLabel returns true on success (from bradyPrintService.printLabel)
-      const printSuccess = await printerPrintLabel(bitmap, copies, true);
+      // Note: printerPrintLabel may return false even on success due to SDK quirks
+      // If no exception is thrown, the print job was sent successfully
+      await printerPrintLabel(bitmap, copies, true);
 
-      if (printSuccess) {
-        // Mark labels as printed in database only if printer confirmed success
-        await wireDropService.markLabelsPrinted(drop.id, getCurrentUserEmail());
+      // Mark labels as printed in database (print job was sent without error)
+      await wireDropService.markLabelsPrinted(drop.id, getCurrentUserEmail());
 
-        // Update local state
-        setWireDrops(prev => prev.map(d =>
-          d.id === drop.id
-            ? { ...d, labels_printed: true, labels_printed_at: new Date().toISOString() }
-            : d
-        ));
+      // Update local state
+      setWireDrops(prev => prev.map(d =>
+        d.id === drop.id
+          ? { ...d, labels_printed: true, labels_printed_at: new Date().toISOString() }
+          : d
+      ));
 
-        console.log(`Successfully printed ${copies} label(s) for ${drop.uid}`);
-        return true;
-      } else {
-        console.error('Print job did not complete successfully');
-        return false;
-      }
+      console.log(`Successfully printed ${copies} label(s) for ${drop.uid}`);
+      return true;
     } catch (err) {
       console.error('Print error:', err);
       throw err; // Let the modal handle the error display
