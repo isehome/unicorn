@@ -20,6 +20,7 @@ import {
 import { wireDropService } from '../services/wireDropService';
 import labelRenderService from '../services/labelRenderService';
 import PrewirePhotoModal from './PrewirePhotoModal';
+import PrintLabelModal from './PrintLabelModal';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
 
 /**
@@ -57,6 +58,10 @@ const PrewireMode = () => {
   // Photo modal state
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [selectedDropForPhoto, setSelectedDropForPhoto] = useState(null);
+
+  // Print modal state
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [selectedDropForPrint, setSelectedDropForPrint] = useState(null);
 
   // Get current user name/email for tracking
   const getCurrentUserEmail = useCallback(() => (
@@ -204,40 +209,73 @@ const PrewireMode = () => {
     return Boolean(prewireStage?.completed);
   };
 
-  // Handle print labels
-  const handlePrintLabels = async (drop, e) => {
+  // Open print modal
+  const handleOpenPrintModal = (drop, e) => {
     e.stopPropagation();
+    setSelectedDropForPrint(drop);
+    setPrintModalOpen(true);
+  };
 
-    if (!printerConnected) {
-      alert('Please connect to printer first. Go to Settings to connect.');
-      return;
-    }
-
+  // Handle print labels with printer response verification
+  const handlePrintLabels = async (drop, copies) => {
     setPrintingDropId(drop.id);
 
     try {
       // Generate label bitmap
       const bitmap = await labelRenderService.generateWireDropLabelBitmap(drop);
 
-      // Print 2 copies with cut after each
-      await printerPrintLabel(bitmap, 2, true);
+      // Print with specified copies and cut after each
+      // printerPrintLabel returns true on success (from bradyPrintService.printLabel)
+      const printSuccess = await printerPrintLabel(bitmap, copies, true);
 
-      // Mark labels as printed in database
-      await wireDropService.markLabelsPrinted(drop.id, getCurrentUserEmail());
+      if (printSuccess) {
+        // Mark labels as printed in database only if printer confirmed success
+        await wireDropService.markLabelsPrinted(drop.id, getCurrentUserEmail());
 
-      // Update local state
-      setWireDrops(prev => prev.map(d =>
-        d.id === drop.id
-          ? { ...d, labels_printed: true, labels_printed_at: new Date().toISOString() }
-          : d
-      ));
+        // Update local state
+        setWireDrops(prev => prev.map(d =>
+          d.id === drop.id
+            ? { ...d, labels_printed: true, labels_printed_at: new Date().toISOString() }
+            : d
+        ));
 
-      console.log(`Successfully printed 2 labels for ${drop.uid}`);
+        console.log(`Successfully printed ${copies} label(s) for ${drop.uid}`);
+        return true;
+      } else {
+        console.error('Print job did not complete successfully');
+        return false;
+      }
     } catch (err) {
       console.error('Print error:', err);
-      alert(`Print failed: ${err.message}`);
+      throw err; // Let the modal handle the error display
     } finally {
       setPrintingDropId(null);
+    }
+  };
+
+  // Handle manual mark as printed toggle
+  const handleMarkPrinted = async (wireDropId, printed) => {
+    try {
+      if (printed) {
+        // Mark as printed
+        await wireDropService.markLabelsPrinted(wireDropId, getCurrentUserEmail());
+        setWireDrops(prev => prev.map(d =>
+          d.id === wireDropId
+            ? { ...d, labels_printed: true, labels_printed_at: new Date().toISOString() }
+            : d
+        ));
+      } else {
+        // Unmark as printed
+        await wireDropService.unmarkLabelsPrinted(wireDropId);
+        setWireDrops(prev => prev.map(d =>
+          d.id === wireDropId
+            ? { ...d, labels_printed: false, labels_printed_at: null }
+            : d
+        ));
+      }
+    } catch (err) {
+      console.error('Failed to update printed status:', err);
+      alert(`Failed to update status: ${err.message}`);
     }
   };
 
@@ -481,25 +519,26 @@ const PrewireMode = () => {
 
                       {/* Actions - Print Labels (left) and Photo (right) */}
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        {/* Print labels button */}
+                        {/* Print labels button - opens modal */}
                         <button
-                          onClick={(e) => handlePrintLabels(drop, e)}
-                          disabled={printingDropId === drop.id}
-                          className="px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                          type="button"
+                          onClick={(e) => handleOpenPrintModal(drop, e)}
+                          onTouchEnd={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleOpenPrintModal(drop, e);
+                          }}
+                          className="px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-white min-h-[44px] touch-manipulation active:opacity-80"
                           style={{
                             backgroundColor: drop.labels_printed ? '#94AF32' : '#8B5CF6'
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = drop.labels_printed ? '#7A9229' : '#7C3AED'}
                           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = drop.labels_printed ? '#94AF32' : '#8B5CF6'}
-                          title={drop.labels_printed ? 'Labels already printed (click to reprint)' : 'Print 2x wire labels'}
+                          title={drop.labels_printed ? 'Labels already printed (click to reprint)' : 'Print wire labels'}
                         >
-                          {printingDropId === drop.id ? (
-                            <Loader size={16} className="animate-spin" />
-                          ) : (
-                            <Printer size={16} />
-                          )}
+                          <Printer size={16} />
                           <span className="hidden sm:inline">
-                            {printingDropId === drop.id ? 'Printing' : (drop.labels_printed ? 'Reprint' : 'Print')}
+                            {drop.labels_printed ? 'Reprint' : 'Print'}
                           </span>
                         </button>
 
@@ -539,6 +578,20 @@ const PrewireMode = () => {
         wireDrop={selectedDropForPhoto}
         onPhotoUploaded={handlePhotoUploaded}
         currentUserName={getCurrentUserName()}
+      />
+
+      {/* Print labels modal */}
+      <PrintLabelModal
+        isOpen={printModalOpen}
+        onClose={() => {
+          setPrintModalOpen(false);
+          setSelectedDropForPrint(null);
+        }}
+        wireDrop={selectedDropForPrint}
+        printerConnected={printerConnected}
+        onPrint={handlePrintLabels}
+        onMarkPrinted={handleMarkPrinted}
+        isPrinting={printingDropId === selectedDropForPrint?.id}
       />
     </div>
   );

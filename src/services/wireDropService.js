@@ -1019,6 +1019,32 @@ class WireDropService {
     }
   }
 
+  /**
+   * Unmark labels as printed (reset to unprinted state)
+   * @param {string} wireDropId - Wire drop UUID
+   * @returns {Promise<Object>} Updated wire drop record
+   */
+  async unmarkLabelsPrinted(wireDropId) {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drops')
+        .update({
+          labels_printed: false,
+          labels_printed_at: null,
+          labels_printed_by: null
+        })
+        .eq('id', wireDropId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Failed to unmark labels as printed:', error);
+      throw error;
+    }
+  }
+
   // =========================================================================
   // SHADE LINKING METHODS
   // =========================================================================
