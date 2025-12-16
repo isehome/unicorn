@@ -240,12 +240,17 @@ export const useShadeTools = ({
         },
         {
             name: "get_shade_context",
-            description: "Get information about the current shade being measured: name, room, quoted dimensions, and which measurements have been recorded vs still needed.",
+            description: "Get information about the current shade being measured: name, room, quoted dimensions, M1/M2 status, and which measurements have been recorded vs still needed. ALWAYS call this first when the user asks about measuring.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 const currentShade = shadeRef.current;
                 const currentTab = activeTabRef.current;
                 const { completed, missing, allComplete } = getMeasurementStatus();
+
+                // Determine M1/M2 status
+                const m1Complete = currentShade?.m1_complete || false;
+                const m2Complete = currentShade?.m2_complete || false;
+                const currentMeasureRound = currentTab === 'm2' ? 'M2' : 'M1';
 
                 return {
                     shade: {
@@ -254,18 +259,21 @@ export const useShadeTools = ({
                         quotedWidth: currentShade?.quoted_width,
                         quotedHeight: currentShade?.quoted_height,
                         mountType: currentShade?.mount_type,
-                        technology: currentShade?.technology
+                        technology: currentShade?.technology,
+                        m1Complete: m1Complete,
+                        m2Complete: m2Complete
                     },
+                    currentMeasureRound: currentMeasureRound,
                     measurementTab: currentTab,
                     measurements: {
                         completed: completed.map(m => ({ field: m.spoken, value: m.value })),
                         missing: missing.map(m => m.spoken),
                         allComplete
                     },
-                    nextPrompt: missing[0]?.prompt || "All measurements done! Ready to save.",
+                    nextPrompt: missing[0]?.prompt || `All ${currentMeasureRound} measurements done! Ready to save.`,
                     hint: allComplete
-                        ? "All 6 measurements recorded. Say 'save' to complete this shade."
-                        : `${completed.length} of 6 measurements done. ${missing[0]?.prompt}`
+                        ? `All 6 ${currentMeasureRound} measurements recorded. Say 'save' to complete this ${currentMeasureRound}.${currentTab === 'm1' && !m2Complete ? ' After saving, you can switch to M2 tab for second measurements.' : ''}`
+                        : `${completed.length} of 6 ${currentMeasureRound} measurements done. ${missing[0]?.prompt}`
                 };
             }
         },

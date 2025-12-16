@@ -72,6 +72,12 @@ export const VoiceCopilotProvider = ({ children }) => {
     const recordingActive = useRef(false);
     const audioLevelInterval = useRef(null);
 
+    // Ref for activeTools to avoid stale closure in socket.onopen
+    const activeToolsRef = useRef(activeTools);
+    useEffect(() => {
+        activeToolsRef.current = activeTools;
+    }, [activeTools]);
+
     // Check if API key is configured on mount
     useEffect(() => {
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
@@ -524,7 +530,9 @@ export const VoiceCopilotProvider = ({ children }) => {
 
                 // Send initial configuration
                 const settings = getSettings();
-                const toolDeclarations = Array.from(activeTools.values()).map(t => ({
+                // Use ref to get current tools (avoids stale closure)
+                const currentTools = activeToolsRef.current;
+                const toolDeclarations = Array.from(currentTools.values()).map(t => ({
                     name: t.name,
                     description: t.description,
                     parameters: t.parameters
@@ -581,7 +589,14 @@ ${settings.persona === 'brief' ? '- Be concise and direct. Short confirmations l
 ${settings.instructions ? `- User preferences: ${settings.instructions}` : ''}
 
 SHADE MEASURING WORKFLOW:
-When helping measure a window shade, guide the technician through these 6 measurements:
+Each shade needs TWO rounds of measurements:
+- M1 (First Measure): Initial rough opening measurements taken during pre-wire
+- M2 (Second Measure): Verification measurements taken before installation
+
+When the tech says "measure" or "let's measure", they want to record measurements - don't assume a shade is already done!
+A shade can have M1 complete but still need M2. Always check which tab they're on (M1 or M2).
+
+For EACH measurement round, guide the technician through these 6 measurements:
 1. WIDTH measurements (measure the opening width at 3 points):
    - Top width
    - Middle width
@@ -592,14 +607,13 @@ When helping measure a window shade, guide the technician through these 6 measur
    - Right side height
 
 IMPORTANT FIELD NAVIGATION:
-- When prompting for a measurement, ALWAYS use navigate_to_field first to highlight the field
+- When prompting for a measurement, use navigate_to_field to highlight the field
 - This shows the tech exactly which field you're asking about
-- Example: Before asking for "middle width", call navigate_to_field with field="middle width"
 - The highlighted field will glow violet so the tech knows where to look
 
 Always confirm each measurement back verbally: "Got it, 52 and a quarter inches for the top width."
-After recording a measurement, the next field will auto-highlight. Prompt for it: "Now give me the middle width."
-When all 6 are done, summarize and offer to save or move to the next shade.
+After recording a measurement, prompt for the next one: "Now give me the middle width."
+When all 6 are done, ask if they want to save, or continue to M2 if they just finished M1.
 
 SPEECH RULES:
 - Say numbers naturally: "52 and a quarter" not "52.25"
@@ -608,13 +622,20 @@ SPEECH RULES:
 - If you hear a number, confirm it back before recording
 - If unclear, ask them to repeat
 
+NAVIGATION:
+When the user asks to go somewhere, use the navigation tools:
+- "Go to settings" → use navigate_to_section with section="settings"
+- "Open [project name]" → use navigate_to_project with projectName
+- "Go to shades" → use navigate_to_project with section="shades"
+- "Show me the dashboard" → use navigate_to_section with section="dashboard"
+
 ON SESSION START:
-Greet briefly and state what page they're on. Example: "Hey! You're in the shades section. Which window should we measure?"
+Greet briefly and state what page they're on. If in shades section, ask which window to measure.
 
 AVAILABLE ACTIONS:
-- Navigate between projects and sections
-- Open a specific shade for measuring
-- Record measurements into form fields
+- Navigate between projects and sections using navigate_to_section and navigate_to_project
+- Open a specific shade for measuring using open_shade_for_measuring
+- Record measurements into form fields using set_measurement
 - Save and move to next shade`
                             }]
                         }
