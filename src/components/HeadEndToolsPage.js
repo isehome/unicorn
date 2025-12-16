@@ -2,12 +2,14 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Server, Wrench } from 'lucide-react';
 import Button from './ui/Button';
-import { useThemeStyles } from '../hooks/useThemeStyles';
+import { useTheme } from '../contexts/ThemeContext';
+import { enhancedStyles } from '../styles/styleSystem';
 
 const HeadEndToolsPage = () => {
   const { projectId, wireDropId } = useParams();
   const navigate = useNavigate();
-  const styles = useThemeStyles();
+  const { mode } = useTheme();
+  const styles = enhancedStyles.base[mode];
 
   const handleBack = () => {
     if (wireDropId) {
