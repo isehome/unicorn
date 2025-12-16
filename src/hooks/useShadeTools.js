@@ -391,6 +391,59 @@ export const useShadeTools = ({
                     error: "Close function not available"
                 };
             }
+        },
+        {
+            name: "navigate_to_field",
+            description: "Navigate to and highlight a specific measurement field. Use when the tech asks to 'go to' or 'focus on' a field, or when you need to show them which field to measure next.",
+            parameters: {
+                type: "object",
+                properties: {
+                    field: {
+                        type: "string",
+                        description: "Which measurement field to navigate to: 'top width', 'middle width', 'bottom width', 'left height', 'center height', or 'right height'"
+                    }
+                },
+                required: ["field"]
+            },
+            execute: async ({ field }) => {
+                const fieldLower = field.toLowerCase().trim();
+                const key = fieldMap[fieldLower];
+
+                if (!key) {
+                    return {
+                        success: false,
+                        error: `Unknown field: ${field}`,
+                        validFields: ['top width', 'middle width', 'bottom width', 'left height', 'center height', 'right height']
+                    };
+                }
+
+                // Highlight the field
+                const setActiveFieldFn = setActiveFieldRef.current;
+                if (setActiveFieldFn) {
+                    console.log(`[ShadeTools] Navigating to field: ${key}`);
+                    setActiveFieldFn(key);
+
+                    // Keep highlighted for 5 seconds for navigation
+                    setTimeout(() => {
+                        if (setActiveFieldRef.current) {
+                            setActiveFieldRef.current(null);
+                        }
+                    }, 5000);
+                }
+
+                // Get current value if any
+                const currentValue = formDataRef.current[key];
+                const measurement = measurementSequence.find(m => m.key === key);
+
+                return {
+                    success: true,
+                    field: measurement?.spoken || field,
+                    currentValue: currentValue || null,
+                    message: currentValue
+                        ? `Showing ${measurement?.spoken}. Current value is ${currentValue} inches.`
+                        : `Showing ${measurement?.spoken}. Ready for measurement.`
+                };
+            }
         }
     ], [fieldMap, measurementSequence, getMeasurementStatus]); // Minimal deps - refs handle the rest
 

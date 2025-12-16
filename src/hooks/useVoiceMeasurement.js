@@ -80,10 +80,11 @@ export const useVoiceMeasurement = ({ onFieldUpdate, initialContext = null }) =>
                 console.log("Connected to Gemini Live");
                 setStatus('listening');
 
-                // Send Initial Setup
+                // Send Initial Setup - use user's model preference or default to latest
+                const selectedModel = localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025';
                 const setupMsg = {
                     setup: {
-                        model: "models/gemini-2.0-flash-exp",
+                        model: `models/${selectedModel}`,
                         generation_config: {
                             response_modalities: ["AUDIO"]
                         }
