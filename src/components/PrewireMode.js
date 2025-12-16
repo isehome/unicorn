@@ -520,11 +520,6 @@ const PrewireMode = () => {
                         <button
                           type="button"
                           onClick={(e) => handleOpenPrintModal(drop, e)}
-                          onTouchEnd={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleOpenPrintModal(drop, e);
-                          }}
                           className="px-3 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 text-white min-h-[44px] touch-manipulation active:opacity-80"
                           style={{
                             backgroundColor: drop.labels_printed ? '#94AF32' : '#8B5CF6'
