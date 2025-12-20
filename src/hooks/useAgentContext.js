@@ -119,7 +119,7 @@ export const useAgentContext = () => {
     const globalTools = useMemo(() => [
         {
             name: "get_current_location",
-            description: "Get information about where the user currently is in the app - which page, which project (if any), etc.",
+            description: "CALL THIS FIRST when the session starts. Get information about where the user currently is in the app - which page, which project (if any), and what actions are available.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 let projectDetails = null;
@@ -127,7 +127,41 @@ export const useAgentContext = () => {
                     projectDetails = await fetchProjectDetails(currentContext.projectId);
                 }
 
+                // Generate a human-readable description of where we are
+                let locationDescription = '';
+                if (currentContext.section === 'dashboard') {
+                    locationDescription = 'You are on the main Dashboard showing all projects.';
+                } else if (currentContext.section === 'project') {
+                    const projectName = projectDetails?.name || 'a project';
+                    if (currentContext.subsection === 'shades') {
+                        locationDescription = `You are in the Shades section of ${projectName}. You can help measure windows here.`;
+                    } else if (currentContext.subsection === 'equipment') {
+                        locationDescription = `You are viewing Equipment for ${projectName}.`;
+                    } else if (currentContext.subsection === 'wire-drops') {
+                        locationDescription = `You are in Wire Drops for ${projectName}.`;
+                    } else if (currentContext.subsection === 'issues') {
+                        locationDescription = `You are viewing Issues for ${projectName}.`;
+                    } else {
+                        locationDescription = `You are viewing the overview for ${projectName}.`;
+                    }
+                } else if (currentContext.section === 'settings') {
+                    locationDescription = 'You are on the Settings page.';
+                } else if (currentContext.section === 'issues') {
+                    locationDescription = 'You are on the global Issues page.';
+                } else if (currentContext.section === 'todos') {
+                    locationDescription = 'You are on the Todos page.';
+                } else if (currentContext.section === 'people') {
+                    locationDescription = 'You are on the People/Contacts page.';
+                } else if (currentContext.section === 'vendors') {
+                    locationDescription = 'You are on the Vendors page.';
+                } else if (currentContext.section === 'parts') {
+                    locationDescription = 'You are on the Parts catalog page.';
+                } else {
+                    locationDescription = `You are on the ${currentContext.section} page.`;
+                }
+
                 return {
+                    locationDescription,
                     section: currentContext.section,
                     subsection: currentContext.subsection,
                     isInProject: currentContext.isInProject,
@@ -137,7 +171,8 @@ export const useAgentContext = () => {
                         address: projectDetails.address,
                         status: projectDetails.status
                     } : null,
-                    availableActions: getAvailableActions(currentContext)
+                    availableActions: getAvailableActions(currentContext),
+                    hint: "Tell the user where they are and ask how you can help."
                 };
             }
         },

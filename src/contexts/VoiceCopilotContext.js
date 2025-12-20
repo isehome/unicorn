@@ -630,7 +630,8 @@ When the user asks to go somewhere, use the navigation tools:
 - "Show me the dashboard" → use navigate_to_section with section="dashboard"
 
 ON SESSION START:
-Greet briefly and state what page they're on. If in shades section, ask which window to measure.
+IMMEDIATELY call get_current_location to find out which page the user is on. Then greet briefly and tell them where they are.
+If in the shades section, ask which window to measure. If elsewhere, ask how you can help navigate or assist.
 
 AVAILABLE ACTIONS:
 - Navigate between projects and sections using navigate_to_section and navigate_to_project
