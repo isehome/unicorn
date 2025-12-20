@@ -144,78 +144,164 @@ export const LUTRON_SHADE_KNOWLEDGE = {
   products: {
     sivoia: {
       name: 'Sivoia QS',
-      description: 'Commercial-grade roller shades with quiet operation',
+      description: 'Commercial-grade roller shades with quiet operation - multiple roller sizes available',
       technologies: ['Roller', 'Tensioned Roller', 'Drapery'],
       features: [
         'Ultra-quiet motor',
-        'Precise positioning',
-        'Battery or hardwired options',
+        'Precise positioning (stops at 0.125" intervals)',
+        'Hardwired power (low voltage)',
         'Integrates with RadioRA 3, HomeWorks, Athena'
       ],
-      motorTypes: {
-        '?"standard': 'For shades up to 96" wide, 10 lbs max',
-        'HD': 'Heavy duty - up to 144" wide, 20 lbs max',
-        'XHD': 'Extra heavy duty - specialty applications'
+      rollerSizes: {
+        roller20: {
+          tubeDiameter: '1.25"',
+          maxFabricArea: '20 sq ft',
+          maxWidth: '8 ft (96")',
+          pocketSize: '3.5" w x 3.5" h',
+          note: 'Ultra-slim for inside mount in most residential frames'
+        },
+        roller64: {
+          tubeDiameter: '1.625"',
+          maxFabricArea: '64 sq ft',
+          maxWidth: '8 ft (96")',
+          pocketSize: '3.5" w x 3.5" h',
+          mountDepthMin: '0.30"',
+          mountDepthMax: '3.30"'
+        },
+        roller100: {
+          tubeDiameter: '2.56"',
+          maxFabricArea: '100 sq ft',
+          maxWidth: '12 ft (144")',
+          pocketSize: '4.75" w x 5" h'
+        },
+        roller150: {
+          tubeDiameter: '3.00"',
+          maxFabricArea: '150 sq ft',
+          maxWidth: '15 ft (180")',
+          pocketSize: '5.5" w x 6" h',
+          note: 'Two-piece bracket design'
+        },
+        roller225: {
+          tubeDiameter: '3.75"',
+          maxFabricArea: '225 sq ft',
+          maxWidth: '15 ft (180")',
+          pocketSize: '7" w x 7" h',
+          note: 'Heavy-duty for atriums and window walls'
+        },
+        roller300: {
+          tubeDiameter: '4.50"',
+          maxFabricArea: '300 sq ft',
+          maxWidth: '15 ft (180")',
+          pocketSize: '8" w x 8" h',
+          note: 'Largest size for commercial applications'
+        }
       },
-      mountDepth: {
-        roller: '3.5" minimum',
-        tensioned: '4.5" minimum',
-        dualRoller: '5" minimum'
-      }
+      mountOptions: ['Ceiling', 'Wall', 'Jamb (inside)', 'Pocket', 'Fascia']
     },
 
     palladiom: {
       name: 'Palladiom',
-      description: 'Premium architectural shading with whisper-quiet operation',
+      description: 'Premium architectural shading with whisper-quiet operation and carbon fiber tubes',
       features: [
-        'Whisper-quiet motor (quieter than Sivoia)',
-        'Battery-powered with 3-5 year battery life',
-        'Wire-free installation',
-        'Elegant fascia options'
+        'Whisper-quiet motor',
+        'Carbon fiber tube (2" diameter) - rigid yet lightweight',
+        'Available in wired or wire-free (battery)',
+        'Solid aluminum/brass brackets in 7 finishes',
+        'Symmetrical light gaps as small as 1/2" (wired) or 3/4" (wire-free)'
       ],
       sizes: {
-        width: 'Up to 144" (12 feet)',
-        height: 'Up to 120" (10 feet) standard fabric'
+        wired: {
+          maxWidth: '12 ft (144")',
+          maxHeight: '14 ft (168")'
+        },
+        wireFree: {
+          minWidth: '21"',
+          maxWidth: '12 ft (144")',
+          minHeight: '12"',
+          maxHeight: '12 ft (144")'
+        }
       },
+      batteryLife: '3-5 years with 6 D-cell batteries',
+      batteryNote: 'Uses Active Energy Optimization for extended life',
       mountDepth: {
-        minimum: '4" for standard',
-        recommended: '5" for optimal roll',
-        dual: '6" minimum for dual shades'
+        wireFree: 'NOT recommended for pocket/recess - need 6" clearance on room side for battery access',
+        bracketCapacity: '400 lbs per bracket'
       }
     },
 
     triathlon: {
-      name: 'Triathlon',
-      description: 'Cost-effective battery-powered shading',
+      name: 'Sivoia QS Triathlon',
+      description: 'Battery-powered shading - great for retrofits, no wiring needed',
       features: [
-        'Battery powered (5+ year life)',
-        'No wiring required',
+        'Battery powered - no wiring required',
+        'Ultra-quiet (38 dBa at 3 ft)',
+        'Precise positioning (0.125" intervals)',
         'Pico remote included',
-        'Great for retrofits'
-      ],
-      limitations: [
-        'Smaller size range than Sivoia/Palladiom',
-        'Limited fabric selection',
-        'Not as quiet as Palladiom'
+        'Battery Boost option for larger shades'
       ],
       sizes: {
-        width: 'Up to 96" (8 feet)',
-        height: 'Up to 96" (8 feet)'
-      }
+        standard: {
+          maxWidth: '144" (12 ft)',
+          maxHeight: '144" (12 ft)'
+        },
+        select: {
+          maxWidth: '108"',
+          maxHeight: '120"'
+        },
+        woodBlinds: {
+          maxWidth: '72"',
+          maxHeight: '72"',
+          note: '2" slats only, group up to 96" under one valance'
+        }
+      },
+      batteryLife: {
+        typical: '3-5 years on 36"x60" shade with 2 moves/day',
+        withBoost: 'Up to 6 years (80% extension)',
+        boostNote: 'Battery Boost available for shades wider than 37-5/8"'
+      },
+      mountDepth: {
+        exposed: {
+          standard: '3" depth x 4.75" height',
+          WIDR: '4" depth x 4.875" height'
+        },
+        fascia: {
+          standard: '3.375" depth x 4.9375" height',
+          WIDR: '4.5" depth x 4.9375" height'
+        }
+      },
+      mountingRequirement: 'Must mount on blocking or structural material, 75 lbs capacity per fastener'
+    },
+
+    triathlonSelect: {
+      name: 'Triathlon Select',
+      description: 'Entry-level battery shade with smart home integration',
+      features: [
+        'Works with Apple HomeKit, Alexa, Google Home',
+        'Battery powered (D-cell alkaline)',
+        'No hub required for basic operation',
+        'Direct Bluetooth/WiFi control'
+      ],
+      sizes: {
+        maxWidth: '108"',
+        maxHeight: '120"'
+      },
+      batteryLife: '2 years typical'
     },
 
     serena: {
       name: 'Serena',
-      description: 'Smart shades for residential use',
+      description: 'Smart shades for residential use with broad smart home compatibility',
       features: [
-        'Works with Apple HomeKit, Alexa, Google',
+        'Works with Apple HomeKit, Alexa, Google, SmartThings',
         'Battery powered',
-        'Available at retail and through dealers'
+        'Available at retail and through dealers',
+        'Easy DIY installation'
       ],
       sizes: {
-        width: 'Up to 96" wide',
-        height: 'Up to 96" tall'
-      }
+        maxWidth: '96"',
+        maxHeight: '96"'
+      },
+      batteryLife: '3-5 years'
     }
   },
 
@@ -453,20 +539,43 @@ export const LUTRON_SHADE_KNOWLEDGE = {
 
 // Quick reference for voice AI
 export const QUICK_REFERENCE = {
-  mountDepths: {
-    'Sivoia Roller': '3.5" minimum',
-    'Sivoia Tensioned': '4.5" minimum',
-    'Sivoia Dual': '5" minimum',
-    'Palladiom Standard': '4" minimum, 5" recommended',
-    'Palladiom Dual': '6" minimum'
+  // Pocket/recess dimensions by roller size
+  pocketSizes: {
+    'Sivoia Roller 20': '3.5" w x 3.5" h',
+    'Sivoia Roller 64': '3.5" w x 3.5" h',
+    'Sivoia Roller 100': '4.75" w x 5" h',
+    'Sivoia Roller 150': '5.5" w x 6" h',
+    'Sivoia Roller 225': '7" w x 7" h',
+    'Sivoia Roller 300': '8" w x 8" h',
+    'Triathlon Standard': '3" depth x 4.75" h (exposed)',
+    'Triathlon WIDR': '4" depth x 4.875" h (exposed)',
+    'Palladiom Wire-Free': 'NOT for pocket mount - need 6" room-side clearance'
   },
 
+  // Maximum sizes by product
   maxSizes: {
-    'Sivoia Standard Motor': '96" wide, 10 lbs',
-    'Sivoia HD Motor': '144" wide, 20 lbs',
-    'Palladiom': '144" wide, 120" tall',
-    'Triathlon': '96" x 96"',
+    'Sivoia Roller 20': '8 ft wide, 20 sq ft fabric',
+    'Sivoia Roller 64': '8 ft wide, 64 sq ft fabric',
+    'Sivoia Roller 100': '12 ft wide, 100 sq ft fabric',
+    'Sivoia Roller 150': '15 ft wide, 150 sq ft fabric',
+    'Sivoia Roller 225': '15 ft wide, 225 sq ft fabric',
+    'Sivoia Roller 300': '15 ft wide, 300 sq ft fabric',
+    'Palladiom Wired': '12 ft wide x 14 ft tall',
+    'Palladiom Wire-Free': '12 ft wide x 12 ft tall',
+    'Triathlon': '12 ft x 12 ft (144" x 144")',
+    'Triathlon Select': '108" x 120"',
     'Serena': '96" x 96"'
+  },
+
+  // Tube diameters for roller selection
+  tubeDiameters: {
+    'Roller 20': '1.25"',
+    'Roller 64': '1.625"',
+    'Roller 100': '2.56"',
+    'Roller 150': '3.00"',
+    'Roller 225': '3.75"',
+    'Roller 300': '4.50"',
+    'Palladiom': '2" (carbon fiber)'
   },
 
   deductions: {
@@ -476,9 +585,24 @@ export const QUICK_REFERENCE = {
   },
 
   batteryLife: {
-    'Palladiom': '3-5 years',
-    'Triathlon': '5+ years',
+    'Palladiom Wire-Free': '3-5 years (6 D-cells)',
+    'Triathlon': '3-5 years (36"x60" @ 2 moves/day)',
+    'Triathlon with Battery Boost': 'Up to 6 years',
+    'Triathlon Select': '2 years',
     'Serena': '3-5 years'
+  },
+
+  // Mounting requirements
+  mountingCapacity: {
+    'Palladiom': '400 lbs per bracket',
+    'Triathlon': '75 lbs per fastener',
+    'General': 'Mount on blocking or structural material'
+  },
+
+  // Noise levels
+  noiseLevel: {
+    'Triathlon': '38 dBa at 3 ft',
+    'Palladiom': 'Whisper quiet (quieter than Triathlon)'
   }
 };
 
