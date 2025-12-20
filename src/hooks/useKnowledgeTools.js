@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 import { LUTRON_SHADE_KNOWLEDGE, QUICK_REFERENCE } from '../data/lutronShadeKnowledge';
+import { searchKnowledgeForVoice } from '../services/knowledgeService';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -801,6 +802,63 @@ export const useKnowledgeTools = () => {
         }
 
         return data;
+      }
+    },
+
+    // ============================================
+    // RAG KNOWLEDGE BASE SEARCH
+    // ============================================
+
+    // 15. Search Uploaded Manufacturer Documentation (RAG)
+    {
+      name: 'search_manufacturer_docs',
+      description: 'Search uploaded technical documentation from manufacturers (Lutron, Control4, Ubiquiti, Sonos, Araknis, etc.). Uses semantic search to find relevant information from PDFs, manuals, and spec sheets. Use this when the tech asks about installation procedures, troubleshooting, or product specs that might be in uploaded documentation.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'What to search for in the documentation (e.g., "lutron roller shade installation", "control4 driver configuration", "ubiquiti ap mounting")'
+          },
+          manufacturer: {
+            type: 'string',
+            description: 'Optional - filter by manufacturer slug (e.g., "lutron", "control4", "ubiquiti", "sonos", "araknis", "josh", "savant", "crestron")'
+          }
+        },
+        required: ['query']
+      },
+      execute: async ({ query, manufacturer }) => {
+        try {
+          console.log(`[KnowledgeTools] Searching docs: "${query}" (manufacturer: ${manufacturer || 'all'})`);
+
+          const result = await searchKnowledgeForVoice(query, manufacturer);
+
+          if (!result.found) {
+            return {
+              found: false,
+              message: result.message,
+              suggestion: 'Try different keywords or check if documentation has been uploaded for this topic.'
+            };
+          }
+
+          return {
+            found: true,
+            answer: result.voiceSummary,
+            documentTitle: result.documentTitle,
+            manufacturer: result.manufacturer,
+            relevance: `${result.relevance}% match`,
+            sources: result.sources,
+            resultCount: result.resultCount,
+            hint: 'Read the answer to the tech. They can ask follow-up questions.'
+          };
+        } catch (error) {
+          console.error('[KnowledgeTools] Search error:', error);
+          return {
+            found: false,
+            error: 'Failed to search documentation',
+            suggestion: 'Try searching the built-in knowledge tools instead.'
+          };
+        }
       }
     }
   ], []);

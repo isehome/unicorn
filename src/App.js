@@ -70,6 +70,7 @@ const ShadeManager = lazy(() => import('./components/Shades/ShadeManager'));
 const ShadeDetailPage = lazy(() => import('./components/Shades/ShadeDetailPage'));
 const TodoDetailPage = lazy(() => import('./components/TodoDetailPage'));
 const HeadEndToolsPage = lazy(() => import('./components/HeadEndToolsPage'));
+const KnowledgeManagementPanel = lazy(() => import('./components/knowledge/KnowledgeManagementPanel'));
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -351,6 +352,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <SettingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/settings/knowledge"
+                element={
+                  <ProtectedRoute>
+                    <KnowledgeManagementPanel />
                   </ProtectedRoute>
                 }
               />

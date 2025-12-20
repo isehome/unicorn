@@ -6,7 +6,7 @@ import { usePrinter } from '../contexts/PrinterContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut } from 'lucide-react';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight } from 'lucide-react';
 
 import AISettings from './UserSettings/AISettings';
 
@@ -206,6 +206,25 @@ const SettingsPage = () => {
 
       {/* AI Copilot Settings */}
       <AISettings />
+
+      {/* Knowledge Base Section */}
+      <section className="rounded-2xl border p-4" style={sectionStyles.card}>
+        <button
+          onClick={() => navigate('/settings/knowledge')}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+              <BookOpen size={20} className="text-violet-600 dark:text-violet-400" />
+            </div>
+            <div className="text-left">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Knowledge Base</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Upload technical docs for AI-powered search</p>
+            </div>
+          </div>
+          <ChevronRight size={20} className="text-gray-400" />
+        </button>
+      </section>
 
       <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
         <div>
