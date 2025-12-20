@@ -571,9 +571,9 @@ export const VoiceCopilotProvider = ({ children }) => {
                                 startOfSpeechSensitivity: getVadStartEnum(settings.vadStartSensitivity),
                                 endOfSpeechSensitivity: getVadEndEnum(settings.vadEndSensitivity),
                                 // How long to wait before committing speech start (ms)
-                                prefixPaddingMs: 100,
-                                // How long of silence before end of speech (ms) - scale with patience
-                                silenceDurationMs: 300 + (settings.vadEndSensitivity * 100) // 400-800ms based on patience
+                                prefixPaddingMs: 200,
+                                // How long of silence before end of speech (ms) - more patient for field techs
+                                silenceDurationMs: 800 + (settings.vadEndSensitivity * 200) // 1000-1200ms - give techs time to think
                             }
                         },
                         systemInstruction: {
