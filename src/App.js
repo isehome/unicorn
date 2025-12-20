@@ -6,6 +6,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrinterProvider } from './contexts/PrinterContext';
 import { VoiceCopilotProvider } from './contexts/VoiceCopilotContext';
+import UnifiDebug from './components/UnifiDebug';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import AppHeader from './components/AppHeader';
@@ -401,6 +402,7 @@ const AppRoutes = () => {
                   </ProtectedRoute>
                 }
               />
+              <Route path="/debug-unifi" element={<UnifiDebug />} />
               <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
               <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
               <Route path="/shade-portal/:token" element={<PublicShadePortal />} />

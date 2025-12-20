@@ -305,6 +305,7 @@ Run the development server: npm run dev
  * Parse UniFi URL to extract host ID and site ID
  * Supports patterns like:
  * - /consoles/{hostId}/network/{siteId}/...
+ * - /consoles/{hostId}/unifi-api/network (implies default site)
  * - /network/{siteId}/...
  * @param {string} unifiUrl - Full UniFi URL from project
  * @returns {Object} { hostId, siteId }
@@ -314,11 +315,27 @@ export const parseUnifiUrl = (unifiUrl) => {
     const url = new URL(unifiUrl);
     const pathParts = url.pathname.split('/').filter(Boolean);
 
-    // Pattern 1: /consoles/{hostId}/network/{siteId}/...
+    // Pattern 1: /consoles/{hostId}/...
     if (pathParts[0] === 'consoles' && pathParts[1]) {
+      const hostId = pathParts[1];
+
+      // Check for /network/{siteId}
+      const networkIndex = pathParts.indexOf('network');
+      if (networkIndex !== -1 && pathParts[networkIndex + 1]) {
+        return {
+          hostId,
+          siteId: pathParts[networkIndex + 1]
+        };
+      }
+
+      // Check for /unifi-api/network (usually implies default site or site list)
+      if (pathParts.includes('unifi-api')) {
+        return { hostId, siteId: 'default' };
+      }
+
       return {
-        hostId: pathParts[1],
-        siteId: pathParts[3] || 'default'
+        hostId,
+        siteId: 'default'
       };
     }
 
@@ -424,6 +441,11 @@ export const fetchDevices = async (hostIds, controllerUrl = null, options = {}, 
     const hostSummaries = [];
     const seenHosts = new Set();
 
+    // Determine if we need to use a console-specific proxy path (Cloud Key)
+    // This supports fetching devices via the legacy /stat/device endpoint if needed, 
+    // but typically we use the Site Manager API (/v1/devices) which is better.
+    // For now, we stick to /v1/devices as it works well for UniFi hardware.
+
     let nextToken = startNextToken;
     let page = 0;
     let lastResponse = null;
@@ -527,11 +549,13 @@ export const fetchDevices = async (hostIds, controllerUrl = null, options = {}, 
 
 /**
  * Fetch all clients connected to the network
- * Uses the local Network API endpoint: /proxy/network/integration/v1/sites/{siteId}/clients
+ * Supports both:
+ * 1. Cloud Console Proxy (legacy /stat/sta endpoint via api.ui.com) - Uses Cloud API Key
+ * 2. Local Controller Direct (Network API) - Uses Local Network API Key
  *
- * @param {string} siteId - UniFi site ID (e.g., '88f7af54-98f8-306a-a1c7-c9349722b1f6')
- * @param {string} controllerUrl - Local controller IP (e.g., 'https://192.168.1.1')
- * @param {string} networkApiKey - Local Network API key
+ * @param {string} siteId - UniFi site ID (e.g., 'default' or UUID)
+ * @param {string} controllerUrl - Full URL from project setting
+ * @param {string} networkApiKey - Local Network API key (only for local connection)
  * @returns {Promise<Object>} Response with clients data
  */
 export const fetchClients = async (siteId, controllerUrl, networkApiKey = null) => {
@@ -544,29 +568,108 @@ export const fetchClients = async (siteId, controllerUrl, networkApiKey = null) 
       throw new Error('Controller URL is required to fetch clients');
     }
 
-    // Build full URL for local controller access
-    // Format: https://192.168.1.1/proxy/network/integration/v1/sites/{siteId}/clients
+    // Check if we are using a Cloud Console URL
+    const { hostId: consoleId, siteId: parsedSiteId } = parseUnifiUrl(controllerUrl);
+    const effectiveSiteId = siteId || parsedSiteId || 'default';
+
+    if (consoleId) {
+      // PATH 1: Cloud Console Proxy (unchanged legacy path for now)
+      console.log('[fetchClients] Detected Cloud Console URL. Using Console Proxy path.');
+      const endpoint = `/v1/consoles/${consoleId}/proxy/network/api/s/${effectiveSiteId}/stat/sta`;
+      const response = await callUnifiProxy({ endpoint, controllerUrl: null }, null);
+      const clients = response?.data || response?.items || response || [];
+      return {
+        data: parseClientData(clients),
+        total: Array.isArray(clients) ? clients.length : 0,
+        raw: response
+      };
+    }
+
+    // PATH 2: Local Controller Direct (Method 1) - THE NEW SMART LOGIC
+    console.log('[fetchClients] Detected Local Controller URL. Using Smart Integration Logic.');
     const baseUrl = controllerUrl.endsWith('/') ? controllerUrl.slice(0, -1) : controllerUrl;
-    const endpoint = `${baseUrl}/proxy/network/integration/v1/sites/${siteId}/clients`;
 
-    console.log('[fetchClients] Full endpoint URL:', endpoint);
+    // Step 1: Fetch Sites to get the correct UUID (bypassing 'default' error)
+    // We reuse the verify logic basically
+    const siteListEndpoint = `${baseUrl}/proxy/network/integration/v1/sites`;
+    console.log('[fetchClients] Step 1: Getting Site UUID from:', siteListEndpoint);
 
-    const response = await callUnifiProxy({
-      endpoint,  // Full URL
-      directUrl: true,  // This tells proxy to treat endpoint as a complete URL
-      networkApiKey
+    const siteListResponse = await callUnifiProxy({
+      endpoint: siteListEndpoint,
+      directUrl: true,
+      networkApiKey,
+      method: "GET"
     }, networkApiKey);
 
-    // Parse response - API returns data in various formats
-    const clients = response?.data || response?.clients || response || [];
+    const sites = siteListResponse?.data || siteListResponse;
+    if (!sites || sites.length === 0) {
+      throw new Error('Failed to retrieve site list from local controller');
+    }
 
-    console.log('[fetchClients] Retrieved clients:', Array.isArray(clients) ? clients.length : 'non-array response');
+    // Default to first site if 'default' was requested, otherwise find matching name/ref
+    let targetSiteId = sites[0].id;
+    if (siteId !== 'default') {
+      const found = sites.find(s => s.name === siteId || s.internalReference === siteId || s.id === siteId);
+      if (found) targetSiteId = found.id;
+    }
+
+    console.log(`[fetchClients] Resolved Site ID: ${targetSiteId}`);
+
+    // Step 2: Fetch Clients ONLY (Reliability Focus)
+    // We skipping Device fetch for now as it causes timeouts on some controllers.
+    const clientsEndpoint = `${baseUrl}/proxy/network/integration/v1/sites/${targetSiteId}/clients`;
+    // const devicesEndpoint = `${baseUrl}/proxy/network/integration/v1/sites/${targetSiteId}/devices`;
+
+    console.log('[fetchClients] Fetching Clients...');
+    const clientsRes = await callUnifiProxy({ endpoint: clientsEndpoint, directUrl: true, networkApiKey, method: 'GET' }, networkApiKey);
+
+    // console.log('[fetchClients] Fetching Devices...');
+    // const devicesRes = await callUnifiProxy({ endpoint: devicesEndpoint, directUrl: true, networkApiKey, method: 'GET' }, networkApiKey);
+
+    const clientsRaw = clientsRes?.data || clientsRes || [];
+    const devicesRaw = []; // devicesRes?.data || devicesRes || [];
+
+    console.log(`[fetchClients] Fetched ${clientsRaw.length} clients.`);
+
+    // Step 3: Creation Lookup Map for Devices
+    const deviceMap = new Map();
+    devicesRaw.forEach(d => {
+      if (d.id) deviceMap.set(d.id, d);
+    });
+
+    // Step 4: Enrich & Normalize Client Data
+    const enrichedClients = clientsRaw.map(c => {
+      // Find Uplink Device
+      const uplinkDev = c.uplinkDeviceId ? deviceMap.get(c.uplinkDeviceId) : null;
+
+      // Normalize Fields for App Compatibility
+      return {
+        ...c,
+        // Core Identity
+        mac: c.macAddress || c.mac,
+        ip: c.ipAddress || c.ip,
+        name: c.name || c.hostname || c.macAddress || c.mac,
+
+        // Connection Info
+        uptime: c.uptime || 0,
+        wired: c.type === 'WIRED' || c.wired === true || c.is_wired === true,
+
+        // Uplink Enrichment
+        uplink_device_name: uplinkDev ? (uplinkDev.name || uplinkDev.model || 'Unknown Switch') : null,
+        uplink_mac: uplinkDev ? (uplinkDev.macAddress || uplinkDev.mac) : null,
+        // Note: uplinkPortIdx is not reliably in client obj, but we map name at least
+
+        // Keep original raw data just in case
+        _raw: c
+      };
+    });
 
     return {
-      data: parseClientData(clients),
-      total: Array.isArray(clients) ? clients.length : 0,
-      raw: response
+      data: parseClientData(enrichedClients), // Pass through existing parser for final polish if needed
+      total: enrichedClients.length,
+      raw: clientsRes
     };
+
   } catch (error) {
     console.error('Error fetching UniFi clients:', error);
     throw error;
@@ -704,8 +807,8 @@ export const testClientEndpoints = async (siteId, controllerUrl, apiKey = null) 
         const data = await response.json();
         results[endpoint.name].data = data;
         results[endpoint.name].recordCount = Array.isArray(data) ? data.length :
-                                             Array.isArray(data?.data) ? data.data.length :
-                                             Array.isArray(data?.clients) ? data.clients.length : 0;
+          Array.isArray(data?.data) ? data.data.length :
+            Array.isArray(data?.clients) ? data.clients.length : 0;
       } else {
         const errorText = await response.text();
         results[endpoint.name].error = errorText;
@@ -743,9 +846,9 @@ export const extractClientsFromDevices = (devices) => {
       // Try to find client identifier in port data
       // Different controller versions use different field names
       const clientMac = port.mac ||
-                       port.client_mac ||
-                       port.port_poe?.client_mac ||
-                       port.poe_client_mac;
+        port.client_mac ||
+        port.port_poe?.client_mac ||
+        port.poe_client_mac;
 
       if (clientMac) {
         console.log(`✅ Found client on ${device.name} port ${port.port_idx}:`, clientMac);
@@ -813,12 +916,12 @@ export const parseClientData = (rawData) => {
 
     // Connection type
     is_wired: client.is_wired !== undefined ? client.is_wired :
-              client.connection_type === 'wired' ||
-              client.type === 'wired' ||
-              !client.essid,
+      client.connection_type === 'wired' ||
+      client.type === 'wired' ||
+      !client.essid,
 
     // Status info
-    is_online: client.is_online || client.status === 'online' || client.last_seen_by_uap > Date.now()/1000 - 300,
+    is_online: client.is_online || client.status === 'online' || client.last_seen_by_uap > Date.now() / 1000 - 300,
     last_seen: client.last_seen || client.last_seen_by_uap || client.disconnect_timestamp,
     uptime: client.uptime || client.association_time,
 
@@ -907,7 +1010,7 @@ export const fetchClientsWithEndpoint = async (siteId, controllerUrl, endpoint =
  */
 export const fetchSwitchPorts = async (siteId, deviceMac, controllerUrl) => {
   if (!siteId || !deviceMac) throw new Error('Site ID and device MAC are required');
-  
+
   try {
     const response = await fetchDevices(siteId, controllerUrl, { fetchAll: false });
     const devices = response?.data || [];

@@ -1,0 +1,128 @@
+const https = require('https');
+const { URL } = require('url');
+
+module.exports = function (app) {
+    const bodyParser = require('express').json();
+
+    // We hijack the Vercel API path for local development
+    // This allows 'npm start' to handle the proxying directly without 'vercel dev'
+    app.use('/api/unifi-proxy', bodyParser, async (req, res) => {
+        // Enable CORS
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type, X-API-KEY, x-unifi-api-key');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        const apiKey = req.headers['x-unifi-api-key'] || process.env.UNIFI_API_KEY;
+        const query = req.query;
+        // Body is now parsed by the middleware
+        const body = req.body;
+
+        const endpoint = query.endpoint || body?.endpoint;
+        const method = query.method || body?.method || 'GET';
+        const directUrl = query.directUrl === 'true' || body?.directUrl === true;
+        const networkApiKey = query.networkApiKey || body?.networkApiKey;
+
+        console.log('[setupProxy] Request received:', { endpoint, directUrl, method: req.method });
+
+        // For local network connections (Method 1)
+        if (directUrl && endpoint) {
+            console.log('[setupProxy] Proxying local request to:', endpoint);
+
+            try {
+                const parsedUrl = new URL(endpoint);
+
+                const options = {
+                    hostname: parsedUrl.hostname,
+                    port: parsedUrl.port || 443,
+                    path: parsedUrl.pathname + parsedUrl.search,
+                    method: method,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-KEY': networkApiKey || apiKey,
+                        'Accept': 'application/json'
+                    },
+                    agent: false, // Create new agent per request (avoid pool exhaustion)
+                    timeout: 60000
+                };
+
+                if (body && (method === 'POST' || method === 'PUT')) {
+                    // This line is now redundant if Content-Type is always application/json,
+                    // but keeping it as per original structure for minimal change.
+                    options.headers['Content-Type'] = 'application/json';
+                }
+
+                // Clean the body to remove proxy-specific fields
+                const {
+                    endpoint: _ep,
+                    directUrl: _du,
+                    method: _m,
+                    networkApiKey: _nak,
+                    ...cleanBody
+                } = body;
+
+                // If there's content left in body (like username/password), send it.
+                // Otherwise don't send a body (for GETs).
+                const hasBody = Object.keys(cleanBody).length > 0;
+
+                const proxyReq = https.request(options, (proxyRes) => {
+                    let data = '';
+
+                    // FORWARD HEADERS (Critical for Set-Cookie / Auth)
+                    Object.keys(proxyRes.headers).forEach(key => {
+                        res.setHeader(key, proxyRes.headers[key]);
+                    });
+
+                    // Set Access-Control-Expose-Headers so fetch can see Set-Cookie
+                    if (proxyRes.headers['set-cookie']) {
+                        res.setHeader('Access-Control-Expose-Headers', 'Set-Cookie');
+                    }
+
+                    res.status(proxyRes.statusCode);
+
+                    proxyRes.on('data', chunk => data += chunk);
+                    proxyRes.on('end', () => {
+                        try {
+                            const json = JSON.parse(data);
+                            res.json(json);
+                        } catch (e) {
+                            res.send(data);
+                        }
+                    });
+                });
+
+                proxyReq.on('error', (e) => {
+                    console.error('[Proxy Error]', e.message);
+                    res.status(502).json({ error: 'Proxy Request Failed', details: e.message });
+                });
+
+                proxyReq.on('timeout', () => {
+                    proxyReq.destroy();
+                    res.status(504).json({ error: 'Gateway Timeout' });
+                });
+
+                proxyReq.setTimeout(60000); // 60s timeout
+
+                // Write the CLEAN body
+                if (hasBody && (method === 'POST' || method === 'PUT')) {
+                    const bodyStr = JSON.stringify(cleanBody);
+                    console.log('[Proxy] Forwarding Body:', bodyStr);
+                    proxyReq.write(bodyStr);
+                }
+
+                proxyReq.end();
+
+            } catch (error) {
+                console.error('[setupProxy] Error:', error);
+                res.status(500).json({ error: 'Internal Proxy Error', details: error.message });
+            }
+        } else {
+            console.warn('[setupProxy] Fallback triggered. endpoint:', endpoint, 'directUrl:', directUrl);
+            res.status(404).json({ error: 'This local proxy only handles directUrl=true requests for Method 1 testing.' });
+        }
+    });
+};

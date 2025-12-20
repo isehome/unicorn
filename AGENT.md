@@ -1392,7 +1392,7 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
-**Last Updated:** 2025-12-08
+**Last Updated:** 2025-12-16
 
 ## Overview
 
@@ -1586,22 +1586,53 @@ Registered when user is on the ShadeDetailPage.
 
 | Tool | Description |
 |------|-------------|
-| `set_measurement` | Record a dimension (e.g., "top width", "middle width", "bottom width", "height") |
-| `get_shade_context` | Get shade name, room, quoted dimensions, measurement status |
+| `set_measurement` | Record a dimension (e.g., "top width", "middle width", "bottom width", "left height", "center height", "right height") |
+| `get_shade_context` | Get shade name, room, quoted dimensions, M1/M2 completion status |
 | `read_back_measurements` | Read all recorded measurements for verification |
 | `clear_measurement` | Clear/reset a specific measurement |
-| `mark_measurement_complete` | Mark M1 or M2 as complete |
-| `go_back` | Navigate back to shade list |
+| `save_shade_measurements` | Mark measurement set as complete |
+| `close_without_saving` | Close the shade detail page |
+| `navigate_to_field` | Navigate to and highlight a specific measurement field (shows violet glow for 5 seconds) |
 
-**Note:** Width requires 3 measurements (Top, Middle, Bottom). Height is a single measurement.
+**Measurement Fields (6 total):**
+- Width: 3 fields (Top, Middle, Bottom) - measures at different heights
+- Height: 3 fields (Left, Center, Right) - measures at different points
+
+**Field Highlighting:**
+The `navigate_to_field` tool highlights fields with a violet glow so technicians know which field the AI is asking about. This is critical for hands-free measuring workflows.
 
 ### 4. User Settings (`src/components/UserSettings/AISettings.js`)
+
+**UI Design:** All settings are in collapsible sections (collapsed by default) to save screen space.
+
+**Sections (all collapsible):**
 - **Persona Config**: "Field Partner" (brief) vs "Teacher" (detailed)
 - **Voice Selection**: Puck, Charon, Kore, Fenrir, Aoede
 - **Model Selection**: Choose between Gemini 2.5 Flash (recommended) or 2.0 Flash Live
+- **VAD Settings**: Voice Activity Detection sensitivity (start/end)
 - **Custom Instructions**: User-defined context for AI
 - **Audio Diagnostics**: Test speaker and microphone
 - **Conversation Transcript**: Copyable log of AI responses for debugging
+
+**Collapsible Pattern:**
+```jsx
+const [expandedSections, setExpandedSections] = useState({
+    persona: false,
+    voice: false,
+    model: false,
+    vad: false,
+    context: false,
+    diagnostics: false,
+    transcript: false
+});
+
+const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+        ...prev,
+        [section]: !prev[section]
+    }));
+};
+```
 
 ## How Tools Work
 
@@ -1629,6 +1660,54 @@ const myTool = {
 
 **Note:** Gemini Live API does NOT support dynamic tool updates mid-session. Tools are declared in the setup config only. New tools registered after session start won't be available until the next session.
 
+### Avoiding Stale Closures with Refs
+
+**CRITICAL:** Tool hooks use refs to prevent stale closure issues. When a tool is registered, its `execute` function captures the current state. Without refs, tools would use outdated callbacks.
+
+**Pattern in VoiceCopilotContext.js:**
+```javascript
+// Ref to track current tools (avoids stale closure in socket.onopen)
+const activeToolsRef = useRef(activeTools);
+useEffect(() => {
+    activeToolsRef.current = activeTools;
+}, [activeTools]);
+
+// In socket.onopen, use ref instead of state directly:
+socket.onopen = () => {
+    // ✅ CORRECT - Uses ref for current value
+    const currentTools = activeToolsRef.current;
+    const toolDeclarations = Array.from(currentTools.values())...
+
+    // ❌ WRONG - Would capture initial empty state
+    const toolDeclarations = Array.from(activeTools.values())...
+};
+```
+
+**Pattern in Tool Hooks (useShadeTools.js, etc.):**
+```javascript
+// Refs for all callbacks that tools need to call
+const setFormDataRef = useRef(setFormData);
+const onSaveRef = useRef(onSave);
+
+// Keep refs updated
+useEffect(() => {
+    setFormDataRef.current = setFormData;
+    onSaveRef.current = onSave;
+}, [setFormData, onSave]);
+
+// In tool execute functions, ALWAYS use refs:
+execute: async ({ value }) => {
+    // ✅ CORRECT - Uses ref
+    const setFormDataFn = setFormDataRef.current;
+    if (setFormDataFn) {
+        setFormDataFn(prev => ({ ...prev, [key]: value }));
+    }
+
+    // ❌ WRONG - Captures stale callback
+    setFormData(prev => ({ ...prev, [key]: value }));
+}
+```
+
 ### Registering Tools
 ```javascript
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
@@ -1646,34 +1725,80 @@ const MyComponent = () => {
 };
 ```
 
+## System Instructions (AI Prompt)
+
+The AI receives detailed system instructions that define its behavior. Key sections:
+
+**M1/M2 Workflow Understanding:**
+```
+SHADE MEASURING WORKFLOW:
+Each shade needs TWO rounds of measurements:
+- M1 (First Measure): Initial rough opening measurements taken during pre-wire
+- M2 (Second Measure): Verification measurements taken before installation
+
+When the tech says "measure" or "let's measure", they want to record measurements - don't assume a shade is already done!
+A shade can have M1 complete but still need M2. Always check which tab they're on (M1 or M2).
+```
+
+**Field Navigation Instructions:**
+```
+IMPORTANT FIELD NAVIGATION:
+- When prompting for a measurement, use navigate_to_field to highlight the field
+- This shows the tech exactly which field you're asking about
+- The highlighted field will glow violet so the tech knows where to look
+```
+
+**Navigation Examples:**
+```
+NAVIGATION:
+When the user asks to go somewhere, use the navigation tools:
+- "Go to settings" → use navigate_to_section with section="settings"
+- "Open [project name]" → use navigate_to_project with projectName
+- "Go to shades" → use navigate_to_project with section="shades"
+- "Show me the dashboard" → use navigate_to_section with section="dashboard"
+```
+
 ## Adding a New Skill
 
 ### Step 1: Create a Tool Hook
 ```javascript
 // src/hooks/useMyFeatureTools.js
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 
 export const useMyFeatureTools = ({ data, onSave }) => {
     const { registerTools, unregisterTools } = useVoiceCopilot();
+
+    // IMPORTANT: Use refs to avoid stale closures
+    const onSaveRef = useRef(onSave);
+    const dataRef = useRef(data);
+
+    useEffect(() => {
+        onSaveRef.current = onSave;
+        dataRef.current = data;
+    }, [onSave, data]);
 
     const tools = useMemo(() => [
         {
             name: "my_action",
             description: "Does something with the current item",
             parameters: {
-                type: "OBJECT",
+                type: "object",  // lowercase!
                 properties: {
-                    value: { type: "STRING", description: "The value to set" }
+                    value: { type: "string", description: "The value to set" }
                 },
                 required: ["value"]
             },
             execute: async ({ value }) => {
-                onSave(value);
+                // Use ref to get current callback
+                const onSaveFn = onSaveRef.current;
+                if (onSaveFn) {
+                    onSaveFn(value);
+                }
                 return { success: true, message: `Set to ${value}` };
             }
         }
-    ], [data, onSave]);
+    ], []); // Minimal deps - refs handle state
 
     useEffect(() => {
         registerTools(tools);
@@ -1723,6 +1848,62 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 | WebSocket error | Invalid API key | Check REACT_APP_GEMINI_API_KEY in Vercel |
 | Tools not working | Not registered before session | Tools must be registered before startSession() |
 | Tools not working mid-session | Dynamic tool registration | Gemini doesn't support adding tools mid-session; restart session |
+| **Tools empty on session start** | **Stale closure bug** | **Use `activeToolsRef` pattern - see "Avoiding Stale Closures" above** |
+| AI says "shade already measured" | M1/M2 confusion | Check `get_shade_context` returns M1/M2 status; AI should check which tab user is on |
+| Navigation commands fail | Stale navigate function | Use `navigateRef` pattern in useAgentContext.js |
+| Field highlight not working | Missing setActiveField callback | Pass `setActiveField` prop to useShadeTools hook |
+
+## Auto-Save Pattern
+
+**ShadeDetailPage implements auto-save on navigation away:**
+
+All shade detail fields (measurements, pocket dimensions, installation notes) auto-save as users type. However, debounced saves might not complete if the user navigates away quickly. The solution:
+
+```javascript
+// Track pending saves in a ref
+const pendingSavesRef = useRef(new Map());
+
+// When updating a field, track it as pending
+const handleFieldChange = (field, value) => {
+    pendingSavesRef.current.set(field, value);
+    debouncedSave(field, value);
+};
+
+// Flush on unmount (React navigation)
+useEffect(() => {
+    return () => {
+        const saves = Array.from(pendingSavesRef.current.entries());
+        if (saves.length > 0 && shadeId) {
+            const updates = {};
+            saves.forEach(([field, value]) => {
+                updates[field] = value;
+            });
+            updates.updated_at = new Date().toISOString();
+            supabase.from('project_shades').update(updates).eq('id', shadeId);
+        }
+    };
+}, [shadeId]);
+
+// Handle browser navigation (close tab, refresh)
+useEffect(() => {
+    const handleBeforeUnload = () => {
+        const saves = Array.from(pendingSavesRef.current.entries());
+        if (saves.length > 0 && shadeId) {
+            const updates = {};
+            saves.forEach(([field, value]) => {
+                updates[field] = value;
+            });
+            navigator.sendBeacon('/api/auto-save', JSON.stringify({
+                table: 'project_shades',
+                id: shadeId,
+                updates
+            }));
+        }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+}, [shadeId]);
+```
 
 ## Key Files
 
@@ -1731,10 +1912,10 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 | `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
 | `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
 | `src/hooks/useShadeManagerTools.js` | Shade list page tools (overview, open shade) |
-| `src/hooks/useShadeTools.js` | ShadeDetailPage tools (measurements, mark complete) |
+| `src/hooks/useShadeTools.js` | ShadeDetailPage tools (measurements, mark complete, navigate_to_field) |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
-| `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics |
-| `src/components/Shades/ShadeDetailPage.js` | Full page shade measurement (replaced modal) |
+| `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics (collapsible sections) |
+| `src/components/Shades/ShadeDetailPage.js` | Full page shade measurement with auto-save on navigation |
 
 ## Environment Variables
 

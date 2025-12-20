@@ -25,16 +25,16 @@ module.exports = async function handler(req, res) {
 
   // Allow API key from header (for local testing) or environment variable (for production)
   const apiKey = req.headers['x-unifi-api-key'] || process.env.UNIFI_API_KEY;
-  
+
   console.log('Environment variables:', {
     hasUnifiApiKey: !!apiKey,
     hasControllerUrl: !!process.env.UNIFI_CONTROLLER_URL,
     allEnvKeys: Object.keys(process.env).filter(k => k.includes('UNIFI'))
   });
-  
+
   if (!apiKey) {
     console.error('UNIFI_API_KEY not configured');
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: 'API key not configured',
       debug: 'UNIFI_API_KEY environment variable is missing'
     });
@@ -76,12 +76,11 @@ module.exports = async function handler(req, res) {
 
       url = `${baseUrl}${endpoint}`;
 
-      // Check if this is a Network API proxy endpoint
-      // Patterns: /proxy/network/... or /v1/consoles/.../proxy/network/...
-      // This includes: /proxy/network/integration/v1/..., /proxy/network/api/s/.../stat/sta
+      // NOTE: We do NOT force useNetworkApiKey = true here anymore.
+      // If we are hitting api.ui.com (directUrl = false), we MUST use the Cloud API Key (apiKey).
+      // The previous logic incorrectly forced expecting a Network API Key for cloud proxy paths.
       if (endpoint.includes('/proxy/network/') || endpoint.includes('/consoles/')) {
-        useNetworkApiKey = true;
-        console.log('Detected Network API proxy endpoint, will use Network API key');
+        console.log('Targeting Network API via Cloud Proxy - using Cloud API Key');
       }
     }
 
@@ -133,7 +132,8 @@ module.exports = async function handler(req, res) {
               ...(upstreamHeaders || {})
             },
             rejectUnauthorized: false,  // Accept self-signed certificates
-            timeout: 10000  // 10 second timeout
+            timeout: 30000,  // 30 second timeout
+            family: 4        // Force IPv4 to avoid lookup delays
           };
 
           // Remove content-type for GET requests

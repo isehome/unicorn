@@ -146,15 +146,21 @@ const AISettings = () => {
     // Available Gemini models for Live API
     const models = [
         {
-            id: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            name: '2.5 Flash Native Audio',
-            description: 'Latest & best quality (recommended)',
+            id: 'gemini-2.5-flash-native-audio-preview-12-2025',
+            name: '2.5 Flash (Dec 2025)',
+            description: 'Latest preview with best audio quality',
             badge: 'NEW'
+        },
+        {
+            id: 'gemini-2.5-flash-native-audio-preview-09-2025',
+            name: '2.5 Flash (Sep 2025)',
+            description: 'Previous stable version',
+            badge: null
         },
         {
             id: 'gemini-2.0-flash-live-001',
             name: '2.0 Flash Live',
-            description: 'Stable, deprecated Dec 2025',
+            description: 'Legacy, deprecated Dec 2025',
             badge: null
         },
     ];

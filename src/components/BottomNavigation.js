@@ -17,7 +17,7 @@ const BottomNavigation = () => {
     { icon: Home, label: 'Home', path: homePath, isHome: true },
     { icon: Boxes, label: 'Parts', path: '/parts' },
     { icon: Users, label: 'People', path: '/people' },
-    { icon: Activity, label: 'UniFi Test', path: '/unifi-test' },
+    { icon: Activity, label: 'UniFi Import', path: '/unifi-test' },
     { icon: QrCode, label: 'Scan Tag', path: '/scan-tag' },
   ];
 
@@ -35,11 +35,10 @@ const BottomNavigation = () => {
             <button
               key={item.label}
               onClick={() => navigate(item.path)}
-              className={`flex flex-col items-center gap-1 py-2 px-3 transition-colors ${
-                isActive
-                  ? 'text-violet-500'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-violet-500'
-              }`}
+              className={`flex flex-col items-center gap-1 py-2 px-3 transition-colors ${isActive
+                ? 'text-violet-500'
+                : 'text-gray-600 dark:text-gray-400 hover:text-violet-500'
+                }`}
             >
               <Icon className="w-5 h-5" />
               <span className="text-xs">{item.label}</span>
