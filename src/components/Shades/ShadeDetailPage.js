@@ -17,6 +17,7 @@ import { shadePublicAccessService } from '../../services/shadePublicAccessServic
 import { notifyShadeReviewRequest } from '../../services/issueNotificationService';
 import { supabase } from '../../lib/supabase';
 import { brandColors } from '../../styles/styleSystem';
+import { useShadeDetailTools } from '../../hooks/useShadeDetailTools';
 
 // Headrail style options
 const HEADRAIL_STYLES = ['Pocket', 'Fascia', 'Fascia + Top Back Cover', 'Top Back Cover'];
@@ -90,6 +91,9 @@ const ShadeDetailPage = () => {
         mountDepth: '',
         obstructionNotes: ''
     });
+
+    // Voice AI active field highlighting
+    const [activeField, setActiveField] = useState(null);
 
     // Blinding logic
     const isM1Blind = shade?.m1_complete && shade?.m1_by !== user?.id;
@@ -474,20 +478,24 @@ const ShadeDetailPage = () => {
             pendingSavesRef.current.delete(dbColumn);
             setSaving(true);
             try {
-                await supabase
+                const { data } = await supabase
                     .from('project_shades')
                     .update({ [dbColumn]: value, updated_at: new Date().toISOString() })
-                    .eq('id', shadeId);
+                    .eq('id', shadeId)
+                    .select()
+                    .single();
 
-                // Reload shade to update calculated dimensions
-                await loadShade();
+                // Update shade state without full reload (prevents scroll jump)
+                if (data) {
+                    setShade(prev => ({ ...prev, ...data }));
+                }
             } catch (err) {
                 console.error(`[ShadeDetailPage] Auto-save failed for ${field}:`, err);
             } finally {
                 setSaving(false);
             }
         }, 500);
-    }, [shadeId, activeTab, loadShade]);
+    }, [shadeId, activeTab]);
 
     const handleMeasurementChange = useCallback((field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -752,6 +760,22 @@ const ShadeDetailPage = () => {
             setMarkingComplete(false);
         }
     };
+
+    // Navigate back to shade list
+    const handleNavigateBack = useCallback(() => {
+        navigate(`/projects/${projectId}/shades`);
+    }, [navigate, projectId]);
+
+    // Voice AI tools for hands-free measuring
+    useShadeDetailTools({
+        formData,
+        setFormData,
+        activeTab,
+        shade,
+        onMarkComplete: handleMarkComplete,
+        setActiveField,
+        onNavigateBack: handleNavigateBack
+    });
 
     // Design Review - Send to designer
     const handleDesignerChange = async (newId) => {
@@ -1135,16 +1159,16 @@ const ShadeDetailPage = () => {
                                         Rough Opening Width
                                     </p>
                                     <div className="grid grid-cols-3 gap-3">
-                                        <InputField label="Top" value={formData.widthTop} onChange={(v) => handleMeasurementChange('widthTop', v)} mode={mode} />
-                                        <InputField label="Middle" value={formData.widthMiddle} onChange={(v) => handleMeasurementChange('widthMiddle', v)} mode={mode} />
-                                        <InputField label="Bottom" value={formData.widthBottom} onChange={(v) => handleMeasurementChange('widthBottom', v)} mode={mode} />
+                                        <InputField label="Top" value={formData.widthTop} onChange={(v) => handleMeasurementChange('widthTop', v)} mode={mode} highlighted={activeField === 'widthTop'} />
+                                        <InputField label="Middle" value={formData.widthMiddle} onChange={(v) => handleMeasurementChange('widthMiddle', v)} mode={mode} highlighted={activeField === 'widthMiddle'} />
+                                        <InputField label="Bottom" value={formData.widthBottom} onChange={(v) => handleMeasurementChange('widthBottom', v)} mode={mode} highlighted={activeField === 'widthBottom'} />
                                     </div>
                                 </div>
 
                                 {/* Height and Mount Depth */}
                                 <div className="grid grid-cols-2 gap-3">
-                                    <InputField label="Height" value={formData.height} onChange={(v) => handleMeasurementChange('height', v)} mode={mode} />
-                                    <InputField label="Mount Depth" value={formData.mountDepth} onChange={(v) => handleMeasurementChange('mountDepth', v)} mode={mode} />
+                                    <InputField label="Height" value={formData.height} onChange={(v) => handleMeasurementChange('height', v)} mode={mode} highlighted={activeField === 'height'} />
+                                    <InputField label="Mount Depth" value={formData.mountDepth} onChange={(v) => handleMeasurementChange('mountDepth', v)} mode={mode} highlighted={activeField === 'mountDepth'} />
                                 </div>
 
                                 {/* Obstruction Notes */}
@@ -1413,22 +1437,25 @@ const ShadeDetailPage = () => {
     );
 };
 
-// Reusable input field component
-const InputField = ({ label, value, onChange, mode, highlight }) => (
-    <div>
-        <label className="block text-xs font-medium mb-1 text-zinc-500">{label}</label>
-        <input
-            type="text"
-            inputMode="decimal"
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            className={`w-full px-3 py-2 rounded-lg border text-sm ${highlight
-                ? 'font-semibold border-violet-300 dark:border-violet-600'
-                : ''
-            } ${mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'}`}
-            style={{ fontSize: '16px' }}
-        />
-    </div>
-);
+// Reusable input field component with voice AI highlighting support
+const InputField = ({ label, value, onChange, mode, highlight, highlighted }) => {
+    const isHighlighted = highlighted || highlight;
+    return (
+        <div className={`transition-all duration-300 rounded-lg ${isHighlighted ? 'ring-2 ring-violet-500 ring-offset-2 ring-offset-zinc-900' : ''}`}>
+            <label className={`block text-xs font-medium mb-1 ${isHighlighted ? 'text-violet-400' : 'text-zinc-500'}`}>{label}</label>
+            <input
+                type="text"
+                inputMode="decimal"
+                value={value}
+                onChange={e => onChange(e.target.value)}
+                className={`w-full px-3 py-2 rounded-lg border text-sm transition-all duration-300 ${isHighlighted
+                    ? 'font-semibold border-violet-500 bg-violet-500/10 dark:bg-violet-500/20'
+                    : mode === 'dark' ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-white border-zinc-300 text-zinc-900'
+                }`}
+                style={{ fontSize: '16px' }}
+            />
+        </div>
+    );
+};
 
 export default ShadeDetailPage;
