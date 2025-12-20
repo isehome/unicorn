@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { LUTRON_SHADE_KNOWLEDGE, QUICK_REFERENCE } from '../data/lutronShadeKnowledge';
 
 const API_BASE = process.env.REACT_APP_API_URL || '';
 
@@ -514,6 +515,292 @@ export const useKnowledgeTools = () => {
           suggestion: 'Try describing the issue differently, or search the knowledge base.',
           availableGuides: Object.values(TROUBLESHOOTING).map(t => t.issue)
         };
+      }
+    },
+
+    // ============================================
+    // LUTRON SHADE EXPERT TOOLS
+    // ============================================
+
+    // 8. Shade Measurement Guidance
+    {
+      name: 'get_shade_measurement_guide',
+      description: 'Get detailed measurement guidance for Lutron shades. Use when tech asks about how to measure, mount types, or measurement procedures.',
+      parameters: {
+        type: 'object',
+        properties: {
+          mountType: {
+            type: 'string',
+            description: 'The mount type to get guidance for',
+            enum: ['inside', 'outside', 'ceiling', 'pocket', 'general']
+          }
+        },
+        required: ['mountType']
+      },
+      execute: async ({ mountType }) => {
+        const guides = LUTRON_SHADE_KNOWLEDGE.measurement;
+        const key = mountType === 'inside' ? 'insideMount' :
+                    mountType === 'outside' ? 'outsideMount' :
+                    mountType === 'ceiling' ? 'ceilingMount' :
+                    mountType === 'pocket' ? 'pocketMount' : 'general';
+
+        const guide = guides[key];
+        if (!guide) {
+          return {
+            error: `No guide for mount type: ${mountType}`,
+            availableTypes: ['inside', 'outside', 'ceiling', 'pocket', 'general']
+          };
+        }
+
+        return {
+          ...guide,
+          hint: 'Walk the tech through the procedure steps one at a time'
+        };
+      }
+    },
+
+    // 9. Shade Product Info
+    {
+      name: 'get_shade_product_info',
+      description: 'Get technical specs and info about Lutron shade products (Sivoia, Palladiom, Triathlon, Serena). Use when tech asks about product features, sizes, or capabilities.',
+      parameters: {
+        type: 'object',
+        properties: {
+          product: {
+            type: 'string',
+            description: 'The Lutron shade product line',
+            enum: ['sivoia', 'palladiom', 'triathlon', 'serena']
+          }
+        },
+        required: ['product']
+      },
+      execute: async ({ product }) => {
+        const productInfo = LUTRON_SHADE_KNOWLEDGE.products[product];
+        if (!productInfo) {
+          return {
+            error: `Unknown product: ${product}`,
+            availableProducts: Object.keys(LUTRON_SHADE_KNOWLEDGE.products)
+          };
+        }
+
+        return {
+          ...productInfo,
+          quickRef: {
+            maxSize: QUICK_REFERENCE.maxSizes[productInfo.name] || QUICK_REFERENCE.maxSizes[`${productInfo.name} Standard Motor`],
+            mountDepth: QUICK_REFERENCE.mountDepths[`${productInfo.name} Standard`] || productInfo.mountDepth?.minimum,
+            batteryLife: QUICK_REFERENCE.batteryLife[productInfo.name]
+          }
+        };
+      }
+    },
+
+    // 10. Headrail Style Info
+    {
+      name: 'get_headrail_info',
+      description: 'Get information about Lutron headrail styles (pocket, fascia, top back cover). Use when tech asks about headrail options or which to use.',
+      parameters: {
+        type: 'object',
+        properties: {
+          style: {
+            type: 'string',
+            description: 'The headrail style',
+            enum: ['pocket', 'fascia', 'fasciaWithTopBackCover', 'topBackCover', 'all']
+          }
+        },
+        required: ['style']
+      },
+      execute: async ({ style }) => {
+        if (style === 'all') {
+          return {
+            styles: Object.entries(LUTRON_SHADE_KNOWLEDGE.headrails).map(([key, value]) => ({
+              id: key,
+              name: value.name,
+              description: value.description,
+              when: value.when
+            })),
+            hint: 'Explain each option and when to use it'
+          };
+        }
+
+        const info = LUTRON_SHADE_KNOWLEDGE.headrails[style];
+        if (!info) {
+          return {
+            error: `Unknown headrail style: ${style}`,
+            availableStyles: Object.keys(LUTRON_SHADE_KNOWLEDGE.headrails)
+          };
+        }
+
+        return info;
+      }
+    },
+
+    // 11. Fabric Type Info
+    {
+      name: 'get_fabric_info',
+      description: 'Get information about Lutron shade fabric types (sheer, light filtering, room darkening, blackout). Use when tech asks about fabric selection or light control.',
+      parameters: {
+        type: 'object',
+        properties: {
+          fabricType: {
+            type: 'string',
+            description: 'The fabric type',
+            enum: ['sheer', 'lightFiltering', 'roomDarkening', 'blackout', 'all']
+          }
+        },
+        required: ['fabricType']
+      },
+      execute: async ({ fabricType }) => {
+        if (fabricType === 'all') {
+          return {
+            types: Object.entries(LUTRON_SHADE_KNOWLEDGE.fabrics.types).map(([key, value]) => ({
+              id: key,
+              name: value.name,
+              openness: value.openness,
+              features: value.features
+            })),
+            considerations: LUTRON_SHADE_KNOWLEDGE.fabrics.considerations
+          };
+        }
+
+        const info = LUTRON_SHADE_KNOWLEDGE.fabrics.types[fabricType];
+        if (!info) {
+          return {
+            error: `Unknown fabric type: ${fabricType}`,
+            availableTypes: Object.keys(LUTRON_SHADE_KNOWLEDGE.fabrics.types)
+          };
+        }
+
+        return {
+          ...info,
+          considerations: LUTRON_SHADE_KNOWLEDGE.fabrics.considerations
+        };
+      }
+    },
+
+    // 12. Shade Troubleshooting
+    {
+      name: 'troubleshoot_shade',
+      description: 'Get troubleshooting steps for common Lutron shade issues. Use when tech reports a problem with a shade.',
+      parameters: {
+        type: 'object',
+        properties: {
+          issue: {
+            type: 'string',
+            description: 'The issue type',
+            enum: ['notMoving', 'notLevel', 'makingNoise', 'batteryLife', 'fabricWrinkling']
+          }
+        },
+        required: ['issue']
+      },
+      execute: async ({ issue }) => {
+        const issueKey = issue === 'notMoving' ? 'shadeNotMoving' :
+                        issue === 'notLevel' ? 'shadeNotLevel' :
+                        issue === 'makingNoise' ? 'shadeMakingNoise' :
+                        issue === 'batteryLife' ? 'batteryLife' :
+                        issue === 'fabricWrinkling' ? 'fabricWrinkling' : issue;
+
+        const troubleshooting = LUTRON_SHADE_KNOWLEDGE.troubleshooting[issueKey];
+        if (!troubleshooting) {
+          return {
+            error: `Unknown issue type: ${issue}`,
+            availableIssues: Object.keys(LUTRON_SHADE_KNOWLEDGE.troubleshooting),
+            hint: 'Try describing the problem in more detail'
+          };
+        }
+
+        return {
+          ...troubleshooting,
+          hint: 'Walk through the steps one at a time with the tech'
+        };
+      }
+    },
+
+    // 13. Quality Checklist
+    {
+      name: 'get_quality_checklist',
+      description: 'Get quality control checklist for shade installation. Use to ensure installation meets standards.',
+      parameters: {
+        type: 'object',
+        properties: {
+          phase: {
+            type: 'string',
+            description: 'Which phase of installation',
+            enum: ['beforeInstall', 'duringInstall', 'afterInstall', 'documentation', 'all']
+          }
+        },
+        required: ['phase']
+      },
+      execute: async ({ phase }) => {
+        if (phase === 'all') {
+          return LUTRON_SHADE_KNOWLEDGE.qualityChecklist;
+        }
+
+        const checklist = LUTRON_SHADE_KNOWLEDGE.qualityChecklist[phase];
+        if (!checklist) {
+          return {
+            error: `Unknown phase: ${phase}`,
+            availablePhases: Object.keys(LUTRON_SHADE_KNOWLEDGE.qualityChecklist)
+          };
+        }
+
+        return {
+          phase,
+          items: checklist,
+          hint: 'Go through each item with the tech to verify'
+        };
+      }
+    },
+
+    // 14. Quick Reference Lookup
+    {
+      name: 'shade_quick_reference',
+      description: 'Quick lookup for common shade specs: mount depths, max sizes, deductions, battery life. Use for quick answers.',
+      parameters: {
+        type: 'object',
+        properties: {
+          category: {
+            type: 'string',
+            description: 'What to look up',
+            enum: ['mountDepths', 'maxSizes', 'deductions', 'batteryLife', 'tolerances']
+          },
+          product: {
+            type: 'string',
+            description: 'Optional - specific product to look up'
+          }
+        },
+        required: ['category']
+      },
+      execute: async ({ category, product }) => {
+        if (category === 'tolerances') {
+          return LUTRON_SHADE_KNOWLEDGE.tolerances;
+        }
+
+        const data = QUICK_REFERENCE[category];
+        if (!data) {
+          return {
+            error: `Unknown category: ${category}`,
+            availableCategories: Object.keys(QUICK_REFERENCE)
+          };
+        }
+
+        if (product) {
+          // Try to find a match for the product
+          const productLower = product.toLowerCase();
+          const match = Object.entries(data).find(([key]) =>
+            key.toLowerCase().includes(productLower)
+          );
+
+          if (match) {
+            return { [match[0]]: match[1] };
+          }
+
+          return {
+            message: `No exact match for "${product}"`,
+            allValues: data
+          };
+        }
+
+        return data;
       }
     }
   ], []);
