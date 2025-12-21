@@ -329,11 +329,12 @@ async function generateEmbeddings(texts) {
 async function processChunks(chunks, documentId) {
     const storedChunks = [];
 
-    // Filter out chunks that are too long (max ~6000 tokens to be safe)
-    const maxTokens = 6000;
+    // Filter out chunks that are too long (max 1000 tokens per chunk to be safe)
+    // OpenAI limit is 8192 tokens total per request
+    const maxTokensPerChunk = 1000;
     const validChunks = chunks.filter(chunk => {
         const tokens = estimateTokens(chunk);
-        if (tokens > maxTokens) {
+        if (tokens > maxTokensPerChunk) {
             console.warn(`[Process] Skipping oversized chunk: ${tokens} tokens`);
             return false;
         }
@@ -342,12 +343,39 @@ async function processChunks(chunks, documentId) {
 
     console.log(`[Process] Processing ${validChunks.length} valid chunks (filtered ${chunks.length - validChunks.length} oversized)`);
 
-    // Process in small batches to stay under token limit
-    // With ~800 tokens per chunk, batch of 8 = ~6400 tokens (safe under 8192)
-    const batchSize = 8;
+    // Process in small batches - with max 1000 tokens/chunk, 5 chunks = 5000 tokens max
+    const batchSize = 5;
+
+    // Log progress every 10 batches
+    const totalBatches = Math.ceil(validChunks.length / batchSize);
 
     for (let i = 0; i < validChunks.length; i += batchSize) {
         const batch = validChunks.slice(i, i + batchSize);
+
+        // Calculate actual tokens in this batch
+        const batchTokens = batch.reduce((sum, chunk) => sum + estimateTokens(chunk), 0);
+
+        if (batchTokens > 7500) {
+            // Safety check - process one at a time if batch is too large
+            console.warn(`[Process] Batch too large (${batchTokens} tokens), processing individually`);
+            for (const chunk of batch) {
+                const singleEmbedding = await generateEmbeddings([chunk]);
+                const { error } = await supabase
+                    .from('knowledge_chunks')
+                    .insert({
+                        document_id: documentId,
+                        chunk_index: i,
+                        content: chunk,
+                        token_count: estimateTokens(chunk),
+                        embedding: JSON.stringify(singleEmbedding[0]),
+                        metadata: {}
+                    });
+                if (error) throw error;
+                storedChunks.push({ id: 'inserted', chunk_index: i });
+            }
+            continue;
+        }
+
         const embeddings = await generateEmbeddings(batch);
 
         // Prepare chunk records
