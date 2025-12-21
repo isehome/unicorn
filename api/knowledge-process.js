@@ -329,11 +329,25 @@ async function generateEmbeddings(texts) {
 async function processChunks(chunks, documentId) {
     const storedChunks = [];
 
-    // Process in batches of 20 (OpenAI limit for embeddings)
-    const batchSize = 20;
+    // Filter out chunks that are too long (max ~6000 tokens to be safe)
+    const maxTokens = 6000;
+    const validChunks = chunks.filter(chunk => {
+        const tokens = estimateTokens(chunk);
+        if (tokens > maxTokens) {
+            console.warn(`[Process] Skipping oversized chunk: ${tokens} tokens`);
+            return false;
+        }
+        return true;
+    });
 
-    for (let i = 0; i < chunks.length; i += batchSize) {
-        const batch = chunks.slice(i, i + batchSize);
+    console.log(`[Process] Processing ${validChunks.length} valid chunks (filtered ${chunks.length - validChunks.length} oversized)`);
+
+    // Process in small batches to stay under token limit
+    // With ~800 tokens per chunk, batch of 8 = ~6400 tokens (safe under 8192)
+    const batchSize = 8;
+
+    for (let i = 0; i < validChunks.length; i += batchSize) {
+        const batch = validChunks.slice(i, i + batchSize);
         const embeddings = await generateEmbeddings(batch);
 
         // Prepare chunk records
@@ -355,7 +369,7 @@ async function processChunks(chunks, documentId) {
         if (error) throw error;
         storedChunks.push(...(data || []));
 
-        console.log(`[Process] Stored batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)}`);
+        console.log(`[Process] Stored batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(validChunks.length / batchSize)}`);
     }
 
     return storedChunks;

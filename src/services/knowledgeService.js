@@ -185,12 +185,18 @@ export async function uploadAndProcessDocument(file, metadata, supabase) {
         throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
-    // 3. Get public URL
-    const { data: urlData } = supabase.storage
+    // 3. Get signed URL (more reliable than public URL)
+    const { data: urlData, error: urlError } = await supabase.storage
         .from('knowledge-docs')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 3600); // 1 hour expiry
 
-    const fileUrl = urlData?.publicUrl;
+    if (urlError) {
+        console.error('[Knowledge] Failed to create signed URL:', urlError);
+        throw new Error(`Failed to get file URL: ${urlError.message}`);
+    }
+
+    const fileUrl = urlData?.signedUrl;
+    console.log('[Knowledge] File uploaded, signed URL created:', filePath);
 
     // 4. Create document record
     const docResult = await createDocument({
@@ -205,10 +211,21 @@ export async function uploadAndProcessDocument(file, metadata, supabase) {
         tags
     });
 
-    // 5. If it's a text-based file, read content and process immediately
+    // 5. Process the document
+    // For text files, read and process immediately
+    // For PDFs, we need to trigger processing with the URL
     if (fileExtension === 'txt' || fileExtension === 'md') {
         const text = await file.text();
         await processDocument(docResult.document.id, text);
+    } else if (fileExtension === 'pdf') {
+        // Trigger PDF processing - the API will fetch from the URL
+        // If URL fetch fails, the document will stay in 'processing' status
+        try {
+            await processDocument(docResult.document.id);
+        } catch (err) {
+            console.warn('[Knowledge] PDF processing failed, may need manual text input:', err.message);
+            // Don't throw - document is created, user can retry or provide text manually
+        }
     }
 
     return docResult;

@@ -212,6 +212,9 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | Date input component | `src/components/ui/DateInput.js` |
 | Todo detail modal | `src/components/TodoDetailModal.js` |
 | Calendar service | `src/services/microsoftCalendarService.js` |
+| Knowledge service | `src/services/knowledgeService.js` |
+| Knowledge management UI | `src/components/knowledge/KnowledgeManagementPanel.js` |
+| Lutron shade knowledge | `src/data/lutronShadeKnowledge.js` |
 
 ---
 
@@ -1187,6 +1190,9 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 | `/api/graph-file` | SharePoint download |
 | `/api/sharepoint-thumbnail` | Get thumbnails |
 | `/api/public-po` | Public PO view |
+| `/api/knowledge-upload` | **NEW** Upload documents for RAG knowledge base |
+| `/api/knowledge-process` | **NEW** Process uploaded docs (extract, chunk, embed) |
+| `/api/knowledge-search` | **NEW** Semantic search across knowledge base |
 
 ---
 
@@ -1392,7 +1398,7 @@ Before any feature is complete, test on a real phone:
 
 # PART 3: AI & VOICE COPILOT ARCHITECTURE
 
-**Last Updated:** 2025-12-16
+**Last Updated:** 2025-12-20
 
 ## Overview
 
@@ -1581,25 +1587,36 @@ Registered when user is on the shade list page.
 | `get_next_pending_shade` | Get info about next shade that needs measuring |
 | `expand_room` | Expand/collapse a room section in the list |
 
-**useShadeTools (`src/hooks/useShadeTools.js`)**
-Registered when user is on the ShadeDetailPage.
+**useShadeTools (`src/hooks/useShadeTools.js`)** - DEPRECATED
+Use `useShadeDetailTools` instead (added 2025-12-20).
+
+**useShadeDetailTools (`src/hooks/useShadeDetailTools.js`)** - Added 2025-12-20
+Registered when user is on the ShadeDetailPage. This is the primary hook for shade measuring voice AI.
 
 | Tool | Description |
 |------|-------------|
-| `set_measurement` | Record a dimension (e.g., "top width", "middle width", "bottom width", "left height", "center height", "right height") |
-| `get_shade_context` | Get shade name, room, quoted dimensions, M1/M2 completion status |
+| `get_shade_context` | Get shade name, room, quoted dimensions, M1/M2 completion status, current field values |
+| `set_measurement` | Record a dimension (e.g., "top_width", "middle_width", "bottom_width", "height") |
 | `read_back_measurements` | Read all recorded measurements for verification |
-| `clear_measurement` | Clear/reset a specific measurement |
-| `save_shade_measurements` | Mark measurement set as complete |
-| `close_without_saving` | Close the shade detail page |
+| `clear_measurement` | Clear/reset a specific measurement field |
+| `mark_measurement_complete` | Mark the current measurement set (M1 or M2) as complete |
 | `navigate_to_field` | Navigate to and highlight a specific measurement field (shows violet glow for 5 seconds) |
+| `switch_measurement_tab` | Switch between M1 and M2 tabs |
 
-**Measurement Fields (6 total):**
-- Width: 3 fields (Top, Middle, Bottom) - measures at different heights
-- Height: 3 fields (Left, Center, Right) - measures at different points
+**Measurement Fields (4 total per tab):**
+- Width: 3 fields (top_width, middle_width, bottom_width) - measures at different heights
+- Height: 1 field (height) - single measurement
 
-**Field Highlighting:**
-The `navigate_to_field` tool highlights fields with a violet glow so technicians know which field the AI is asking about. This is critical for hands-free measuring workflows.
+**Field Highlighting (Updated 2025-12-20):**
+The `navigate_to_field` tool highlights fields with a violet glow so technicians know which field the AI is asking about. This is critical for hands-free measuring workflows. Fields receive a 5-second violet ring animation when the AI prompts for that measurement.
+
+**useKnowledgeTools (`src/hooks/useKnowledgeTools.js`)** - Added 2025-12-20
+Provides RAG-powered knowledge lookup for voice AI.
+
+| Tool | Description |
+|------|-------------|
+| `search_manufacturer_docs` | Search manufacturer documentation (spec sheets, install guides, troubleshooting) |
+| `get_lutron_shade_info` | Get Lutron-specific shade knowledge from embedded data |
 
 ### 4. User Settings (`src/components/UserSettings/AISettings.js`)
 
@@ -1912,10 +1929,13 @@ useEffect(() => {
 | `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
 | `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
 | `src/hooks/useShadeManagerTools.js` | Shade list page tools (overview, open shade) |
-| `src/hooks/useShadeTools.js` | ShadeDetailPage tools (measurements, mark complete, navigate_to_field) |
+| `src/hooks/useShadeDetailTools.js` | **NEW** ShadeDetailPage voice tools (measurements, field highlighting) |
+| `src/hooks/useShadeTools.js` | DEPRECATED - use useShadeDetailTools instead |
+| `src/hooks/useKnowledgeTools.js` | **NEW** RAG knowledge lookup tools for voice AI |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
 | `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics (collapsible sections) |
 | `src/components/Shades/ShadeDetailPage.js` | Full page shade measurement with auto-save on navigation |
+| `src/data/lutronShadeKnowledge.js` | **NEW** Embedded Lutron shade specifications for AI |
 
 ## Environment Variables
 
@@ -2137,6 +2157,294 @@ Add new Supabase linter issues or technical debt items here as they arise.
 
 ---
 
+## RAG Knowledge Base System (Added 2025-12-20)
+
+**Status:** Implemented and deployed
+
+### Overview
+
+A multi-manufacturer document storage and semantic search system that enables:
+- Upload PDFs, Markdown, and text files for any manufacturer
+- Automatic text extraction and intelligent chunking
+- OpenAI embeddings (text-embedding-ada-002) for semantic search
+- pgvector for high-performance vector similarity search
+- Full-text search fallback using PostgreSQL GIN indexes
+- Voice AI integration for hands-free knowledge lookup
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Knowledge Flow                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Upload PDF/MD/TXT                                              │
+│        │                                                         │
+│        ▼                                                         │
+│  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
+│  │ knowledge-  │───▶│ knowledge-       │───▶│ knowledge_    │  │
+│  │ upload.js   │    │ process.js       │    │ chunks        │  │
+│  │             │    │ - Extract text   │    │ (pgvector)    │  │
+│  └─────────────┘    │ - Chunk content  │    └───────┬───────┘  │
+│                     │ - Generate       │            │          │
+│                     │   embeddings     │            │          │
+│                     └──────────────────┘            │          │
+│                                                     │          │
+│  Search Query                                       │          │
+│        │                                            │          │
+│        ▼                                            ▼          │
+│  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
+│  │ knowledge-  │───▶│ Vector Similarity │◀───│ search_       │  │
+│  │ search.js   │    │ Search (cosine)   │    │ knowledge()   │  │
+│  │             │◀───│                   │    │ function      │  │
+│  └─────────────┘    └──────────────────┘    └───────────────┘  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `knowledge_manufacturers` | Manufacturer profiles (Lutron, Control4, Ubiquiti, etc.) |
+| `knowledge_documents` | Uploaded document metadata and processing status |
+| `knowledge_chunks` | Text chunks with vector embeddings (1536-dim) |
+
+### Key Files
+
+| Purpose | File |
+|---------|------|
+| Upload API | `api/knowledge-upload.js` |
+| Processing API | `api/knowledge-process.js` |
+| Search API | `api/knowledge-search.js` |
+| Frontend Service | `src/services/knowledgeService.js` |
+| Management UI | `src/components/knowledge/KnowledgeManagementPanel.js` |
+| Voice AI Hook | `src/hooks/useKnowledgeTools.js` |
+| Database Migration | `supabase/migrations/20241220_add_knowledge_tables.sql` |
+| Lutron Knowledge Data | `src/data/lutronShadeKnowledge.js` |
+
+### Database Functions
+
+```sql
+-- Vector similarity search
+search_knowledge(
+    query_embedding vector(1536),
+    match_threshold float DEFAULT 0.7,
+    match_count int DEFAULT 5,
+    filter_manufacturer_id uuid DEFAULT NULL
+)
+
+-- Full-text search fallback
+search_knowledge_text(
+    search_query text,
+    match_count int DEFAULT 10,
+    filter_manufacturer_id uuid DEFAULT NULL
+)
+```
+
+### Voice AI Integration
+
+The `search_manufacturer_docs` tool allows hands-free knowledge lookup:
+
+```javascript
+// In useKnowledgeTools.js
+{
+    name: "search_manufacturer_docs",
+    description: "Search manufacturer documentation for product specs, installation guides, troubleshooting",
+    parameters: {
+        query: { type: "string", description: "What to search for" },
+        manufacturer: { type: "string", description: "Optional manufacturer filter" }
+    }
+}
+```
+
+### Accessing Knowledge Base
+
+1. Navigate to **Settings** (gear icon)
+2. Click **Knowledge Base** link
+3. Upload documents by manufacturer
+4. Documents are automatically processed and searchable
+
+### Supported File Types
+
+| Type | Extension | Notes |
+|------|-----------|-------|
+| PDF | `.pdf` | Text extracted via pdf-parse |
+| Markdown | `.md` | Direct text processing |
+| Plain Text | `.txt` | Direct text processing |
+| Word | `.docx` | Planned (not yet implemented) |
+
+### Document Categories
+
+- `spec-sheet` - Product specifications
+- `installation-guide` - Installation instructions
+- `troubleshooting` - Problem resolution guides
+- `training` - Training materials
+- `technical-bulletin` - Technical bulletins
+- `user-manual` - User manuals
+- `quick-reference` - Quick reference cards
+- `other` - Other document types
+
+### Pre-loaded Manufacturers
+
+The system comes with these manufacturers pre-configured:
+- Lutron (shades, lighting controls)
+- Control4 (home automation)
+- Ubiquiti (networking)
+- Sonos (audio)
+- Araknis (networking)
+- Josh.ai (voice control)
+- Savant (luxury automation)
+- Crestron (commercial/residential)
+
+### ⚠️ SETUP REQUIREMENTS
+
+#### 1. Supabase Storage Bucket (REQUIRED)
+
+You must create a storage bucket in Supabase for document uploads:
+
+**Bucket Name:** `knowledge-docs`
+
+**Create via Supabase Dashboard:**
+1. Go to Storage in Supabase Dashboard
+2. Click "New bucket"
+3. Name: `knowledge-docs`
+4. Public bucket: **Yes** (needed for file URL access)
+5. Click "Create bucket"
+
+**Or via SQL:**
+```sql
+-- Create the storage bucket
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('knowledge-docs', 'knowledge-docs', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Add storage policy for authenticated uploads
+CREATE POLICY "Allow authenticated uploads"
+ON storage.objects FOR INSERT
+TO anon, authenticated
+WITH CHECK (bucket_id = 'knowledge-docs');
+
+-- Add storage policy for public reads
+CREATE POLICY "Allow public reads"
+ON storage.objects FOR SELECT
+TO anon, authenticated
+USING (bucket_id = 'knowledge-docs');
+
+-- Add storage policy for authenticated deletes
+CREATE POLICY "Allow authenticated deletes"
+ON storage.objects FOR DELETE
+TO anon, authenticated
+USING (bucket_id = 'knowledge-docs');
+```
+
+#### 2. pgvector Extension (REQUIRED)
+
+The vector similarity search requires pgvector. Enable it in Supabase:
+
+```sql
+-- Enable pgvector extension
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+#### 3. Environment Variables (REQUIRED)
+
+Add to Vercel environment variables:
+
+```bash
+# Required for embeddings and semantic search
+OPENAI_API_KEY=sk-your-openai-api-key
+
+# Already should exist for Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+#### 4. Run Database Migration
+
+Apply the knowledge tables migration:
+
+```bash
+# Via Supabase CLI
+supabase db push
+
+# Or run the SQL directly in Supabase Dashboard > SQL Editor
+# File: supabase/migrations/20241220_add_knowledge_tables.sql
+```
+
+### Upload Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Upload Flow                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. User selects file in KnowledgeManagementPanel               │
+│        │                                                         │
+│        ▼                                                         │
+│  2. uploadAndProcessDocument() in knowledgeService.js           │
+│        │                                                         │
+│        ├──▶ Upload to Supabase Storage (knowledge-docs bucket)  │
+│        │                                                         │
+│        ├──▶ Get public URL                                       │
+│        │                                                         │
+│        ├──▶ Create record in knowledge_documents table          │
+│        │                                                         │
+│        └──▶ For TXT/MD: Read file content and call              │
+│             /api/knowledge-process with text                     │
+│                                                                  │
+│  3. /api/knowledge-process                                       │
+│        │                                                         │
+│        ├──▶ Extract text (PDF uses pdf-parse)                   │
+│        │                                                         │
+│        ├──▶ Chunk text (800 tokens, 100 overlap)                │
+│        │                                                         │
+│        ├──▶ Generate embeddings via OpenAI                       │
+│        │                                                         │
+│        └──▶ Store chunks + embeddings in knowledge_chunks       │
+│                                                                  │
+│  4. Document status updated to 'ready'                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Search Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Search Flow                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. User/Voice AI calls searchKnowledge()                       │
+│        │                                                         │
+│        ▼                                                         │
+│  2. /api/knowledge-search                                        │
+│        │                                                         │
+│        ├──▶ Generate query embedding via OpenAI                 │
+│        │                                                         │
+│        └──▶ Call search_knowledge() PostgreSQL function         │
+│             (cosine similarity via pgvector)                     │
+│                                                                  │
+│  3. Return top N chunks sorted by similarity                    │
+│                                                                  │
+│  4. For voice: Format results via searchKnowledgeForVoice()     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Troubleshooting
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| "Upload failed: Bucket not found" | Missing storage bucket | Create `knowledge-docs` bucket in Supabase |
+| "Failed to process document" | Missing OpenAI key | Add `OPENAI_API_KEY` to Vercel env vars |
+| "vector type does not exist" | pgvector not enabled | Run `CREATE EXTENSION IF NOT EXISTS vector;` |
+| "Permission denied for table" | RLS blocking | Check policies include `anon` role |
+| PDF text extraction fails | pdf-parse issue | Pass text content directly via UI |
+| Chunks not created | Processing error | Check document status & error_message |
+
+---
+
 ## User Capability Levels (TODO)
 
 **Status:** Planned - needs implementation
@@ -2185,5 +2493,52 @@ The application needs a proper user capabilities/roles system to control access 
 - `src/components/Shades/ShadeDetailPage.js` - Full page shade measurement (replaced ShadeMeasurementModal)
 - `src/components/Shades/ShadeManager.js` - Navigates to ShadeDetailPage
 - `src/components/PMProjectView.js` - Embeds ShadeManager with PM capabilities
+
+---
+
+# PART 6: CHANGELOG
+
+## 2025-12-20
+
+### RAG Knowledge Base System (Major Feature)
+- **Database Migration:** `supabase/migrations/20241220_add_knowledge_tables.sql`
+  - `knowledge_manufacturers` - Multi-manufacturer support (Lutron, Control4, Ubiquiti, etc.)
+  - `knowledge_documents` - Document metadata and processing status
+  - `knowledge_chunks` - Text chunks with 1536-dim vector embeddings (pgvector)
+  - `search_knowledge()` - Vector similarity search function
+  - `search_knowledge_text()` - Full-text search fallback function
+- **API Endpoints:**
+  - `api/knowledge-upload.js` - Handle document uploads
+  - `api/knowledge-process.js` - Extract text, chunk, generate OpenAI embeddings
+  - `api/knowledge-search.js` - Semantic search with manufacturer filtering
+- **Frontend:**
+  - `src/services/knowledgeService.js` - Knowledge CRUD operations
+  - `src/components/knowledge/KnowledgeManagementPanel.js` - Upload/manage documents UI
+  - Added Knowledge Base link to Settings page
+  - Added `/knowledge` route to App.js
+
+### Lutron Shade Knowledge Base
+- **New File:** `src/data/lutronShadeKnowledge.js`
+  - Comprehensive Lutron shade specifications
+  - Measurement guidelines and tolerances
+  - Fabric types and mount options
+  - Used by voice AI for instant Lutron lookups
+
+### Voice AI Improvements
+- **New Hook:** `src/hooks/useShadeDetailTools.js`
+  - Replaces deprecated `useShadeTools.js`
+  - Improved field highlighting with violet glow animation
+  - Better M1/M2 tab awareness
+  - Tools: `get_shade_context`, `set_measurement`, `navigate_to_field`, `mark_measurement_complete`
+- **New Hook:** `src/hooks/useKnowledgeTools.js`
+  - `search_manufacturer_docs` - RAG-powered documentation search
+  - `get_lutron_shade_info` - Embedded Lutron knowledge lookup
+- **VAD Tuning:** Increased `silenceDurationMs` to 500ms to prevent early speech cutoff
+- **Page Awareness:** Improved `useAgentContext.js` for better location tracking
+
+### Voice AI Field Highlighting
+- ShadeDetailPage now highlights measurement fields with violet glow when AI prompts
+- 5-second animation duration for visual feedback
+- Critical for hands-free measuring workflow
 
 ---
