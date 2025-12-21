@@ -324,7 +324,9 @@ export const useAgentContext = () => {
                     'vendors': '/vendors',
                     'parts': '/global-parts',
                     'settings': '/settings',
-                    'wire-drops': '/wire-drops'
+                    'wire-drops': '/wire-drops',
+                    'prewire': '/prewire-mode',
+                    'prewire-mode': '/prewire-mode'
                 };
 
                 const url = sectionMap[section.toLowerCase()];

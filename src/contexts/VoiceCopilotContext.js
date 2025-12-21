@@ -141,34 +141,15 @@ export const VoiceCopilotProvider = ({ children }) => {
                 next.set(tool.name, tool);
             });
 
-            // If session is active and we have genuinely new tools, flag for refresh
+            // If session is active and we have genuinely new tools, log it but DON'T disconnect
+            // The tools are still executed locally even if Gemini doesn't know about them in its schema.
+            // The AI can discover available tools via get_current_location which lists availableActions.
+            // This prevents the annoying session disconnect when navigating between pages.
             if (hasNewTools && ws.current?.readyState === WebSocket.OPEN) {
-                addLog(`New tools registered during session - will refresh connection`, 'warn');
-                pendingToolRefresh.current = true;
-
-                // Debounce the refresh to allow multiple tool registrations to batch
-                if (sessionRefreshTimeout.current) {
-                    clearTimeout(sessionRefreshTimeout.current);
-                }
-                sessionRefreshTimeout.current = setTimeout(() => {
-                    if (pendingToolRefresh.current && ws.current?.readyState === WebSocket.OPEN && startSessionRef.current) {
-                        addLog('Refreshing session to include new tools...', 'info');
-                        // Close and immediately reconnect
-                        ws.current?.close();
-                        // Wait for close, then reconnect
-                        setTimeout(() => {
-                            pendingToolRefresh.current = false;
-                            setStatus('idle');
-                            // Reconnect with new tools
-                            setTimeout(() => {
-                                if (startSessionRef.current) {
-                                    startSessionRef.current();
-                                }
-                            }, 100);
-                        }, 200);
-                    }
-                    pendingToolRefresh.current = false;
-                }, 500); // Wait 500ms for any other tools to register
+                addLog(`New tools registered: ${newTools.filter(t => !prev.has(t.name)).map(t => t.name).join(', ')} (session continues)`, 'info');
+                // NOTE: We intentionally do NOT refresh the session here.
+                // Gemini was given all possible tools at session start via tool declarations.
+                // Page-specific tools are also executed locally when Gemini calls them.
             }
 
             addLog(`Tools registered locally: ${newTools.map(t => t.name).join(', ')}`, 'tool');
@@ -321,10 +302,23 @@ export const VoiceCopilotProvider = ({ children }) => {
                 const availableTools = Array.from(activeTools.keys()).join(', ');
                 addLog(`Tool not found: ${toolName}. Available: ${availableTools}`, 'error');
                 console.warn(`[Copilot] Tool not found: ${toolName}. Available tools:`, Array.from(activeTools.keys()));
+
+                // Provide helpful guidance based on which tool was called
+                let hint = 'Call get_current_location to see what page the user is on and what tools are available.';
+                if (toolName.includes('prewire') || toolName.includes('print') || toolName.includes('wire_drop')) {
+                    hint = 'The user is not on the Prewire page. Use navigate_to_section with section="prewire" first, then try again.';
+                } else if (toolName.includes('shade') || toolName.includes('measurement')) {
+                    hint = 'The user is not on the Shades page. Navigate to a project\'s shades section first.';
+                }
+
                 responses.push({
                     id: callId,
                     name: toolName,
-                    response: { error: `Tool '${toolName}' not registered. Available: ${availableTools}` }
+                    response: {
+                        error: `Tool '${toolName}' is not available on this page.`,
+                        hint,
+                        availableTools: availableTools.split(', ').slice(0, 10)
+                    }
                 });
                 continue;
             }
@@ -532,11 +526,31 @@ export const VoiceCopilotProvider = ({ children }) => {
                 const settings = getSettings();
                 // Use ref to get current tools (avoids stale closure)
                 const currentTools = activeToolsRef.current;
-                const toolDeclarations = Array.from(currentTools.values()).map(t => ({
+
+                // Build tool declarations from currently registered tools
+                const dynamicToolDeclarations = Array.from(currentTools.values()).map(t => ({
                     name: t.name,
                     description: t.description,
                     parameters: t.parameters
                 }));
+
+                // Also declare common page-specific tools that might not be registered yet
+                // This allows Gemini to call them even if user navigates to a new page mid-session
+                const prewireToolDeclarations = [
+                    { name: 'get_prewire_overview', description: 'Get overview of wire drops needing labels printed', parameters: { type: 'object', properties: {} } },
+                    { name: 'list_wire_drops_in_room', description: 'List wire drops in a specific room', parameters: { type: 'object', properties: { roomName: { type: 'string', description: 'Room name to filter by' } }, required: ['roomName'] } },
+                    { name: 'filter_by_floor', description: 'Filter wire drops by floor', parameters: { type: 'object', properties: { floor: { type: 'string', description: 'Floor name or "all"' } }, required: ['floor'] } },
+                    { name: 'filter_by_room', description: 'Filter wire drops by room', parameters: { type: 'object', properties: { room: { type: 'string', description: 'Room name or "all"' } }, required: ['room'] } },
+                    { name: 'open_print_modal', description: 'Open print dialog for a wire drop', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
+                    { name: 'open_photo_modal', description: 'Open camera for prewire photo', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
+                    { name: 'open_wire_drop_details', description: 'Navigate to wire drop details page', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
+                    { name: 'get_next_unprinted', description: 'Get next wire drop needing labels', parameters: { type: 'object', properties: {} } }
+                ];
+
+                // Merge declarations, preferring dynamic ones (they have actual execute functions)
+                const existingNames = new Set(dynamicToolDeclarations.map(t => t.name));
+                const additionalTools = prewireToolDeclarations.filter(t => !existingNames.has(t.name));
+                const toolDeclarations = [...dynamicToolDeclarations, ...additionalTools];
 
                 // Log all registered tools for debugging
                 addLog(`Voice: ${settings.voice}, Persona: ${settings.persona}, Tools: ${toolDeclarations.length}`);
@@ -578,64 +592,60 @@ export const VoiceCopilotProvider = ({ children }) => {
                         },
                         systemInstruction: {
                             parts: [{
-                                text: `You are a friendly voice assistant helping field technicians measure windows for motorized shades.
+                                text: `You are a friendly voice assistant helping field technicians with project management tasks.
 
 PERSONALITY:
 ${settings.persona === 'brief' ? '- Be concise and direct. Short confirmations like "Got it" or "Done".' : '- Be helpful and explain what you\'re doing.'}
-- Speak naturally like a helpful coworker, never read out technical names
+- Speak naturally like a helpful coworker
 - NEVER say tool names, function names, or parameters out loud
 - Instead of "calling navigate_to_project", just say "Taking you there now"
-- Instead of "using set_measurement with field top width", say "Recording 52 inches for the top"
+- Instead of "using set_measurement", say "Recording 52 inches for the top"
 ${settings.instructions ? `- User preferences: ${settings.instructions}` : ''}
 
-HANDS-FREE MEASURING WORKFLOW:
-When the tech says "I need to measure [window name]" or "let's measure [name]":
-1. Use open_shade_for_measuring with the shade name to open that window
-2. Once open, call navigate_to_field with "top width" to highlight the first field
-3. Say "Ready for top width"
-4. When they give a number, use set_measurement to record it - this auto-highlights the next field
-5. Confirm: "Got it, [number]. Now middle width."
-6. Continue through all 5 measurements
-7. When done, say "All done! Want me to mark it complete?"
-8. On "yes" or "done", use mark_measurement_complete
-9. Say "go back" or use go_back_to_shade_list to return to the list
+CRITICAL - ALWAYS KNOW WHERE YOU ARE:
+On EVERY interaction, call get_current_location FIRST to know:
+- Which page the user is on (dashboard, project, shades, prewire, equipment, etc.)
+- What tools are available on that page
+- What project they're in (if any)
 
-Each shade needs TWO rounds of measurements:
-- M1 (First Measure): Initial rough opening measurements taken during pre-wire
-- M2 (Second Measure): Verification measurements taken before installation
+The response from get_current_location tells you exactly what you can do. ONLY use tools listed in availableActions.
 
-The 5 measurements in order:
-1. Top width
-2. Middle width
-3. Bottom width
-4. Height
-5. Mount depth
+PAGE-SPECIFIC BEHAVIORS:
 
-CRITICAL - FIELD HIGHLIGHTING:
-- ALWAYS use navigate_to_field BEFORE asking for a measurement - this makes the field glow violet
-- The tech needs to SEE which field you're asking about
-- After set_measurement, the next field auto-highlights after 2.5 seconds
-- If the tech seems confused, call navigate_to_field again to show them
+PREWIRE MODE (section: "prewire"):
+This is for printing wire drop labels and taking prewire photos.
+Available tools: get_prewire_overview, list_wire_drops_in_room, filter_by_room, filter_by_floor, open_print_modal, open_photo_modal, get_next_unprinted, open_wire_drop_details
+- "How many need printing?" → get_prewire_overview
+- "Show master bedroom" → list_wire_drops_in_room or filter_by_room
+- "Print labels for CAT6-01" → open_print_modal with dropName
+- "Take photo of network drop" → open_photo_modal with dropName
+- "What's next?" → get_next_unprinted
+- "Open that drop" → open_wire_drop_details
+
+SHADE MEASURING (section: "project", subsection: "shades"):
+Available tools: set_measurement, save_shade, navigate_to_field, get_shade_context, open_shade_for_measuring
+- When tech gives a number, use set_measurement to record it
+- ALWAYS use navigate_to_field BEFORE asking for a measurement (makes field glow violet)
+- Measurements: top width, middle width, bottom width, height, mount depth
+
+GENERAL NAVIGATION (always available):
+- "Go to settings" → navigate_to_section with section="settings"
+- "Go to dashboard" → navigate_to_section with section="dashboard"
+- "Open [project name]" → navigate_to_project with projectName
+- "Go to prewire" or "prewire mode" → navigate_to_section with section="prewire"
+- "Go back" → go_back
 
 SPEECH RULES:
 - Say numbers naturally: "52 and a quarter" not "52.25"
-- Use "inches" not symbols
 - Keep confirmations short: "Got it" "Done" "Saved"
-- If you hear a number, confirm it back before recording
 - If unclear, ask them to repeat
 
 ON SESSION START:
-IMMEDIATELY call get_current_location to find out which page the user is on. Then greet briefly.
-- If on shade list: "Hey! Which window do you want to measure?"
-- If on shade detail page: Call get_shade_context, then navigate_to_field("top width"), then say "Ready for [shade name]. Give me the top width."
-- If elsewhere: Tell them where they are and ask how you can help.
-
-NAVIGATION:
-- "Go to settings" → navigate_to_section with section="settings"
-- "Open [project name]" → navigate_to_project with projectName
-- "I need to measure [window name]" → open_shade_for_measuring with shadeName
-- "Next shade" or "next window" → open_shade_for_measuring with no args (gets next pending)
-- "What's left?" or "how many more?" → get_shades_overview`
+IMMEDIATELY call get_current_location, then greet based on where they are:
+- Prewire mode: "Hey! I see you're in prewire mode. Want me to help print labels?"
+- Shade list: "Hey! Which window do you want to measure?"
+- Dashboard: "You're on the dashboard. Which project should we open?"
+- Other: Tell them where they are and what you can help with.`
                             }]
                         }
                     }
