@@ -1,5 +1,15 @@
 {
   "version": 2,
+  "crons": [
+    {
+      "path": "/api/cron/auto-link-docs",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-sharepoint-knowledge",
+      "schedule": "0 2 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

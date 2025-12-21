@@ -2445,6 +2445,120 @@ supabase db push
 
 ---
 
+## Auto-Link System (Added 2025-12-21)
+
+**Status:** Implemented - requires migration
+
+### Overview
+
+Automatically links knowledge base documents to `global_parts` based on manufacturer, model, and part number matching. Runs as a nightly cron job.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Nightly Auto-Link Job                         │
+│                    Runs at 3 AM daily                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Fetch all knowledge_documents (status = 'ready')            │
+│        │                                                         │
+│        ▼                                                         │
+│  2. For each document, extract:                                  │
+│     - Manufacturer from metadata                                 │
+│     - Model/part numbers from title/filename                    │
+│        │                                                         │
+│        ▼                                                         │
+│  3. Match against global_parts:                                  │
+│     - model match → 95% confidence                              │
+│     - part_number match → 90% confidence                        │
+│     - manufacturer match → 50% confidence                       │
+│        │                                                         │
+│        ▼                                                         │
+│  4. Create global_part_documents links:                         │
+│     - source = 'auto-linked'                                    │
+│     - confidence = match score                                   │
+│     - matched_on = field that matched                           │
+│        │                                                         │
+│        ▼                                                         │
+│  5. Log results to job_runs table                               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Cron Jobs (vercel.json)
+
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| `/api/cron/sync-sharepoint-knowledge` | 2 AM daily | Sync docs from SharePoint to knowledge_documents |
+| `/api/cron/auto-link-docs` | 3 AM daily | Link knowledge docs to global_parts |
+
+### Database Changes
+
+**New columns on `global_part_documents`:**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `source` | TEXT | 'manual', 'auto-linked', or 'ai-suggested' |
+| `confidence` | FLOAT | Match confidence (0.0-1.0) |
+| `matched_on` | TEXT | Field that matched ('model', 'part_number', 'manufacturer') |
+| `knowledge_doc_id` | UUID | FK to knowledge_documents |
+
+**New table `job_runs`:**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `job_name` | TEXT | Name of the cron job |
+| `started_at` | TIMESTAMPTZ | When job started |
+| `completed_at` | TIMESTAMPTZ | When job finished |
+| `status` | TEXT | 'running', 'completed', 'failed' |
+| `stats` | JSONB | Job statistics (docs processed, links created) |
+| `error_message` | TEXT | Error details if failed |
+
+### Key Files
+
+| Purpose | File |
+|---------|------|
+| Auto-link cron job | `api/cron/auto-link-docs.js` |
+| SharePoint sync cron | `api/cron/sync-sharepoint-knowledge.js` |
+| Database migration | `supabase/migrations/20241221_add_auto_link_support.sql` |
+
+### Environment Variables for SharePoint Integration
+
+```bash
+# Required for SharePoint sync (optional - can use manual uploads)
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+SHAREPOINT_SITE_ID=your-site-id
+SHAREPOINT_KNOWLEDGE_FOLDER=Unicorn/knowledge
+
+# Required for Vercel cron authentication
+CRON_SECRET=your-secret-for-cron-auth
+```
+
+### Manual Trigger
+
+You can trigger the jobs manually for testing:
+
+```bash
+# Auto-link job
+curl -X POST https://unicorn-one.vercel.app/api/cron/auto-link-docs
+
+# SharePoint sync job
+curl -X POST https://unicorn-one.vercel.app/api/cron/sync-sharepoint-knowledge
+```
+
+### Viewing Job History
+
+Query the `job_runs` table or use the helper function:
+
+```sql
+SELECT * FROM get_recent_job_runs('auto-link-docs', 10);
+```
+
+---
+
 ## User Capability Levels (TODO)
 
 **Status:** Planned - needs implementation
@@ -2497,6 +2611,34 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2025-12-21
+
+### Auto-Link System for Knowledge Base → Parts
+- **Database Migration:** `supabase/migrations/20241221_add_auto_link_support.sql`
+  - Added `source`, `confidence`, `matched_on`, `knowledge_doc_id` to `global_part_documents`
+  - New `job_runs` table for tracking cron job executions
+  - Helper function `auto_link_knowledge_to_parts()` for SQL-based linking
+  - Helper function `get_recent_job_runs()` for job history
+
+- **Cron Jobs (Vercel):**
+  - `api/cron/auto-link-docs.js` - Nightly job (3 AM) to link knowledge docs to global_parts
+  - `api/cron/sync-sharepoint-knowledge.js` - Nightly job (2 AM) to sync docs from SharePoint
+  - Added cron configuration to `vercel.json`
+
+- **Matching Logic:**
+  - Model number match → 95% confidence
+  - Part number match → 90% confidence
+  - Manufacturer match → 50% confidence
+  - Auto-infers document type from title keywords
+
+### Knowledge Upload Fixes
+- Changed from public URL to signed URL for Supabase Storage
+- Reduced embedding batch size to prevent OpenAI token limit errors
+- Added batch token counting with fallback to individual processing
+- Filter oversized chunks (>1000 tokens) before embedding
+
+---
 
 ## 2025-12-20
 
