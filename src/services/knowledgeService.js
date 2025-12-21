@@ -11,6 +11,22 @@
 const API_BASE = '/api';
 
 /**
+ * Helper to safely parse JSON response
+ */
+async function parseResponse(response) {
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+    }
+    const text = await response.text();
+    // Check if it looks like the React HTML fallback
+    if (text.includes('<!DOCTYPE html>')) {
+        throw new Error('API not available. Are you running "vercel dev"?');
+    }
+    throw new Error(text || response.statusText);
+}
+
+/**
  * Get all manufacturers
  */
 export async function getManufacturers() {
@@ -18,7 +34,7 @@ export async function getManufacturers() {
     if (!response.ok) {
         throw new Error('Failed to fetch manufacturers');
     }
-    const data = await response.json();
+    const data = await parseResponse(response);
     return data.manufacturers || [];
 }
 
@@ -38,11 +54,15 @@ export async function createManufacturer({ name, description, logoUrl }) {
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create manufacturer');
+        let errorMsg = 'Failed to create manufacturer';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -56,11 +76,15 @@ export async function deleteManufacturer(manufacturerId) {
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete manufacturer');
+        let errorMsg = 'Failed to delete manufacturer';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -76,7 +100,7 @@ export async function getDocuments(manufacturerId = null) {
         throw new Error('Failed to fetch documents');
     }
 
-    const data = await response.json();
+    const data = await parseResponse(response);
     return data.documents || [];
 }
 
@@ -113,11 +137,15 @@ export async function createDocument({
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to create document');
+        let errorMsg = 'Failed to create document';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -131,11 +159,15 @@ export async function deleteDocument(documentId) {
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete document');
+        let errorMsg = 'Failed to delete document';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -152,11 +184,15 @@ export async function processDocument(documentId, text = null) {
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to process document');
+        let errorMsg = 'Failed to process document';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -258,11 +294,15 @@ export async function searchKnowledge({
     });
 
     if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Search failed');
+        let errorMsg = 'Search failed';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
     }
 
-    return await response.json();
+    return await parseResponse(response);
 }
 
 /**
@@ -329,6 +369,60 @@ function formatForVoice(results) {
     return summary;
 }
 
+/**
+ * Scan a manufacturer site for PDF links
+ */
+export async function scanSite({ url, username, password }) {
+    const response = await fetch(`${API_BASE}/scrape-knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'scan',
+            url,
+            username,
+            password
+        })
+    });
+
+    if (!response.ok) {
+        let errorMsg = 'Scan failed';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
+    }
+
+    return await parseResponse(response);
+}
+
+/**
+ * Process a scraped file (download & upload to SharePoint)
+ */
+export async function processScrapedFile({ fileUrl, manufacturerName, rootUrl }) {
+    const response = await fetch(`${API_BASE}/scrape-knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'process_file',
+            fileUrl,
+            manufacturerName,
+            rootUrl
+        })
+    });
+
+    if (!response.ok) {
+        let errorMsg = 'Processing failed';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
+    }
+
+    return await parseResponse(response);
+}
+
 // Export all functions as named exports
 export default {
     getManufacturers,
@@ -340,5 +434,7 @@ export default {
     processDocument,
     uploadAndProcessDocument,
     searchKnowledge,
-    searchKnowledgeForVoice
+    searchKnowledgeForVoice,
+    scanSite,
+    processScrapedFile
 };

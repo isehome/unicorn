@@ -14,7 +14,8 @@ import {
     Loader2,
     ChevronDown,
     ChevronRight,
-    ExternalLink
+    ExternalLink,
+    Globe
 } from 'lucide-react';
 import Button from '../ui/Button';
 import * as knowledgeService from '../../services/knowledgeService';
@@ -47,6 +48,114 @@ const KnowledgeManagementPanel = () => {
     });
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState('');
+
+    // Scraper State
+    const [showScraperForm, setShowScraperForm] = useState(false);
+    const [scrapeStep, setScrapeStep] = useState('config'); // config, review, processing, complete
+    const [scrapeConfig, setScrapeConfig] = useState({ url: '', username: '', password: '', manufacturerId: '' });
+    const [scanning, setScanning] = useState(false);
+    const [scrapedFiles, setScrapedFiles] = useState([]);
+    const [scannedPages, setScannedPages] = useState([]);
+    const [importStats, setImportStats] = useState({ current: 0, total: 0, success: 0, failed: 0 });
+
+    // Scraper Handlers
+    const handleScanSite = async (e) => {
+        e.preventDefault();
+        console.log('[Scraper] Starting scan for:', scrapeConfig.url);
+        try {
+            setScanning(true);
+            setError(null);
+            setScannedPages([]);
+
+            // Normalize URL
+            let targetUrl = scrapeConfig.url.trim();
+            if (!/^https?:\/\//i.test(targetUrl)) {
+                targetUrl = 'https://' + targetUrl;
+            }
+            console.log('[Scraper] Normalized URL:', targetUrl);
+
+            const result = await knowledgeService.scanSite({
+                url: targetUrl,
+                username: scrapeConfig.username,
+                password: scrapeConfig.password
+            });
+
+            console.log('[Scraper] Scan Result:', result);
+
+            // Map results for selection
+            const files = (result.links || []).map(link => ({
+                ...link,
+                selected: true // Select all by default
+            }));
+
+            setScrapedFiles(files);
+            setScannedPages(result.scanned || []);
+            setScrapeStep('review');
+        } catch (err) {
+            console.error('[Scraper] Scan Failed:', err);
+            setError(`Scan failed: ${err.message}`);
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    const handleImportSelected = async () => {
+        const selected = scrapedFiles.filter(f => f.selected);
+        if (selected.length === 0) return;
+
+        setScrapeStep('processing');
+        setImportStats({ current: 0, total: selected.length, success: 0, failed: 0 });
+
+        const mfg = manufacturers.find(m => m.id === scrapeConfig.manufacturerId);
+        const mfgName = mfg ? mfg.name : 'General';
+        // Need a root URL for SharePoint - hardcoded or from env/config in a real app
+        // For now using the existing logic assumption that backend knows the drive, 
+        // but the API expects a 'rootUrl' to find the drive.
+        // We'll use a placeholder that the backend can interpret or pass the project site URL if available.
+        // Update: The scrape-knowledge API uses rootUrl to find the drive. 
+        // We'll use the user's primary site or a default. 
+        // For this user: "isehome/unicorn" maps to a drive. 
+        // User requested files go to "Knowledge" folder under Unicorn site. 
+        // We pass the site root URL, and the backend will handle the folder structure.
+        const targetRootUrl = 'https://isehome.sharepoint.com/sites/Unicorn';
+
+        for (let i = 0; i < selected.length; i++) {
+            const file = selected[i];
+            setImportStats(prev => ({ ...prev, current: i + 1 }));
+            setUploadProgress(`Importing ${i + 1} of ${selected.length}: ${file.text || 'Document'}...`);
+
+            try {
+                const result = await knowledgeService.processScrapedFile({
+                    fileUrl: file.href,
+                    manufacturerName: mfgName,
+                    rootUrl: targetRootUrl
+                });
+
+                // Add to Supabase (create document record)
+                // Note: The API upload returns metadata but doesn't create the Supabase record yet.
+                // We need to create it here to show up in the UI.
+                await knowledgeService.createDocument({
+                    manufacturerId: scrapeConfig.manufacturerId || null,
+                    title: file.text || file.href.split('/').pop(),
+                    fileName: result.filename || file.href.split('/').pop(),
+                    fileType: 'pdf',
+                    fileSize: result.size || 0,
+                    fileUrl: result.webUrl,
+                    category: 'spec-sheet', // Default
+                    description: `Scraped from ${scrapeConfig.url}`,
+                    tags: ['scraped']
+                });
+
+                setImportStats(prev => ({ ...prev, success: prev.success + 1 }));
+            } catch (err) {
+                console.error('Import failed for', file.href, err);
+                setImportStats(prev => ({ ...prev, failed: prev.failed + 1 }));
+            }
+        }
+
+        setScrapeStep('complete');
+        loadData(); // Refresh list
+    };
 
     // Search State
     const [searchQuery, setSearchQuery] = useState('');
@@ -403,11 +512,10 @@ const KnowledgeManagementPanel = () => {
                     <div className="flex flex-wrap gap-2">
                         <button
                             onClick={() => setSelectedManufacturer(null)}
-                            className={`px-3 py-1.5 text-xs rounded-full transition ${
-                                selectedManufacturer === null
-                                    ? 'bg-violet-500 text-white'
-                                    : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                            }`}
+                            className={`px-3 py-1.5 text-xs rounded-full transition ${selectedManufacturer === null
+                                ? 'bg-violet-500 text-white'
+                                : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                }`}
                         >
                             All
                         </button>
@@ -415,11 +523,10 @@ const KnowledgeManagementPanel = () => {
                             <div key={mfg.id} className="group relative">
                                 <button
                                     onClick={() => setSelectedManufacturer(mfg.id)}
-                                    className={`px-3 py-1.5 text-xs rounded-full transition ${
-                                        selectedManufacturer === mfg.id
-                                            ? 'bg-violet-500 text-white'
-                                            : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
-                                    }`}
+                                    className={`px-3 py-1.5 text-xs rounded-full transition ${selectedManufacturer === mfg.id
+                                        ? 'bg-violet-500 text-white'
+                                        : 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700'
+                                        }`}
                                 >
                                     {mfg.name}
                                 </button>
@@ -540,6 +647,188 @@ const KnowledgeManagementPanel = () => {
                 )}
             </section>
 
+            {/* Scrapers Section */}
+            <section className="rounded-2xl border p-4" style={sectionStyles.card}>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <Globe size={16} />
+                        Site Scraper
+                    </h3>
+                    {!showScraperForm && (
+                        <button
+                            onClick={() => setShowScraperForm(true)}
+                            className="text-xs text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1"
+                        >
+                            <Plus size={14} /> New Scrape
+                        </button>
+                    )}
+                </div>
+
+                {showScraperForm && (
+                    <div className="mb-4 p-4 rounded-lg bg-gray-50 dark:bg-zinc-800/50 space-y-4">
+                        {/* Step 1: Configuration */}
+                        {scrapeStep === 'config' && (
+                            <form onSubmit={handleScanSite} className="space-y-3">
+                                {/* Error Display */}
+                                {error && (
+                                    <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded text-xs mb-2">
+                                        <strong>Error:</strong> {error}
+                                        <br />
+                                        <span className="opacity-75">Check browser console for details.</span>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Target URL</label>
+                                        <input
+                                            type="url"
+                                            required
+                                            value={scrapeConfig.url}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, url: e.target.value }))}
+                                            placeholder="https://example.com/downloads"
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Manufacturer</label>
+                                        <select
+                                            value={scrapeConfig.manufacturerId || ''}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, manufacturerId: e.target.value || null }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
+                                        >
+                                            <option value="">General</option>
+                                            {manufacturers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Username (Optional)</label>
+                                        <input
+                                            type="text"
+                                            value={scrapeConfig.username}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, username: e.target.value }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Password (Optional)</label>
+                                        <input
+                                            type="password"
+                                            value={scrapeConfig.password}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, password: e.target.value }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end gap-2 pt-2">
+                                    <Button type="button" variant="secondary" size="sm" onClick={() => setShowScraperForm(false)}>Cancel</Button>
+                                    <Button type="submit" size="sm" disabled={scanning} onClick={handleScanSite}>
+                                        {scanning ? <Loader2 size={14} className="animate-spin mr-1" /> : <Search size={14} className="mr-1" />}
+                                        {scanning ? 'Scanning...' : 'Scan for PDFs'}
+                                    </Button>
+                                </div>
+                            </form>
+                        )}
+
+                        {/* Step 2: Review */}
+                        {scrapeStep === 'review' && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">Found {scrapedFiles.length} PDF links</span>
+                                    <div className="space-x-2 text-xs">
+                                        <button onClick={() => setScrapedFiles(prev => prev.map(f => ({ ...f, selected: true })))} className="text-violet-600 hover:underline">Select All</button>
+                                        <button onClick={() => setScrapedFiles(prev => prev.map(f => ({ ...f, selected: false })))} className="text-violet-600 hover:underline">Deselect All</button>
+                                    </div>
+                                </div>
+
+                                {/* Scanned Pages Info */}
+                                {scannedPages.length > 0 && (
+                                    <div className="text-xs text-gray-500 mb-2">
+                                        <span className="font-semibold">Deep Scan visited:</span> {scannedPages.join(', ')}
+                                    </div>
+                                )}
+
+                                <div className="max-h-60 overflow-y-auto border rounded-lg bg-white dark:bg-zinc-900 p-2 space-y-1">
+                                    {scrapedFiles.map((file, idx) => (
+                                        <label key={idx} className="flex items-start gap-2 p-2 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={file.selected}
+                                                onChange={() => {
+                                                    const newFiles = [...scrapedFiles];
+                                                    newFiles[idx].selected = !newFiles[idx].selected;
+                                                    setScrapedFiles(newFiles);
+                                                }}
+                                                className="mt-1"
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-xs font-medium truncate">{file.text || 'Untitled PDF'}</div>
+                                                <div className="text-[10px] text-gray-500 truncate" title={file.href}>{file.href}</div>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+
+                                <div className="flex justify-between items-center pt-2">
+                                    <span className="text-xs text-gray-500">
+                                        {scrapedFiles.filter(f => f.selected).length} selected
+                                    </span>
+                                    <div className="flex gap-2">
+                                        <Button variant="secondary" size="sm" onClick={() => setScrapeStep('config')}>Back</Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={handleImportSelected}
+                                            disabled={scrapedFiles.filter(f => f.selected).length === 0}
+                                        >
+                                            Import Selected
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 3: Processing */}
+                        {scrapeStep === 'processing' && (
+                            <div className="space-y-4 text-center py-4">
+                                <Loader2 size={32} className="animate-spin mx-auto text-violet-500" />
+                                <div>
+                                    <h4 className="text-sm font-medium">Importing Documents...</h4>
+                                    <p className="text-xs text-gray-500 mt-1">{uploadProgress}</p>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                                    <div
+                                        className="bg-violet-600 h-2.5 rounded-full transition-all duration-300"
+                                        style={{ width: `${(importStats.current / importStats.total) * 100}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Step 4: Complete */}
+                        {scrapeStep === 'complete' && (
+                            <div className="space-y-4 text-center py-4">
+                                <CheckCircle size={32} className="mx-auto text-green-500" />
+                                <div>
+                                    <h4 className="text-sm font-medium">Import Complete!</h4>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Successfully imported {importStats.success} documents.
+                                        {importStats.failed > 0 && ` (${importStats.failed} failed)`}
+                                    </p>
+                                </div>
+                                <Button size="sm" onClick={() => {
+                                    setShowScraperForm(false);
+                                    setScrapeStep('config');
+                                    loadData();
+                                }}>Done</Button>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </section>
             {/* Upload Modal */}
             {showUploadForm && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">

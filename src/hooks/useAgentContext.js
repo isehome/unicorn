@@ -73,7 +73,9 @@ export const useAgentContext = () => {
             else if (path.includes('/reports')) subsection = 'reports';
             else if (path.includes('/secure-data')) subsection = 'secure-data';
             else subsection = 'overview';
-        } else if (path === '/wire-drops' || path === '/wire-drops-list' || path === '/prewire-mode') {
+        } else if (path === '/prewire-mode') {
+            section = 'prewire';
+        } else if (path === '/wire-drops' || path === '/wire-drops-list') {
             section = 'wire-drops';
         } else if (path === '/issues') {
             section = 'issues';
@@ -144,6 +146,8 @@ export const useAgentContext = () => {
                     } else {
                         locationDescription = `You are viewing the overview for ${projectName}.`;
                     }
+                } else if (currentContext.section === 'prewire') {
+                    locationDescription = 'You are in Prewire Mode - a dedicated view for technicians to print wire drop labels and capture prewire photos. You can help print labels, filter by room, or navigate to specific wire drops.';
                 } else if (currentContext.section === 'settings') {
                     locationDescription = 'You are on the Settings page.';
                 } else if (currentContext.section === 'issues') {
@@ -365,6 +369,10 @@ export const useAgentContext = () => {
 
         if (ctx.subsection === 'equipment') {
             actions.push('search_equipment', 'mark_received');
+        }
+
+        if (ctx.section === 'prewire') {
+            actions.push('get_prewire_overview', 'list_wire_drops_in_room', 'filter_by_room', 'filter_by_floor', 'open_print_modal', 'open_photo_modal', 'get_next_unprinted');
         }
 
         return actions;

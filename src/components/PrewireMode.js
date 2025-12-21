@@ -22,6 +22,7 @@ import labelRenderService from '../services/labelRenderService';
 import PrewirePhotoModal from './PrewirePhotoModal';
 import PrintLabelModal from './PrintLabelModal';
 import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColor } from '../utils/wireDropVisuals';
+import { usePrewireTools } from '../hooks/usePrewireTools';
 
 /**
  * PrewireMode - Dedicated view for technicians during prewire phase
@@ -211,10 +212,39 @@ const PrewireMode = () => {
 
   // Open print modal
   const handleOpenPrintModal = (drop, e) => {
-    e.stopPropagation();
+    if (e?.stopPropagation) e.stopPropagation();
     setSelectedDropForPrint(drop);
     setPrintModalOpen(true);
   };
+
+  // Open photo modal
+  const handleOpenPhotoModal = (drop, e) => {
+    if (e?.stopPropagation) e.stopPropagation();
+    setSelectedDropForPhoto(drop);
+    setPhotoModalOpen(true);
+  };
+
+  // Navigate to wire drop details
+  const handleNavigateToWireDrop = useCallback((dropId) => {
+    navigate(`/wire-drops/${dropId}`);
+  }, [navigate]);
+
+  // ===== VOICE AI TOOLS =====
+  // Register prewire-specific voice tools for hands-free control
+  usePrewireTools({
+    wireDrops,
+    filteredDrops,
+    selectedFloor,
+    selectedRoom,
+    availableFloors,
+    availableRooms,
+    printerConnected,
+    onOpenPrintModal: handleOpenPrintModal,
+    onOpenPhotoModal: handleOpenPhotoModal,
+    onSetFloor: setSelectedFloor,
+    onSetRoom: setSelectedRoom,
+    onNavigateToWireDrop: handleNavigateToWireDrop
+  });
 
   // Handle print labels - if no exception is thrown, consider it successful
   // Note: Brady SDK printBitmap can return false even when print succeeds
@@ -274,13 +304,6 @@ const PrewireMode = () => {
       console.error('Failed to update printed status:', err);
       alert(`Failed to update status: ${err.message}`);
     }
-  };
-
-  // Handle photo capture
-  const handleOpenPhotoModal = (drop, e) => {
-    e.stopPropagation();
-    setSelectedDropForPhoto(drop);
-    setPhotoModalOpen(true);
   };
 
   const handlePhotoUploaded = (wireDropId) => {
