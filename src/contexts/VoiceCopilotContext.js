@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { getAllToolDeclarations, getContextFromPath, getContextInstructions } from '../services/voiceToolRegistry';
 
 const VoiceCopilotContext = createContext(null);
 
@@ -524,41 +525,37 @@ export const VoiceCopilotProvider = ({ children }) => {
 
                 // Send initial configuration
                 const settings = getSettings();
-                // Use ref to get current tools (avoids stale closure)
+
+                // Get ALL tool declarations from the registry
+                // This ensures Gemini knows about all tools regardless of current page
+                const registryTools = getAllToolDeclarations();
+
+                // Also include any dynamically registered tools not in the registry
                 const currentTools = activeToolsRef.current;
+                const registryToolNames = new Set(registryTools.map(t => t.name));
+                const dynamicOnlyTools = Array.from(currentTools.values())
+                    .filter(t => !registryToolNames.has(t.name))
+                    .map(t => ({
+                        name: t.name,
+                        description: t.description,
+                        parameters: t.parameters
+                    }));
 
-                // Build tool declarations from currently registered tools
-                const dynamicToolDeclarations = Array.from(currentTools.values()).map(t => ({
-                    name: t.name,
-                    description: t.description,
-                    parameters: t.parameters
-                }));
-
-                // Also declare common page-specific tools that might not be registered yet
-                // This allows Gemini to call them even if user navigates to a new page mid-session
-                const prewireToolDeclarations = [
-                    { name: 'get_prewire_overview', description: 'Get overview of wire drops needing labels printed', parameters: { type: 'object', properties: {} } },
-                    { name: 'list_wire_drops_in_room', description: 'List wire drops in a specific room', parameters: { type: 'object', properties: { roomName: { type: 'string', description: 'Room name to filter by' } }, required: ['roomName'] } },
-                    { name: 'filter_by_floor', description: 'Filter wire drops by floor', parameters: { type: 'object', properties: { floor: { type: 'string', description: 'Floor name or "all"' } }, required: ['floor'] } },
-                    { name: 'filter_by_room', description: 'Filter wire drops by room', parameters: { type: 'object', properties: { room: { type: 'string', description: 'Room name or "all"' } }, required: ['room'] } },
-                    { name: 'open_print_modal', description: 'Open print dialog for a wire drop', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
-                    { name: 'open_photo_modal', description: 'Open camera for prewire photo', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
-                    { name: 'open_wire_drop_details', description: 'Navigate to wire drop details page', parameters: { type: 'object', properties: { dropName: { type: 'string', description: 'Wire drop name' } }, required: ['dropName'] } },
-                    { name: 'get_next_unprinted', description: 'Get next wire drop needing labels', parameters: { type: 'object', properties: {} } }
-                ];
-
-                // Merge declarations, preferring dynamic ones (they have actual execute functions)
-                const existingNames = new Set(dynamicToolDeclarations.map(t => t.name));
-                const additionalTools = prewireToolDeclarations.filter(t => !existingNames.has(t.name));
-                const toolDeclarations = [...dynamicToolDeclarations, ...additionalTools];
+                const toolDeclarations = [...registryTools, ...dynamicOnlyTools];
 
                 // Log all registered tools for debugging
                 addLog(`Voice: ${settings.voice}, Persona: ${settings.persona}, Tools: ${toolDeclarations.length}`);
                 if (toolDeclarations.length > 0) {
-                    addLog(`Registered tools: ${toolDeclarations.map(t => t.name).join(', ')}`, 'tool');
+                    addLog(`Tools from registry: ${registryTools.length}, Dynamic: ${dynamicOnlyTools.length}`, 'tool');
                 } else {
                     addLog('WARNING: No tools registered! Voice commands won\'t work.', 'warn');
                 }
+
+                // Get current page context for context-specific instructions
+                const currentPath = window.location.pathname;
+                const pageContext = getContextFromPath(currentPath);
+                const contextInstructions = getContextInstructions(pageContext);
+                addLog(`Page context: ${pageContext}`, 'info');
 
                 // Get user's model preference (default to latest native audio model)
                 const selectedModel = localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025';
@@ -592,60 +589,29 @@ export const VoiceCopilotProvider = ({ children }) => {
                         },
                         systemInstruction: {
                             parts: [{
-                                text: `You are a friendly voice assistant helping field technicians with project management tasks.
+                                text: `You are a friendly voice assistant helping field technicians.
 
 PERSONALITY:
-${settings.persona === 'brief' ? '- Be concise and direct. Short confirmations like "Got it" or "Done".' : '- Be helpful and explain what you\'re doing.'}
-- Speak naturally like a helpful coworker
-- NEVER say tool names, function names, or parameters out loud
-- Instead of "calling navigate_to_project", just say "Taking you there now"
-- Instead of "using set_measurement", say "Recording 52 inches for the top"
+${settings.persona === 'brief' ? '- Be concise. Short confirmations: "Got it", "Done", "Saved".' : '- Be helpful and explain what you\'re doing.'}
+- Speak naturally like a coworker
+- NEVER say tool names out loud. Say "Taking you there" not "calling navigate_to_project"
 ${settings.instructions ? `- User preferences: ${settings.instructions}` : ''}
 
-CRITICAL - ALWAYS KNOW WHERE YOU ARE:
-On EVERY interaction, call get_current_location FIRST to know:
-- Which page the user is on (dashboard, project, shades, prewire, equipment, etc.)
-- What tools are available on that page
-- What project they're in (if any)
+CRITICAL RULES:
+1. ALWAYS call get_current_location FIRST to know where the user is
+2. The response tells you what page they're on and what tools are available
+3. Only use tools listed in availableActions for the current page
+4. If a tool fails because user is on wrong page, tell them and navigate there
 
-The response from get_current_location tells you exactly what you can do. ONLY use tools listed in availableActions.
-
-PAGE-SPECIFIC BEHAVIORS:
-
-PREWIRE MODE (section: "prewire"):
-This is for printing wire drop labels and taking prewire photos.
-Available tools: get_prewire_overview, list_wire_drops_in_room, filter_by_room, filter_by_floor, open_print_modal, open_photo_modal, get_next_unprinted, open_wire_drop_details
-- "How many need printing?" → get_prewire_overview
-- "Show master bedroom" → list_wire_drops_in_room or filter_by_room
-- "Print labels for CAT6-01" → open_print_modal with dropName
-- "Take photo of network drop" → open_photo_modal with dropName
-- "What's next?" → get_next_unprinted
-- "Open that drop" → open_wire_drop_details
-
-SHADE MEASURING (section: "project", subsection: "shades"):
-Available tools: set_measurement, save_shade, navigate_to_field, get_shade_context, open_shade_for_measuring
-- When tech gives a number, use set_measurement to record it
-- ALWAYS use navigate_to_field BEFORE asking for a measurement (makes field glow violet)
-- Measurements: top width, middle width, bottom width, height, mount depth
-
-GENERAL NAVIGATION (always available):
-- "Go to settings" → navigate_to_section with section="settings"
-- "Go to dashboard" → navigate_to_section with section="dashboard"
-- "Open [project name]" → navigate_to_project with projectName
-- "Go to prewire" or "prewire mode" → navigate_to_section with section="prewire"
+NAVIGATION (always available):
+- "Go to [section]" → navigate_to_section (dashboard, prewire, settings, etc.)
+- "Open [project]" → navigate_to_project with projectName
 - "Go back" → go_back
 
-SPEECH RULES:
-- Say numbers naturally: "52 and a quarter" not "52.25"
-- Keep confirmations short: "Got it" "Done" "Saved"
-- If unclear, ask them to repeat
+${contextInstructions}
 
 ON SESSION START:
-IMMEDIATELY call get_current_location, then greet based on where they are:
-- Prewire mode: "Hey! I see you're in prewire mode. Want me to help print labels?"
-- Shade list: "Hey! Which window do you want to measure?"
-- Dashboard: "You're on the dashboard. Which project should we open?"
-- Other: Tell them where they are and what you can help with.`
+Call get_current_location, then greet briefly based on where they are.`
                             }]
                         }
                     }

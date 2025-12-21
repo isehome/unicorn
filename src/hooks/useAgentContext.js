@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 import { supabase } from '../lib/supabase';
+import { getToolsForContext, PAGE_CONTEXTS } from '../services/voiceToolRegistry';
 
 /**
  * useAgentContext - Provides location awareness and global navigation tools to the AI agent
@@ -358,26 +359,29 @@ export const useAgentContext = () => {
     ], [currentContext, fetchProjectDetails]); // Removed navigate from deps - using ref instead
 
     // Helper to determine what actions are available in current context
+    // Uses the centralized voice tool registry for scalability
     const getAvailableActions = (ctx) => {
-        const actions = ['navigate_to_project', 'navigate_to_section', 'list_projects', 'go_back'];
-
-        if (ctx.isInProject) {
-            actions.push('view_equipment', 'view_shades', 'view_issues', 'view_wire_drops');
-        }
-
-        if (ctx.subsection === 'shades') {
-            actions.push('set_measurement', 'save_shade', 'next_shade');
-        }
-
-        if (ctx.subsection === 'equipment') {
-            actions.push('search_equipment', 'mark_received');
-        }
+        // Map our context to the registry's page context
+        let pageContext = PAGE_CONTEXTS.GLOBAL;
 
         if (ctx.section === 'prewire') {
-            actions.push('get_prewire_overview', 'list_wire_drops_in_room', 'filter_by_room', 'filter_by_floor', 'open_print_modal', 'open_photo_modal', 'get_next_unprinted');
+            pageContext = PAGE_CONTEXTS.PREWIRE;
+        } else if (ctx.subsection === 'shades') {
+            // Check if we're on shade detail or shade list based on URL
+            const path = locationRef.current?.pathname || '';
+            pageContext = path.includes('/measure') ? PAGE_CONTEXTS.SHADE_DETAIL : PAGE_CONTEXTS.SHADE_LIST;
+        } else if (ctx.subsection === 'equipment') {
+            pageContext = PAGE_CONTEXTS.EQUIPMENT;
+        } else if (ctx.section === 'dashboard') {
+            pageContext = PAGE_CONTEXTS.DASHBOARD;
+        } else if (ctx.section === 'settings') {
+            pageContext = PAGE_CONTEXTS.SETTINGS;
+        } else if (ctx.isInProject) {
+            pageContext = PAGE_CONTEXTS.PROJECT;
         }
 
-        return actions;
+        // Get tools from registry for this context
+        return getToolsForContext(pageContext);
     };
 
     // Register/update global tools when they change
