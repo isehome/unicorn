@@ -118,6 +118,70 @@ export const useAgentContext = () => {
         return data;
     }, []);
 
+    // Fetch rooms and shades for a project (for window treatment context)
+    const fetchProjectRoomsAndShades = useCallback(async (projectId) => {
+        if (!projectId) return null;
+
+        try {
+            // Fetch rooms
+            const { data: rooms, error: roomsError } = await supabase
+                .from('project_rooms')
+                .select('id, name')
+                .eq('project_id', projectId)
+                .order('name');
+
+            if (roomsError) throw roomsError;
+
+            // Fetch shades with room info
+            const { data: shades, error: shadesError } = await supabase
+                .from('project_shades')
+                .select(`
+                    id, name, room_id,
+                    m1_width_top, m1_width_middle, m1_width_bottom, m1_height, m1_mount_depth,
+                    m2_width_top, m2_width_middle, m2_width_bottom, m2_height, m2_mount_depth,
+                    room:project_rooms(id, name)
+                `)
+                .eq('project_id', projectId)
+                .order('name');
+
+            if (shadesError) throw shadesError;
+
+            // Group shades by room
+            const roomsWithShades = rooms.map(room => {
+                const roomShades = shades.filter(s => s.room_id === room.id);
+                return {
+                    roomName: room.name,
+                    roomId: room.id,
+                    shadeCount: roomShades.length,
+                    shades: roomShades.map(s => ({
+                        id: s.id,
+                        name: s.name,
+                        hasM1: Boolean(s.m1_width_top || s.m1_height),
+                        hasM2: Boolean(s.m2_width_top || s.m2_height),
+                        needsMeasuring: !s.m1_width_top && !s.m1_height
+                    }))
+                };
+            });
+
+            // Summary stats
+            const totalShades = shades.length;
+            const measuredM1 = shades.filter(s => s.m1_width_top || s.m1_height).length;
+            const measuredM2 = shades.filter(s => s.m2_width_top || s.m2_height).length;
+
+            return {
+                rooms: roomsWithShades,
+                totalRooms: rooms.length,
+                totalShades,
+                measuredM1,
+                measuredM2,
+                pendingM1: totalShades - measuredM1
+            };
+        } catch (err) {
+            console.error('[AgentContext] Error fetching rooms/shades:', err);
+            return null;
+        }
+    }, []);
+
     // Global tools that are always available
     const globalTools = useMemo(() => [
         {
@@ -126,8 +190,15 @@ export const useAgentContext = () => {
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 let projectDetails = null;
+                let roomsAndShades = null;
+
                 if (currentContext.projectId) {
                     projectDetails = await fetchProjectDetails(currentContext.projectId);
+
+                    // Fetch rich context for shades/windows section
+                    if (currentContext.subsection === 'shades') {
+                        roomsAndShades = await fetchProjectRoomsAndShades(currentContext.projectId);
+                    }
                 }
 
                 // Generate a human-readable description of where we are
@@ -137,7 +208,17 @@ export const useAgentContext = () => {
                 } else if (currentContext.section === 'project') {
                     const projectName = projectDetails?.name || 'a project';
                     if (currentContext.subsection === 'shades') {
-                        locationDescription = `You are in the Shades section of ${projectName}. You can help measure windows here.`;
+                        // Provide rich context about windows/shades
+                        if (roomsAndShades) {
+                            const { totalRooms, totalShades, measuredM1, pendingM1 } = roomsAndShades;
+                            locationDescription = `You are in the Window Treatment section (also called Shades) for project "${projectName}". ` +
+                                `This project has ${totalRooms} rooms with ${totalShades} windows total. ` +
+                                `${measuredM1} windows have been measured, ${pendingM1} still need measuring. ` +
+                                `IMPORTANT: "shades" and "windows" mean the same thing here - they refer to window treatments that need measuring.`;
+                        } else {
+                            locationDescription = `You are in the Window Treatment section (also called Shades) for project "${projectName}". ` +
+                                `IMPORTANT: "shades" and "windows" mean the same thing - they are window treatments that need measuring.`;
+                        }
                     } else if (currentContext.subsection === 'equipment') {
                         locationDescription = `You are viewing Equipment for ${projectName}.`;
                     } else if (currentContext.subsection === 'wire-drops') {
@@ -165,7 +246,8 @@ export const useAgentContext = () => {
                     locationDescription = `You are on the ${currentContext.section} page.`;
                 }
 
-                return {
+                // Build response with rich context
+                const response = {
                     locationDescription,
                     section: currentContext.section,
                     subsection: currentContext.subsection,
@@ -179,6 +261,31 @@ export const useAgentContext = () => {
                     availableActions: getAvailableActions(currentContext),
                     hint: "Tell the user where they are and ask how you can help."
                 };
+
+                // Add room/shade context when in shades section
+                if (roomsAndShades) {
+                    response.windowTreatments = {
+                        terminology: "In this app, 'shades' and 'windows' are used interchangeably. Both refer to window treatments that need measuring.",
+                        summary: {
+                            totalRooms: roomsAndShades.totalRooms,
+                            totalWindows: roomsAndShades.totalShades,
+                            measured: roomsAndShades.measuredM1,
+                            pendingMeasurement: roomsAndShades.pendingM1
+                        },
+                        rooms: roomsAndShades.rooms.map(r => ({
+                            name: r.roomName,
+                            windowCount: r.shadeCount,
+                            windows: r.shades.map(s => ({
+                                name: s.name,
+                                hasMeasurements: s.hasM1,
+                                needsMeasuring: s.needsMeasuring
+                            }))
+                        }))
+                    };
+                    response.hint = "You can help the tech measure windows. Ask which room or window they want to work on, or suggest starting with windows that still need measuring.";
+                }
+
+                return response;
             }
         },
         {

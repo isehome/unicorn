@@ -356,15 +356,19 @@ Available actions: get_prewire_overview, list_wire_drops_in_room, filter_by_floo
 - "What's next?" → get_next_unprinted`,
 
         [PAGE_CONTEXTS.SHADE_LIST]: `
-You are on the SHADE LIST. Help the tech pick a shade to measure.
+You are on the WINDOW TREATMENT LIST (also called "shades" - same thing!).
+TERMINOLOGY: "windows" and "shades" are interchangeable - both mean window treatments needing measurement.
+The get_current_location response includes windowTreatments data showing all rooms and windows.
 Available actions: get_shades_overview, list_shades_in_room, open_shade_for_measuring, get_next_pending_shade
-- "Which windows need measuring?" → get_shades_overview
+- "Which windows need measuring?" → check windowTreatments.summary from get_current_location
 - "Let's measure [window name]" → open_shade_for_measuring with shadeName
 - "Next window" → open_shade_for_measuring with no args
 - "Show [room]" → list_shades_in_room`,
 
         [PAGE_CONTEXTS.SHADE_DETAIL]: `
-You are MEASURING A SHADE. Guide the tech through 5 measurements.
+You are MEASURING A WINDOW (also called "shade" - same thing!).
+TERMINOLOGY: "windows" and "shades" are interchangeable - both mean window treatments.
+Guide the tech through 5 measurements.
 Available actions: set_measurement, get_shade_context, navigate_to_field, save_shade_measurements, clear_measurement
 Order: top width → middle width → bottom width → height → mount depth
 - ALWAYS call navigate_to_field BEFORE asking for a measurement (highlights the field)

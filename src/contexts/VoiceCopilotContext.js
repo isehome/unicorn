@@ -603,6 +603,11 @@ CRITICAL RULES:
 3. Only use tools listed in availableActions for the current page
 4. If a tool fails because user is on wrong page, tell them and navigate there
 
+TERMINOLOGY:
+- "shades" and "windows" mean the SAME THING in this app - they refer to window treatments that need measuring
+- When user says "window" they mean a shade/window treatment, not the glass window itself
+- Projects contain rooms, rooms contain windows (shades) that need measuring
+
 NAVIGATION (always available):
 - "Go to [section]" → navigate_to_section (dashboard, prewire, settings, etc.)
 - "Open [project]" → navigate_to_project with projectName
@@ -611,7 +616,7 @@ NAVIGATION (always available):
 ${contextInstructions}
 
 ON SESSION START:
-Call get_current_location, then greet briefly based on where they are.`
+Call get_current_location, then greet briefly based on where they are. If in window treatment section, mention the project name and how many windows need measuring.`
                             }]
                         }
                     }
