@@ -83,10 +83,21 @@ const KnowledgeManagementPanel = () => {
             console.log('[Scraper] Scan Result:', result);
 
             // Map results for selection
-            const files = (result.links || []).map(link => ({
+            const pdfFiles = (result.links || []).map(link => ({
                 ...link,
-                selected: true // Select all by default
+                type: 'pdf',
+                text: link.text || link.href.split('/').pop(),
+                selected: true
             }));
+
+            const pageFiles = (result.scanned || []).map(url => ({
+                href: url,
+                text: 'Web Page Source',
+                type: 'page',
+                selected: true
+            }));
+
+            const files = [...pageFiles, ...pdfFiles];
 
             setScrapedFiles(files);
             setScannedPages(result.scanned || []);
@@ -108,42 +119,41 @@ const KnowledgeManagementPanel = () => {
 
         const mfg = manufacturers.find(m => m.id === scrapeConfig.manufacturerId);
         const mfgName = mfg ? mfg.name : 'General';
-        // Need a root URL for SharePoint - hardcoded or from env/config in a real app
-        // For now using the existing logic assumption that backend knows the drive, 
-        // but the API expects a 'rootUrl' to find the drive.
-        // We'll use a placeholder that the backend can interpret or pass the project site URL if available.
-        // Update: The scrape-knowledge API uses rootUrl to find the drive. 
-        // We'll use the user's primary site or a default. 
-        // For this user: "isehome/unicorn" maps to a drive. 
-        // User requested files go to "Knowledge" folder under Unicorn site. 
-        // We pass the site root URL, and the backend will handle the folder structure.
-        const targetRootUrl = 'https://isehome.sharepoint.com/sites/Unicorn';
+        // User-provided sharing link for the Knowledge folder
+        const targetRootUrl = 'https://isehome.sharepoint.com/:f:/s/Unicorn/IgAVO-djmebvQqDPZnR1bDL1AecdzkgYOIqHsyynjc7SDqA?e=6jsHSi';
 
         for (let i = 0; i < selected.length; i++) {
             const file = selected[i];
             setImportStats(prev => ({ ...prev, current: i + 1 }));
-            setUploadProgress(`Importing ${i + 1} of ${selected.length}: ${file.text || 'Document'}...`);
+            setUploadProgress(`Importing ${i + 1} of ${selected.length}: ${file.text}...`);
 
             try {
-                const result = await knowledgeService.processScrapedFile({
-                    fileUrl: file.href,
-                    manufacturerName: mfgName,
-                    rootUrl: targetRootUrl
-                });
+                let result;
+                if (file.type === 'page') {
+                    result = await knowledgeService.processPage({
+                        url: file.href,
+                        manufacturerName: mfgName,
+                        rootUrl: targetRootUrl
+                    });
+                } else {
+                    result = await knowledgeService.processScrapedFile({
+                        fileUrl: file.href,
+                        manufacturerName: mfgName,
+                        rootUrl: targetRootUrl
+                    });
+                }
 
                 // Add to Supabase (create document record)
-                // Note: The API upload returns metadata but doesn't create the Supabase record yet.
-                // We need to create it here to show up in the UI.
                 await knowledgeService.createDocument({
                     manufacturerId: scrapeConfig.manufacturerId || null,
-                    title: file.text || file.href.split('/').pop(),
-                    fileName: result.filename || file.href.split('/').pop(),
-                    fileType: 'pdf',
+                    title: result.filename || file.text || 'Imported Document',
+                    fileName: result.filename,
+                    fileType: file.type === 'page' ? 'md' : 'pdf',
                     fileSize: result.size || 0,
                     fileUrl: result.webUrl,
-                    category: 'spec-sheet', // Default
-                    description: `Scraped from ${scrapeConfig.url}`,
-                    tags: ['scraped']
+                    category: file.type === 'page' ? 'user-manual' : 'spec-sheet',
+                    description: `Scraped from ${file.href}`,
+                    tags: ['scraped', file.type]
                 });
 
                 setImportStats(prev => ({ ...prev, success: prev.success + 1 }));

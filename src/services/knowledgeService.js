@@ -423,6 +423,33 @@ export async function processScrapedFile({ fileUrl, manufacturerName, rootUrl })
     return await parseResponse(response);
 }
 
+/**
+ * Process a scraped page (convert to MD & upload to SharePoint)
+ */
+export async function processPage({ url, manufacturerName, rootUrl }) {
+    const response = await fetch(`${API_BASE}/scrape-knowledge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            action: 'process_page',
+            url,
+            manufacturerName,
+            rootUrl
+        })
+    });
+
+    if (!response.ok) {
+        let errorMsg = 'Processing failed';
+        try {
+            const error = await parseResponse(response);
+            errorMsg = error.error || errorMsg;
+        } catch (e) { errorMsg = e.message; }
+        throw new Error(errorMsg);
+    }
+
+    return await parseResponse(response);
+}
+
 // Export all functions as named exports
 export default {
     getManufacturers,
@@ -436,5 +463,6 @@ export default {
     searchKnowledge,
     searchKnowledgeForVoice,
     scanSite,
-    processScrapedFile
+    processScrapedFile,
+    processPage
 };

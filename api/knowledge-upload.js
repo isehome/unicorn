@@ -7,6 +7,7 @@
  * - Triggers async processing for text extraction and embedding
  */
 
+require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(

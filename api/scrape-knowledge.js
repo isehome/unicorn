@@ -1,3 +1,4 @@
+require('dotenv').config();
 const puppeteer = require('puppeteer-core');
 // const fetch = require('node-fetch'); // Native fetch is available in Node 18+
 // Lazy load chromium to avoid initialization errors locally
@@ -321,7 +322,7 @@ module.exports = async (req, res) => {
             // 2. If we resolve a specific folder link, we should just append 'Manufacturer'.
 
             // Current approach passes site root. So we build the full path.
-            const subPath = `Knowledge/${manufacturerName || 'General'}`;
+            const subPath = manufacturerName || 'General';
             const finalParentId = await ensureFolderPath(token, driveId, parentId, subPath.split('/'));
 
             // Upload
@@ -347,7 +348,106 @@ module.exports = async (req, res) => {
             });
         }
 
-        return res.status(400).json({ error: 'Invalid action' });
+        // ------------------------------------------------------------------
+        // ACTION: PROCESS_PAGE (Convert Web Page to Markdown & Upload)
+        // ------------------------------------------------------------------
+        if (action === 'process_page') {
+            const { url, manufacturerName, rootUrl } = req.body;
+
+            if (!url) return res.status(400).json({ error: 'Missing url' });
+            if (!rootUrl) return res.status(400).json({ error: 'Missing rootUrl' });
+
+            // Launch Browser (Copy of Scan logic for robustness)
+            let browser;
+            if (isLocal) {
+                const localPuppeteer = require('puppeteer');
+                browser = await localPuppeteer.launch({
+                    headless: true,
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                });
+            } else {
+                if (!chromium) chromium = require('@sparticuz/chromium');
+                browser = await puppeteer.launch({
+                    args: chromium.args,
+                    defaultViewport: { width: 1920, height: 1080 },
+                    executablePath: await chromium.executablePath(),
+                    headless: chromium.headless,
+                    ignoreHTTPSErrors: true,
+                });
+            }
+
+            try {
+                const page = await browser.newPage();
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                // Wait for content
+                await new Promise(r => setTimeout(r, 2000));
+
+                // Extract Main Content
+                const contentHtml = await page.evaluate(() => {
+                    // Remove obvious clutter BEFORE selecting main to avoid selecting a wrapper that contains the clutter
+                    const clutterSelectors = ['nav', 'footer', 'script', 'style', 'noscript', 'iframe', '.ad', '.advertisement', '#cookie-banner', '.cookie-consent'];
+                    clutterSelectors.forEach(sel => {
+                        document.querySelectorAll(sel).forEach(el => el.remove());
+                    });
+
+                    // Try to find the "meat" of the page
+                    const main = document.querySelector('main') || document.querySelector('article') || document.querySelector('#content') || document.body;
+                    return main.innerHTML;
+                });
+
+                await browser.close();
+
+                // Convert to Markdown
+                const TurndownService = require('turndown');
+                const turndownService = new TurndownService({
+                    codeBlockStyle: 'fenced',
+                    headingStyle: 'atx',
+                    hr: '---'
+                });
+                // Remove images for now to keep text clean, or keep them? Keep them, they might have useful alt text.
+                // turndownService.remove('img'); 
+
+                const markdown = turndownService.turndown(contentHtml);
+                const title = (url.split('/').pop() || 'web-page').split('?')[0].replace(/[^a-zA-Z0-9-_]/g, '_');
+                const filename = `${title}.md`;
+
+                // Add Frontmatter/Header
+                const finalContent = `---
+source: ${url}
+date: ${new Date().toISOString()}
+---
+
+# Web Capture: ${url}
+
+${markdown}`;
+
+                // Upload to SharePoint
+                if (!TENANT || !CLIENT_ID || !CLIENT_SECRET) throw new Error('Server missing Azure credentials');
+                const token = await getAppToken();
+
+                const encoded = 'u!' + b64Url(rootUrl);
+                const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`);
+                const driveId = driveItem.parentReference.driveId;
+                const parentId = driveItem.id;
+
+                const subPath = manufacturerName || 'General';
+                const finalParentId = await ensureFolderPath(token, driveId, parentId, subPath.split('/'));
+
+                const buffer = Buffer.from(finalContent, 'utf8');
+                const item = await uploadBufferToItem(token, driveId, finalParentId, filename, buffer, 'text/markdown');
+
+                return res.status(200).json({
+                    success: true,
+                    filename,
+                    webUrl: item.webUrl,
+                    size: item.size
+                });
+
+            } catch (err) {
+                if (browser) await browser.close();
+                throw err;
+            }
+        }
 
     } catch (err) {
         console.error('[Scraper Error]', err);
