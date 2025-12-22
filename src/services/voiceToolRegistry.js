@@ -50,41 +50,54 @@ export const PAGE_CONTEXTS = {
  * - parameters: JSON schema for parameters
  */
 export const TOOL_DEFINITIONS = {
-    // ===== NAVIGATION TOOLS (always available) =====
+    // ===== ENTITY NAVIGATION TOOLS (always available) =====
+    // These tools work with database entities, not URLs
     get_current_location: {
         category: TOOL_CATEGORIES.NAVIGATION,
         contexts: [PAGE_CONTEXTS.GLOBAL],
-        description: 'CALL THIS FIRST. Get information about where the user is in the app, which project (if any), and what actions are available on this page.',
+        description: 'CALL THIS FIRST. Returns current context: project, section, and if in windows section, ALL windows with IDs and measurement status. This app is DATABASE-DRIVEN: Projects → Rooms → Windows (also called Shades).',
         parameters: { type: 'object', properties: {} }
     },
     list_projects: {
         category: TOOL_CATEGORIES.NAVIGATION,
         contexts: [PAGE_CONTEXTS.GLOBAL],
-        description: 'Get a list of all available projects.',
+        description: 'Query database for all projects. Returns project records with IDs.',
         parameters: {
             type: 'object',
             properties: {
-                status: { type: 'string', description: "Filter by status: 'active', 'completed', 'on-hold', or 'all'" }
+                status: { type: 'string', description: "Filter: 'active', 'completed', 'on-hold', or 'all'" }
             }
         }
     },
-    navigate_to_project: {
+    open_project: {
         category: TOOL_CATEGORIES.NAVIGATION,
         contexts: [PAGE_CONTEXTS.GLOBAL],
-        description: 'Navigate to a specific project by ID or name.',
+        description: 'Open a project from database. Can search by name. Use section="windows" for window treatments.',
         parameters: {
             type: 'object',
             properties: {
                 projectId: { type: 'string', description: 'Project UUID' },
                 projectName: { type: 'string', description: 'Search by name (partial match)' },
-                section: { type: 'string', description: "Go to section: 'overview', 'equipment', 'shades', 'issues', 'wire-drops'" }
+                section: { type: 'string', description: "Section: 'overview', 'windows' (or 'shades'), 'equipment', 'wire-drops', 'issues'" }
             }
         }
     },
-    navigate_to_section: {
+    open_window: {
         category: TOOL_CATEGORIES.NAVIGATION,
         contexts: [PAGE_CONTEXTS.GLOBAL],
-        description: "Navigate to a main app section: 'dashboard', 'prewire', 'settings', 'issues', 'todos', etc.",
+        description: 'Open a specific window/shade for measuring. Use ID from get_current_location or search by name.',
+        parameters: {
+            type: 'object',
+            properties: {
+                windowId: { type: 'string', description: 'Window UUID from windowTreatments data' },
+                windowName: { type: 'string', description: 'Search by name in current project' }
+            }
+        }
+    },
+    go_to_app_section: {
+        category: TOOL_CATEGORIES.NAVIGATION,
+        contexts: [PAGE_CONTEXTS.GLOBAL],
+        description: "Go to main app section (not project-specific): 'dashboard', 'prewire', 'settings', 'issues', etc.",
         parameters: {
             type: 'object',
             properties: {
@@ -96,7 +109,7 @@ export const TOOL_DEFINITIONS = {
     go_back: {
         category: TOOL_CATEGORIES.NAVIGATION,
         contexts: [PAGE_CONTEXTS.GLOBAL],
-        description: 'Go back to the previous page.',
+        description: 'Go back to the previous view.',
         parameters: { type: 'object', properties: {} }
     },
 
@@ -356,19 +369,17 @@ Available actions: get_prewire_overview, list_wire_drops_in_room, filter_by_floo
 - "What's next?" → get_next_unprinted`,
 
         [PAGE_CONTEXTS.SHADE_LIST]: `
-You are on the WINDOW TREATMENT LIST (also called "shades" - same thing!).
-TERMINOLOGY: "windows" and "shades" are interchangeable - both mean window treatments needing measurement.
-The get_current_location response includes windowTreatments data showing all rooms and windows.
-Available actions: get_shades_overview, list_shades_in_room, open_shade_for_measuring, get_next_pending_shade
-- "Which windows need measuring?" → check windowTreatments.summary from get_current_location
-- "Let's measure [window name]" → open_shade_for_measuring with shadeName
-- "Next window" → open_shade_for_measuring with no args
-- "Show [room]" → list_shades_in_room`,
+You are viewing the WINDOW TREATMENT LIST for a project.
+TERMINOLOGY: "windows", "shades", "blinds", "window treatments", "window coverings" = ALL THE SAME THING
+The get_current_location response includes windowTreatments with ALL windows organized by room.
+Available tools: open_window (to start measuring), plus page-specific tools
+- "Which windows need measuring?" → Look at windowTreatments.summary from get_current_location
+- "Measure [window name]" → open_window with windowName
+- "Show me [room]" → The data is already in windowTreatments.rooms - just tell them what's there`,
 
         [PAGE_CONTEXTS.SHADE_DETAIL]: `
 You are MEASURING A WINDOW (also called "shade" - same thing!).
-TERMINOLOGY: "windows" and "shades" are interchangeable - both mean window treatments.
-Guide the tech through 5 measurements.
+Guide the tech through 5 measurements in order.
 Available actions: set_measurement, get_shade_context, navigate_to_field, save_shade_measurements, clear_measurement
 Order: top width → middle width → bottom width → height → mount depth
 - ALWAYS call navigate_to_field BEFORE asking for a measurement (highlights the field)
@@ -377,9 +388,10 @@ Order: top width → middle width → bottom width → height → mount depth
 - When done: "All measurements recorded. Should I save?"`,
 
         [PAGE_CONTEXTS.DASHBOARD]: `
-You are on the DASHBOARD. Help the tech navigate to a project or section.
-- "Open [project name]" → navigate_to_project
-- "Go to prewire" → navigate_to_section with section="prewire"
+You are on the DASHBOARD showing all projects.
+- "Open [project name]" → open_project with projectName
+- "Go to [project] windows" → open_project with projectName and section="windows"
+- "Go to prewire" → go_to_app_section with section="prewire"
 - "Show my projects" → list_projects`,
     };
 

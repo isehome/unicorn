@@ -186,7 +186,12 @@ export const useAgentContext = () => {
     const globalTools = useMemo(() => [
         {
             name: "get_current_location",
-            description: "CALL THIS FIRST when the session starts. Get information about where the user currently is in the app - which page, which project (if any), and what actions are available.",
+            description: `CALL THIS FIRST when the session starts. Returns the user's current context including:
+- Which project they're viewing (if any)
+- Which section (window treatments, equipment, wire drops, etc.)
+- Full details about windows/rooms if in window treatment section
+This app is DATABASE-DRIVEN: Projects contain Rooms, Rooms contain Windows (also called Shades).
+"Windows" and "Shades" are the SAME THING - they are window treatments that need measuring.`,
             parameters: { type: "object", properties: {} },
             execute: async () => {
                 let projectDetails = null;
@@ -211,13 +216,11 @@ export const useAgentContext = () => {
                         // Provide rich context about windows/shades
                         if (roomsAndShades) {
                             const { totalRooms, totalShades, measuredM1, pendingM1 } = roomsAndShades;
-                            locationDescription = `You are in the Window Treatment section (also called Shades) for project "${projectName}". ` +
+                            locationDescription = `You are in the Window Treatment section for project "${projectName}". ` +
                                 `This project has ${totalRooms} rooms with ${totalShades} windows total. ` +
-                                `${measuredM1} windows have been measured, ${pendingM1} still need measuring. ` +
-                                `IMPORTANT: "shades" and "windows" mean the same thing here - they refer to window treatments that need measuring.`;
+                                `${measuredM1} windows have been measured, ${pendingM1} still need measuring.`;
                         } else {
-                            locationDescription = `You are in the Window Treatment section (also called Shades) for project "${projectName}". ` +
-                                `IMPORTANT: "shades" and "windows" mean the same thing - they are window treatments that need measuring.`;
+                            locationDescription = `You are in the Window Treatment section for project "${projectName}".`;
                         }
                     } else if (currentContext.subsection === 'equipment') {
                         locationDescription = `You are viewing Equipment for ${projectName}.`;
@@ -249,9 +252,13 @@ export const useAgentContext = () => {
                 // Build response with rich context
                 const response = {
                     locationDescription,
-                    section: currentContext.section,
-                    subsection: currentContext.subsection,
-                    isInProject: currentContext.isInProject,
+                    currentContext: {
+                        section: currentContext.section,
+                        subsection: currentContext.subsection,
+                        projectId: currentContext.projectId
+                    },
+                    // Database entity hierarchy explanation
+                    dataModel: "This app manages Projects. Each Project has Rooms. Each Room has Windows (also called Shades) that need measuring. Use open_project, open_project_section, or open_window to navigate to specific database records.",
                     project: projectDetails ? {
                         id: projectDetails.id,
                         name: projectDetails.name,
@@ -265,7 +272,7 @@ export const useAgentContext = () => {
                 // Add room/shade context when in shades section
                 if (roomsAndShades) {
                     response.windowTreatments = {
-                        terminology: "In this app, 'shades' and 'windows' are used interchangeably. Both refer to window treatments that need measuring.",
+                        terminology: "'Windows' and 'Shades' are the SAME THING in this app - window treatments that need measuring.",
                         summary: {
                             totalRooms: roomsAndShades.totalRooms,
                             totalWindows: roomsAndShades.totalShades,
@@ -276,27 +283,30 @@ export const useAgentContext = () => {
                             name: r.roomName,
                             windowCount: r.shadeCount,
                             windows: r.shades.map(s => ({
+                                id: s.id,
                                 name: s.name,
                                 hasMeasurements: s.hasM1,
                                 needsMeasuring: s.needsMeasuring
                             }))
                         }))
                     };
-                    response.hint = "You can help the tech measure windows. Ask which room or window they want to work on, or suggest starting with windows that still need measuring.";
+                    response.hint = "You can help measure windows. Use open_window with a window ID to start measuring, or ask which room/window they want to work on.";
                 }
 
                 return response;
             }
         },
+        // ===== DATABASE ENTITY TOOLS =====
+        // These tools work with database records, not URLs
         {
             name: "list_projects",
-            description: "Get a list of all available projects the user can navigate to.",
+            description: "Query the database for all projects. Returns project records with IDs you can use with open_project.",
             parameters: {
                 type: "object",
                 properties: {
                     status: {
                         type: "string",
-                        description: "Optional filter by status: 'active', 'completed', 'on-hold', or 'all' (default)"
+                        description: "Optional filter: 'active', 'completed', 'on-hold', or 'all' (default)"
                     }
                 }
             },
@@ -324,32 +334,33 @@ export const useAgentContext = () => {
                         status: p.status
                     })),
                     count: data.length,
-                    hint: "Use navigate_to_project with a project ID to go to a specific project"
+                    hint: "Use open_project with a project ID or name to view a project"
                 };
             }
         },
         {
-            name: "navigate_to_project",
-            description: "Navigate to a specific project by ID or by searching by name.",
+            name: "open_project",
+            description: "Open a project from the database. Can search by name or use ID directly. Optionally go to a specific section within the project.",
             parameters: {
                 type: "object",
                 properties: {
                     projectId: {
                         type: "string",
-                        description: "The UUID of the project to navigate to"
+                        description: "The project UUID (if you have it from get_current_location or list_projects)"
                     },
                     projectName: {
                         type: "string",
-                        description: "Search for project by name (partial match). Use this if you don't have the ID."
+                        description: "Search for project by name (partial match works)"
                     },
                     section: {
                         type: "string",
-                        description: "Optional: go directly to a section - 'overview', 'equipment', 'shades', 'procurement', 'receiving', 'issues', 'wire-drops'"
+                        description: "Which section to open: 'overview' (default), 'windows' (or 'shades'), 'equipment', 'wire-drops', 'issues', 'procurement', 'receiving'"
                     }
                 }
             },
             execute: async ({ projectId, projectName, section = 'overview' }) => {
                 let targetId = projectId;
+                let targetName = '';
 
                 // If name provided instead of ID, search for it
                 if (!targetId && projectName) {
@@ -363,7 +374,7 @@ export const useAgentContext = () => {
                         return {
                             success: false,
                             error: `No project found matching "${projectName}"`,
-                            hint: "Try list_projects to see available projects"
+                            hint: "Use list_projects to see all available projects"
                         };
                     }
 
@@ -372,52 +383,154 @@ export const useAgentContext = () => {
                             success: false,
                             error: `Multiple projects match "${projectName}"`,
                             matches: data.map(p => ({ id: p.id, name: p.name })),
-                            hint: "Please be more specific or use the project ID"
+                            hint: "Be more specific or use the project ID"
                         };
                     }
 
                     targetId = data[0].id;
+                    targetName = data[0].name;
                 }
 
                 if (!targetId) {
                     return { success: false, error: "Please provide projectId or projectName" };
                 }
 
-                // Build the URL based on section
-                let url = `/pm-project/${targetId}`;
-                if (section && section !== 'overview') {
-                    const sectionMap = {
-                        'equipment': `/projects/${targetId}/equipment`,
-                        'shades': `/projects/${targetId}/shades`,
-                        'procurement': `/projects/${targetId}/procurement`,
-                        'receiving': `/projects/${targetId}/receiving`,
-                        'issues': `/project/${targetId}/pm-issues`,
-                        'wire-drops': '/wire-drops',
-                        'floor-plan': `/projects/${targetId}/floor-plan`,
-                        'reports': `/projects/${targetId}/reports`
-                    };
-                    url = sectionMap[section] || url;
+                // Normalize section name - all window treatment terms map to 'shades'
+                let normalizedSection = section.toLowerCase();
+                const windowTerms = ['windows', 'window treatments', 'window coverings', 'blinds', 'shades'];
+                if (windowTerms.includes(normalizedSection) || normalizedSection.includes('window') || normalizedSection.includes('blind') || normalizedSection.includes('shade')) {
+                    normalizedSection = 'shades';
                 }
 
-                // Use ref to avoid stale closure
-                console.log('[AgentContext] navigate_to_project: Navigating to', url);
+                // Build the URL based on section
+                const sectionMap = {
+                    'overview': `/pm-project/${targetId}`,
+                    'shades': `/projects/${targetId}/shades`,
+                    'equipment': `/projects/${targetId}/equipment`,
+                    'procurement': `/projects/${targetId}/procurement`,
+                    'receiving': `/projects/${targetId}/receiving`,
+                    'issues': `/project/${targetId}/pm-issues`,
+                    'wire-drops': `/projects/${targetId}/wire-drops`,
+                    'floor-plan': `/projects/${targetId}/floor-plan`,
+                    'reports': `/projects/${targetId}/reports`
+                };
+
+                const url = sectionMap[normalizedSection] || `/pm-project/${targetId}`;
+
+                console.log('[AgentContext] open_project: Navigating to', url);
                 navigateRef.current(url);
+
+                // Friendly section name for response
+                const sectionNames = {
+                    'overview': 'project overview',
+                    'shades': 'window treatments',
+                    'equipment': 'equipment',
+                    'procurement': 'procurement',
+                    'receiving': 'receiving',
+                    'issues': 'issues',
+                    'wire-drops': 'wire drops',
+                    'floor-plan': 'floor plan',
+                    'reports': 'reports'
+                };
+
                 return {
                     success: true,
-                    message: `Navigating to ${section === 'overview' ? 'project overview' : section}`,
-                    url
+                    message: `Opening ${sectionNames[normalizedSection] || normalizedSection}${targetName ? ` for ${targetName}` : ''}`,
+                    projectId: targetId
                 };
             }
         },
         {
-            name: "navigate_to_section",
-            description: "Navigate to a main section of the app (not project-specific).",
+            name: "open_window",
+            description: "Open a specific window/shade for measuring. Use the window ID from get_current_location's windowTreatments data, or search by name within the current project.",
+            parameters: {
+                type: "object",
+                properties: {
+                    windowId: {
+                        type: "string",
+                        description: "The window/shade UUID from windowTreatments data"
+                    },
+                    windowName: {
+                        type: "string",
+                        description: "Search for window by name within current project (partial match)"
+                    }
+                }
+            },
+            execute: async ({ windowId, windowName }) => {
+                let targetId = windowId;
+                let projectId = currentContext.projectId;
+
+                // If searching by name, need to find the window in current project
+                if (!targetId && windowName && projectId) {
+                    const { data, error } = await supabase
+                        .from('project_shades')
+                        .select('id, name, project_id')
+                        .eq('project_id', projectId)
+                        .ilike('name', `%${windowName}%`)
+                        .limit(5);
+
+                    if (error || !data?.length) {
+                        return {
+                            success: false,
+                            error: `No window found matching "${windowName}" in this project`,
+                            hint: "Check windowTreatments.rooms in get_current_location for available windows"
+                        };
+                    }
+
+                    if (data.length > 1) {
+                        return {
+                            success: false,
+                            error: `Multiple windows match "${windowName}"`,
+                            matches: data.map(s => ({ id: s.id, name: s.name })),
+                            hint: "Be more specific or use the window ID"
+                        };
+                    }
+
+                    targetId = data[0].id;
+                    projectId = data[0].project_id;
+                }
+
+                if (!targetId) {
+                    return {
+                        success: false,
+                        error: "Please provide windowId or windowName. Make sure you're in a project first.",
+                        hint: "Use get_current_location to see available windows in the current project"
+                    };
+                }
+
+                // Get project ID if we don't have it
+                if (!projectId) {
+                    const { data: shade } = await supabase
+                        .from('project_shades')
+                        .select('project_id')
+                        .eq('id', targetId)
+                        .single();
+
+                    if (shade) {
+                        projectId = shade.project_id;
+                    }
+                }
+
+                const url = `/projects/${projectId}/shades/${targetId}`;
+                console.log('[AgentContext] open_window: Navigating to', url);
+                navigateRef.current(url);
+
+                return {
+                    success: true,
+                    message: "Opening window for measuring",
+                    windowId: targetId
+                };
+            }
+        },
+        {
+            name: "go_to_app_section",
+            description: "Navigate to a main app section (not project-specific). Use open_project for project sections.",
             parameters: {
                 type: "object",
                 properties: {
                     section: {
                         type: "string",
-                        description: "Section to go to: 'dashboard', 'issues', 'todos', 'people', 'vendors', 'parts', 'settings'"
+                        description: "Section: 'dashboard', 'prewire', 'settings', 'issues', 'todos', 'people', 'vendors', 'parts'"
                     }
                 },
                 required: ["section"]
@@ -425,14 +538,13 @@ export const useAgentContext = () => {
             execute: async ({ section }) => {
                 const sectionMap = {
                     'dashboard': '/pm-dashboard',
-                    'home': '/',
+                    'home': '/pm-dashboard',
                     'issues': '/issues',
                     'todos': '/todos',
                     'people': '/people',
                     'vendors': '/vendors',
                     'parts': '/global-parts',
                     'settings': '/settings',
-                    'wire-drops': '/wire-drops',
                     'prewire': '/prewire-mode',
                     'prewire-mode': '/prewire-mode'
                 };
@@ -446,24 +558,22 @@ export const useAgentContext = () => {
                     };
                 }
 
-                // Use ref to avoid stale closure
-                console.log('[AgentContext] navigate_to_section: Navigating to', url);
+                console.log('[AgentContext] go_to_app_section: Navigating to', url);
                 navigateRef.current(url);
-                return { success: true, message: `Navigating to ${section}`, url };
+                return { success: true, message: `Going to ${section}` };
             }
         },
         {
             name: "go_back",
-            description: "Go back to the previous page.",
+            description: "Go back to the previous view.",
             parameters: { type: "object", properties: {} },
             execute: async () => {
-                // Use ref to avoid stale closure
                 console.log('[AgentContext] go_back: Navigating back');
                 navigateRef.current(-1);
                 return { success: true, message: "Going back" };
             }
         }
-    ], [currentContext, fetchProjectDetails]); // Removed navigate from deps - using ref instead
+    ], [currentContext, fetchProjectDetails, fetchProjectRoomsAndShades]); // Added fetchProjectRoomsAndShades
 
     // Helper to determine what actions are available in current context
     // Uses the centralized voice tool registry for scalability
