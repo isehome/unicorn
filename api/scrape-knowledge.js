@@ -308,11 +308,36 @@ module.exports = async (req, res) => {
 
             const token = await getAppToken();
 
-            // Resolve SharePoint Drive
-            const encoded = 'u!' + b64Url(rootUrl);
-            const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`);
-            const driveId = driveItem.parentReference.driveId;
-            const parentId = driveItem.id;
+            // Resolve SharePoint Drive - handle both sharing links and direct library URLs
+            let driveId, parentId;
+
+            if (rootUrl.includes('/sites/') && !rootUrl.includes('/:')) {
+                // Direct library URL format: https://tenant.sharepoint.com/sites/SiteName/LibraryName
+                // Extract site and library name
+                const urlMatch = rootUrl.match(/\/sites\/([^/]+)\/([^/?]+)/);
+                if (!urlMatch) throw new Error('Invalid SharePoint URL format');
+
+                const [, siteName, libraryName] = urlMatch;
+                const siteHost = new URL(rootUrl).hostname;
+
+                // Get the site
+                const site = await graph(token, `/sites/${siteHost}:/sites/${siteName}`);
+
+                // Get the drive (library) by name
+                const drives = await graph(token, `/sites/${site.id}/drives`);
+                const drive = drives.value.find(d => d.name === libraryName || d.webUrl?.includes(`/${libraryName}`));
+
+                if (!drive) throw new Error(`Library "${libraryName}" not found`);
+
+                driveId = drive.id;
+                parentId = drive.root.id; // Root of the library
+            } else {
+                // Sharing link format - use the original resolution method
+                const encoded = 'u!' + b64Url(rootUrl);
+                const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`);
+                driveId = driveItem.parentReference.driveId;
+                parentId = driveItem.id;
+            }
 
             // Target Folder: "Knowledge/{ManufacturerName}"
             // Note: The parentId comes from the "Knowledge" folder link if provided as rootUrl,
@@ -425,10 +450,32 @@ ${markdown}`;
                 if (!TENANT || !CLIENT_ID || !CLIENT_SECRET) throw new Error('Server missing Azure credentials');
                 const token = await getAppToken();
 
-                const encoded = 'u!' + b64Url(rootUrl);
-                const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`);
-                const driveId = driveItem.parentReference.driveId;
-                const parentId = driveItem.id;
+                // Resolve SharePoint Drive - handle both sharing links and direct library URLs
+                let driveId, parentId;
+
+                if (rootUrl.includes('/sites/') && !rootUrl.includes('/:')) {
+                    // Direct library URL format
+                    const urlMatch = rootUrl.match(/\/sites\/([^/]+)\/([^/?]+)/);
+                    if (!urlMatch) throw new Error('Invalid SharePoint URL format');
+
+                    const [, siteName, libraryName] = urlMatch;
+                    const siteHost = new URL(rootUrl).hostname;
+
+                    const site = await graph(token, `/sites/${siteHost}:/sites/${siteName}`);
+                    const drives = await graph(token, `/sites/${site.id}/drives`);
+                    const drive = drives.value.find(d => d.name === libraryName || d.webUrl?.includes(`/${libraryName}`));
+
+                    if (!drive) throw new Error(`Library "${libraryName}" not found`);
+
+                    driveId = drive.id;
+                    parentId = drive.root.id;
+                } else {
+                    // Sharing link format
+                    const encoded = 'u!' + b64Url(rootUrl);
+                    const driveItem = await graph(token, `/shares/${encoded}/driveItem?$select=id,webUrl,parentReference`);
+                    driveId = driveItem.parentReference.driveId;
+                    parentId = driveItem.id;
+                }
 
                 const subPath = manufacturerName || 'General';
                 const finalParentId = await ensureFolderPath(token, driveId, parentId, subPath.split('/'));

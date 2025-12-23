@@ -52,59 +52,72 @@ const KnowledgeManagementPanel = () => {
     // Scraper State
     const [showScraperForm, setShowScraperForm] = useState(false);
     const [scrapeStep, setScrapeStep] = useState('config'); // config, review, processing, complete
-    const [scrapeConfig, setScrapeConfig] = useState({ url: '', username: '', password: '', manufacturerId: '' });
+    const [scrapeConfig, setScrapeConfig] = useState({
+        url: '',
+        manufacturerId: '',
+        maxDepth: 3,
+        maxPages: 50
+    });
     const [scanning, setScanning] = useState(false);
     const [scrapedFiles, setScrapedFiles] = useState([]);
-    const [scannedPages, setScannedPages] = useState([]);
+    const [crawlStats, setCrawlStats] = useState({ pagesVisited: 0, pdfsFound: 0, pagesExtracted: 0 });
     const [importStats, setImportStats] = useState({ current: 0, total: 0, success: 0, failed: 0 });
 
-    // Scraper Handlers
+    // Scraper Handlers - Using v2 deep crawler
     const handleScanSite = async (e) => {
         e.preventDefault();
-        console.log('[Scraper] Starting scan for:', scrapeConfig.url);
+        console.log('[Scraper v2] Starting deep crawl for:', scrapeConfig.url);
         try {
             setScanning(true);
             setError(null);
-            setScannedPages([]);
 
             // Normalize URL
             let targetUrl = scrapeConfig.url.trim();
             if (!/^https?:\/\//i.test(targetUrl)) {
                 targetUrl = 'https://' + targetUrl;
             }
-            console.log('[Scraper] Normalized URL:', targetUrl);
+            console.log('[Scraper v2] Normalized URL:', targetUrl);
 
-            const result = await knowledgeService.scanSite({
+            // Use v2 deep crawler
+            const result = await knowledgeService.crawlSite({
                 url: targetUrl,
-                username: scrapeConfig.username,
-                password: scrapeConfig.password
+                maxDepth: scrapeConfig.maxDepth,
+                maxPages: scrapeConfig.maxPages
             });
 
-            console.log('[Scraper] Scan Result:', result);
+            console.log('[Scraper v2] Crawl Result:', result);
 
-            // Map results for selection
-            const pdfFiles = (result.links || []).map(link => ({
-                ...link,
+            // Update crawl stats
+            setCrawlStats({
+                pagesVisited: result.stats?.pagesVisited || 0,
+                pdfsFound: result.pdfs?.length || 0,
+                pagesExtracted: result.pages?.length || 0
+            });
+
+            // Map results for selection - combine PDFs and pages
+            const pdfFiles = (result.pdfs || []).map(pdf => ({
+                url: pdf.url,
+                title: pdf.title || pdf.url.split('/').pop(),
                 type: 'pdf',
-                text: link.text || link.href.split('/').pop(),
                 selected: true
             }));
 
-            const pageFiles = (result.scanned || []).map(url => ({
-                href: url,
-                text: 'Web Page Source',
+            const pageFiles = (result.pages || []).map(page => ({
+                url: page.url,
+                title: page.title || 'Web Page',
                 type: 'page',
-                selected: true
+                content: page.content, // Extracted markdown content
+                wordCount: page.content ? page.content.split(/\s+/).length : 0,
+                selected: page.content && page.content.length > 200 // Auto-select pages with substantial content
             }));
 
-            const files = [...pageFiles, ...pdfFiles];
+            const files = [...pdfFiles, ...pageFiles];
 
             setScrapedFiles(files);
-            setScannedPages(result.scanned || []);
             setScrapeStep('review');
         } catch (err) {
-            console.error('[Scraper] Scan Failed:', err);
-            setError(`Scan failed: ${err.message}`);
+            console.error('[Scraper v2] Crawl Failed:', err);
+            setError(`Crawl failed: ${err.message}`);
         } finally {
             setScanning(false);
         }
@@ -119,48 +132,68 @@ const KnowledgeManagementPanel = () => {
 
         const mfg = manufacturers.find(m => m.id === scrapeConfig.manufacturerId);
         const mfgName = mfg ? mfg.name : 'General';
-        // User-provided sharing link for the Knowledge folder
-        const targetRootUrl = 'https://isehome.sharepoint.com/:f:/s/Unicorn/IgAVO-djmebvQqDPZnR1bDL1AecdzkgYOIqHsyynjc7SDqA?e=6jsHSi';
+        // SharePoint Knowledge library URL
+        const libraryUrl = 'https://isehome.sharepoint.com/sites/Unicorn/Knowledge';
 
-        for (let i = 0; i < selected.length; i++) {
-            const file = selected[i];
-            setImportStats(prev => ({ ...prev, current: i + 1 }));
-            setUploadProgress(`Importing ${i + 1} of ${selected.length}: ${file.text}...`);
+        try {
+            setUploadProgress(`Importing ${selected.length} items to SharePoint...`);
 
-            try {
-                let result;
-                if (file.type === 'page') {
-                    result = await knowledgeService.processPage({
-                        url: file.href,
-                        manufacturerName: mfgName,
-                        rootUrl: targetRootUrl
+            // Format items for v2 batch import
+            const items = selected.map(file => ({
+                url: file.url,
+                title: file.title,
+                type: file.type,
+                content: file.content // For pages, include extracted content
+            }));
+
+            // Use v2 batch import
+            const result = await knowledgeService.importCrawledItems({
+                items,
+                manufacturerName: mfgName,
+                libraryUrl
+            });
+
+            console.log('[Scraper v2] Import result:', result);
+
+            // Create document records in Supabase for each imported item
+            let successCount = 0;
+            let failedCount = 0;
+
+            for (const imported of result.imported || []) {
+                try {
+                    setImportStats(prev => ({ ...prev, current: prev.current + 1 }));
+                    setUploadProgress(`Creating record ${successCount + failedCount + 1} of ${result.imported.length}...`);
+
+                    await knowledgeService.createDocument({
+                        manufacturerId: scrapeConfig.manufacturerId || null,
+                        title: imported.title || imported.filename,
+                        fileName: imported.filename,
+                        fileType: imported.type === 'page' ? 'md' : 'pdf',
+                        fileSize: imported.size || 0,
+                        fileUrl: imported.webUrl,
+                        category: imported.type === 'page' ? 'user-manual' : 'spec-sheet',
+                        description: `Scraped from ${imported.sourceUrl}`,
+                        tags: ['scraped', imported.type]
                     });
-                } else {
-                    result = await knowledgeService.processScrapedFile({
-                        fileUrl: file.href,
-                        manufacturerName: mfgName,
-                        rootUrl: targetRootUrl
-                    });
+
+                    successCount++;
+                } catch (err) {
+                    console.error('Failed to create document record:', err);
+                    failedCount++;
                 }
-
-                // Add to Supabase (create document record)
-                await knowledgeService.createDocument({
-                    manufacturerId: scrapeConfig.manufacturerId || null,
-                    title: result.filename || file.text || 'Imported Document',
-                    fileName: result.filename,
-                    fileType: file.type === 'page' ? 'md' : 'pdf',
-                    fileSize: result.size || 0,
-                    fileUrl: result.webUrl,
-                    category: file.type === 'page' ? 'user-manual' : 'spec-sheet',
-                    description: `Scraped from ${file.href}`,
-                    tags: ['scraped', file.type]
-                });
-
-                setImportStats(prev => ({ ...prev, success: prev.success + 1 }));
-            } catch (err) {
-                console.error('Import failed for', file.href, err);
-                setImportStats(prev => ({ ...prev, failed: prev.failed + 1 }));
             }
+
+            setImportStats({
+                current: selected.length,
+                total: selected.length,
+                success: successCount,
+                failed: failedCount + (result.failed?.length || 0)
+            });
+
+        } catch (err) {
+            console.error('[Scraper v2] Import failed:', err);
+            setError(`Import failed: ${err.message}`);
+            setImportStats(prev => ({ ...prev, failed: prev.total }));
         }
 
         setScrapeStep('complete');
@@ -696,7 +729,7 @@ const KnowledgeManagementPanel = () => {
                                             required
                                             value={scrapeConfig.url}
                                             onChange={e => setScrapeConfig(prev => ({ ...prev, url: e.target.value }))}
-                                            placeholder="https://example.com/downloads"
+                                            placeholder="https://example.com/support"
                                             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
                                         />
                                     </div>
@@ -715,30 +748,42 @@ const KnowledgeManagementPanel = () => {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Username (Optional)</label>
-                                        <input
-                                            type="text"
-                                            value={scrapeConfig.username}
-                                            onChange={e => setScrapeConfig(prev => ({ ...prev, username: e.target.value }))}
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Crawl Depth</label>
+                                        <select
+                                            value={scrapeConfig.maxDepth}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, maxDepth: parseInt(e.target.value) }))}
                                             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
-                                        />
+                                        >
+                                            <option value={1}>Shallow (1 level)</option>
+                                            <option value={2}>Medium (2 levels)</option>
+                                            <option value={3}>Deep (3 levels)</option>
+                                            <option value={5}>Very Deep (5 levels)</option>
+                                        </select>
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Password (Optional)</label>
-                                        <input
-                                            type="password"
-                                            value={scrapeConfig.password}
-                                            onChange={e => setScrapeConfig(prev => ({ ...prev, password: e.target.value }))}
+                                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max Pages</label>
+                                        <select
+                                            value={scrapeConfig.maxPages}
+                                            onChange={e => setScrapeConfig(prev => ({ ...prev, maxPages: parseInt(e.target.value) }))}
                                             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800"
-                                        />
+                                        >
+                                            <option value={10}>10 pages</option>
+                                            <option value={25}>25 pages</option>
+                                            <option value={50}>50 pages</option>
+                                            <option value={100}>100 pages</option>
+                                        </select>
                                     </div>
                                 </div>
+
+                                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                    Deep crawler extracts both PDFs and web page content. Higher depth/pages = longer crawl time.
+                                </p>
 
                                 <div className="flex justify-end gap-2 pt-2">
                                     <Button type="button" variant="secondary" size="sm" onClick={() => setShowScraperForm(false)}>Cancel</Button>
                                     <Button type="submit" size="sm" disabled={scanning} onClick={handleScanSite}>
                                         {scanning ? <Loader2 size={14} className="animate-spin mr-1" /> : <Search size={14} className="mr-1" />}
-                                        {scanning ? 'Scanning...' : 'Scan for PDFs'}
+                                        {scanning ? 'Crawling...' : 'Start Crawl'}
                                     </Button>
                                 </div>
                             </form>
@@ -747,21 +792,25 @@ const KnowledgeManagementPanel = () => {
                         {/* Step 2: Review */}
                         {scrapeStep === 'review' && (
                             <div className="space-y-3">
+                                {/* Stats summary */}
                                 <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium">Found {scrapedFiles.length} PDF links</span>
+                                    <div className="text-sm font-medium">
+                                        Found {scrapedFiles.filter(f => f.type === 'pdf').length} PDFs, {scrapedFiles.filter(f => f.type === 'page').length} pages
+                                    </div>
                                     <div className="space-x-2 text-xs">
                                         <button onClick={() => setScrapedFiles(prev => prev.map(f => ({ ...f, selected: true })))} className="text-violet-600 hover:underline">Select All</button>
                                         <button onClick={() => setScrapedFiles(prev => prev.map(f => ({ ...f, selected: false })))} className="text-violet-600 hover:underline">Deselect All</button>
                                     </div>
                                 </div>
 
-                                {/* Scanned Pages Info */}
-                                {scannedPages.length > 0 && (
-                                    <div className="text-xs text-gray-500 mb-2">
-                                        <span className="font-semibold">Deep Scan visited:</span> {scannedPages.join(', ')}
-                                    </div>
-                                )}
+                                {/* Crawl stats */}
+                                <div className="flex gap-4 text-[10px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-zinc-800 rounded-lg px-3 py-2">
+                                    <span>Pages visited: {crawlStats.pagesVisited}</span>
+                                    <span>PDFs found: {crawlStats.pdfsFound}</span>
+                                    <span>Content extracted: {crawlStats.pagesExtracted}</span>
+                                </div>
 
+                                {/* File list with type indicators */}
                                 <div className="max-h-60 overflow-y-auto border rounded-lg bg-white dark:bg-zinc-900 p-2 space-y-1">
                                     {scrapedFiles.map((file, idx) => (
                                         <label key={idx} className="flex items-start gap-2 p-2 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded cursor-pointer">
@@ -776,8 +825,22 @@ const KnowledgeManagementPanel = () => {
                                                 className="mt-1"
                                             />
                                             <div className="min-w-0 flex-1">
-                                                <div className="text-xs font-medium truncate">{file.text || 'Untitled PDF'}</div>
-                                                <div className="text-[10px] text-gray-500 truncate" title={file.href}>{file.href}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                        file.type === 'pdf'
+                                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                                    }`}>
+                                                        {file.type === 'pdf' ? 'PDF' : 'PAGE'}
+                                                    </span>
+                                                    <span className="text-xs font-medium truncate">{file.title || 'Untitled'}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <span className="text-[10px] text-gray-500 truncate flex-1" title={file.url}>{file.url}</span>
+                                                    {file.wordCount > 0 && (
+                                                        <span className="text-[10px] text-gray-400">{file.wordCount} words</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </label>
                                     ))}
