@@ -133,13 +133,14 @@ ${settings.customInstructions ? `## Custom Instructions\n${settings.customInstru
 ${buildContextString(state)}`;
     }, [getSettings, getState, buildContextString]);
 
-    const tools = [
+    // Tool declarations - memoized to prevent unnecessary re-renders
+    const tools = React.useMemo(() => [
         { name: 'get_context', description: 'Get current app state. CALL THIS FIRST.', parameters: { type: 'object', properties: {} } },
         { name: 'execute_action', description: 'Execute action: highlight_field, set_measurement, save_measurements, open_shade, etc.', parameters: { type: 'object', properties: { action: { type: 'string' }, params: { type: 'object' } }, required: ['action'] } },
         { name: 'search_knowledge', description: 'Search knowledge base for product info (Lutron, Ubiquiti, etc). USE FIRST for product questions.', parameters: { type: 'object', properties: { query: { type: 'string' }, manufacturer: { type: 'string' } }, required: ['query'] } },
         { name: 'navigate', description: 'Go to: dashboard, prewire, settings, or project name with optional section.', parameters: { type: 'object', properties: { destination: { type: 'string' }, section: { type: 'string' } }, required: ['destination'] } },
         { name: 'web_search', description: 'Search web for general info not in knowledge base.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
-    ];
+    ], []);
 
     const getContextHint = (view) => {
         const hints = {
@@ -517,12 +518,17 @@ ${buildContextString(state)}`;
             }
             addDebugLog(`AudioContext ready. Sample rate: ${audioContext.current.sampleRate}Hz`);
 
-            // Request microphone - simple config, let browser decide best settings
+            // Request microphone - iOS Safari needs specific config
             addDebugLog('Requesting microphone...');
             mediaStream.current = await navigator.mediaDevices.getUserMedia({
-                audio: true
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                }
             });
-            addDebugLog('Microphone acquired');
+            const audioTrack = mediaStream.current.getAudioTracks()[0];
+            addDebugLog(`Microphone acquired: ${audioTrack?.label || 'default mic'}`);
 
             // Connect WebSocket
             addDebugLog('Connecting to Gemini Live API...');
@@ -546,13 +552,15 @@ ${buildContextString(state)}`;
                             }
                         },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
-                        tools: tools.map(t => ({
-                            functionDeclarations: [{
+                        // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
+                        // NOT multiple objects each with their own functionDeclarations array!
+                        tools: [{
+                            functionDeclarations: tools.map(t => ({
                                 name: t.name,
                                 description: t.description,
                                 parameters: t.parameters
-                            }]
-                        })),
+                            }))
+                        }],
                         realtimeInputConfig: {
                             automaticActivityDetection: {
                                 disabled: false,
