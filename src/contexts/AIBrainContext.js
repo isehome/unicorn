@@ -255,19 +255,69 @@ ${buildContextString(state)}`;
             ws.current.send(JSON.stringify({ toolResponse: { functionResponses: [{ name, response: result }] } }));
     }, []);
 
-    const playNextChunk = useCallback(() => {
-        if (!audioContext.current || !audioQueue.current.length || isPlaying.current) return;
+    const playNextChunk = useCallback(async () => {
+        if (!audioContext.current || audioQueue.current.length === 0 || isPlaying.current) {
+            // If queue is empty and we're done playing, go back to listening
+            if (audioQueue.current.length === 0 && !isPlaying.current && status === 'speaking') {
+                setStatus('listening');
+            }
+            return;
+        }
+
+        // CRITICAL: Resume AudioContext if suspended (Safari does this!)
+        if (audioContext.current.state === 'suspended') {
+            addDebugLog('Resuming suspended AudioContext for playback...');
+            try {
+                await audioContext.current.resume();
+            } catch (e) {
+                addDebugLog(`Failed to resume AudioContext: ${e.message}`, 'error');
+                return;
+            }
+        }
+
         isPlaying.current = true;
         const data = audioQueue.current.shift();
-        const resampled = resampleAudio(data, GEMINI_OUTPUT_SAMPLE_RATE, audioContext.current.sampleRate);
-        const buffer = audioContext.current.createBuffer(1, resampled.length, audioContext.current.sampleRate);
-        buffer.getChannelData(0).set(resampled);
-        const source = audioContext.current.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioContext.current.destination);
-        source.onended = () => { isPlaying.current = false; playNextChunk(); };
-        source.start();
-    }, []);
+
+        try {
+            // Resample from Gemini's 24kHz to device sample rate
+            const resampled = resampleAudio(data, GEMINI_OUTPUT_SAMPLE_RATE, audioContext.current.sampleRate);
+
+            // Create audio buffer
+            const buffer = audioContext.current.createBuffer(1, resampled.length, audioContext.current.sampleRate);
+            buffer.getChannelData(0).set(resampled);
+
+            // Create and play source
+            const source = audioContext.current.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.current.destination);
+
+            source.onended = () => {
+                isPlaying.current = false;
+                // Continue playing queue or return to listening
+                if (audioQueue.current.length > 0) {
+                    playNextChunk();
+                } else {
+                    setStatus('listening');
+                    addDebugLog('Audio playback complete, listening...');
+                }
+            };
+
+            source.onerror = (e) => {
+                addDebugLog(`Audio playback error: ${e}`, 'error');
+                isPlaying.current = false;
+                playNextChunk(); // Try next chunk
+            };
+
+            source.start(0);
+        } catch (e) {
+            addDebugLog(`Playback error: ${e.message}`, 'error');
+            isPlaying.current = false;
+            // Try to continue with next chunk
+            if (audioQueue.current.length > 0) {
+                playNextChunk();
+            }
+        }
+    }, [status, addDebugLog]);
 
     const handleWebSocketMessage = useCallback(async (event) => {
         try {
@@ -288,8 +338,11 @@ ${buildContextString(state)}`;
                 for (const part of data.serverContent.modelTurn.parts) {
                     if (part.inlineData?.mimeType?.includes('audio')) {
                         setStatus('speaking');
-                        audioQueue.current.push(base64ToFloat32(part.inlineData.data));
+                        const audioData = base64ToFloat32(part.inlineData.data);
+                        audioQueue.current.push(audioData);
+                        const chunkNum = audioQueue.current.length;
                         setAudioChunksReceived(prev => prev + 1);
+                        addDebugLog(`Audio chunk received (${audioData.length} samples, queue: ${chunkNum})`);
                         playNextChunk();
                     }
                     if (part.text) {
