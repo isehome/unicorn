@@ -5,7 +5,8 @@ import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import { PrinterProvider } from './contexts/PrinterContext';
-import { VoiceCopilotProvider } from './contexts/VoiceCopilotContext';
+import { AppStateProvider } from './contexts/AppStateContext';
+import { AIBrainProvider } from './contexts/AIBrainContext';
 import UnifiDebug from './components/UnifiDebug';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -20,16 +21,7 @@ import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
 import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
-import { useAgentContext } from './hooks/useAgentContext';
-import { useKnowledgeTools } from './hooks/useKnowledgeTools';
 import './index.css';
-
-// Component to load knowledge tools for the voice copilot
-// Must be rendered inside VoiceCopilotProvider
-function KnowledgeToolsLoader() {
-  useKnowledgeTools();
-  return null;
-}
 
 // Lazy load all route components
 const TechnicianDashboard = lazy(() => import('./components/TechnicianDashboard'));
@@ -78,9 +70,6 @@ const AppRoutes = () => {
   const hideChrome = ['/login', '/auth/callback'].includes(location.pathname) || isPublicRoute;
   const { isOnline } = useNetworkStatus();
   const { pendingCount, isSyncing, triggerSync } = useSyncStatus();
-
-  // Initialize agent context for voice AI navigation (only on protected routes)
-  useAgentContext();
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors duration-300 flex flex-col">
@@ -452,18 +441,18 @@ function App() {
       <ThemeProvider>
         <AuthProvider>
           <PrinterProvider>
-            <VoiceCopilotProvider>
-              <KnowledgeToolsLoader />
-              <PhotoViewerProvider>
-                <Router>
-                  <AppRoutes />
-                </Router>
-              </PhotoViewerProvider>
-            </VoiceCopilotProvider>
+            <PhotoViewerProvider>
+              <Router>
+                <AppStateProvider>
+                  <AIBrainProvider>
+                    <AppRoutes />
+                  </AIBrainProvider>
+                </AppStateProvider>
+              </Router>
+            </PhotoViewerProvider>
           </PrinterProvider>
         </AuthProvider>
       </ThemeProvider>
-      {/* ReactQuery DevTools removed - not needed for production */}
     </QueryClientProvider>
   );
 }

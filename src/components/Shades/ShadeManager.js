@@ -26,7 +26,7 @@ import { shadePublicAccessService } from '../../services/shadePublicAccessServic
 import { supabase } from '../../lib/supabase'; // Needed for direct updates if service method missing
 import Button from '../ui/Button';
 import { brandColors, stakeholderColors } from '../../styles/styleSystem';
-import { useShadeManagerTools } from '../../hooks/useShadeManagerTools';
+import { useAppState } from '../../contexts/AppStateContext';
 
 const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
     const { projectId: routeProjectId } = useParams();
@@ -421,20 +421,53 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
         return Array.from(types).sort();
     }, [shades]);
 
+    // AppState for Voice AI integration
+    const { publishState, registerActions, unregisterActions } = useAppState();
+
     // Voice AI Tools for shade list navigation
     const handleSelectShadeForMeasuring = useCallback((shade) => {
         // Navigate to the shade detail page
         navigate(`/projects/${projectId}/shades/${shade.id}`);
     }, [navigate, projectId]);
 
-    useShadeManagerTools({
-        shades,
-        rooms: Object.keys(groupedShades),
-        projectName: project?.name || '',
-        onSelectShade: handleSelectShadeForMeasuring,
-        expandedRooms,
-        setExpandedRooms
-    });
+    // Publish state to AppStateContext for Voice AI
+    useEffect(() => {
+        publishState({
+            view: 'shade-list',
+            project: project ? { id: project.id, name: project.name } : null,
+            shades: shades?.map(s => ({
+                id: s.id,
+                name: s.name,
+                roomName: s.room?.name,
+                hasMeasurements: !!(s.m1_width_top || s.m1_height),
+            })) || [],
+            rooms: Object.keys(groupedShades) || [],
+        });
+    }, [project, shades, groupedShades, publishState]);
+
+    // Register action handlers for Voice AI
+    useEffect(() => {
+        const actions = {
+            open_shade: async ({ shadeId, shadeName }) => {
+                let targetShade = shadeId ? shades.find(s => s.id === shadeId) : shades.find(s => s.name.toLowerCase().includes(shadeName?.toLowerCase()));
+                if (targetShade) {
+                    navigate(`/projects/${projectId}/shades/${targetShade.id}`);
+                    return { success: true };
+                }
+                return { success: false, error: 'Shade not found' };
+            },
+            go_to_next_pending: () => {
+                const pending = shades.find(s => !s.m1_width_top && !s.m1_height);
+                if (pending) {
+                    navigate(`/projects/${projectId}/shades/${pending.id}`);
+                    return { success: true, shade: pending.name };
+                }
+                return { success: false, error: 'All shades measured' };
+            },
+        };
+        registerActions(actions);
+        return () => unregisterActions(Object.keys(actions));
+    }, [shades, projectId, navigate, registerActions, unregisterActions]);
 
     const toggleRoom = (roomName) => {
         setExpandedRooms(prev => {

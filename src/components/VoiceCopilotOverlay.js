@@ -1,26 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 import { Mic, MicOff, Loader2, X, Activity, Bug, Trash2, Wand2, XCircle } from 'lucide-react';
 
 const VoiceCopilotOverlay = () => {
     const location = useLocation();
     const {
         status,
-        toggle,
+        startSession,
+        endSession,
         error,
         isConfigured,
         // Debug state
         debugLog,
         audioLevel,
         lastTranscript,
-        wsState,
         audioChunksSent,
         audioChunksReceived,
         clearDebugLog,
-        // Tool feedback
-        lastToolAction
     } = useVoiceCopilot();
+
+    // Derive wsState from status for backward compatibility
+    const wsState = status === 'listening' || status === 'speaking' || status === 'connected' ? 'open' : 'closed';
+
+    // Toggle helper for backward compatibility
+    const toggle = useCallback(() => {
+        if (status === 'idle' || status === 'error') {
+            startSession();
+        } else {
+            endSession();
+        }
+    }, [status, startSession, endSession]);
+
+    // Track tool actions (simplified - no longer provided by context)
+    const lastToolAction = null;
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [showDebug, setShowDebug] = useState(false);

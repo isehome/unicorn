@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProcurementDashboard from './procurement/ProcurementDashboard';
+import { useAppState } from '../contexts/AppStateContext';
 import {
   Plus,
   Loader,
@@ -81,6 +82,17 @@ const PMDashboard = () => {
   const queryParams = new URLSearchParams(location.search);
   const initialView = queryParams.get('view');
   const returnTo = location.state?.returnTo;
+
+  // AppState for Voice AI integration
+  const { publishState } = useAppState();
+
+  // Publish state to AppStateContext for Voice AI
+  useEffect(() => {
+    publishState({
+      view: 'dashboard',
+      projects: projects?.map(p => ({ id: p.id, name: p.name, status: p.status })) || [],
+    });
+  }, [projects, publishState]);
 
   // Load projects and contacts on mount
   useEffect(() => {

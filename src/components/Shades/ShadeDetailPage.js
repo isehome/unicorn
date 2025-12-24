@@ -17,7 +17,7 @@ import { shadePublicAccessService } from '../../services/shadePublicAccessServic
 import { notifyShadeReviewRequest } from '../../services/issueNotificationService';
 import { supabase } from '../../lib/supabase';
 import { brandColors } from '../../styles/styleSystem';
-import { useShadeDetailTools } from '../../hooks/useShadeDetailTools';
+import { useAppState } from '../../contexts/AppStateContext';
 
 // Headrail style options
 const HEADRAIL_STYLES = ['Pocket', 'Fascia', 'Fascia + Top Back Cover', 'Top Back Cover'];
@@ -94,6 +94,9 @@ const ShadeDetailPage = () => {
 
     // Voice AI active field highlighting
     const [activeField, setActiveField] = useState(null);
+
+    // AppState for Voice AI integration
+    const { publishState, registerActions, unregisterActions } = useAppState();
 
     // Blinding logic
     const isM1Blind = shade?.m1_complete && shade?.m1_by !== user?.id;
@@ -318,6 +321,85 @@ const ShadeDetailPage = () => {
             loadComments();
         }
     }, [designReviewExpanded, loadComments]);
+
+    // Publish state to AppStateContext for Voice AI
+    useEffect(() => {
+        if (shade) {
+            publishState({
+                view: 'shade-detail',
+                project: project ? { id: project.id, name: project.name, address: project.address } : null,
+                shade: {
+                    id: shade.id,
+                    name: shade.shade_name || shade.name,
+                    roomName: shade.room?.name || shade.room_name,
+                },
+                form: formData,
+            });
+        }
+    }, [shade, formData, project, publishState]);
+
+    // Register action handlers for Voice AI
+    useEffect(() => {
+        const actions = {
+            highlight_field: ({ field }) => {
+                // Map AI field names to form field names
+                const fieldMap = {
+                    'top width': 'widthTop', 'top': 'widthTop', 'width top': 'widthTop',
+                    'middle width': 'widthMiddle', 'middle': 'widthMiddle',
+                    'bottom width': 'widthBottom', 'bottom': 'widthBottom',
+                    'height': 'height',
+                    'mount depth': 'mountDepth', 'depth': 'mountDepth',
+                };
+                const mappedField = fieldMap[field?.toLowerCase()] || field;
+                setActiveField(mappedField);
+                // Clear highlight after 3 seconds
+                setTimeout(() => setActiveField(null), 3000);
+                return { success: true, field: mappedField };
+            },
+            set_measurement: ({ field, value }) => {
+                const fieldMap = {
+                    'top width': 'widthTop', 'top': 'widthTop',
+                    'middle width': 'widthMiddle', 'middle': 'widthMiddle',
+                    'bottom width': 'widthBottom', 'bottom': 'widthBottom',
+                    'height': 'height',
+                    'mount depth': 'mountDepth', 'depth': 'mountDepth',
+                };
+                const mappedField = fieldMap[field?.toLowerCase()] || field;
+                setFormData(prev => ({ ...prev, [mappedField]: value }));
+                setActiveField(mappedField);
+                setTimeout(() => setActiveField(null), 2000);
+                return { success: true, field: mappedField, value };
+            },
+            clear_measurement: ({ field }) => {
+                const fieldMap = {
+                    'top width': 'widthTop', 'middle width': 'widthMiddle',
+                    'bottom width': 'widthBottom', 'height': 'height', 'mount depth': 'mountDepth',
+                };
+                const mappedField = fieldMap[field?.toLowerCase()] || field;
+                setFormData(prev => ({ ...prev, [mappedField]: '' }));
+                return { success: true };
+            },
+            read_back: () => {
+                return {
+                    success: true,
+                    measurements: {
+                        topWidth: formData.widthTop || 'not set',
+                        middleWidth: formData.widthMiddle || 'not set',
+                        bottomWidth: formData.widthBottom || 'not set',
+                        height: formData.height || 'not set',
+                        mountDepth: formData.mountDepth || 'not set',
+                    }
+                };
+            },
+            save_measurements: async () => {
+                await flushPendingSaves();
+                return { success: true, message: 'Measurements saved' };
+            },
+        };
+
+        registerActions(actions);
+        return () => unregisterActions(Object.keys(actions));
+    }, [formData, registerActions, unregisterActions]);
 
     // Track pending saves for flush on unmount
     const pendingSavesRef = useRef(new Map());
@@ -765,17 +847,6 @@ const ShadeDetailPage = () => {
     const handleNavigateBack = useCallback(() => {
         navigate(`/projects/${projectId}/shades`);
     }, [navigate, projectId]);
-
-    // Voice AI tools for hands-free measuring
-    useShadeDetailTools({
-        formData,
-        setFormData,
-        activeTab,
-        shade,
-        onMarkComplete: handleMarkComplete,
-        setActiveField,
-        onNavigateBack: handleNavigateBack
-    });
 
     // Design Review - Send to designer
     const handleDesignerChange = async (newId) => {
