@@ -251,9 +251,12 @@ ${buildContextString(state)}`;
     };
 
     const sendToolResponse = useCallback((name, result) => {
-        if (ws.current?.readyState === WebSocket.OPEN)
-            ws.current.send(JSON.stringify({ toolResponse: { functionResponses: [{ name, response: result }] } }));
-    }, []);
+        if (ws.current?.readyState === WebSocket.OPEN) {
+            const response = { toolResponse: { functionResponses: [{ name, response: result }] } };
+            addDebugLog(`Sending tool response for ${name}`);
+            ws.current.send(JSON.stringify(response));
+        }
+    }, [addDebugLog]);
 
     const playNextChunk = useCallback(async () => {
         if (!audioContext.current || audioQueue.current.length === 0 || isPlaying.current) {
@@ -334,8 +337,15 @@ ${buildContextString(state)}`;
                 return;
             }
 
+            // Log raw message structure for debugging
+            addDebugLog(`WS msg keys: ${Object.keys(data).join(', ')}`);
+
             if (data.serverContent?.modelTurn?.parts) {
                 for (const part of data.serverContent.modelTurn.parts) {
+                    // Log what type of part we received
+                    const partKeys = Object.keys(part).join(', ');
+                    addDebugLog(`Part: ${partKeys}`);
+
                     if (part.inlineData?.mimeType?.includes('audio')) {
                         setStatus('speaking');
                         const audioData = base64ToFloat32(part.inlineData.data);
@@ -349,10 +359,17 @@ ${buildContextString(state)}`;
                         setLastTranscript(part.text);
                         addDebugLog(`Response: "${part.text.substring(0, 50)}..."`, 'response');
                     }
+                    // Handle function calls - check both possible structures
                     if (part.functionCall) {
-                        addDebugLog(`Tool call: ${part.functionCall.name}`, 'tool');
-                        const r = await handleToolCall(part.functionCall);
-                        sendToolResponse(part.functionCall.name, r);
+                        const funcName = part.functionCall.name || 'unknown';
+                        const funcArgs = part.functionCall.args || part.functionCall.arguments || {};
+                        addDebugLog(`Tool call: ${funcName}(${JSON.stringify(funcArgs).substring(0, 50)})`, 'tool');
+                        const r = await handleToolCall({ name: funcName, args: funcArgs });
+                        sendToolResponse(funcName, r);
+                    }
+                    // Also check for executableCode (code execution responses)
+                    if (part.executableCode) {
+                        addDebugLog(`Code: ${part.executableCode.code?.substring(0, 50)}...`);
                     }
                 }
             }
