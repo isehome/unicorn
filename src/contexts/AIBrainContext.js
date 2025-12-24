@@ -8,11 +8,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAppState } from './AppStateContext';
 import { supabase } from '../lib/supabase';
 
+// Audio settings - Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
+
 // Use Gemini 2.0 Flash for Live API (BidiGenerateContent)
-// Note: gemini-2.0-flash-exp supports the Live API with v1beta
 const LATEST_MODEL = 'gemini-2.0-flash-exp';
+
+// API version - v1alpha also works if v1beta has issues
+const API_VERSION = 'v1beta';
 
 const AIBrainContext = createContext(null);
 
@@ -31,7 +35,6 @@ export const AIBrainProvider = ({ children }) => {
     const mediaStream = useRef(null);
     const processorNode = useRef(null);
     const sourceNode = useRef(null);
-    const gainNode = useRef(null);
     const audioQueue = useRef([]);
     const isPlaying = useRef(false);
     const navigateRef = useRef(navigate);
@@ -196,27 +199,54 @@ ${buildContextString(state)}`;
         }
     }, [getState, getAvailableActions, executeAction]);
 
-    // Audio utilities
-    const resampleAudio = (data, fromRate, toRate) => {
-        if (fromRate === toRate) return data;
-        const ratio = fromRate / toRate;
-        const result = new Float32Array(Math.round(data.length / ratio));
-        for (let i = 0; i < result.length; i++) {
-            const pos = i * ratio, idx = Math.floor(pos), frac = pos - idx;
-            result[i] = idx + 1 < data.length ? data[idx] * (1 - frac) + data[idx + 1] * frac : data[idx];
+    // Audio utilities - from working VoiceCopilotContext implementation
+
+    // Float32 to 16-bit PCM conversion (working formula)
+    const floatTo16BitPCM = (input) => {
+        const output = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+            const s = Math.max(-1, Math.min(1, input[i]));
+            output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
         }
-        return result;
+        return output;
     };
-    const float32ToInt16 = (arr) => {
-        const result = new Int16Array(arr.length);
-        for (let i = 0; i < arr.length; i++) { const s = Math.max(-1, Math.min(1, arr[i])); result[i] = s < 0 ? s * 0x8000 : s * 0x7FFF; }
-        return result;
+
+    // Linear interpolation resampling (simple but effective for voice)
+    const resampleAudio = (inputData, inputSampleRate, outputSampleRate) => {
+        if (inputSampleRate === outputSampleRate) {
+            return inputData;
+        }
+        const ratio = inputSampleRate / outputSampleRate;
+        const outputLength = Math.floor(inputData.length / ratio);
+        const output = new Float32Array(outputLength);
+        for (let i = 0; i < outputLength; i++) {
+            const srcIndex = i * ratio;
+            const srcIndexFloor = Math.floor(srcIndex);
+            const srcIndexCeil = Math.min(srcIndexFloor + 1, inputData.length - 1);
+            const t = srcIndex - srcIndexFloor;
+            output[i] = inputData[srcIndexFloor] * (1 - t) + inputData[srcIndexCeil] * t;
+        }
+        return output;
     };
-    const base64ToFloat32 = (b64) => {
-        const bin = atob(b64), bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        const int16 = new Int16Array(bytes.buffer), float32 = new Float32Array(int16.length);
-        for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
+
+    // Downsample to Gemini's expected 16kHz
+    const downsampleForGemini = (inputData, inputSampleRate) => {
+        return resampleAudio(inputData, inputSampleRate, GEMINI_INPUT_SAMPLE_RATE);
+    };
+
+    // Convert base64 PCM (int16) to Float32 for playback
+    const base64ToFloat32 = (base64) => {
+        const binary = atob(base64);
+        const buffer = new ArrayBuffer(binary.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < binary.length; i++) {
+            view[i] = binary.charCodeAt(i);
+        }
+        const int16 = new Int16Array(buffer);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+            float32[i] = int16[i] / 32768.0;
+        }
         return float32;
     };
 
@@ -289,74 +319,99 @@ ${buildContextString(state)}`;
         }
     }, [handleToolCall, sendToolResponse, playNextChunk, addDebugLog]);
 
+    // Recording state ref (to avoid stale closures)
+    const recordingActive = useRef(false);
+
     const startAudioCapture = useCallback(() => {
         if (!mediaStream.current || !audioContext.current) {
             addDebugLog('Cannot start audio capture - missing stream or context', 'error');
             return;
         }
 
-        addDebugLog(`Starting audio capture. Sample rate: ${audioContext.current.sampleRate}Hz`);
-
-        // Create source from microphone
+        recordingActive.current = true;
         sourceNode.current = audioContext.current.createMediaStreamSource(mediaStream.current);
 
-        // Create gain node to amplify input (Safari/iOS often has low mic gain)
-        gainNode.current = audioContext.current.createGain();
-        gainNode.current.gain.value = 3.0; // Boost mic input 3x
+        // Get device's actual sample rate (iOS uses 48kHz, desktop may use 44.1kHz or 48kHz)
+        const deviceSampleRate = audioContext.current.sampleRate;
+        addDebugLog(`Device sample rate: ${deviceSampleRate}Hz, downsampling to ${GEMINI_INPUT_SAMPLE_RATE}Hz`);
 
-        // Use larger buffer for iOS stability (4096 or 8192)
-        processorNode.current = audioContext.current.createScriptProcessor(4096, 1, 1);
+        // Use ScriptProcessor (deprecated but more iOS compatible than AudioWorklet)
+        const processor = audioContext.current.createScriptProcessor(4096, 1, 1);
+        processorNode.current = processor;
 
         let chunkCount = 0;
-        processorNode.current.onaudioprocess = (e) => {
-            if (ws.current?.readyState !== WebSocket.OPEN) return;
+        processor.onaudioprocess = (e) => {
+            if (!recordingActive.current || ws.current?.readyState !== WebSocket.OPEN) return;
 
-            const input = e.inputBuffer.getChannelData(0);
+            const inputData = e.inputBuffer.getChannelData(0);
 
-            // Calculate RMS audio level (proper dB-like measurement)
+            // Calculate audio level (RMS) for debug display
             let sum = 0;
-            for (let i = 0; i < input.length; i++) {
-                sum += input[i] * input[i];
+            for (let i = 0; i < inputData.length; i++) {
+                sum += inputData[i] * inputData[i];
             }
-            const rms = Math.sqrt(sum / input.length);
-            // Convert to 0-100 scale (RMS of 0.1 = 100%)
-            const level = Math.min(100, Math.round(rms * 1000));
+            const rms = Math.sqrt(sum / inputData.length);
+            const level = Math.min(100, Math.round(rms * 500)); // Scale to 0-100
             setAudioLevel(level);
 
-            // Resample and send
-            const resampled = resampleAudio(input, audioContext.current.sampleRate, GEMINI_INPUT_SAMPLE_RATE);
-            const int16 = float32ToInt16(resampled);
-            const b64 = btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
+            // Downsample to 16kHz for Gemini (device may be 48kHz on iOS)
+            const downsampledData = downsampleForGemini(inputData, deviceSampleRate);
+            const pcmData = floatTo16BitPCM(downsampledData);
 
+            // Convert to base64
+            const bytes = new Uint8Array(pcmData.buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.byteLength; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64Audio = btoa(binary);
+
+            // Send to Gemini using the CORRECT format (audio, not mediaChunks!)
+            // This is the format that worked in the previous version
             ws.current.send(JSON.stringify({
                 realtimeInput: {
-                    mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }]
+                    audio: {
+                        mimeType: "audio/pcm;rate=16000",
+                        data: base64Audio
+                    }
                 }
             }));
 
             chunkCount++;
             setAudioChunksSent(chunkCount);
 
-            // Log first chunk and every 50th chunk
-            if (chunkCount === 1 || chunkCount % 50 === 0) {
-                addDebugLog(`Sent ${chunkCount} audio chunks. Level: ${level}%`);
+            // Log every 50 chunks (~3 seconds of audio)
+            if (chunkCount === 1) {
+                addDebugLog(`First chunk sent (${pcmData.length} samples, level: ${level}%)`);
+            } else if (chunkCount % 50 === 0) {
+                addDebugLog(`Sent ${chunkCount} audio chunks, level: ${level}%`);
             }
         };
 
-        // Connect: source -> gain -> processor -> destination (required for ScriptProcessor)
-        sourceNode.current.connect(gainNode.current);
-        gainNode.current.connect(processorNode.current);
-        processorNode.current.connect(audioContext.current.destination);
-
-        addDebugLog('Audio capture started with 3x gain boost');
-        setStatus('listening');
+        sourceNode.current.connect(processor);
+        processor.connect(audioContext.current.destination);
+        addDebugLog('Audio processing started');
     }, [addDebugLog]);
 
     const stopAudioCapture = useCallback(() => {
-        processorNode.current?.disconnect(); processorNode.current = null;
-        gainNode.current?.disconnect(); gainNode.current = null;
-        sourceNode.current?.disconnect(); sourceNode.current = null;
-        mediaStream.current?.getTracks().forEach(t => t.stop()); mediaStream.current = null;
+        recordingActive.current = false;
+
+        // Stop media stream
+        if (mediaStream.current) {
+            mediaStream.current.getTracks().forEach(track => track.stop());
+            mediaStream.current = null;
+        }
+
+        // Disconnect audio nodes
+        if (processorNode.current) {
+            processorNode.current.disconnect();
+            processorNode.current = null;
+        }
+        if (sourceNode.current) {
+            sourceNode.current.disconnect();
+            sourceNode.current = null;
+        }
+
         setAudioLevel(0);
         addDebugLog('Audio capture stopped');
     }, [addDebugLog]);
@@ -380,15 +435,11 @@ ${buildContextString(state)}`;
             setError(null);
             clearDebugLog();
 
-            // Create AudioContext - iOS Safari requires user gesture
+            // Create AudioContext - iOS Safari requires user gesture, don't specify sample rate
             addDebugLog('Creating AudioContext...');
             if (!audioContext.current || audioContext.current.state === 'closed') {
-                // For iOS, try to use 16kHz sample rate if supported
-                try {
-                    audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
-                } catch {
-                    audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
-                }
+                // Don't specify sample rate - let device use native rate (we'll resample)
+                audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
             }
             if (audioContext.current.state === 'suspended') {
                 addDebugLog('Resuming suspended AudioContext...');
@@ -396,22 +447,12 @@ ${buildContextString(state)}`;
             }
             addDebugLog(`AudioContext ready. Sample rate: ${audioContext.current.sampleRate}Hz`);
 
-            // Request microphone with optimal settings for speech
+            // Request microphone - simple config, let browser decide best settings
             addDebugLog('Requesting microphone...');
             mediaStream.current = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true, // Important for iOS
-                    sampleRate: { ideal: 48000 }, // Will be resampled to 16kHz
-                }
+                audio: true
             });
-
-            // Log mic track settings
-            const track = mediaStream.current.getAudioTracks()[0];
-            const settings = track.getSettings();
-            addDebugLog(`Mic acquired: ${settings.sampleRate || 'default'}Hz, AGC: ${settings.autoGainControl}`);
+            addDebugLog('Microphone acquired');
 
             // Connect WebSocket
             addDebugLog('Connecting to Gemini Live API...');
