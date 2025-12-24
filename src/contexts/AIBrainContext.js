@@ -12,11 +12,9 @@ import { supabase } from '../lib/supabase';
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 
-// Use Gemini 2.0 Flash for Live API (BidiGenerateContent)
-const LATEST_MODEL = 'gemini-2.0-flash-exp';
-
-// API version - v1alpha also works if v1beta has issues
-const API_VERSION = 'v1beta';
+// Default model - user can override in settings
+// The native audio model works best for voice
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
 
 const AIBrainContext = createContext(null);
 
@@ -534,9 +532,11 @@ ${buildContextString(state)}`;
             socket.onopen = () => {
                 addDebugLog('WebSocket connected, sending setup...');
                 const voiceSettings = getSettings();
+                // Get model from settings or use default
+                const selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
                 const setupConfig = {
                     setup: {
-                        model: `models/${LATEST_MODEL}`,
+                        model: `models/${selectedModel}`,
                         generationConfig: {
                             responseModalities: ['AUDIO'],
                             speechConfig: {
@@ -557,13 +557,16 @@ ${buildContextString(state)}`;
                             automaticActivityDetection: {
                                 disabled: false,
                                 startOfSpeechSensitivity: voiceSettings.vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
-                                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH'
+                                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH',
+                                // More patient VAD settings for field techs
+                                prefixPaddingMs: 200,
+                                silenceDurationMs: 800 + (voiceSettings.vadEndSensitivity * 200)
                             }
                         }
                     }
                 };
                 socket.send(JSON.stringify(setupConfig));
-                addDebugLog(`Setup sent. Model: ${LATEST_MODEL}, Voice: ${voiceSettings.voice}`);
+                addDebugLog(`Setup sent. Model: ${selectedModel}, Voice: ${voiceSettings.voice}`);
                 setStatus('connected');
                 startAudioCapture();
             };
