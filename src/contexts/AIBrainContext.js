@@ -10,7 +10,8 @@ import { supabase } from '../lib/supabase';
 
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
-const LATEST_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
+// Use gemini-2.0-flash-live-001 for BidiGenerateContent (realtime audio)
+const LATEST_MODEL = 'gemini-2.0-flash-live-001';
 
 const AIBrainContext = createContext(null);
 
