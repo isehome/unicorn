@@ -249,6 +249,62 @@ ${buildContextString(state)}`;
         return float32;
     };
 
+    // Convert Float32Array to WAV format bytes (for HTML Audio element playback)
+    // This is more Safari-compatible than AudioBufferSourceNode
+    const float32ToWav = (float32Data, sampleRate) => {
+        // Convert Float32 to Int16
+        const int16Data = new Int16Array(float32Data.length);
+        for (let i = 0; i < float32Data.length; i++) {
+            const s = Math.max(-1, Math.min(1, float32Data[i]));
+            int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+
+        // WAV file format
+        const numChannels = 1;
+        const bitsPerSample = 16;
+        const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+        const blockAlign = numChannels * (bitsPerSample / 8);
+        const dataSize = int16Data.length * (bitsPerSample / 8);
+        const fileSize = 44 + dataSize; // 44 byte header + data
+
+        const buffer = new ArrayBuffer(fileSize);
+        const view = new DataView(buffer);
+
+        // RIFF header
+        writeString(view, 0, 'RIFF');
+        view.setUint32(4, fileSize - 8, true); // file size - 8
+        writeString(view, 8, 'WAVE');
+
+        // fmt chunk
+        writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); // chunk size
+        view.setUint16(20, 1, true); // audio format (1 = PCM)
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, byteRate, true);
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitsPerSample, true);
+
+        // data chunk
+        writeString(view, 36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        // Write audio data
+        const dataOffset = 44;
+        for (let i = 0; i < int16Data.length; i++) {
+            view.setInt16(dataOffset + i * 2, int16Data[i], true);
+        }
+
+        return buffer;
+    };
+
+    // Helper to write string to DataView
+    const writeString = (view, offset, string) => {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    };
+
     const sendToolResponse = useCallback((name, result) => {
         if (ws.current?.readyState === WebSocket.OPEN) {
             const response = { toolResponse: { functionResponses: [{ name, response: result }] } };
@@ -312,22 +368,17 @@ ${buildContextString(state)}`;
             }
             addDebugLog(`Resampled: ${data.length} -> ${resampled.length}, peak: ${resampledMax.toFixed(3)}`);
 
-            // Create audio buffer
-            const buffer = audioContext.current.createBuffer(1, resampled.length, deviceRate);
-            buffer.getChannelData(0).set(resampled);
+            // Convert to WAV and use HTML Audio element (more Safari compatible)
+            const wavData = float32ToWav(resampled, deviceRate);
+            const blob = new Blob([wavData], { type: 'audio/wav' });
+            const url = URL.createObjectURL(blob);
 
-            // Create and play source with gain amplification
-            const source = audioContext.current.createBufferSource();
-            source.buffer = buffer;
+            const audio = new Audio(url);
+            audio.volume = 1.0; // Full volume
 
-            // Add gain node to amplify audio (Gemini output can be quiet)
-            const gainNode = audioContext.current.createGain();
-            gainNode.gain.value = 2.0; // 2x amplification
-            source.connect(gainNode);
-            gainNode.connect(audioContext.current.destination);
-
-            source.onended = () => {
+            audio.onended = () => {
                 addDebugLog(`Chunk finished playing`);
+                URL.revokeObjectURL(url);
                 isPlaying.current = false;
                 // Continue playing queue or return to listening
                 if (audioQueue.current.length > 0) {
@@ -338,14 +389,21 @@ ${buildContextString(state)}`;
                 }
             };
 
-            source.onerror = (e) => {
-                addDebugLog(`Audio source error: ${e}`, 'error');
+            audio.onerror = (e) => {
+                addDebugLog(`Audio element error: ${e.message || e}`, 'error');
+                URL.revokeObjectURL(url);
                 isPlaying.current = false;
                 playNextChunk(); // Try next chunk
             };
 
-            source.start(0);
-            addDebugLog(`Audio source started`);
+            audio.play().then(() => {
+                addDebugLog(`Audio element playing`);
+            }).catch(e => {
+                addDebugLog(`Audio play failed: ${e.message}`, 'error');
+                URL.revokeObjectURL(url);
+                isPlaying.current = false;
+                playNextChunk();
+            });
         } catch (e) {
             addDebugLog(`Playback error: ${e.message}`, 'error');
             isPlaying.current = false;
