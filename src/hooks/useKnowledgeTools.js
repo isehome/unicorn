@@ -2,20 +2,23 @@
  * useKnowledgeTools
  *
  * Provides Gemini copilot with access to:
- * 1. Notion knowledge base (SOPs, procedures, company info)
- * 2. Manufacturer product documentation
+ * 1. Azure AI Search knowledge base (SharePoint-indexed documentation)
+ * 2. Manufacturer product documentation (Lutron, Control4, Ubiquiti, etc.)
  * 3. Industry best practices (CEDIA, low-voltage standards)
+ * 4. Built-in Lutron shade expertise
+ *
+ * All knowledge lookups go through Azure AI Search, which indexes
+ * the SharePoint Knowledge library. This provides semantic search
+ * across all uploaded documentation.
  *
  * These tools are registered globally so the copilot can answer
  * technician questions at any point in the app.
  */
 
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
 import { LUTRON_SHADE_KNOWLEDGE, QUICK_REFERENCE } from '../data/lutronShadeKnowledge';
 import { searchKnowledgeForVoice } from '../services/knowledgeService';
-
-const API_BASE = process.env.REACT_APP_API_URL || '';
 
 // Built-in best practices database
 const BEST_PRACTICES = {
@@ -183,142 +186,145 @@ export const useKnowledgeTools = () => {
 
   // Tool definitions
   const tools = useMemo(() => [
-    // 1. Search Notion Knowledge Base
+    // 1. Search Knowledge Base (Azure AI Search)
     {
       name: 'search_knowledge_base',
-      description: 'Search the company knowledge base in Notion for SOPs, procedures, troubleshooting guides, and documentation. Use this when the technician asks about company procedures or needs to find documentation.',
+      description: 'Search the company knowledge base for SOPs, procedures, troubleshooting guides, manufacturer documentation, and technical specs. This searches all uploaded documentation including PDFs, manuals, and guides from manufacturers like Lutron, Control4, Ubiquiti, Sonos, Araknis, and more.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
             description: 'The search query - what to look for in the knowledge base'
-          }
-        },
-        required: ['query']
-      },
-      execute: async ({ query }) => {
-        try {
-          const response = await fetch(`${API_BASE}/api/notion-knowledge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'search', query })
-          });
-          const data = await response.json();
-
-          if (!data.success) {
-            return { error: data.error || 'Search failed' };
-          }
-
-          if (data.results.length === 0) {
-            return {
-              message: `No results found for "${query}". Try different keywords.`,
-              suggestions: ['Try broader terms', 'Check spelling', 'Search by topic area']
-            };
-          }
-
-          return {
-            message: `Found ${data.resultCount} results for "${query}"`,
-            results: data.results.map(r => ({
-              title: r.title,
-              preview: r.preview?.substring(0, 200) + '...',
-              pageId: r.id
-            }))
-          };
-        } catch (error) {
-          console.error('[Knowledge] Notion search error:', error);
-          return { error: 'Failed to search knowledge base. Check your connection.' };
-        }
-      }
-    },
-
-    // 2. Get Full Page from Notion
-    {
-      name: 'get_knowledge_page',
-      description: 'Get the full content of a specific page from the Notion knowledge base. Use this after searching to read the complete documentation.',
-      parameters: {
-        type: 'object',
-        properties: {
-          pageId: {
-            type: 'string',
-            description: 'The Notion page ID from a previous search result'
-          }
-        },
-        required: ['pageId']
-      },
-      execute: async ({ pageId }) => {
-        try {
-          const response = await fetch(`${API_BASE}/api/notion-knowledge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'get_page', pageId })
-          });
-          const data = await response.json();
-
-          if (!data.success) {
-            return { error: data.error || 'Failed to get page' };
-          }
-
-          return {
-            title: data.title,
-            content: data.content,
-            url: data.url
-          };
-        } catch (error) {
-          console.error('[Knowledge] Notion page fetch error:', error);
-          return { error: 'Failed to fetch page content.' };
-        }
-      }
-    },
-
-    // 3. Search Manufacturer Products
-    {
-      name: 'search_product_info',
-      description: 'Search for product information from manufacturers like Ubiquiti/UniFi, Lutron, Control4, Sonos, and Araknis. Use this when the technician asks about product specs, PoE requirements, or installation notes.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Product name, model number, or description to search for'
           },
           manufacturer: {
             type: 'string',
-            description: 'Optional - filter by manufacturer (ubiquiti, lutron, control4, sonos, araknis)',
-            enum: ['ubiquiti', 'lutron', 'control4', 'sonos', 'araknis']
+            description: 'Optional - filter by manufacturer (e.g., "lutron", "control4", "ubiquiti", "sonos")'
           }
         },
         required: ['query']
       },
       execute: async ({ query, manufacturer }) => {
         try {
-          const response = await fetch(`${API_BASE}/api/manufacturer-docs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'search_product', query, manufacturer })
-          });
-          const data = await response.json();
+          console.log(`[KnowledgeTools] search_knowledge_base: "${query}" (manufacturer: ${manufacturer || 'all'})`);
+          const result = await searchKnowledgeForVoice(query, manufacturer);
 
-          if (!data.success) {
-            return { error: data.error || 'Search failed' };
-          }
-
-          if (data.results.length === 0) {
+          if (!result.found) {
             return {
-              message: `No products found matching "${query}".`,
-              suggestion: 'Try the model number or a different product name.'
+              found: false,
+              message: result.message,
+              suggestions: ['Try different keywords', 'Check spelling', 'Search by topic area']
             };
           }
 
           return {
-            message: `Found ${data.results.length} matching products`,
-            products: data.results.map(p => ({
-              name: p.name,
-              type: p.type,
-              manufacturer: p.manufacturerName || manufacturer,
-              sku: p.sku,
-              specs: p.specs
-            }))
+            found: true,
+            message: `Found ${result.resultCount} results for "${query}"`,
+            answer: result.voiceSummary,
+            documentTitle: result.documentTitle,
+            manufacturer: result.manufacturer,
+            relevance: `${result.relevance}% match`,
+            sources: result.sources
+          };
+        } catch (error) {
+          console.error('[Knowledge] Search error:', error);
+          return { error: 'Failed to search knowledge base. Check your connection.' };
+        }
+      }
+    },
+
+    // 2. Get More Details on a Topic (Azure AI Search)
+    {
+      name: 'get_knowledge_details',
+      description: 'Get more detailed information on a topic from the knowledge base. Use this when the initial search result needs more context or the user asks for more details.',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: {
+            type: 'string',
+            description: 'The topic to get more details about'
+          },
+          documentTitle: {
+            type: 'string',
+            description: 'Optional - specific document title to search within'
+          }
+        },
+        required: ['topic']
+      },
+      execute: async ({ topic, documentTitle }) => {
+        try {
+          // Search with more context to get deeper results
+          const query = documentTitle ? `${topic} ${documentTitle}` : topic;
+          console.log(`[KnowledgeTools] get_knowledge_details: "${query}"`);
+          const result = await searchKnowledgeForVoice(query, null);
+
+          if (!result.found) {
+            return {
+              found: false,
+              message: `No additional details found for "${topic}".`,
+              suggestion: 'Try rephrasing your question or asking about a specific aspect.'
+            };
+          }
+
+          return {
+            found: true,
+            topic: topic,
+            content: result.voiceSummary,
+            documentTitle: result.documentTitle,
+            manufacturer: result.manufacturer,
+            sources: result.sources
+          };
+        } catch (error) {
+          console.error('[Knowledge] Details fetch error:', error);
+          return { error: 'Failed to fetch additional details.' };
+        }
+      }
+    },
+
+    // 3. Search Product Information (Azure AI Search)
+    {
+      name: 'search_product_info',
+      description: 'Search for product information, specs, and installation notes from manufacturers like Ubiquiti/UniFi, Lutron, Control4, Sonos, Araknis, Josh.ai, Savant, Crestron, and more. Use this when the technician asks about product specs, PoE requirements, or installation guidance.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Product name, model number, or description to search for (e.g., "U6-LR specs", "Sivoia QS max width", "Control4 EA-5 installation")'
+          },
+          manufacturer: {
+            type: 'string',
+            description: 'Optional - filter by manufacturer (e.g., "ubiquiti", "lutron", "control4", "sonos", "araknis", "josh", "savant", "crestron")'
+          }
+        },
+        required: ['query']
+      },
+      execute: async ({ query, manufacturer }) => {
+        try {
+          // Add "product" or "specs" context to the query if not already present
+          const searchQuery = query.toLowerCase().includes('spec') || query.toLowerCase().includes('product')
+            ? query
+            : `${query} product specifications`;
+
+          console.log(`[KnowledgeTools] search_product_info: "${searchQuery}" (manufacturer: ${manufacturer || 'all'})`);
+          const result = await searchKnowledgeForVoice(searchQuery, manufacturer);
+
+          if (!result.found) {
+            return {
+              found: false,
+              message: `No product information found for "${query}".`,
+              suggestion: 'Try the model number or check if documentation has been uploaded.'
+            };
+          }
+
+          return {
+            found: true,
+            message: `Found product information for "${query}"`,
+            answer: result.voiceSummary,
+            documentTitle: result.documentTitle,
+            manufacturer: result.manufacturer,
+            relevance: `${result.relevance}% match`,
+            sources: result.sources
           };
         } catch (error) {
           console.error('[Knowledge] Product search error:', error);
@@ -327,45 +333,49 @@ export const useKnowledgeTools = () => {
       }
     },
 
-    // 4. Get Detailed Product Specs
+    // 4. Get Detailed Product Specs (Azure AI Search)
     {
       name: 'get_product_specs',
-      description: 'Get detailed specifications and installation notes for a specific product. Use this when the technician needs PoE requirements, power specs, or installation guidance.',
+      description: 'Get detailed specifications and installation notes for a specific product. Use when the technician needs PoE requirements, power specs, dimensions, or installation guidance.',
       parameters: {
         type: 'object',
         properties: {
           manufacturer: {
             type: 'string',
-            description: 'The manufacturer (ubiquiti, lutron, control4, sonos, araknis)',
-            enum: ['ubiquiti', 'lutron', 'control4', 'sonos', 'araknis']
+            description: 'The manufacturer (e.g., "ubiquiti", "lutron", "control4", "sonos", "araknis", "josh", "savant", "crestron")'
           },
           product: {
             type: 'string',
-            description: 'The product SKU or model number'
+            description: 'The product name, SKU, or model number'
           }
         },
-        required: ['manufacturer', 'product']
+        required: ['product']
       },
       execute: async ({ manufacturer, product }) => {
         try {
-          const response = await fetch(`${API_BASE}/api/manufacturer-docs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'get_specs', manufacturer, product })
-          });
-          const data = await response.json();
+          // Build a detailed search query
+          const searchQuery = manufacturer
+            ? `${manufacturer} ${product} specifications installation`
+            : `${product} specifications installation`;
 
-          if (!data.success) {
-            return { error: data.error, available: data.available };
+          console.log(`[KnowledgeTools] get_product_specs: "${searchQuery}"`);
+          const result = await searchKnowledgeForVoice(searchQuery, manufacturer);
+
+          if (!result.found) {
+            return {
+              found: false,
+              error: `No specifications found for ${manufacturer ? manufacturer + ' ' : ''}${product}`,
+              suggestion: 'Try searching with the exact model number or product name.'
+            };
           }
 
           return {
-            manufacturer: data.manufacturer,
-            product: data.product.name,
-            type: data.product.type,
-            specs: data.product.specs,
-            installNotes: data.product.installNotes || data.product.measurementNotes,
-            docLink: data.docLink
+            found: true,
+            manufacturer: result.manufacturer || manufacturer,
+            product: product,
+            specs: result.voiceSummary,
+            documentTitle: result.documentTitle,
+            sources: result.sources
           };
         } catch (error) {
           console.error('[Knowledge] Product specs error:', error);
@@ -377,39 +387,32 @@ export const useKnowledgeTools = () => {
     // 5. List Available Manufacturers
     {
       name: 'list_manufacturers',
-      description: 'List all available manufacturers and their product categories in the documentation database.',
+      description: 'List all available manufacturers in the knowledge base. Documentation is available for major home automation manufacturers.',
       parameters: {
         type: 'object',
         properties: {}
       },
       execute: async () => {
-        try {
-          const response = await fetch(`${API_BASE}/api/manufacturer-docs`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'list_manufacturers' })
-          });
-          const data = await response.json();
+        // Return the known manufacturers that have documentation in SharePoint
+        // These are the folders in the SharePoint Knowledge library
+        const manufacturers = [
+          { name: 'Lutron', slug: 'lutron', categories: ['Shades', 'Lighting Controls', 'Keypads', 'Processors'] },
+          { name: 'Control4', slug: 'control4', categories: ['Controllers', 'Drivers', 'Keypads', 'Audio'] },
+          { name: 'Ubiquiti', slug: 'ubiquiti', categories: ['Access Points', 'Switches', 'Security', 'Network'] },
+          { name: 'Sonos', slug: 'sonos', categories: ['Speakers', 'Amplifiers', 'Installation'] },
+          { name: 'Araknis', slug: 'araknis', categories: ['Switches', 'Access Points', 'Network'] },
+          { name: 'Josh.ai', slug: 'josh', categories: ['Voice Control', 'Integration'] },
+          { name: 'Savant', slug: 'savant', categories: ['Controllers', 'Audio', 'Video'] },
+          { name: 'Crestron', slug: 'crestron', categories: ['Control Systems', 'Audio/Video'] },
+          { name: 'Snap One', slug: 'snapone', categories: ['OvrC', 'Luma', 'Episode'] },
+          { name: 'Nice/ELAN', slug: 'elan', categories: ['Control Systems', 'Security'] }
+        ];
 
-          if (!data.success) {
-            return { error: data.error };
-          }
-
-          const manufacturers = Object.entries(data.manufacturers).map(([key, mfr]) => ({
-            id: key,
-            name: mfr.name,
-            categories: mfr.categories,
-            productCount: Object.keys(mfr.products || {}).length
-          }));
-
-          return {
-            message: `${manufacturers.length} manufacturers available`,
-            manufacturers
-          };
-        } catch (error) {
-          console.error('[Knowledge] List manufacturers error:', error);
-          return { error: 'Failed to list manufacturers.' };
-        }
+        return {
+          message: `${manufacturers.length} manufacturers with documentation available`,
+          manufacturers: manufacturers,
+          hint: 'Use search_knowledge_base or search_product_info with a manufacturer filter to find specific documentation.'
+        };
       }
     },
 
@@ -445,10 +448,10 @@ export const useKnowledgeTools = () => {
       }
     },
 
-    // 7. Troubleshoot Issue
+    // 7. Troubleshoot Issue (Azure AI Search + Built-in)
     {
       name: 'troubleshoot_issue',
-      description: 'Get troubleshooting steps for common issues. Checks company knowledge base first, then falls back to built-in troubleshooting guides.',
+      description: 'Get troubleshooting steps for common issues. Searches the knowledge base first, then falls back to built-in troubleshooting guides for network, WiFi, shades, and PoE issues.',
       parameters: {
         type: 'object',
         properties: {
@@ -460,28 +463,23 @@ export const useKnowledgeTools = () => {
         required: ['issue']
       },
       execute: async ({ issue }) => {
-        // First try to find in Notion knowledge base
+        // First try to find in Azure AI Search knowledge base
         try {
-          const response = await fetch(`${API_BASE}/api/notion-knowledge`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'search', query: `troubleshoot ${issue}` })
-          });
-          const data = await response.json();
+          console.log(`[KnowledgeTools] troubleshoot_issue: "${issue}"`);
+          const result = await searchKnowledgeForVoice(`troubleshoot ${issue}`, null);
 
-          if (data.success && data.results.length > 0) {
-            // Found something in Notion - return the first result
-            const topResult = data.results[0];
+          if (result.found) {
             return {
               source: 'knowledge_base',
-              title: topResult.title,
-              preview: topResult.preview,
-              pageId: topResult.id,
-              message: 'Found in company knowledge base. Say "read more" for full content.'
+              issue: issue,
+              answer: result.voiceSummary,
+              documentTitle: result.documentTitle,
+              manufacturer: result.manufacturer,
+              sources: result.sources
             };
           }
         } catch (error) {
-          console.warn('[Knowledge] Notion search failed, using built-in:', error);
+          console.warn('[Knowledge] Azure search failed, using built-in:', error);
         }
 
         // Fall back to built-in troubleshooting
@@ -806,13 +804,14 @@ export const useKnowledgeTools = () => {
     },
 
     // ============================================
-    // RAG KNOWLEDGE BASE SEARCH
+    // ADDITIONAL SEARCH ALIAS
     // ============================================
 
-    // 15. Search Uploaded Manufacturer Documentation (RAG)
+    // 15. Search Manufacturer Docs (alias for search_knowledge_base with different wording)
+    // Kept for backward compatibility and to give the AI multiple entry points
     {
       name: 'search_manufacturer_docs',
-      description: 'Search uploaded technical documentation from manufacturers (Lutron, Control4, Ubiquiti, Sonos, Araknis, etc.). Uses semantic search to find relevant information from PDFs, manuals, and spec sheets. Use this when the tech asks about installation procedures, troubleshooting, or product specs that might be in uploaded documentation.',
+      description: 'Search uploaded manufacturer documentation. Same as search_knowledge_base but named differently for when tech asks specifically about "manufacturer docs" or "uploaded documentation".',
       parameters: {
         type: 'object',
         properties: {
