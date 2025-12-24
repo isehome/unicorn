@@ -292,13 +292,25 @@ ${buildContextString(state)}`;
 
         isPlaying.current = true;
         const data = audioQueue.current.shift();
-        addDebugLog(`Playing chunk: ${data.length} samples, queue remaining: ${audioQueue.current.length}`);
+
+        // Check audio data validity - calculate peak amplitude
+        let maxAmp = 0;
+        for (let i = 0; i < Math.min(data.length, 1000); i++) {
+            maxAmp = Math.max(maxAmp, Math.abs(data[i]));
+        }
+        addDebugLog(`Playing chunk: ${data.length} samples, queue: ${audioQueue.current.length}, peak: ${maxAmp.toFixed(3)}, ctx state: ${audioContext.current.state}`);
 
         try {
             // Resample from Gemini's 24kHz to device sample rate
             const deviceRate = audioContext.current.sampleRate;
             const resampled = resampleAudio(data, GEMINI_OUTPUT_SAMPLE_RATE, deviceRate);
-            addDebugLog(`Resampled: ${data.length} -> ${resampled.length} samples (24kHz -> ${deviceRate}Hz)`);
+
+            // Check resampled data validity
+            let resampledMax = 0;
+            for (let i = 0; i < Math.min(resampled.length, 1000); i++) {
+                resampledMax = Math.max(resampledMax, Math.abs(resampled[i]));
+            }
+            addDebugLog(`Resampled: ${data.length} -> ${resampled.length}, peak: ${resampledMax.toFixed(3)}`);
 
             // Create audio buffer
             const buffer = audioContext.current.createBuffer(1, resampled.length, deviceRate);
