@@ -10,8 +10,9 @@ import { supabase } from '../lib/supabase';
 
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
-// Use gemini-2.0-flash-live-001 for BidiGenerateContent (realtime audio)
-const LATEST_MODEL = 'gemini-2.0-flash-live-001';
+// Use Gemini 2.0 Flash for Live API (BidiGenerateContent)
+// Note: gemini-2.0-flash-exp supports the Live API with v1beta
+const LATEST_MODEL = 'gemini-2.0-flash-exp';
 
 const AIBrainContext = createContext(null);
 
