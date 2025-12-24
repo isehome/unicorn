@@ -1190,9 +1190,10 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 | `/api/graph-file` | SharePoint download |
 | `/api/sharepoint-thumbnail` | Get thumbnails |
 | `/api/public-po` | Public PO view |
-| `/api/knowledge-upload` | **NEW** Upload documents for RAG knowledge base |
-| `/api/knowledge-process` | **NEW** Process uploaded docs (extract, chunk, embed) |
-| `/api/knowledge-search` | **NEW** Semantic search across knowledge base |
+| `/api/azure-ai-search` | **PRIMARY** Azure AI Search for knowledge base (semantic search) |
+| `/api/knowledge-upload` | (Legacy) Upload documents for RAG knowledge base |
+| `/api/knowledge-process` | (Legacy) Process uploaded docs (extract, chunk, embed) |
+| `/api/knowledge-search` | (Legacy) Semantic search via Supabase pgvector |
 
 ---
 
@@ -1500,49 +1501,100 @@ config.setup.tools = [{
 
 **Official Documentation:** https://ai.google.dev/api/live
 
-## Architecture Diagram
+## Architecture: Single Source of Truth (SSOT) - Updated 2025-12-24
+
+The Voice AI system was redesigned from 50+ fragmented tools to a clean **5 meta-tool architecture**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         User's iPhone/iPad                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │ Microphone  │───▶│ VoiceCopilot     │───▶│ Gemini Live   │  │
-│  │ (48kHz)     │    │ Context          │    │ WebSocket     │  │
-│  └─────────────┘    │ - Downsample     │    │ (16kHz PCM)   │  │
-│                     │ - Base64 encode  │    └───────┬───────┘  │
-│  ┌─────────────┐    │                  │            │          │
-│  │ Speaker     │◀───│ - Resample 24k   │◀───────────┘          │
-│  │ (48kHz)     │    │ - Play audio     │    Audio Response     │
+│  │ Microphone  │───▶│ AIBrainContext   │───▶│ Gemini Live   │  │
+│  │ (48kHz)     │    │ 5 Meta-Tools     │    │ WebSocket     │  │
+│  └─────────────┘    │ - get_context    │    │ (16kHz PCM)   │  │
+│                     │ - execute_action │    └───────┬───────┘  │
+│  ┌─────────────┐    │ - search_knowledge│           │          │
+│  │ Speaker     │◀───│ - navigate       │◀───────────┘          │
+│  │ (48kHz)     │    │ - web_search     │    Audio Response     │
 │  └─────────────┘    └────────┬─────────┘                       │
 │                              │                                  │
 │                     ┌────────▼─────────┐                       │
-│                     │ Tool Registry    │                       │
-│                     │ - Global tools   │                       │
-│                     │ - Context tools  │                       │
+│                     │ AppStateContext  │                       │
+│                     │ Single Source of │                       │
+│                     │ Truth (SSOT)     │                       │
 │                     └────────┬─────────┘                       │
 │                              │                                  │
 │         ┌────────────────────┼────────────────────┐            │
 │         ▼                    ▼                    ▼            │
 │  ┌─────────────┐    ┌──────────────┐    ┌─────────────┐       │
-│  │ useAgent    │    │ useShade     │    │ Page-       │       │
-│  │ Context     │    │ Tools        │    │ Specific    │       │
-│  │ (navigation)│    │ (measuring)  │    │ Tools       │       │
+│  │ PMDashboard │    │ ShadeDetail  │    │ ShadeManager│       │
+│  │ publishState│    │ publishState │    │ publishState│       │
+│  │ + actions   │    │ + actions    │    │ + actions   │       │
 │  └─────────────┘    └──────────────┘    └─────────────┘       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Why SSOT?
+
+**Before (50+ tools):**
+- Each page registered its own tools with fragmented context
+- AI didn't know what page it was on without calling multiple tools
+- Stale closure bugs when tools captured old state
+- Complex registration/unregistration lifecycle
+
+**After (5 meta-tools):**
+- Single `get_context` tool returns ALL relevant state
+- Components publish their state to AppStateContext
+- Components register action handlers that AI can invoke
+- Clean separation: AI gets context → decides what to do → executes action
+
 ## Core Components
 
-### 1. VoiceCopilotProvider (`src/contexts/VoiceCopilotContext.js`)
-The "brain" of the voice AI system.
+### 1. AppStateContext (`src/contexts/AppStateContext.js`)
+**The Single Source of Truth** for all AI-relevant application state.
 
-**Responsibilities:**
-- WebSocket connection to Gemini Live API
-- Audio I/O (microphone capture, speaker playback)
-- Sample rate conversion (iOS uses 48kHz, Gemini uses 16kHz in / 24kHz out)
-- Tool registry management
-- Session state management
+**Purpose:**
+- Centralized store that components publish their state to
+- AI calls `get_context` once and gets everything it needs
+- Components register action handlers that AI can invoke
+
+**API:**
+```javascript
+const {
+    publishState,      // Update context with current view state
+    getState,          // Get current state (for AI tools)
+    registerActions,   // Register action handlers
+    unregisterActions, // Cleanup action handlers
+    executeAction,     // Execute a registered action
+    getAvailableActions // List what actions are available
+} = useAppState();
+```
+
+**State Shape:**
+```javascript
+{
+    view: 'shade-detail' | 'shade-list' | 'dashboard' | 'prewire' | etc,
+    project: { id, name, address },
+    shade: { id, name, roomName },       // When on shade detail
+    shades: [{ id, name, hasMeasurements }], // When on shade list
+    rooms: ['Living Room', 'Kitchen'],   // When on shade list
+    form: { widthTop, widthMiddle, ... } // Current form values
+}
+```
+
+### 2. AIBrainContext (`src/contexts/AIBrainContext.js`)
+The Voice AI agent with 5 meta-tools.
+
+**5 Meta-Tools:**
+
+| Tool | Description |
+|------|-------------|
+| `get_context` | **CALL FIRST** - Returns current view, project, shade, form data, available actions |
+| `execute_action` | Execute registered action: `highlight_field`, `set_measurement`, `open_shade`, etc. |
+| `search_knowledge` | Search Azure AI knowledge base for Lutron, Ubiquiti, Control4 docs |
+| `navigate` | Go to dashboard, prewire, settings, or project by name |
+| `web_search` | Search web for general info not in knowledge base |
 
 **Key States:**
 - `idle` - No active session
@@ -1551,290 +1603,160 @@ The "brain" of the voice AI system.
 - `speaking` - Playing Gemini's audio response
 - `error` - Something went wrong
 
-**iOS Safari Compatibility:**
-- Uses `webkitAudioContext` fallback
-- Handles blob responses (Safari sends WebSocket data as Blob)
-- No AudioContext constructor options (iOS ignores them)
-- Must resume AudioContext after user gesture
+### 3. Component Integration Pattern
 
-### 2. useAgentContext (`src/hooks/useAgentContext.js`)
-Provides **location awareness** and **global navigation** tools.
+**Each component that needs Voice AI:**
+1. Imports `useAppState`
+2. Publishes its state via `publishState()` in useEffect
+3. Registers action handlers via `registerActions()`
+4. Cleans up actions on unmount
 
-**Responsibilities:**
-- Tracks where user is in the app (which project, which section)
-- Registers global tools when voice session is active
-- Enables project switching via voice
+**Example (ShadeDetailPage.js):**
+```javascript
+import { useAppState } from '../../contexts/AppStateContext';
 
-**Global Tools (Always Available):**
-| Tool | Description |
-|------|-------------|
-| `get_current_location` | Returns current section, project, available actions |
-| `list_projects` | Lists all projects (with optional status filter) |
-| `navigate_to_project` | Go to a project by ID or name search |
-| `navigate_to_section` | Go to dashboard, issues, todos, people, etc. |
-| `go_back` | Navigate back |
+const ShadeDetailPage = () => {
+    const { publishState, registerActions, unregisterActions } = useAppState();
+    const [formData, setFormData] = useState({...});
+    const [activeField, setActiveField] = useState(null);
 
-### 3. Page-Specific Tool Hooks
+    // 1. Publish state when it changes
+    useEffect(() => {
+        publishState({
+            view: 'shade-detail',
+            project: { id: project.id, name: project.name },
+            shade: { id: shade.id, name: shade.name, roomName: shade.room?.name },
+            form: formData,
+        });
+    }, [shade, formData, project, publishState]);
 
-**useShadeManagerTools (`src/hooks/useShadeManagerTools.js`)**
-Registered when user is on the shade list page.
+    // 2. Register action handlers
+    useEffect(() => {
+        const actions = {
+            highlight_field: ({ field }) => {
+                setActiveField(field);
+                setTimeout(() => setActiveField(null), 3000);
+                return { success: true };
+            },
+            set_measurement: ({ field, value }) => {
+                setFormData(prev => ({ ...prev, [field]: value }));
+                return { success: true };
+            },
+            save_measurements: async () => {
+                await flushPendingSaves();
+                return { success: true };
+            },
+        };
+        registerActions(actions);
+        return () => unregisterActions(Object.keys(actions));
+    }, [formData, registerActions, unregisterActions]);
+};
+```
 
-| Tool | Description |
-|------|-------------|
-| `get_shades_overview` | Get total shades, pending count, grouped by room |
-| `list_shades_in_room` | List all shades in a specific room |
-| `open_shade_for_measuring` | Open a shade by name or next pending in room |
-| `get_next_pending_shade` | Get info about next shade that needs measuring |
-| `expand_room` | Expand/collapse a room section in the list |
+### 4. Available Actions by View
 
-**useShadeTools (`src/hooks/useShadeTools.js`)** - DEPRECATED
-Use `useShadeDetailTools` instead (added 2025-12-20).
+**shade-detail:**
+| Action | Parameters | Description |
+|--------|------------|-------------|
+| `highlight_field` | `{ field }` | Highlight measurement field with violet glow |
+| `set_measurement` | `{ field, value }` | Set a measurement value |
+| `clear_measurement` | `{ field }` | Clear a measurement field |
+| `read_back` | - | Read back all current measurements |
+| `save_measurements` | - | Flush pending saves to database |
 
-**useShadeDetailTools (`src/hooks/useShadeDetailTools.js`)** - Added 2025-12-20
-Registered when user is on the ShadeDetailPage. This is the primary hook for shade measuring voice AI.
+**shade-list:**
+| Action | Parameters | Description |
+|--------|------------|-------------|
+| `open_shade` | `{ shadeId }` or `{ shadeName }` | Navigate to shade detail |
+| `go_to_next_pending` | - | Navigate to first shade without measurements |
 
-| Tool | Description |
-|------|-------------|
-| `get_shade_context` | Get shade name, room, quoted dimensions, M1/M2 completion status, current field values |
-| `set_measurement` | Record a dimension (e.g., "top_width", "middle_width", "bottom_width", "height") |
-| `read_back_measurements` | Read all recorded measurements for verification |
-| `clear_measurement` | Clear/reset a specific measurement field |
-| `mark_measurement_complete` | Mark the current measurement set (M1 or M2) as complete |
-| `navigate_to_field` | Navigate to and highlight a specific measurement field (shows violet glow for 5 seconds) |
-| `switch_measurement_tab` | Switch between M1 and M2 tabs |
+**dashboard:**
+| Action | Parameters | Description |
+|--------|------------|-------------|
+| `list_projects` | - | Get all projects |
+| `open_project` | `{ projectId }` or `{ projectName }` | Navigate to project |
 
-**Measurement Fields (4 total per tab):**
-- Width: 3 fields (top_width, middle_width, bottom_width) - measures at different heights
-- Height: 1 field (height) - single measurement
+### 5. VoiceCopilotOverlay (`src/components/VoiceCopilotOverlay.js`)
+Floating mic button + debug panel.
 
-**Field Highlighting (Updated 2025-12-20):**
-The `navigate_to_field` tool highlights fields with a violet glow so technicians know which field the AI is asking about. This is critical for hands-free measuring workflows. Fields receive a 5-second violet ring animation when the AI prompts for that measurement.
+**Updated for SSOT:**
+- Now imports from `AIBrainContext` (not VoiceCopilotContext)
+- Uses `startSession()` / `endSession()` pattern
+- Debug panel shows status, audio levels, transcript
 
-**useKnowledgeTools (`src/hooks/useKnowledgeTools.js`)** - Added 2025-12-20
-Provides RAG-powered knowledge lookup for voice AI.
-
-| Tool | Description |
-|------|-------------|
-| `search_manufacturer_docs` | Search manufacturer documentation (spec sheets, install guides, troubleshooting) |
-| `get_lutron_shade_info` | Get Lutron-specific shade knowledge from embedded data |
-
-### 4. User Settings (`src/components/UserSettings/AISettings.js`)
-
-**UI Design:** All settings are in collapsible sections (collapsed by default) to save screen space.
+## User Settings (`src/components/UserSettings/AISettings.js`)
 
 **Sections (all collapsible):**
 - **Persona Config**: "Field Partner" (brief) vs "Teacher" (detailed)
 - **Voice Selection**: Puck, Charon, Kore, Fenrir, Aoede
-- **Model Selection**: Choose between Gemini 2.5 Flash (recommended) or 2.0 Flash Live
-- **VAD Settings**: Voice Activity Detection sensitivity (start/end)
+- **Model Selection**: Gemini 2.5 Flash (recommended)
+- **VAD Settings**: Voice Activity Detection sensitivity
 - **Custom Instructions**: User-defined context for AI
 - **Audio Diagnostics**: Test speaker and microphone
-- **Conversation Transcript**: Copyable log of AI responses for debugging
-
-**Collapsible Pattern:**
-```jsx
-const [expandedSections, setExpandedSections] = useState({
-    persona: false,
-    voice: false,
-    model: false,
-    vad: false,
-    context: false,
-    diagnostics: false,
-    transcript: false
-});
-
-const toggleSection = (section) => {
-    setExpandedSections(prev => ({
-        ...prev,
-        [section]: !prev[section]
-    }));
-};
-```
-
-## How Tools Work
-
-### Tool Definition Format
-```javascript
-const myTool = {
-    name: "tool_name",
-    description: "What this tool does - be specific for AI",
-    parameters: {
-        type: "object",  // lowercase!
-        properties: {
-            paramName: {
-                type: "string", // or "number", "boolean" (lowercase)
-                description: "What this parameter is for"
-            }
-        },
-        required: ["paramName"] // Optional
-    },
-    execute: async ({ paramName }) => {
-        // Do something - this runs locally when Gemini calls the tool
-        return { success: true, message: "Done" };
-    }
-};
-```
-
-**Note:** Gemini Live API does NOT support dynamic tool updates mid-session. Tools are declared in the setup config only. New tools registered after session start won't be available until the next session.
-
-### Avoiding Stale Closures with Refs
-
-**CRITICAL:** Tool hooks use refs to prevent stale closure issues. When a tool is registered, its `execute` function captures the current state. Without refs, tools would use outdated callbacks.
-
-**Pattern in VoiceCopilotContext.js:**
-```javascript
-// Ref to track current tools (avoids stale closure in socket.onopen)
-const activeToolsRef = useRef(activeTools);
-useEffect(() => {
-    activeToolsRef.current = activeTools;
-}, [activeTools]);
-
-// In socket.onopen, use ref instead of state directly:
-socket.onopen = () => {
-    // ✅ CORRECT - Uses ref for current value
-    const currentTools = activeToolsRef.current;
-    const toolDeclarations = Array.from(currentTools.values())...
-
-    // ❌ WRONG - Would capture initial empty state
-    const toolDeclarations = Array.from(activeTools.values())...
-};
-```
-
-**Pattern in Tool Hooks (useShadeTools.js, etc.):**
-```javascript
-// Refs for all callbacks that tools need to call
-const setFormDataRef = useRef(setFormData);
-const onSaveRef = useRef(onSave);
-
-// Keep refs updated
-useEffect(() => {
-    setFormDataRef.current = setFormData;
-    onSaveRef.current = onSave;
-}, [setFormData, onSave]);
-
-// In tool execute functions, ALWAYS use refs:
-execute: async ({ value }) => {
-    // ✅ CORRECT - Uses ref
-    const setFormDataFn = setFormDataRef.current;
-    if (setFormDataFn) {
-        setFormDataFn(prev => ({ ...prev, [key]: value }));
-    }
-
-    // ❌ WRONG - Captures stale callback
-    setFormData(prev => ({ ...prev, [key]: value }));
-}
-```
-
-### Registering Tools
-```javascript
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
-
-const MyComponent = () => {
-    const { registerTools, unregisterTools, status } = useVoiceCopilot();
-
-    useEffect(() => {
-        // Only register when voice session is active
-        if (status === 'listening' || status === 'speaking') {
-            registerTools([myTool]);
-            return () => unregisterTools(['tool_name']);
-        }
-    }, [status]);
-};
-```
 
 ## System Instructions (AI Prompt)
 
-The AI receives detailed system instructions that define its behavior. Key sections:
+The AI receives system instructions defining behavior. Key sections:
 
-**M1/M2 Workflow Understanding:**
+**Context-First Workflow:**
 ```
-SHADE MEASURING WORKFLOW:
-Each shade needs TWO rounds of measurements:
-- M1 (First Measure): Initial rough opening measurements taken during pre-wire
-- M2 (Second Measure): Verification measurements taken before installation
+# UNICORN Field Assistant
 
-When the tech says "measure" or "let's measure", they want to record measurements - don't assume a shade is already done!
-A shade can have M1 complete but still need M2. Always check which tab they're on (M1 or M2).
-```
+## Capabilities
+1. App Navigation - projects, shades, prewire, settings
+2. Shade Measuring - guide through window measurements
+3. Knowledge Base - Lutron, Ubiquiti, Control4, Sonos docs
+4. Web Search - general information
+5. Execute Actions - interact with current view
 
-**Field Navigation Instructions:**
-```
-IMPORTANT FIELD NAVIGATION:
-- When prompting for a measurement, use navigate_to_field to highlight the field
-- This shows the tech exactly which field you're asking about
-- The highlighted field will glow violet so the tech knows where to look
-```
-
-**Navigation Examples:**
-```
-NAVIGATION:
-When the user asks to go somewhere, use the navigation tools:
-- "Go to settings" → use navigate_to_section with section="settings"
-- "Open [project name]" → use navigate_to_project with projectName
-- "Go to shades" → use navigate_to_project with section="shades"
-- "Show me the dashboard" → use navigate_to_section with section="dashboard"
+## Rules
+- ALWAYS call get_context FIRST
+- Use execute_action for app interactions
+- Use search_knowledge for product questions
+- Use web_search for general info
 ```
 
-## Adding a New Skill
+**Measurement Workflow:**
+```
+## Measurement Order
+1. Top Width -> 2. Middle Width -> 3. Bottom Width -> 4. Height -> 5. Mount Depth
 
-### Step 1: Create a Tool Hook
+For each: highlight_field first, ask for value, set_measurement, confirm, next field.
+```
+
+## Adding Voice AI to a New Component
+
+### Step 1: Add AppState Integration
 ```javascript
-// src/hooks/useMyFeatureTools.js
-import { useEffect, useMemo, useRef } from 'react';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useAppState } from '../contexts/AppStateContext';
 
-export const useMyFeatureTools = ({ data, onSave }) => {
-    const { registerTools, unregisterTools } = useVoiceCopilot();
+const MyNewComponent = () => {
+    const { publishState, registerActions, unregisterActions } = useAppState();
 
-    // IMPORTANT: Use refs to avoid stale closures
-    const onSaveRef = useRef(onSave);
-    const dataRef = useRef(data);
-
+    // Publish state
     useEffect(() => {
-        onSaveRef.current = onSave;
-        dataRef.current = data;
-    }, [onSave, data]);
+        publishState({
+            view: 'my-view',
+            // ... relevant data for AI
+        });
+    }, [/* dependencies */, publishState]);
 
-    const tools = useMemo(() => [
-        {
-            name: "my_action",
-            description: "Does something with the current item",
-            parameters: {
-                type: "object",  // lowercase!
-                properties: {
-                    value: { type: "string", description: "The value to set" }
-                },
-                required: ["value"]
-            },
-            execute: async ({ value }) => {
-                // Use ref to get current callback
-                const onSaveFn = onSaveRef.current;
-                if (onSaveFn) {
-                    onSaveFn(value);
-                }
-                return { success: true, message: `Set to ${value}` };
+    // Register actions
+    useEffect(() => {
+        const actions = {
+            my_action: ({ param }) => {
+                // Do something
+                return { success: true };
             }
-        }
-    ], []); // Minimal deps - refs handle state
-
-    useEffect(() => {
-        registerTools(tools);
-        return () => unregisterTools(tools.map(t => t.name));
-    }, [registerTools, unregisterTools, tools]);
+        };
+        registerActions(actions);
+        return () => unregisterActions(Object.keys(actions));
+    }, [registerActions, unregisterActions]);
 };
 ```
 
-### Step 2: Use in Component
-```javascript
-import { useMyFeatureTools } from '../hooks/useMyFeatureTools';
-
-const MyFeatureModal = ({ data, onSave }) => {
-    // This registers tools when modal is open
-    useMyFeatureTools({ data, onSave });
-
-    return <div>...</div>;
-};
-```
+### Step 2: Update AIBrainContext (if needed)
+If you need AI to understand the new view, update `buildContextString()` and `getContextHint()` in AIBrainContext.js.
 
 ## Debugging
 
@@ -1844,98 +1766,38 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 - WebSocket state
 - Audio level meter
 - Chunks sent/received
-- Log messages
-
-### Settings > AI Copilot Settings
-- Platform detection (iOS/Safari)
-- Test Speaker button (plays 440Hz tone)
-- Test Microphone button (measures input level)
-- Debug log viewer
+- Last transcript
 
 ### Common Issues
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
-| WebSocket 1007 error | Wrong VAD enum values | Use `START_SENSITIVITY_LOW` / `END_SENSITIVITY_HIGH` (not just "LOW"/"HIGH") |
-| WebSocket 1007 error | snake_case field names | Use camelCase: `generationConfig`, `realtimeInputConfig`, etc. |
-| WebSocket 1007 error | Wrong API version | Use `v1beta` not `v1alpha` |
-| "Blob data unexpected" | Old code before fix | Update VoiceCopilotContext.js |
+| WebSocket 1007 error | Wrong VAD enum values | Use `START_SENSITIVITY_LOW` / `END_SENSITIVITY_HIGH` |
 | No audio output | AudioContext suspended | Ensure user taps to start (iOS requirement) |
 | Audio level 0% | Mic permission denied | Check browser permissions |
-| WebSocket error | Invalid API key | Check REACT_APP_GEMINI_API_KEY in Vercel |
-| Tools not working | Not registered before session | Tools must be registered before startSession() |
-| Tools not working mid-session | Dynamic tool registration | Gemini doesn't support adding tools mid-session; restart session |
-| **Tools empty on session start** | **Stale closure bug** | **Use `activeToolsRef` pattern - see "Avoiding Stale Closures" above** |
-| AI says "shade already measured" | M1/M2 confusion | Check `get_shade_context` returns M1/M2 status; AI should check which tab user is on |
-| Navigation commands fail | Stale navigate function | Use `navigateRef` pattern in useAgentContext.js |
-| Field highlight not working | Missing setActiveField callback | Pass `setActiveField` prop to useShadeTools hook |
-
-## Auto-Save Pattern
-
-**ShadeDetailPage implements auto-save on navigation away:**
-
-All shade detail fields (measurements, pocket dimensions, installation notes) auto-save as users type. However, debounced saves might not complete if the user navigates away quickly. The solution:
-
-```javascript
-// Track pending saves in a ref
-const pendingSavesRef = useRef(new Map());
-
-// When updating a field, track it as pending
-const handleFieldChange = (field, value) => {
-    pendingSavesRef.current.set(field, value);
-    debouncedSave(field, value);
-};
-
-// Flush on unmount (React navigation)
-useEffect(() => {
-    return () => {
-        const saves = Array.from(pendingSavesRef.current.entries());
-        if (saves.length > 0 && shadeId) {
-            const updates = {};
-            saves.forEach(([field, value]) => {
-                updates[field] = value;
-            });
-            updates.updated_at = new Date().toISOString();
-            supabase.from('project_shades').update(updates).eq('id', shadeId);
-        }
-    };
-}, [shadeId]);
-
-// Handle browser navigation (close tab, refresh)
-useEffect(() => {
-    const handleBeforeUnload = () => {
-        const saves = Array.from(pendingSavesRef.current.entries());
-        if (saves.length > 0 && shadeId) {
-            const updates = {};
-            saves.forEach(([field, value]) => {
-                updates[field] = value;
-            });
-            navigator.sendBeacon('/api/auto-save', JSON.stringify({
-                table: 'project_shades',
-                id: shadeId,
-                updates
-            }));
-        }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-}, [shadeId]);
-```
+| Actions not working | Not registered | Check component registers actions in useEffect |
+| AI says "no context" | publishState not called | Ensure component publishes state |
+| Stale state in actions | Closure captured old state | Use refs or include deps in action registration |
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/contexts/VoiceCopilotContext.js` | Core provider - WebSocket, audio, tools |
-| `src/hooks/useAgentContext.js` | Location awareness, navigation tools |
-| `src/hooks/useShadeManagerTools.js` | Shade list page tools (overview, open shade) |
-| `src/hooks/useShadeDetailTools.js` | **NEW** ShadeDetailPage voice tools (measurements, field highlighting) |
-| `src/hooks/useShadeTools.js` | DEPRECATED - use useShadeDetailTools instead |
-| `src/hooks/useKnowledgeTools.js` | **NEW** RAG knowledge lookup tools for voice AI |
+| `src/contexts/AIBrainContext.js` | **NEW** Voice AI agent with 5 meta-tools |
+| `src/contexts/AppStateContext.js` | **NEW** Single Source of Truth for AI state |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
-| `src/components/UserSettings/AISettings.js` | Voice/persona/model settings + diagnostics (collapsible sections) |
-| `src/components/Shades/ShadeDetailPage.js` | Full page shade measurement with auto-save on navigation |
-| `src/data/lutronShadeKnowledge.js` | **NEW** Embedded Lutron shade specifications for AI |
+| `src/components/Shades/ShadeDetailPage.js` | Shade measuring with AppState integration |
+| `src/components/Shades/ShadeManager.js` | Shade list with AppState integration |
+| `src/components/PMDashboard.js` | Dashboard with AppState integration |
+| `src/components/UserSettings/AISettings.js` | Voice/persona/model settings |
+
+### Deprecated Files (Old Architecture)
+These files are no longer used but may still exist:
+- `src/contexts/VoiceCopilotContext.js` - Replaced by AIBrainContext
+- `src/hooks/useAgentContext.js` - Replaced by AppStateContext
+- `src/hooks/useShadeDetailTools.js` - Actions now in ShadeDetailPage
+- `src/hooks/useShadeManagerTools.js` - Actions now in ShadeManager
+- `src/hooks/useKnowledgeTools.js` - Now integrated in AIBrainContext
 
 ## Environment Variables
 
@@ -2157,277 +2019,210 @@ Add new Supabase linter issues or technical debt items here as they arise.
 
 ---
 
-## RAG Knowledge Base System (Added 2025-12-20)
+## RAG Knowledge Base System (Updated 2025-12-23)
 
-**Status:** Implemented and deployed
+**Status:** Production - Azure AI Search + SharePoint Integration
 
 ### Overview
 
-A multi-manufacturer document storage and semantic search system that enables:
-- Upload PDFs, Markdown, and text files for any manufacturer
-- Automatic text extraction and intelligent chunking
-- OpenAI embeddings (text-embedding-ada-002) for semantic search
-- pgvector for high-performance vector similarity search
-- Full-text search fallback using PostgreSQL GIN indexes
-- Voice AI integration for hands-free knowledge lookup
+The knowledge base system now uses **Azure AI Search** with **SharePoint** as the document store. This replaced the earlier Supabase pgvector approach for better scalability and enterprise integration.
 
-### Architecture
+**Key Features:**
+- Documents stored in SharePoint Knowledge Library (indexed automatically)
+- Azure AI Search provides semantic search with answers & captions
+- Notion Knowledge Base exports directly to SharePoint
+- Voice AI (`search_manufacturer_docs` tool) queries Azure AI Search
+- No manual embedding generation - Azure handles it automatically
+
+### Architecture (Current)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Knowledge Flow                              │
+│                   Azure AI Search RAG Flow                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  Upload PDF/MD/TXT                                              │
+│  SOURCE: Notion Knowledge Base                                  │
 │        │                                                         │
 │        ▼                                                         │
-│  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │ knowledge-  │───▶│ knowledge-       │───▶│ knowledge_    │  │
-│  │ upload.js   │    │ process.js       │    │ chunks        │  │
-│  │             │    │ - Extract text   │    │ (pgvector)    │  │
-│  └─────────────┘    │ - Chunk content  │    └───────┬───────┘  │
-│                     │ - Generate       │            │          │
-│                     │   embeddings     │            │          │
-│                     └──────────────────┘            │          │
-│                                                     │          │
-│  Search Query                                       │          │
-│        │                                            │          │
-│        ▼                                            ▼          │
-│  ┌─────────────┐    ┌──────────────────┐    ┌───────────────┐  │
-│  │ knowledge-  │───▶│ Vector Similarity │◀───│ search_       │  │
-│  │ search.js   │    │ Search (cosine)   │    │ knowledge()   │  │
-│  │             │◀───│                   │    │ function      │  │
-│  └─────────────┘    └──────────────────┘    └───────────────┘  │
+│  ┌─────────────────┐                                            │
+│  │ notion-to-      │  Exports: MD files, PDFs, scraped links   │
+│  │ sharepoint.js   │  Structure: /Manufacturer/content.md       │
+│  └────────┬────────┘                                            │
+│           │                                                      │
+│           ▼                                                      │
+│  ┌─────────────────────────────────────────┐                    │
+│  │ SharePoint: sites/Unicorn/Knowledge     │                    │
+│  │ ├── Alleo/                              │                    │
+│  │ ├── Lutron/                             │                    │
+│  │ ├── Sonos/                              │                    │
+│  │ ├── Ubiquiti/                           │                    │
+│  │ └── ... (other manufacturers)           │                    │
+│  └────────┬────────────────────────────────┘                    │
+│           │ Azure Indexer (hourly)                              │
+│           ▼                                                      │
+│  ┌─────────────────────────────────────────┐                    │
+│  │ Azure AI Search: sharepoint-knowledge-index                  │
+│  │ - Semantic search                        │                    │
+│  │ - Extractive answers & captions         │                    │
+│  │ - 168+ documents indexed                │                    │
+│  └────────┬────────────────────────────────┘                    │
+│           │                                                      │
+│           ▼                                                      │
+│  ┌─────────────────┐    ┌──────────────────┐                    │
+│  │ /api/azure-ai-  │───▶│ Voice AI Tool:   │                    │
+│  │ search.js       │    │ search_          │                    │
+│  │                 │◀───│ manufacturer_docs│                    │
+│  └─────────────────┘    └──────────────────┘                    │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-### Database Tables
-
-| Table | Purpose |
-|-------|---------|
-| `knowledge_manufacturers` | Manufacturer profiles (Lutron, Control4, Ubiquiti, etc.) |
-| `knowledge_documents` | Uploaded document metadata and processing status |
-| `knowledge_chunks` | Text chunks with vector embeddings (1536-dim) |
 
 ### Key Files
 
 | Purpose | File |
 |---------|------|
-| Upload API | `api/knowledge-upload.js` |
-| Processing API | `api/knowledge-process.js` |
-| Search API | `api/knowledge-search.js` |
-| Frontend Service | `src/services/knowledgeService.js` |
-| Management UI | `src/components/knowledge/KnowledgeManagementPanel.js` |
-| Voice AI Hook | `src/hooks/useKnowledgeTools.js` |
-| Database Migration | `supabase/migrations/20241220_add_knowledge_tables.sql` |
-| Lutron Knowledge Data | `src/data/lutronShadeKnowledge.js` |
+| **Azure AI Search API** | `api/azure-ai-search.js` |
+| **Frontend Service** | `src/services/knowledgeService.js` |
+| **Voice AI Tools** | `src/hooks/useKnowledgeTools.js` |
+| **Lutron Knowledge Data** | `src/data/lutronShadeKnowledge.js` |
+| **Management UI** | `src/components/knowledge/KnowledgeManagementPanel.js` |
+| **Notion Export Script** | `~/Downloads/notion-to-sharepoint.js` (local utility) |
 
-### Database Functions
+### Environment Variables (Azure AI Search)
 
-```sql
--- Vector similarity search
-search_knowledge(
-    query_embedding vector(1536),
-    match_threshold float DEFAULT 0.7,
-    match_count int DEFAULT 5,
-    filter_manufacturer_id uuid DEFAULT NULL
-)
+```bash
+# Required for Azure AI Search
+AZURE_SEARCH_SERVICE_NAME=unicorn-rag
+AZURE_SEARCH_API_KEY=your-azure-search-api-key
+AZURE_SEARCH_INDEX_NAME=sharepoint-knowledge-index
 
--- Full-text search fallback
-search_knowledge_text(
-    search_query text,
-    match_count int DEFAULT 10,
-    filter_manufacturer_id uuid DEFAULT NULL
-)
+# For SharePoint uploads (Microsoft Graph)
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
 ```
+
+### Azure AI Search Configuration
+
+| Setting | Value |
+|---------|-------|
+| Service Name | `unicorn-rag` |
+| Index Name | `sharepoint-knowledge-index` |
+| Data Source | SharePoint Knowledge Library |
+| Indexer Schedule | Hourly |
+| Search Type | Semantic (with simple fallback) |
+| API Version | `2024-07-01` |
 
 ### Voice AI Integration
 
-The `search_manufacturer_docs` tool allows hands-free knowledge lookup:
+The `search_manufacturer_docs` tool in `useKnowledgeTools.js` connects voice AI to Azure AI Search:
 
 ```javascript
-// In useKnowledgeTools.js
-{
-    name: "search_manufacturer_docs",
-    description: "Search manufacturer documentation for product specs, installation guides, troubleshooting",
-    parameters: {
-        query: { type: "string", description: "What to search for" },
-        manufacturer: { type: "string", description: "Optional manufacturer filter" }
-    }
-}
+// Voice AI Tool Flow
+User: "How do I install a Lutron roller shade?"
+     ↓
+Gemini calls: search_manufacturer_docs({ query: "install lutron roller shade" })
+     ↓
+useKnowledgeTools.js → searchKnowledgeForVoice()
+     ↓
+knowledgeService.js → POST /api/azure-ai-search
+     ↓
+Azure AI Search (semantic query with manufacturer filter)
+     ↓
+Returns: Formatted documentation → Gemini speaks answer
 ```
 
-### Accessing Knowledge Base
+### Notion to SharePoint Export
 
-1. Navigate to **Settings** (gear icon)
-2. Click **Knowledge Base** link
-3. Upload documents by manufacturer
-4. Documents are automatically processed and searchable
+The knowledge base content is managed in **Notion** and exported to **SharePoint** for Azure AI Search indexing.
 
-### Supported File Types
+**Script Location:** `~/Downloads/notion-to-sharepoint.js`
 
-| Type | Extension | Notes |
-|------|-----------|-------|
-| PDF | `.pdf` | Text extracted via pdf-parse |
-| Markdown | `.md` | Direct text processing |
-| Plain Text | `.txt` | Direct text processing |
-| Word | `.docx` | Planned (not yet implemented) |
-
-### Document Categories
-
-- `spec-sheet` - Product specifications
-- `installation-guide` - Installation instructions
-- `troubleshooting` - Problem resolution guides
-- `training` - Training materials
-- `technical-bulletin` - Technical bulletins
-- `user-manual` - User manuals
-- `quick-reference` - Quick reference cards
-- `other` - Other document types
-
-### Pre-loaded Manufacturers
-
-The system comes with these manufacturers pre-configured:
-- Lutron (shades, lighting controls)
-- Control4 (home automation)
-- Ubiquiti (networking)
-- Sonos (audio)
-- Araknis (networking)
-- Josh.ai (voice control)
-- Savant (luxury automation)
-- Crestron (commercial/residential)
-
-### ⚠️ SETUP REQUIREMENTS
-
-#### 1. Supabase Storage Bucket (REQUIRED)
-
-You must create a storage bucket in Supabase for document uploads:
-
-**Bucket Name:** `knowledge-docs`
-
-**Create via Supabase Dashboard:**
-1. Go to Storage in Supabase Dashboard
-2. Click "New bucket"
-3. Name: `knowledge-docs`
-4. Public bucket: **Yes** (needed for file URL access)
-5. Click "Create bucket"
-
-**Or via SQL:**
-```sql
--- Create the storage bucket
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('knowledge-docs', 'knowledge-docs', true)
-ON CONFLICT (id) DO NOTHING;
-
--- Add storage policy for authenticated uploads
-CREATE POLICY "Allow authenticated uploads"
-ON storage.objects FOR INSERT
-TO anon, authenticated
-WITH CHECK (bucket_id = 'knowledge-docs');
-
--- Add storage policy for public reads
-CREATE POLICY "Allow public reads"
-ON storage.objects FOR SELECT
-TO anon, authenticated
-USING (bucket_id = 'knowledge-docs');
-
--- Add storage policy for authenticated deletes
-CREATE POLICY "Allow authenticated deletes"
-ON storage.objects FOR DELETE
-TO anon, authenticated
-USING (bucket_id = 'knowledge-docs');
+#### Notion Structure
+```
+Knowledge Base (Notion)
+├── Manufacturer 1 (e.g., Lutron)
+│   ├── Category Page (with external links)
+│   └── Content Page (MD with images)
+├── Manufacturer 2 (e.g., Sonos)
+│   ├── Setup Guide (MD with images)
+│   └── External Links (scraped to MD)
+└── ...
 ```
 
-#### 2. pgvector Extension (REQUIRED)
+#### Export Features
+- **MD Files**: Copied directly with embedded base64 images
+- **PDFs**: Downloaded and uploaded as-is
+- **External Links**: Scraped to markdown files for indexing
+- **Images**: Embedded as base64 data URIs (not separate files)
+- **Nested Pages**: Recursively discovers pages in column layouts
 
-The vector similarity search requires pgvector. Enable it in Supabase:
-
-```sql
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
-#### 3. Environment Variables (REQUIRED)
-
-Add to Vercel environment variables:
+#### Running the Export
 
 ```bash
-# Required for embeddings and semantic search
-OPENAI_API_KEY=sk-your-openai-api-key
+# Export specific manufacturers (TEST_ONLY array)
+cd ~/Downloads
+node notion-to-sharepoint.js
 
-# Already should exist for Supabase
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Export all manufacturers (set TEST_ONLY = null)
+# Edit notion-to-sharepoint.js: const TEST_ONLY = null;
+node notion-to-sharepoint.js
 ```
 
-#### 4. Run Database Migration
+#### Script Configuration
 
-Apply the knowledge tables migration:
+```javascript
+// In notion-to-sharepoint.js
 
-```bash
-# Via Supabase CLI
-supabase db push
+// Test mode: only export these manufacturers
+const TEST_ONLY = ['Sonos'];  // Set to null for full export
 
-# Or run the SQL directly in Supabase Dashboard > SQL Editor
-# File: supabase/migrations/20241220_add_knowledge_tables.sql
+// Root page ID (Knowledge Base in Notion)
+const KNOWLEDGE_BASE_PAGE_ID = 'your-notion-page-id';
+
+// SharePoint target
+const SITE_NAME = 'Unicorn';
+const LIBRARY_NAME = 'Knowledge';
 ```
 
-### Upload Flow
+### SharePoint Knowledge Library
+
+**URL:** `https://isehome.sharepoint.com/sites/Unicorn/Knowledge`
+
+**Current Indexed Manufacturers:**
+- Alleo (network requirements, browser support, system requirements)
+- Lutron (shade documentation, Roller 64, Roller 100)
+- Sonos (Arc setup, general guides)
+- Ubiquiti (network setup)
+- Speco (camera specs, NVR manuals)
+- And 40+ more documents
+
+### Search Flow (Azure AI Search)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Upload Flow                                 │
+│                   Azure AI Search Flow                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  1. User selects file in KnowledgeManagementPanel               │
+│  1. User/Voice AI calls searchKnowledge(query, manufacturer)    │
 │        │                                                         │
 │        ▼                                                         │
-│  2. uploadAndProcessDocument() in knowledgeService.js           │
+│  2. /api/azure-ai-search                                         │
 │        │                                                         │
-│        ├──▶ Upload to Supabase Storage (knowledge-docs bucket)  │
+│        ├──▶ Try semantic search first                           │
+│        │    - queryType: "semantic"                             │
+│        │    - semanticConfiguration: "default"                  │
+│        │    - answers: "extractive|count-3"                     │
+│        │    - captions: "extractive|highlight-true"            │
 │        │                                                         │
-│        ├──▶ Get public URL                                       │
+│        ├──▶ Filter by manufacturer path (if specified)         │
+│        │    - filter: "metadata_spo_path eq '/sites/...'"       │
 │        │                                                         │
-│        ├──▶ Create record in knowledge_documents table          │
-│        │                                                         │
-│        └──▶ For TXT/MD: Read file content and call              │
-│             /api/knowledge-process with text                     │
+│        └──▶ Fallback to simple search if semantic fails        │
 │                                                                  │
-│  3. /api/knowledge-process                                       │
-│        │                                                         │
-│        ├──▶ Extract text (PDF uses pdf-parse)                   │
-│        │                                                         │
-│        ├──▶ Chunk text (800 tokens, 100 overlap)                │
-│        │                                                         │
-│        ├──▶ Generate embeddings via OpenAI                       │
-│        │                                                         │
-│        └──▶ Store chunks + embeddings in knowledge_chunks       │
+│  3. Return results with content, answers, captions              │
 │                                                                  │
-│  4. Document status updated to 'ready'                          │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Search Flow
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Search Flow                                 │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. User/Voice AI calls searchKnowledge()                       │
-│        │                                                         │
-│        ▼                                                         │
-│  2. /api/knowledge-search                                        │
-│        │                                                         │
-│        ├──▶ Generate query embedding via OpenAI                 │
-│        │                                                         │
-│        └──▶ Call search_knowledge() PostgreSQL function         │
-│             (cosine similarity via pgvector)                     │
-│                                                                  │
-│  3. Return top N chunks sorted by similarity                    │
-│                                                                  │
-│  4. For voice: Format results via searchKnowledgeForVoice()     │
+│  4. For voice: Format via searchKnowledgeForVoice()             │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -2436,12 +2231,22 @@ supabase db push
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| "Upload failed: Bucket not found" | Missing storage bucket | Create `knowledge-docs` bucket in Supabase |
-| "Failed to process document" | Missing OpenAI key | Add `OPENAI_API_KEY` to Vercel env vars |
-| "vector type does not exist" | pgvector not enabled | Run `CREATE EXTENSION IF NOT EXISTS vector;` |
-| "Permission denied for table" | RLS blocking | Check policies include `anon` role |
-| PDF text extraction fails | pdf-parse issue | Pass text content directly via UI |
-| Chunks not created | Processing error | Check document status & error_message |
+| "No results found" | Index not updated | Wait for hourly indexer or trigger manually in Azure Portal |
+| Search returns wrong manufacturer | Missing filter | Pass manufacturer name to filter by path |
+| Export fails silently | Large file (>4MB) | Script handles via upload session API |
+| Images not showing in SharePoint | Base64 too large | SharePoint can display base64 in MD preview |
+| Notion page not found | Nested in column layout | Script recursively searches container blocks |
+| "NOTION_API_KEY not found" | Missing env var | Add to project .env file |
+
+### Legacy System (Deprecated)
+
+The previous pgvector-based system (Supabase) is still in the codebase but no longer used:
+- `api/knowledge-upload.js` - Old upload endpoint
+- `api/knowledge-process.js` - Old processing endpoint
+- `api/knowledge-search.js` - Old search endpoint
+- `knowledge_manufacturers`, `knowledge_documents`, `knowledge_chunks` tables
+
+These may be removed in a future cleanup.
 
 ---
 
@@ -2611,6 +2416,49 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2025-12-23
+
+### Azure AI Search RAG Integration (Major Update)
+- **New Architecture:** Replaced Supabase pgvector with Azure AI Search for knowledge base
+- **Benefits:**
+  - Automatic indexing from SharePoint (hourly)
+  - Semantic search with extractive answers & captions
+  - No manual embedding generation required
+  - Enterprise-grade scalability
+
+- **New API Endpoint:** `api/azure-ai-search.js`
+  - Queries Azure AI Search directly
+  - Supports semantic search with simple fallback
+  - Filters by manufacturer via path matching
+  - Returns extractive answers for voice AI
+
+- **Updated Services:**
+  - `src/services/knowledgeService.js` - Now calls `/api/azure-ai-search` instead of Supabase
+  - `searchKnowledgeForVoice()` - Formats Azure results for Gemini voice AI
+
+- **Environment Variables (Vercel):**
+  - `AZURE_SEARCH_SERVICE_NAME=unicorn-rag`
+  - `AZURE_SEARCH_API_KEY=your-key`
+  - `AZURE_SEARCH_INDEX_NAME=sharepoint-knowledge-index`
+
+### Notion to SharePoint Export Script
+- **New Script:** `~/Downloads/notion-to-sharepoint.js`
+- **Features:**
+  - Exports Notion Knowledge Base to SharePoint
+  - Handles Manufacturer > Category > Content structure
+  - Embeds images as base64 data URIs in markdown
+  - Scrapes external links to markdown for indexing
+  - Downloads and uploads PDFs
+  - Supports large files (>4MB) via upload session API
+  - Recursively discovers nested pages in column layouts
+
+- **SharePoint Knowledge Library:**
+  - URL: `https://isehome.sharepoint.com/sites/Unicorn/Knowledge`
+  - 168+ documents indexed
+  - Manufacturers: Alleo, Lutron, Sonos, Ubiquiti, Speco, and more
+
+---
 
 ## 2025-12-21
 
