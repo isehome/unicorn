@@ -31,9 +31,27 @@ export const AIBrainProvider = ({ children }) => {
     const mediaStream = useRef(null);
     const processorNode = useRef(null);
     const sourceNode = useRef(null);
+    const gainNode = useRef(null);
     const audioQueue = useRef([]);
     const isPlaying = useRef(false);
     const navigateRef = useRef(navigate);
+
+    // Debug counters
+    const [audioChunksSent, setAudioChunksSent] = useState(0);
+    const [audioChunksReceived, setAudioChunksReceived] = useState(0);
+    const [debugLog, setDebugLog] = useState([]);
+
+    const addDebugLog = useCallback((message, type = 'info') => {
+        const timestamp = new Date().toLocaleTimeString();
+        setDebugLog(prev => [...prev.slice(-50), { timestamp, message, type }]);
+        console.log(`[AIBrain] ${message}`);
+    }, []);
+
+    const clearDebugLog = useCallback(() => {
+        setDebugLog([]);
+        setAudioChunksSent(0);
+        setAudioChunksReceived(0);
+    }, []);
 
     useEffect(() => { navigateRef.current = navigate; }, [navigate]);
     useEffect(() => {
@@ -229,91 +247,234 @@ ${buildContextString(state)}`;
                 messageData = await event.data.text();
             }
             const data = JSON.parse(messageData);
-            console.log('[AIBrain] WS message:', data);
+
             if (data.setupComplete) {
-                console.log('[AIBrain] Setup complete, starting audio capture');
+                addDebugLog('Setup complete - ready for voice input');
+                setStatus('listening');
                 return;
             }
+
             if (data.serverContent?.modelTurn?.parts) {
                 for (const part of data.serverContent.modelTurn.parts) {
-                    if (part.inlineData?.mimeType?.includes('audio')) { setStatus('speaking'); audioQueue.current.push(base64ToFloat32(part.inlineData.data)); playNextChunk(); }
-                    if (part.text) setLastTranscript(part.text);
-                    if (part.functionCall) { const r = await handleToolCall(part.functionCall); sendToolResponse(part.functionCall.name, r); }
+                    if (part.inlineData?.mimeType?.includes('audio')) {
+                        setStatus('speaking');
+                        audioQueue.current.push(base64ToFloat32(part.inlineData.data));
+                        setAudioChunksReceived(prev => prev + 1);
+                        playNextChunk();
+                    }
+                    if (part.text) {
+                        setLastTranscript(part.text);
+                        addDebugLog(`Response: "${part.text.substring(0, 50)}..."`, 'response');
+                    }
+                    if (part.functionCall) {
+                        addDebugLog(`Tool call: ${part.functionCall.name}`, 'tool');
+                        const r = await handleToolCall(part.functionCall);
+                        sendToolResponse(part.functionCall.name, r);
+                    }
                 }
             }
-            if (data.serverContent?.turnComplete) setStatus('listening');
-            if (data.toolCall) { const r = await handleToolCall(data.toolCall); sendToolResponse(data.toolCall.name, r); }
-        } catch (e) { console.error('[AIBrain] Message Error:', e); }
-    }, [handleToolCall, sendToolResponse, playNextChunk]);
+
+            if (data.serverContent?.turnComplete) {
+                addDebugLog('Turn complete - listening');
+                setStatus('listening');
+            }
+
+            if (data.toolCall) {
+                addDebugLog(`Tool call: ${data.toolCall.name}`, 'tool');
+                const r = await handleToolCall(data.toolCall);
+                sendToolResponse(data.toolCall.name, r);
+            }
+        } catch (e) {
+            addDebugLog(`Message error: ${e.message}`, 'error');
+        }
+    }, [handleToolCall, sendToolResponse, playNextChunk, addDebugLog]);
 
     const startAudioCapture = useCallback(() => {
-        if (!mediaStream.current || !audioContext.current) return;
+        if (!mediaStream.current || !audioContext.current) {
+            addDebugLog('Cannot start audio capture - missing stream or context', 'error');
+            return;
+        }
+
+        addDebugLog(`Starting audio capture. Sample rate: ${audioContext.current.sampleRate}Hz`);
+
+        // Create source from microphone
         sourceNode.current = audioContext.current.createMediaStreamSource(mediaStream.current);
+
+        // Create gain node to amplify input (Safari/iOS often has low mic gain)
+        gainNode.current = audioContext.current.createGain();
+        gainNode.current.gain.value = 3.0; // Boost mic input 3x
+
+        // Use larger buffer for iOS stability (4096 or 8192)
         processorNode.current = audioContext.current.createScriptProcessor(4096, 1, 1);
+
+        let chunkCount = 0;
         processorNode.current.onaudioprocess = (e) => {
             if (ws.current?.readyState !== WebSocket.OPEN) return;
+
             const input = e.inputBuffer.getChannelData(0);
-            let sum = 0; for (let i = 0; i < input.length; i++) sum += Math.abs(input[i]);
-            setAudioLevel(sum / input.length);
+
+            // Calculate RMS audio level (proper dB-like measurement)
+            let sum = 0;
+            for (let i = 0; i < input.length; i++) {
+                sum += input[i] * input[i];
+            }
+            const rms = Math.sqrt(sum / input.length);
+            // Convert to 0-100 scale (RMS of 0.1 = 100%)
+            const level = Math.min(100, Math.round(rms * 1000));
+            setAudioLevel(level);
+
+            // Resample and send
             const resampled = resampleAudio(input, audioContext.current.sampleRate, GEMINI_INPUT_SAMPLE_RATE);
             const int16 = float32ToInt16(resampled);
             const b64 = btoa(String.fromCharCode(...new Uint8Array(int16.buffer)));
-            ws.current.send(JSON.stringify({ realtimeInput: { mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }] } }));
+
+            ws.current.send(JSON.stringify({
+                realtimeInput: {
+                    mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: b64 }]
+                }
+            }));
+
+            chunkCount++;
+            setAudioChunksSent(chunkCount);
+
+            // Log first chunk and every 50th chunk
+            if (chunkCount === 1 || chunkCount % 50 === 0) {
+                addDebugLog(`Sent ${chunkCount} audio chunks. Level: ${level}%`);
+            }
         };
-        sourceNode.current.connect(processorNode.current);
+
+        // Connect: source -> gain -> processor -> destination (required for ScriptProcessor)
+        sourceNode.current.connect(gainNode.current);
+        gainNode.current.connect(processorNode.current);
         processorNode.current.connect(audioContext.current.destination);
+
+        addDebugLog('Audio capture started with 3x gain boost');
         setStatus('listening');
-    }, []);
+    }, [addDebugLog]);
 
     const stopAudioCapture = useCallback(() => {
         processorNode.current?.disconnect(); processorNode.current = null;
+        gainNode.current?.disconnect(); gainNode.current = null;
         sourceNode.current?.disconnect(); sourceNode.current = null;
         mediaStream.current?.getTracks().forEach(t => t.stop()); mediaStream.current = null;
         setAudioLevel(0);
-    }, []);
+        addDebugLog('Audio capture stopped');
+    }, [addDebugLog]);
 
     const startSession = useCallback(async () => {
-        console.log('[AIBrain] startSession called, status:', status);
+        addDebugLog('startSession called');
         if (status !== 'idle' && status !== 'error') {
-            console.log('[AIBrain] Session already active, ignoring');
+            addDebugLog('Session already active, ignoring');
             return;
         }
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
-        console.log('[AIBrain] API key present:', !!apiKey);
-        if (!apiKey) { setError('No API key'); setStatus('error'); return; }
+        if (!apiKey) {
+            setError('No API key');
+            setStatus('error');
+            addDebugLog('No API key configured', 'error');
+            return;
+        }
+
         try {
-            setStatus('connecting'); setError(null);
-            console.log('[AIBrain] Creating AudioContext...');
-            if (!audioContext.current || audioContext.current.state === 'closed') audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioContext.current.state === 'suspended') await audioContext.current.resume();
-            console.log('[AIBrain] AudioContext state:', audioContext.current.state);
-            console.log('[AIBrain] Requesting microphone...');
-            mediaStream.current = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-            console.log('[AIBrain] Microphone acquired, connecting WebSocket...');
+            setStatus('connecting');
+            setError(null);
+            clearDebugLog();
+
+            // Create AudioContext - iOS Safari requires user gesture
+            addDebugLog('Creating AudioContext...');
+            if (!audioContext.current || audioContext.current.state === 'closed') {
+                // For iOS, try to use 16kHz sample rate if supported
+                try {
+                    audioContext.current = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+                } catch {
+                    audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+            if (audioContext.current.state === 'suspended') {
+                addDebugLog('Resuming suspended AudioContext...');
+                await audioContext.current.resume();
+            }
+            addDebugLog(`AudioContext ready. Sample rate: ${audioContext.current.sampleRate}Hz`);
+
+            // Request microphone with optimal settings for speech
+            addDebugLog('Requesting microphone...');
+            mediaStream.current = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true, // Important for iOS
+                    sampleRate: { ideal: 48000 }, // Will be resampled to 16kHz
+                }
+            });
+
+            // Log mic track settings
+            const track = mediaStream.current.getAudioTracks()[0];
+            const settings = track.getSettings();
+            addDebugLog(`Mic acquired: ${settings.sampleRate || 'default'}Hz, AGC: ${settings.autoGainControl}`);
+
+            // Connect WebSocket
+            addDebugLog('Connecting to Gemini Live API...');
             const socket = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`);
             ws.current = socket;
+
             socket.onopen = () => {
-                console.log('[AIBrain] WebSocket open, sending setup...');
-                const settings = getSettings();
+                addDebugLog('WebSocket connected, sending setup...');
+                const voiceSettings = getSettings();
                 const setupConfig = {
                     setup: {
                         model: `models/${LATEST_MODEL}`,
-                        generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: settings.voice } } } },
+                        generationConfig: {
+                            responseModalities: ['AUDIO'],
+                            speechConfig: {
+                                voiceConfig: {
+                                    prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
+                                }
+                            }
+                        },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
-                        tools: tools.map(t => ({ functionDeclarations: [{ name: t.name, description: t.description, parameters: t.parameters }] })),
-                        realtimeInputConfig: { automaticActivityDetection: { disabled: false, startOfSpeechSensitivity: settings.vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW', endOfSpeechSensitivity: settings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH' } }
+                        tools: tools.map(t => ({
+                            functionDeclarations: [{
+                                name: t.name,
+                                description: t.description,
+                                parameters: t.parameters
+                            }]
+                        })),
+                        realtimeInputConfig: {
+                            automaticActivityDetection: {
+                                disabled: false,
+                                startOfSpeechSensitivity: voiceSettings.vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
+                                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH'
+                            }
+                        }
                     }
                 };
-                console.log('[AIBrain] Setup config:', setupConfig);
                 socket.send(JSON.stringify(setupConfig));
+                addDebugLog(`Setup sent. Model: ${LATEST_MODEL}, Voice: ${voiceSettings.voice}`);
                 setStatus('connected');
                 startAudioCapture();
             };
+
             socket.onmessage = handleWebSocketMessage;
-            socket.onerror = (e) => { console.error('[AIBrain] WebSocket error:', e); setError('Connection error'); setStatus('error'); };
-            socket.onclose = (e) => { console.log('[AIBrain] WebSocket closed:', e.code, e.reason); setStatus('idle'); stopAudioCapture(); };
-        } catch (e) { console.error('[AIBrain] startSession error:', e); setError(e.message); setStatus('error'); }
-    }, [status, getSettings, buildSystemInstruction, tools, startAudioCapture, handleWebSocketMessage, stopAudioCapture]);
+
+            socket.onerror = (e) => {
+                addDebugLog('WebSocket error', 'error');
+                setError('Connection error');
+                setStatus('error');
+            };
+
+            socket.onclose = (e) => {
+                addDebugLog(`WebSocket closed: ${e.code} ${e.reason || ''}`);
+                setStatus('idle');
+                stopAudioCapture();
+            };
+
+        } catch (e) {
+            addDebugLog(`Error: ${e.message}`, 'error');
+            setError(e.message);
+            setStatus('error');
+        }
+    }, [status, getSettings, buildSystemInstruction, tools, startAudioCapture, handleWebSocketMessage, stopAudioCapture, addDebugLog, clearDebugLog]);
 
     const endSession = useCallback(() => {
         stopAudioCapture();
@@ -325,10 +486,11 @@ ${buildContextString(state)}`;
     return (
         <AIBrainContext.Provider value={{
             status, error, isConfigured, audioLevel, lastTranscript, startSession, endSession,
-            testAudioOutput: async () => true, testMicrophoneInput: async () => true,
-            debugLog: [], clearDebugLog: () => {},
+            // Debug state
+            debugLog, clearDebugLog, audioChunksSent, audioChunksReceived,
+            // Platform info
             platformInfo: { isIOS: /iPhone|iPad|iPod/.test(navigator.userAgent), isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent) },
-            audioChunksSent: 0, audioChunksReceived: 0, registerTools: () => {}, unregisterTools: () => {},
+            registerTools: () => {}, unregisterTools: () => {},
         }}>
             {children}
         </AIBrainContext.Provider>
