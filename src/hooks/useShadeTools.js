@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 import { projectShadeService } from '../services/projectShadeService';
 
 /**

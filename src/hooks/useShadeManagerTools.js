@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 
 /**
  * useShadeManagerTools - Voice AI tools for the ShadeManager page (shade list level)

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText, Sliders, Bot, ChevronDown, ChevronRight } from 'lucide-react';
-import { useVoiceCopilot } from '../../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../../contexts/AIBrainContext';
 
 const AISettings = () => {
     const { mode } = useTheme();

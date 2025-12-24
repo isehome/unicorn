@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 
 /**
  * usePrewireTools - Voice AI tools for the Prewire Mode page

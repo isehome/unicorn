@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 import { LUTRON_SHADE_KNOWLEDGE, QUICK_REFERENCE } from '../data/lutronShadeKnowledge';
 import { searchKnowledgeForVoice } from '../services/knowledgeService';
 

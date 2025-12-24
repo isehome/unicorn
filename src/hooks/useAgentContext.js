@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useVoiceCopilot } from '../contexts/VoiceCopilotContext';
+import { useVoiceCopilot } from '../contexts/AIBrainContext';
 import { supabase } from '../lib/supabase';
 import { getToolsForContext, PAGE_CONTEXTS } from '../services/voiceToolRegistry';
 
