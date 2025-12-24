@@ -143,25 +143,15 @@ const AISettings = () => {
         { id: 'Aoede', name: 'Aoede (Formal)', gender: 'Female' },
     ];
 
-    // Available Gemini models for Live API
+    // Available Gemini models for Live API (bidiGenerateContent)
+    // IMPORTANT: Only native-audio models work with the Live API!
+    // Non-native-audio models like 'gemini-2.0-flash-live-001' will be rejected
     const models = [
         {
-            id: 'gemini-2.5-flash-native-audio-preview-12-2025',
-            name: '2.5 Flash (Dec 2025)',
-            description: 'Latest preview with best audio quality',
-            badge: 'NEW'
-        },
-        {
             id: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            name: '2.5 Flash (Sep 2025)',
-            description: 'Previous stable version',
-            badge: null
-        },
-        {
-            id: 'gemini-2.0-flash-live-001',
-            name: '2.0 Flash Live',
-            description: 'Legacy, deprecated Dec 2025',
-            badge: null
+            name: '2.5 Flash Native Audio',
+            description: 'Best quality for voice conversations',
+            badge: 'RECOMMENDED'
         },
     ];
 
