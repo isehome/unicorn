@@ -258,11 +258,23 @@ ${buildContextString(state)}`;
     }, [addDebugLog]);
 
     const playNextChunk = useCallback(async () => {
-        if (!audioContext.current || audioQueue.current.length === 0 || isPlaying.current) {
-            // If queue is empty and we're done playing, go back to listening
-            if (audioQueue.current.length === 0 && !isPlaying.current && status === 'speaking') {
-                setStatus('listening');
-            }
+        // Log the current state for debugging
+        const queueLen = audioQueue.current.length;
+        const playing = isPlaying.current;
+        const hasContext = !!audioContext.current;
+
+        if (!hasContext) {
+            addDebugLog(`playNextChunk: No AudioContext!`, 'error');
+            return;
+        }
+
+        if (queueLen === 0) {
+            addDebugLog(`playNextChunk: Queue empty, playing=${playing}`);
+            return;
+        }
+
+        if (playing) {
+            addDebugLog(`playNextChunk: Already playing, queue=${queueLen}`);
             return;
         }
 
@@ -271,6 +283,7 @@ ${buildContextString(state)}`;
             addDebugLog('Resuming suspended AudioContext for playback...');
             try {
                 await audioContext.current.resume();
+                addDebugLog(`AudioContext resumed, state: ${audioContext.current.state}`);
             } catch (e) {
                 addDebugLog(`Failed to resume AudioContext: ${e.message}`, 'error');
                 return;
@@ -279,13 +292,16 @@ ${buildContextString(state)}`;
 
         isPlaying.current = true;
         const data = audioQueue.current.shift();
+        addDebugLog(`Playing chunk: ${data.length} samples, queue remaining: ${audioQueue.current.length}`);
 
         try {
             // Resample from Gemini's 24kHz to device sample rate
-            const resampled = resampleAudio(data, GEMINI_OUTPUT_SAMPLE_RATE, audioContext.current.sampleRate);
+            const deviceRate = audioContext.current.sampleRate;
+            const resampled = resampleAudio(data, GEMINI_OUTPUT_SAMPLE_RATE, deviceRate);
+            addDebugLog(`Resampled: ${data.length} -> ${resampled.length} samples (24kHz -> ${deviceRate}Hz)`);
 
             // Create audio buffer
-            const buffer = audioContext.current.createBuffer(1, resampled.length, audioContext.current.sampleRate);
+            const buffer = audioContext.current.createBuffer(1, resampled.length, deviceRate);
             buffer.getChannelData(0).set(resampled);
 
             // Create and play source
@@ -294,6 +310,7 @@ ${buildContextString(state)}`;
             source.connect(audioContext.current.destination);
 
             source.onended = () => {
+                addDebugLog(`Chunk finished playing`);
                 isPlaying.current = false;
                 // Continue playing queue or return to listening
                 if (audioQueue.current.length > 0) {
@@ -305,12 +322,13 @@ ${buildContextString(state)}`;
             };
 
             source.onerror = (e) => {
-                addDebugLog(`Audio playback error: ${e}`, 'error');
+                addDebugLog(`Audio source error: ${e}`, 'error');
                 isPlaying.current = false;
                 playNextChunk(); // Try next chunk
             };
 
             source.start(0);
+            addDebugLog(`Audio source started`);
         } catch (e) {
             addDebugLog(`Playback error: ${e.message}`, 'error');
             isPlaying.current = false;
@@ -319,7 +337,7 @@ ${buildContextString(state)}`;
                 playNextChunk();
             }
         }
-    }, [status, addDebugLog]);
+    }, [addDebugLog]);
 
     const handleWebSocketMessage = useCallback(async (event) => {
         try {
@@ -380,10 +398,19 @@ ${buildContextString(state)}`;
                 setStatus('listening');
             }
 
+            // Handle toolCall at root level - Gemini Live sends { toolCall: { functionCalls: [...] } }
             if (data.toolCall) {
-                addDebugLog(`Tool call: ${data.toolCall.name}`, 'tool');
-                const r = await handleToolCall(data.toolCall);
-                sendToolResponse(data.toolCall.name, r);
+                addDebugLog(`Tool call received: ${JSON.stringify(data.toolCall).substring(0, 200)}`, 'tool');
+
+                // Gemini Live sends functionCalls array inside toolCall
+                const functionCalls = data.toolCall.functionCalls || [];
+                for (const fc of functionCalls) {
+                    const funcName = fc.name;
+                    const funcArgs = fc.args || {};
+                    addDebugLog(`Executing tool: ${funcName}(${JSON.stringify(funcArgs).substring(0, 50)})`, 'tool');
+                    const r = await handleToolCall({ name: funcName, args: funcArgs });
+                    sendToolResponse(funcName, r);
+                }
             }
         } catch (e) {
             addDebugLog(`Message error: ${e.message}`, 'error');
