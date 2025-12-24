@@ -539,7 +539,18 @@ ${buildContextString(state)}`;
                 addDebugLog('WebSocket connected, sending setup...');
                 const voiceSettings = getSettings();
                 // Get model from settings or use default
-                const selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
+                // IMPORTANT: Validate that the model is supported for bidiGenerateContent (Live API)
+                // Only native-audio models work with the Live API
+                const VALID_LIVE_MODELS = [
+                    'gemini-2.5-flash-native-audio-preview-09-2025',
+                    'gemini-2.0-flash-live-001-native-audio', // if this ever exists
+                ];
+                let selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
+                // If stored model isn't valid for Live API, use default
+                if (!VALID_LIVE_MODELS.includes(selectedModel)) {
+                    addDebugLog(`Model "${selectedModel}" not valid for Live API, using default`);
+                    selectedModel = DEFAULT_MODEL;
+                }
                 const setupConfig = {
                     setup: {
                         model: `models/${selectedModel}`,
