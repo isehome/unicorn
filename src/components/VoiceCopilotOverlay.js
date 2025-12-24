@@ -85,10 +85,13 @@ const VoiceCopilotOverlay = () => {
         }
     }, [lastToolAction]);
 
-    // Only show on shades/window coverings section
-    const isOnShadesSection = location.pathname.includes('/shades');
+    // Show on all pages (removed shades-only restriction)
+    // Hide only on login and public pages
+    const isPublicPage = location.pathname.includes('/login') ||
+                         location.pathname.includes('/public') ||
+                         location.pathname.includes('/shade-portal');
 
-    if (!isOnShadesSection) {
+    if (isPublicPage) {
         return null;
     }
 
