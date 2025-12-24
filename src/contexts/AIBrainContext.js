@@ -346,30 +346,32 @@ ${buildContextString(state)}`;
                     const partKeys = Object.keys(part).join(', ');
                     addDebugLog(`Part: ${partKeys}`);
 
-                    if (part.inlineData?.mimeType?.includes('audio')) {
-                        setStatus('speaking');
-                        const audioData = base64ToFloat32(part.inlineData.data);
-                        audioQueue.current.push(audioData);
-                        const chunkNum = audioQueue.current.length;
-                        setAudioChunksReceived(prev => prev + 1);
-                        addDebugLog(`Audio chunk received (${audioData.length} samples, queue: ${chunkNum})`);
-                        playNextChunk();
+                    // Audio response - check for inlineData with data first
+                    // Gemini may send empty mimeType or various audio/* types
+                    if (part.inlineData?.data) {
+                        const mimeType = part.inlineData.mimeType || '';
+                        // Accept any audio format or empty mimeType (Gemini sends 16-bit PCM)
+                        if (mimeType.startsWith('audio/') || mimeType === '' || !mimeType) {
+                            setStatus('speaking');
+                            const audioData = base64ToFloat32(part.inlineData.data);
+                            audioQueue.current.push(audioData);
+                            const chunkNum = audioQueue.current.length;
+                            setAudioChunksReceived(prev => prev + 1);
+                            addDebugLog(`Audio received: ${audioData.length} samples, mime="${mimeType}", queue: ${chunkNum}`);
+                            playNextChunk();
+                        }
                     }
                     if (part.text) {
                         setLastTranscript(part.text);
                         addDebugLog(`Response: "${part.text.substring(0, 50)}..."`, 'response');
                     }
-                    // Handle function calls - check both possible structures
+                    // Handle function calls - Gemini sends { name, args }
                     if (part.functionCall) {
                         const funcName = part.functionCall.name || 'unknown';
-                        const funcArgs = part.functionCall.args || part.functionCall.arguments || {};
+                        const funcArgs = part.functionCall.args || {};
                         addDebugLog(`Tool call: ${funcName}(${JSON.stringify(funcArgs).substring(0, 50)})`, 'tool');
                         const r = await handleToolCall({ name: funcName, args: funcArgs });
                         sendToolResponse(funcName, r);
-                    }
-                    // Also check for executableCode (code execution responses)
-                    if (part.executableCode) {
-                        addDebugLog(`Code: ${part.executableCode.code?.substring(0, 50)}...`);
                     }
                 }
             }
