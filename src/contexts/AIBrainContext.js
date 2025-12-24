@@ -304,10 +304,15 @@ ${buildContextString(state)}`;
             const buffer = audioContext.current.createBuffer(1, resampled.length, deviceRate);
             buffer.getChannelData(0).set(resampled);
 
-            // Create and play source
+            // Create and play source with gain amplification
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.connect(audioContext.current.destination);
+
+            // Add gain node to amplify audio (Gemini output can be quiet)
+            const gainNode = audioContext.current.createGain();
+            gainNode.gain.value = 2.0; // 2x amplification
+            source.connect(gainNode);
+            gainNode.connect(audioContext.current.destination);
 
             source.onended = () => {
                 addDebugLog(`Chunk finished playing`);
