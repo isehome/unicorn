@@ -12,9 +12,8 @@ import { supabase } from '../lib/supabase';
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
 const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 
-// Audio playback settings (from Google's official live-api-web-console)
-const BUFFER_SIZE = 7680; // samples per chunk
-const SCHEDULE_AHEAD_TIME = 0.2; // 200ms - schedule buffers this far ahead
+// Verbose logging flag - enable for debugging
+const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
 // The native audio model works best for voice
@@ -38,9 +37,7 @@ export const AIBrainProvider = ({ children }) => {
     const processorNode = useRef(null);
     const sourceNode = useRef(null);
     const audioQueue = useRef([]); // Queue of Float32Array chunks
-    const scheduledTime = useRef(0); // Next scheduled playback time
-    const gainNode = useRef(null); // For volume control
-    const silentAudio = useRef(null); // iOS mute switch workaround
+    const isPlaying = useRef(false); // Track if audio is currently playing
     const navigateRef = useRef(navigate);
 
     // Debug counters
@@ -255,139 +252,95 @@ ${buildContextString(state)}`;
         return float32;
     };
 
-    // Convert Float32Array to WAV format bytes (for HTML Audio element playback)
-    // This is more Safari-compatible than AudioBufferSourceNode
-    const float32ToWav = (float32Data, sampleRate) => {
-        // Convert Float32 to Int16
-        const int16Data = new Int16Array(float32Data.length);
-        for (let i = 0; i < float32Data.length; i++) {
-            const s = Math.max(-1, Math.min(1, float32Data[i]));
-            int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    // --- AUDIO PLAYBACK ---
+    // This is the SIMPLE, WORKING approach from VoiceCopilotContext (commit 4786ede)
+    // It plays chunks immediately as they arrive, without complex scheduling
+    const playNextChunk = useCallback(() => {
+        if (!audioContext.current) {
+            addDebugLog('playNextChunk: No audioContext - creating one', 'warn');
+            // Try to create audio context if missing
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioContext.current = new AudioContextClass();
+            addDebugLog(`Created new AudioContext: ${audioContext.current.sampleRate}Hz, state=${audioContext.current.state}`, 'audio');
+        }
+        if (audioQueue.current.length === 0) {
+            if (VERBOSE_LOGGING) addDebugLog('playNextChunk: Queue empty', 'audio');
+            return;
+        }
+        if (isPlaying.current) {
+            if (VERBOSE_LOGGING) addDebugLog(`playNextChunk: Already playing, queue size: ${audioQueue.current.length}`, 'audio');
+            return;
         }
 
-        // WAV file format
-        const numChannels = 1;
-        const bitsPerSample = 16;
-        const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-        const blockAlign = numChannels * (bitsPerSample / 8);
-        const dataSize = int16Data.length * (bitsPerSample / 8);
-        const fileSize = 44 + dataSize; // 44 byte header + data
-
-        const buffer = new ArrayBuffer(fileSize);
-        const view = new DataView(buffer);
-
-        // RIFF header
-        writeString(view, 0, 'RIFF');
-        view.setUint32(4, fileSize - 8, true); // file size - 8
-        writeString(view, 8, 'WAVE');
-
-        // fmt chunk
-        writeString(view, 12, 'fmt ');
-        view.setUint32(16, 16, true); // chunk size
-        view.setUint16(20, 1, true); // audio format (1 = PCM)
-        view.setUint16(22, numChannels, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, byteRate, true);
-        view.setUint16(32, blockAlign, true);
-        view.setUint16(34, bitsPerSample, true);
-
-        // data chunk
-        writeString(view, 36, 'data');
-        view.setUint32(40, dataSize, true);
-
-        // Write audio data
-        const dataOffset = 44;
-        for (let i = 0; i < int16Data.length; i++) {
-            view.setInt16(dataOffset + i * 2, int16Data[i], true);
-        }
-
-        return buffer;
-    };
-
-    // Helper to write string to DataView
-    const writeString = (view, offset, string) => {
-        for (let i = 0; i < string.length; i++) {
-            view.setUint8(offset + i, string.charCodeAt(i));
-        }
-    };
-
-    /**
-     * iOS Mute Switch Workaround
-     * Web Audio API respects the hardware mute switch, but HTML5 <audio> does not.
-     * By playing a silent audio track, we force Web Audio onto the media channel.
-     * See: https://github.com/feross/unmute-ios-audio
-     *
-     * Must be called from user gesture (button click)
-     */
-    const unlockiOSAudio = useCallback(async () => {
-        // Setup if not already done
-        if (!silentAudio.current) {
-            // Create a short silent audio data URL (1 second of silence)
-            const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-            const audio = new Audio(silentWav);
-            audio.loop = true;
-            audio.volume = 0.01;
-            audio.setAttribute('playsinline', 'true');
-            silentAudio.current = audio;
-            addDebugLog('iOS audio unlock element created');
-        }
+        isPlaying.current = true;
+        const audioData = audioQueue.current.shift();
+        addDebugLog(`Playing chunk: ${audioData.length} samples, queue remaining: ${audioQueue.current.length}`, 'audio');
 
         try {
-            await silentAudio.current.play();
-            addDebugLog('iOS silent audio playing - audio unlocked');
-        } catch (e) {
-            // Don't treat this as fatal - it may fail on non-iOS or if already playing
-            addDebugLog(`iOS audio unlock: ${e.message}`, 'info');
-        }
-    }, [addDebugLog]);
+            // Gemini sends audio at 24kHz, but device may use different rate (iOS uses 48kHz)
+            const deviceSampleRate = audioContext.current.sampleRate;
+            const contextState = audioContext.current.state;
 
-    /**
-     * Schedule-ahead audio playback (from Google's live-api-web-console)
-     * This approach schedules buffers ahead of time to prevent gaps
-     */
-    const scheduleAudioPlayback = useCallback(() => {
-        if (!audioContext.current || !gainNode.current) return;
-        if (audioQueue.current.length === 0) return;
+            if (VERBOSE_LOGGING) {
+                addDebugLog(`Audio playback: contextState=${contextState}, deviceRate=${deviceSampleRate}, inputSamples=${audioData.length}`, 'audio');
+            }
 
-        const ctx = audioContext.current;
-        const currentTime = ctx.currentTime;
+            // iOS Safari: AudioContext may be suspended - must resume from user gesture
+            if (contextState === 'suspended') {
+                addDebugLog('AudioContext suspended - attempting resume...', 'warn');
+                audioContext.current.resume().then(() => {
+                    addDebugLog('AudioContext resumed successfully', 'audio');
+                    // Retry playback after resume
+                    isPlaying.current = false;
+                    audioQueue.current.unshift(audioData); // Put back in queue
+                    playNextChunk();
+                }).catch(e => {
+                    addDebugLog(`AudioContext resume failed: ${e.message}`, 'error');
+                    isPlaying.current = false;
+                });
+                return;
+            }
 
-        // If we've fallen behind, reset scheduled time to now
-        if (scheduledTime.current < currentTime) {
-            scheduledTime.current = currentTime;
-        }
+            const resampledData = resampleAudio(audioData, GEMINI_OUTPUT_SAMPLE_RATE, deviceSampleRate);
 
-        // Schedule buffers while we have them and we're within the schedule-ahead window
-        while (audioQueue.current.length > 0 &&
-               scheduledTime.current < currentTime + SCHEDULE_AHEAD_TIME) {
+            if (VERBOSE_LOGGING) {
+                addDebugLog(`Resampled: ${audioData.length} → ${resampledData.length} samples (${GEMINI_OUTPUT_SAMPLE_RATE}→${deviceSampleRate}Hz)`, 'audio');
+            }
 
-            const chunk = audioQueue.current.shift();
+            const buffer = audioContext.current.createBuffer(1, resampledData.length, deviceSampleRate);
+            buffer.getChannelData(0).set(resampledData);
 
-            // Resample from Gemini's 24kHz to device sample rate
-            const deviceRate = ctx.sampleRate;
-            const resampled = resampleAudio(chunk, GEMINI_OUTPUT_SAMPLE_RATE, deviceRate);
-
-            // Create audio buffer
-            const buffer = ctx.createBuffer(1, resampled.length, deviceRate);
-            buffer.getChannelData(0).set(resampled);
-
-            // Create source and connect to gain node
-            // Note: Safari uses createBufferSource(), not createBufferSourceNode()
-            const source = ctx.createBufferSource();
+            const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.connect(gainNode.current);
+            source.connect(audioContext.current.destination);
 
-            // Schedule playback
-            const startTime = Math.max(scheduledTime.current, currentTime);
-            source.start(startTime);
+            source.onended = () => {
+                if (VERBOSE_LOGGING) addDebugLog(`Chunk played (${resampledData.length} samples)`, 'audio');
+                isPlaying.current = false;
+                if (audioQueue.current.length > 0) {
+                    playNextChunk();
+                } else {
+                    addDebugLog('Audio playback complete', 'audio');
+                    // Done speaking, go back to listening
+                    setStatus('listening');
+                }
+            };
 
-            // Update scheduled time for next buffer
-            const duration = resampled.length / deviceRate;
-            scheduledTime.current = startTime + duration;
+            source.onerror = (e) => {
+                addDebugLog(`AudioBufferSource error: ${e}`, 'error');
+                isPlaying.current = false;
+            };
 
-            // Log occasionally
-            if (audioQueue.current.length % 5 === 0) {
-                addDebugLog(`Scheduled audio: ${resampled.length} samples, queue: ${audioQueue.current.length}`);
+            setStatus('speaking');
+            source.start(0);
+            if (VERBOSE_LOGGING) addDebugLog('AudioBufferSource started', 'audio');
+        } catch (e) {
+            addDebugLog(`Audio playback error: ${e.message}`, 'error');
+            console.error('[AIBrain] Audio playback error:', e);
+            isPlaying.current = false;
+            // Try next chunk
+            if (audioQueue.current.length > 0) {
+                setTimeout(() => playNextChunk(), 100);
             }
         }
     }, [addDebugLog]);
@@ -401,35 +354,11 @@ ${buildContextString(state)}`;
     }, [addDebugLog]);
 
     /**
-     * Process incoming audio and schedule for playback
-     * Uses Google's schedule-ahead approach for smooth playback
+     * Queue audio for playback - simple approach that works on Safari
+     * Just add to queue and trigger playback
      */
-    const queueAudioForPlayback = useCallback(async (audioData) => {
-        if (!audioContext.current) {
-            addDebugLog('queueAudioForPlayback: No AudioContext!', 'error');
-            return;
-        }
-
-        // Resume AudioContext if suspended (Safari does this!)
-        if (audioContext.current.state === 'suspended') {
-            addDebugLog('Resuming suspended AudioContext...');
-            try {
-                await audioContext.current.resume();
-                addDebugLog(`AudioContext resumed: ${audioContext.current.state}`);
-            } catch (e) {
-                addDebugLog(`Resume failed: ${e.message}`, 'error');
-            }
-        }
-
-        // Ensure gain node exists and is connected
-        if (!gainNode.current) {
-            gainNode.current = audioContext.current.createGain();
-            gainNode.current.gain.value = 1.0;
-            gainNode.current.connect(audioContext.current.destination);
-            addDebugLog('Gain node created and connected');
-        }
-
-        // Check audio data validity
+    const queueAudioForPlayback = useCallback((audioData) => {
+        // Check audio data validity and log
         let maxAmp = 0;
         for (let i = 0; i < Math.min(audioData.length, 500); i++) {
             maxAmp = Math.max(maxAmp, Math.abs(audioData[i]));
@@ -439,9 +368,9 @@ ${buildContextString(state)}`;
         // Add to queue
         audioQueue.current.push(audioData);
 
-        // Schedule playback
-        scheduleAudioPlayback();
-    }, [addDebugLog, scheduleAudioPlayback]);
+        // Start playback if not already playing
+        playNextChunk();
+    }, [addDebugLog, playNextChunk]);
 
     const handleWebSocketMessage = useCallback(async (event) => {
         try {
@@ -636,15 +565,12 @@ ${buildContextString(state)}`;
             setError(null);
             clearDebugLog();
 
-            // iOS Mute Switch Workaround - play silent audio to unlock Web Audio
-            // This must happen from user gesture (which startSession is called from)
-            await unlockiOSAudio();
-
             // Create AudioContext - iOS Safari requires user gesture, don't specify sample rate
+            // Note: iOS Safari's webkitAudioContext doesn't accept constructor options
             addDebugLog('Creating AudioContext...');
             if (!audioContext.current || audioContext.current.state === 'closed') {
-                // Don't specify sample rate - let device use native rate (we'll resample)
-                audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioContext.current = new AudioContextClass();
             }
             if (audioContext.current.state === 'suspended') {
                 addDebugLog('Resuming suspended AudioContext...');
@@ -652,15 +578,9 @@ ${buildContextString(state)}`;
             }
             addDebugLog(`AudioContext ready. Sample rate: ${audioContext.current.sampleRate}Hz, state: ${audioContext.current.state}`);
 
-            // Create gain node for volume control
-            gainNode.current = audioContext.current.createGain();
-            gainNode.current.gain.value = 1.0;
-            gainNode.current.connect(audioContext.current.destination);
-            addDebugLog('Audio gain node connected');
-
-            // Reset scheduling state
-            scheduledTime.current = 0;
+            // Reset audio queue
             audioQueue.current = [];
+            isPlaying.current = false;
 
             // Request microphone - iOS Safari needs specific config
             addDebugLog('Requesting microphone...');
@@ -753,28 +673,19 @@ ${buildContextString(state)}`;
             setError(e.message);
             setStatus('error');
         }
-    }, [status, getSettings, buildSystemInstruction, tools, startAudioCapture, handleWebSocketMessage, stopAudioCapture, addDebugLog, clearDebugLog, unlockiOSAudio]);
+    }, [status, getSettings, buildSystemInstruction, tools, startAudioCapture, handleWebSocketMessage, stopAudioCapture, addDebugLog, clearDebugLog]);
 
     const endSession = useCallback(() => {
+        console.log('[AIBrain] Ending session');
         stopAudioCapture();
         ws.current?.close(); ws.current = null;
 
         // Clear audio playback state
         audioQueue.current = [];
-        scheduledTime.current = 0;
-
-        // Stop silent audio (iOS unlock)
-        if (silentAudio.current) {
-            silentAudio.current.pause();
-        }
-
-        // Disconnect gain node
-        if (gainNode.current) {
-            gainNode.current.disconnect();
-            gainNode.current = null;
-        }
+        isPlaying.current = false;
 
         setStatus('idle');
+        setError(null);
     }, [stopAudioCapture]);
 
     return (
