@@ -639,22 +639,22 @@ ${buildContextString(state)}`;
                         realtimeInputConfig: {
                             automaticActivityDetection: {
                                 disabled: false,
-                                // START: HIGH = triggers on any speech, LOW = needs clear speech
+                                // START: 1=HIGH (triggers easily), 2=LOW (needs clear speech)
                                 startOfSpeechSensitivity: voiceSettings.vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
-                                // END: LOW = patient (waits longer), HIGH = quick cutoff
-                                // Default to LOW (patient) for field techs who pause while thinking
-                                endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+                                // END: 1=HIGH (quick cutoff), 2=LOW (patient, waits longer)
+                                // User setting: 1=Quick, 2=Patient
+                                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW',
                                 // Padding before speech starts (catch beginning of utterance)
                                 prefixPaddingMs: 300,
                                 // How long to wait after silence before ending turn
-                                // 1500ms = 1.5 seconds - gives time for natural pauses
-                                silenceDurationMs: 1500
+                                // Base 1000ms + 500ms if patient mode = 1000-1500ms
+                                silenceDurationMs: 1000 + (voiceSettings.vadEndSensitivity === 2 ? 500 : 0)
                             }
                         }
                     }
                 };
                 socket.send(JSON.stringify(setupConfig));
-                addDebugLog(`Setup sent. Model: ${selectedModel}, Voice: ${voiceSettings.voice}`);
+                addDebugLog(`Setup sent. Model: ${selectedModel}, Voice: ${voiceSettings.voice}, VAD: start=${voiceSettings.vadStartSensitivity}, end=${voiceSettings.vadEndSensitivity}`);
                 setStatus('connected');
                 startAudioCapture();
             };
