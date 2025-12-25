@@ -639,11 +639,16 @@ ${buildContextString(state)}`;
                         realtimeInputConfig: {
                             automaticActivityDetection: {
                                 disabled: false,
+                                // START: HIGH = triggers on any speech, LOW = needs clear speech
                                 startOfSpeechSensitivity: voiceSettings.vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
-                                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1 ? 'END_SENSITIVITY_LOW' : 'END_SENSITIVITY_HIGH',
-                                // More patient VAD settings for field techs
-                                prefixPaddingMs: 200,
-                                silenceDurationMs: 800 + (voiceSettings.vadEndSensitivity * 200)
+                                // END: LOW = patient (waits longer), HIGH = quick cutoff
+                                // Default to LOW (patient) for field techs who pause while thinking
+                                endOfSpeechSensitivity: 'END_SENSITIVITY_LOW',
+                                // Padding before speech starts (catch beginning of utterance)
+                                prefixPaddingMs: 300,
+                                // How long to wait after silence before ending turn
+                                // 1500ms = 1.5 seconds - gives time for natural pauses
+                                silenceDurationMs: 1500
                             }
                         }
                     }
