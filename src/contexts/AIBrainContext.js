@@ -316,39 +316,30 @@ ${buildContextString(state)}`;
      * Web Audio API respects the hardware mute switch, but HTML5 <audio> does not.
      * By playing a silent audio track, we force Web Audio onto the media channel.
      * See: https://github.com/feross/unmute-ios-audio
-     */
-    const setupiOSAudioUnlock = useCallback(() => {
-        if (silentAudio.current) return; // Already set up
-
-        // Create a short silent audio data URL (1 second of silence)
-        // This is a valid WAV file with silence
-        const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
-
-        const audio = new Audio(silentWav);
-        audio.loop = true;
-        audio.volume = 0.01; // Near-silent but not zero (some browsers optimize away zero volume)
-        audio.setAttribute('playsinline', 'true'); // iOS requirement
-
-        silentAudio.current = audio;
-        addDebugLog('iOS audio unlock element created');
-    }, [addDebugLog]);
-
-    /**
-     * Start silent audio playback to unlock iOS audio
+     *
      * Must be called from user gesture (button click)
      */
     const unlockiOSAudio = useCallback(async () => {
+        // Setup if not already done
         if (!silentAudio.current) {
-            setupiOSAudioUnlock();
+            // Create a short silent audio data URL (1 second of silence)
+            const silentWav = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+            const audio = new Audio(silentWav);
+            audio.loop = true;
+            audio.volume = 0.01;
+            audio.setAttribute('playsinline', 'true');
+            silentAudio.current = audio;
+            addDebugLog('iOS audio unlock element created');
         }
 
         try {
             await silentAudio.current.play();
             addDebugLog('iOS silent audio playing - audio unlocked');
         } catch (e) {
-            addDebugLog(`iOS audio unlock failed: ${e.message}`, 'error');
+            // Don't treat this as fatal - it may fail on non-iOS or if already playing
+            addDebugLog(`iOS audio unlock: ${e.message}`, 'info');
         }
-    }, [setupiOSAudioUnlock, addDebugLog]);
+    }, [addDebugLog]);
 
     /**
      * Schedule-ahead audio playback (from Google's live-api-web-console)
@@ -381,7 +372,8 @@ ${buildContextString(state)}`;
             buffer.getChannelData(0).set(resampled);
 
             // Create source and connect to gain node
-            const source = ctx.createBufferSourceNode();
+            // Note: Safari uses createBufferSource(), not createBufferSourceNode()
+            const source = ctx.createBufferSource();
             source.buffer = buffer;
             source.connect(gainNode.current);
 
