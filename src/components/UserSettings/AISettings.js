@@ -1,18 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Mic, MessageSquare, Sparkles, UserCog, Volume2, TestTube, CheckCircle, XCircle, Loader2, Copy, Check, ScrollText, Sliders, Bot, ChevronDown, ChevronRight } from 'lucide-react';
+import { Mic, MessageSquare, Sparkles, UserCog, Copy, Check, ScrollText, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/AIBrainContext';
 
 const AISettings = () => {
     const { mode } = useTheme();
     const sectionStyles = enhancedStyles.sections[mode];
 
-    // Voice Copilot context for testing
+    // Voice Copilot context
     const {
-        testAudioOutput,
-        testMicrophoneInput,
-        platformInfo,
         debugLog,
         clearDebugLog,
         lastTranscript,
@@ -35,7 +32,6 @@ const AISettings = () => {
     // State - Initialize from localStorage
     const [persona, setPersona] = useState(() => localStorage.getItem('ai_persona') || 'brief');
     const [voice, setVoice] = useState(() => localStorage.getItem('ai_voice') || 'Puck');
-    const [model, setModel] = useState(() => localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
 
     // VAD Sensitivity settings (1-2 scale only - Gemini API only supports HIGH/LOW)
@@ -48,21 +44,12 @@ const AISettings = () => {
         parseInt(localStorage.getItem('ai_vad_end') || '2', 10)
     );
 
-    // Test state
-    const [testingAudio, setTestingAudio] = useState(false);
-    const [testingMic, setTestingMic] = useState(false);
-    const [audioTestResult, setAudioTestResult] = useState(null); // null, true, false
-    const [micTestResult, setMicTestResult] = useState(null);
-    const [showDebugLog, setShowDebugLog] = useState(false);
-
     // Collapsible sections state - all collapsed by default to save space
     const [expandedSections, setExpandedSections] = useState({
         persona: false,
         voice: false,
-        model: false,
         vad: false,
         context: false,
-        diagnostics: false,
         transcript: false
     });
 
@@ -77,11 +64,10 @@ const AISettings = () => {
     useEffect(() => {
         localStorage.setItem('ai_persona', persona);
         localStorage.setItem('ai_voice', voice);
-        localStorage.setItem('ai_model', model);
         localStorage.setItem('ai_custom_instructions', instructions);
         localStorage.setItem('ai_vad_start', vadStartSensitivity.toString());
         localStorage.setItem('ai_vad_end', vadEndSensitivity.toString());
-    }, [persona, voice, model, instructions, vadStartSensitivity, vadEndSensitivity]);
+    }, [persona, voice, instructions, vadStartSensitivity, vadEndSensitivity]);
 
     // Capture AI responses to transcript
     useEffect(() => {
@@ -141,18 +127,6 @@ const AISettings = () => {
         { id: 'Kore', name: 'Kore (Warm)', gender: 'Female' },
         { id: 'Fenrir', name: 'Fenrir (Deep)', gender: 'Male' },
         { id: 'Aoede', name: 'Aoede (Formal)', gender: 'Female' },
-    ];
-
-    // Available Gemini models for Live API (bidiGenerateContent)
-    // IMPORTANT: Only native-audio models work with the Live API!
-    // Non-native-audio models like 'gemini-2.0-flash-live-001' will be rejected
-    const models = [
-        {
-            id: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            name: '2.5 Flash Native Audio',
-            description: 'Best quality for voice conversations',
-            badge: 'RECOMMENDED'
-        },
     ];
 
     return (
@@ -251,56 +225,6 @@ const AISettings = () => {
                                     </button>
                                 ))}
                             </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Model Selection - Collapsible */}
-                <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-                    <button
-                        onClick={() => toggleSection('model')}
-                        className="w-full flex items-center justify-between gap-2 p-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                        <div className="flex items-center gap-2">
-                            <Bot size={14} className="text-zinc-500" />
-                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">AI Model</span>
-                            <span className="text-xs text-violet-500 font-medium">{models.find(m => m.id === model)?.name || 'Unknown'}</span>
-                        </div>
-                        {expandedSections.model ? <ChevronDown size={16} className="text-zinc-400" /> : <ChevronRight size={16} className="text-zinc-400" />}
-                    </button>
-                    {expandedSections.model && (
-                        <div className="px-3 pb-3 border-t border-zinc-100 dark:border-zinc-800">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-3">
-                                {models.map(m => (
-                                    <button
-                                        key={m.id}
-                                        onClick={() => setModel(m.id)}
-                                        className={`flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${model === m.id
-                                                ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-500 ring-1 ring-violet-500'
-                                                : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:border-violet-300'
-                                            }`}
-                                    >
-                                        <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center ${model === m.id ? 'border-violet-500' : 'border-zinc-400'
-                                            }`}>
-                                            {model === m.id && <div className="w-2 h-2 rounded-full bg-violet-500" />}
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{m.name}</h3>
-                                                {m.badge && (
-                                                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-violet-500 text-white rounded">
-                                                        {m.badge}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{m.description}</p>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                            <p className="text-xs text-zinc-400 italic mt-2">
-                                Restart voice session after changing model.
-                            </p>
                         </div>
                     )}
                 </div>
@@ -438,125 +362,6 @@ const AISettings = () => {
                             </div>
                             <p className="text-xs text-zinc-400 italic mt-2">
                                 The AI will consider these instructions in every interaction.
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Audio & Microphone Tests - Collapsible */}
-                <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-                    <button
-                        onClick={() => toggleSection('diagnostics')}
-                        className="w-full flex items-center justify-between gap-2 p-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                        <div className="flex items-center gap-2">
-                            <TestTube size={14} className="text-zinc-500" />
-                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Audio Diagnostics</span>
-                        </div>
-                        {expandedSections.diagnostics ? <ChevronDown size={16} className="text-zinc-400" /> : <ChevronRight size={16} className="text-zinc-400" />}
-                    </button>
-                    {expandedSections.diagnostics && (
-                        <div className="px-3 pb-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3 pt-3">
-                            {/* Platform Info */}
-                            <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-lg p-3 text-xs">
-                                <div className="font-medium text-zinc-700 dark:text-zinc-300 mb-1">Platform Detected:</div>
-                                <div className="text-zinc-500 dark:text-zinc-400 space-y-0.5">
-                                    <div>iOS: <span className={platformInfo?.isIOS ? 'text-amber-600 font-medium' : 'text-green-600'}>{platformInfo?.isIOS ? 'Yes' : 'No'}</span></div>
-                                    <div>Safari: <span className={platformInfo?.isSafari ? 'text-amber-600 font-medium' : 'text-green-600'}>{platformInfo?.isSafari ? 'Yes' : 'No'}</span></div>
-                                </div>
-                            </div>
-
-                            {/* Test Buttons */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <button
-                                    onClick={async () => {
-                                        setTestingAudio(true);
-                                        setAudioTestResult(null);
-                                        const result = await testAudioOutput();
-                                        setAudioTestResult(result);
-                                        setTestingAudio(false);
-                                    }}
-                                    disabled={testingAudio}
-                                    className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                                        audioTestResult === true ? 'bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400' :
-                                        audioTestResult === false ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400' :
-                                        'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                    }`}
-                                >
-                                    {testingAudio ? (
-                                        <Loader2 size={16} className="animate-spin" />
-                                    ) : audioTestResult === true ? (
-                                        <CheckCircle size={16} />
-                                    ) : audioTestResult === false ? (
-                                        <XCircle size={16} />
-                                    ) : (
-                                        <Volume2 size={16} />
-                                    )}
-                                    {testingAudio ? 'Playing...' : 'Test Speaker'}
-                                </button>
-
-                                <button
-                                    onClick={async () => {
-                                        setTestingMic(true);
-                                        setMicTestResult(null);
-                                        const result = await testMicrophoneInput();
-                                        setMicTestResult(result);
-                                        setTestingMic(false);
-                                    }}
-                                    disabled={testingMic}
-                                    className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
-                                        micTestResult === true ? 'bg-green-50 border-green-300 text-green-700 dark:bg-green-900/20 dark:border-green-700 dark:text-green-400' :
-                                        micTestResult === false ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/20 dark:border-red-700 dark:text-red-400' :
-                                        'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                    }`}
-                                >
-                                    {testingMic ? (
-                                        <Loader2 size={16} className="animate-spin" />
-                                    ) : micTestResult === true ? (
-                                        <CheckCircle size={16} />
-                                    ) : micTestResult === false ? (
-                                        <XCircle size={16} />
-                                    ) : (
-                                        <Mic size={16} />
-                                    )}
-                                    {testingMic ? 'Listening...' : 'Test Microphone'}
-                                </button>
-                            </div>
-
-                            {/* Debug Log Toggle */}
-                            <button
-                                onClick={() => setShowDebugLog(!showDebugLog)}
-                                className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
-                            >
-                                {showDebugLog ? 'Hide Debug Log' : 'Show Debug Log'}
-                            </button>
-
-                            {/* Debug Log */}
-                            {showDebugLog && (
-                                <div className="bg-black/90 text-green-400 p-3 rounded-lg font-mono text-xs max-h-60 overflow-y-auto">
-                                    <div className="flex justify-between items-center mb-2 pb-2 border-b border-green-800">
-                                        <span className="text-green-300 font-bold">Voice Copilot Log</span>
-                                        <button onClick={clearDebugLog} className="text-green-500 hover:text-green-300 text-xs">Clear</button>
-                                    </div>
-                                    {debugLog.length === 0 ? (
-                                        <div className="text-green-700 text-center py-4">No logs yet. Run a test above.</div>
-                                    ) : (
-                                        debugLog.slice(-30).map((log, i) => (
-                                            <div key={i} className={`py-0.5 ${
-                                                log.type === 'error' ? 'text-red-400' :
-                                                log.type === 'warn' ? 'text-yellow-400' :
-                                                log.type === 'audio' ? 'text-cyan-400' :
-                                                'text-green-400'
-                                            }`}>
-                                                <span className="text-green-700">{log.timestamp}</span> {log.message}
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-                            )}
-
-                            <p className="text-xs text-zinc-400 italic">
-                                Use these tests to verify audio works on your device. iOS Safari may require tapping to enable audio.
                             </p>
                         </div>
                     )}
