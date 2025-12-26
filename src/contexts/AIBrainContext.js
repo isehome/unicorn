@@ -494,8 +494,14 @@ ${buildContextString(state)}`;
 
             // Calculate audio level (RMS) for debug display
             let sum = 0;
+            let nonZeroSamples = 0;
             for (let i = 0; i < inputData.length; i++) {
                 sum += inputData[i] * inputData[i];
+                if (Math.abs(inputData[i]) > 0.0001) nonZeroSamples++;
+            }
+            // Warn if completely silent for the first few chunks
+            if (chunkCount < 10 && nonZeroSamples === 0 && chunkCount % 5 === 0) {
+                addDebugLog(`WARNING: Input buffer is completely silent! (zeros)`, 'warn');
             }
             const rms = Math.sqrt(sum / inputData.length);
             const level = Math.min(100, Math.round(rms * 500)); // Scale to 0-100
@@ -610,6 +616,12 @@ ${buildContextString(state)}`;
             });
             const audioTrack = mediaStream.current.getAudioTracks()[0];
             addDebugLog(`Microphone acquired: ${audioTrack?.label || 'default mic'}`);
+            addDebugLog(`Track state: enabled=${audioTrack?.enabled}, muted=${audioTrack?.muted}, readyState=${audioTrack?.readyState}`);
+
+            // Monitor track ended event
+            audioTrack.onended = () => addDebugLog('Microphone track ended unexpectedly', 'error');
+            audioTrack.onmute = () => addDebugLog('Microphone track muted by system', 'warn');
+            audioTrack.onunmute = () => addDebugLog('Microphone track unmuted', 'info');
 
             // Connect WebSocket
             addDebugLog('Connecting to Gemini Live API...');
