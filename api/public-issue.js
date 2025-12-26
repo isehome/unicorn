@@ -118,7 +118,7 @@ async function fetchUploads(linkId) {
 async function fetchPhotos(issueId) {
   const { data } = await supabase
     .from('issue_photos')
-    .select('id, url, file_name, content_type, size_bytes, uploaded_by, created_at')
+    .select('id, url, file_name, content_type, size_bytes, uploaded_by, created_at, sharepoint_drive_id, sharepoint_item_id')
     .eq('issue_id', issueId)
     .order('created_at', { ascending: true });
   return data || [];
@@ -234,7 +234,9 @@ async function buildPortalPayload(link, sessionValid) {
       contentType: photo.content_type,
       sizeBytes: photo.size_bytes,
       uploadedBy: photo.uploaded_by,
-      createdAt: photo.created_at
+      createdAt: photo.created_at,
+      sharepointDriveId: photo.sharepoint_drive_id,
+      sharepointItemId: photo.sharepoint_item_id
     }));
   }
 

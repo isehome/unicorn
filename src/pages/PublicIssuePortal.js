@@ -268,18 +268,21 @@ const PublicIssuePortal = () => {
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                   {photos.map((photo) => {
-                    // Route through image proxy for authenticated access
-                    const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+                    // Use Graph API thumbnail if metadata available, otherwise fallback to image proxy
+                    const thumbnailUrl = photo.sharepointDriveId && photo.sharepointItemId
+                      ? `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(photo.sharepointDriveId)}&itemId=${encodeURIComponent(photo.sharepointItemId)}&size=medium`
+                      : `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+                    const fullUrl = `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
                     return (
                       <a
                         key={photo.id}
-                        href={proxyUrl}
+                        href={fullUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-violet-400 transition-colors"
                       >
                         <img
-                          src={proxyUrl}
+                          src={thumbnailUrl}
                           alt={photo.fileName || 'Issue photo'}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                         />
