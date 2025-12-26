@@ -406,6 +406,37 @@ ${buildContextString(state)}`;
         playNextChunk();
     }, [addDebugLog, playNextChunk]);
 
+    // Diagnostic: Play a test beep to verify audio output
+    const playTestSound = useCallback(async () => {
+        addDebugLog('Playing test sound...', 'audio');
+        try {
+            if (!audioContext.current) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioContext.current = new AudioContextClass();
+            }
+            if (audioContext.current.state === 'suspended') await audioContext.current.resume();
+
+            const osc = audioContext.current.createOscillator();
+            const gain = audioContext.current.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(440, audioContext.current.currentTime); // A4
+            osc.frequency.exponentialRampToValueAtTime(880, audioContext.current.currentTime + 0.5); // Slide up to A5
+
+            gain.gain.setValueAtTime(0.5, audioContext.current.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioContext.current.currentTime + 0.5);
+
+            osc.connect(gain);
+            gain.connect(audioContext.current.destination);
+
+            osc.start();
+            osc.stop(audioContext.current.currentTime + 0.5);
+            addDebugLog('Test sound scheduled');
+        } catch (e) {
+            addDebugLog(`Test sound failed: ${e.message}`, 'error');
+        }
+    }, [addDebugLog]);
+
     const handleWebSocketMessage = useCallback(async (event) => {
         try {
             // Handle Safari Blob responses
@@ -758,7 +789,7 @@ ${buildContextString(state)}`;
 
     return (
         <AIBrainContext.Provider value={{
-            status, error, isConfigured, audioLevel, inputSilenceWarning, lastTranscript, startSession, endSession,
+            status, error, isConfigured, audioLevel, inputSilenceWarning, lastTranscript, startSession, endSession, playTestSound,
             // Debug state
             debugLog, clearDebugLog, audioChunksSent, audioChunksReceived,
             // Platform info
