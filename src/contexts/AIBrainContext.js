@@ -358,12 +358,16 @@ ${buildContextString(state)}`;
      * Just add to queue and trigger playback
      */
     const queueAudioForPlayback = useCallback((audioData) => {
-        // Check audio data validity and log
+        // Check audio data validity - scan the WHOLE chunk for peak
         let maxAmp = 0;
-        for (let i = 0; i < Math.min(audioData.length, 500); i++) {
-            maxAmp = Math.max(maxAmp, Math.abs(audioData[i]));
+        for (let i = 0; i < audioData.length; i++) {
+            const amp = Math.abs(audioData[i]);
+            if (amp > maxAmp) maxAmp = amp;
         }
-        addDebugLog(`Queueing audio: ${audioData.length} samples, peak: ${maxAmp.toFixed(3)}`);
+
+        // Log peak amplitude for debugging (normal speech = 0.1-0.5+)
+        const isLowAmplitude = maxAmp < 0.01;
+        addDebugLog(`Queueing audio: ${audioData.length} samples, peak: ${maxAmp.toFixed(3)}${isLowAmplitude ? ' (LOW!)' : ''}`);
 
         // Add to queue
         audioQueue.current.push(audioData);
@@ -623,7 +627,11 @@ ${buildContextString(state)}`;
                             speechConfig: {
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
-                                }
+                                },
+                                // Explicitly request LINEAR16 (16-bit PCM) output at 24kHz
+                                // This matches our decoding in base64ToFloat32
+                                outputAudioEncoding: 'LINEAR16',
+                                sampleRateHertz: 24000
                             }
                         },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
