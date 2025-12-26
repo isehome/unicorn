@@ -358,10 +358,19 @@ ${buildContextString(state)}`;
         }
     }, [addDebugLog]);
 
-    const sendToolResponse = useCallback((name, result) => {
+    const sendToolResponse = useCallback((name, result, id) => {
         if (ws.current?.readyState === WebSocket.OPEN) {
-            const response = { toolResponse: { functionResponses: [{ name, response: result }] } };
-            addDebugLog(`Sending tool response for ${name}`);
+            // Function Response format for Gemini Live API
+            const response = {
+                toolResponse: {
+                    functionResponses: [{
+                        name,
+                        response: result,
+                        id // CRITICAL: ID must match the call ID
+                    }]
+                }
+            };
+            addDebugLog(`Sending tool response for ${name} (id: ${id})`);
             ws.current.send(JSON.stringify(response));
         }
     }, [addDebugLog]);
@@ -435,9 +444,11 @@ ${buildContextString(state)}`;
                     if (part.functionCall) {
                         const funcName = part.functionCall.name || 'unknown';
                         const funcArgs = part.functionCall.args || {};
-                        addDebugLog(`Tool call: ${funcName}(${JSON.stringify(funcArgs).substring(0, 50)})`, 'tool');
+                        const funcId = part.functionCall.id; // Get ID from function call
+
+                        addDebugLog(`Tool call: ${funcName}, id=${funcId}`, 'tool');
                         const r = await handleToolCall({ name: funcName, args: funcArgs });
-                        sendToolResponse(funcName, r);
+                        sendToolResponse(funcName, r, funcId);
                     }
                 }
             }
@@ -456,9 +467,11 @@ ${buildContextString(state)}`;
                 for (const fc of functionCalls) {
                     const funcName = fc.name;
                     const funcArgs = fc.args || {};
-                    addDebugLog(`Executing tool: ${funcName}(${JSON.stringify(funcArgs).substring(0, 50)})`, 'tool');
+                    const funcId = fc.id; // Get ID
+
+                    addDebugLog(`Executing tool: ${funcName}, id=${funcId}`, 'tool');
                     const r = await handleToolCall({ name: funcName, args: funcArgs });
-                    sendToolResponse(funcName, r);
+                    sendToolResponse(funcName, r, funcId);
                 }
             }
         } catch (e) {
