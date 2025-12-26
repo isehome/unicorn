@@ -310,9 +310,22 @@ ${buildContextString(state)}`;
             const buffer = audioContext.current.createBuffer(1, resampledData.length, deviceSampleRate);
             buffer.getChannelData(0).set(resampledData);
 
+            // Check peak amplitude of the data being played
+            let peakAmp = 0;
+            for (let i = 0; i < resampledData.length; i++) {
+                const amp = Math.abs(resampledData[i]);
+                if (amp > peakAmp) peakAmp = amp;
+            }
+            addDebugLog(`Playing peak: ${peakAmp.toFixed(3)}${peakAmp < 0.01 ? ' (SILENT!)' : ''}`, 'audio');
+
             const source = audioContext.current.createBufferSource();
             source.buffer = buffer;
-            source.connect(audioContext.current.destination);
+
+            // Add gain node to boost audio (iOS Safari can be quiet)
+            const gainNode = audioContext.current.createGain();
+            gainNode.gain.value = 2.0; // Boost by 2x
+            source.connect(gainNode);
+            gainNode.connect(audioContext.current.destination);
 
             source.onended = () => {
                 if (VERBOSE_LOGGING) addDebugLog(`Chunk played (${resampledData.length} samples)`, 'audio');
