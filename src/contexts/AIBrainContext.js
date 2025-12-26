@@ -29,6 +29,7 @@ export const AIBrainProvider = ({ children }) => {
     const [error, setError] = useState(null);
     const [isConfigured, setIsConfigured] = useState(false);
     const [audioLevel, setAudioLevel] = useState(0);
+    const [inputSilenceWarning, setInputSilenceWarning] = useState(false);
     const [lastTranscript, setLastTranscript] = useState('');
 
     const ws = useRef(null);
@@ -334,8 +335,15 @@ ${buildContextString(state)}`;
                     playNextChunk();
                 } else {
                     addDebugLog('Audio playback complete', 'audio');
-                    // Done speaking, go back to listening
-                    setStatus('listening');
+                    // Done speaking.
+                    // If socket is closed (status logic handled here now), go to idle.
+                    // If socket is open, go back to listening.
+                    if (ws.current?.readyState === WebSocket.OPEN) {
+                        setStatus('listening');
+                    } else {
+                        addDebugLog('Playback done and socket closed -> IDLE');
+                        setStatus('idle');
+                    }
                 }
             };
 
@@ -513,8 +521,11 @@ ${buildContextString(state)}`;
                 if (Math.abs(inputData[i]) > 0.0001) nonZeroSamples++;
             }
             // Warn if completely silent for the first few chunks
-            if (chunkCount < 10 && nonZeroSamples === 0 && chunkCount % 5 === 0) {
+            if (nonZeroSamples === 0 && chunkCount > 10 && chunkCount % 50 === 0) {
                 addDebugLog(`WARNING: Input buffer is completely silent! (zeros)`, 'warn');
+                setInputSilenceWarning(true);
+            } else if (nonZeroSamples > 0) {
+                setInputSilenceWarning(false);
             }
             const rms = Math.sqrt(sum / inputData.length);
             const level = Math.min(100, Math.round(rms * 500)); // Scale to 0-100
@@ -717,7 +728,14 @@ ${buildContextString(state)}`;
                     addDebugLog('Session ended by server (Model may have finished turn)', 'warn');
                 }
 
-                setStatus('idle');
+                // CRITICAL FIX: If audio is still playing or queued, DON'T switch to idle yet.
+                // Let playNextChunk handle the transition when it finishes.
+                if (isPlaying.current || audioQueue.current.length > 0) {
+                    addDebugLog('Audio still playing - deferring IDLE state until finish', 'info');
+                } else {
+                    setStatus('idle');
+                }
+
                 stopAudioCapture();
             };
 
@@ -743,7 +761,7 @@ ${buildContextString(state)}`;
 
     return (
         <AIBrainContext.Provider value={{
-            status, error, isConfigured, audioLevel, lastTranscript, startSession, endSession,
+            status, error, isConfigured, audioLevel, inputSilenceWarning, lastTranscript, startSession, endSession,
             // Debug state
             debugLog, clearDebugLog, audioChunksSent, audioChunksReceived,
             // Platform info
