@@ -31,11 +31,13 @@ import {
 } from 'lucide-react';
 import {
   serviceTicketService,
-  serviceScheduleService
+  serviceScheduleService,
+  technicianService
 } from '../../services/serviceTicketService';
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
+import { createCalendarEvent } from '../../services/microsoftCalendarService';
 
 // Category icons
 const categoryIcons = {
@@ -82,10 +84,20 @@ const ServiceTicketDetail = () => {
     scheduled_date: '',
     scheduled_time_start: '',
     scheduled_time_end: '',
+    technician_id: '',
     technician_name: '',
+    technician_email: '',
     service_address: '',
-    pre_visit_notes: ''
+    pre_visit_notes: '',
+    addToCalendar: true
   });
+
+  // Technicians list
+  const [technicians, setTechnicians] = useState([]);
+  const [loadingTechnicians, setLoadingTechnicians] = useState(false);
+
+  // Assignment state
+  const [showAssign, setShowAssign] = useState(false);
 
   const loadTicket = useCallback(async () => {
     if (!id) return;
@@ -111,10 +123,30 @@ const ServiceTicketDetail = () => {
     }
   }, [id]);
 
+  // Load technicians when schedule modal opens
+  const loadTechnicians = useCallback(async () => {
+    try {
+      setLoadingTechnicians(true);
+      const data = await technicianService.getAll();
+      setTechnicians(data);
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to load technicians:', err);
+    } finally {
+      setLoadingTechnicians(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadTicket();
     setView('service-ticket-detail');
   }, [loadTicket, setView]);
+
+  // Load technicians when schedule or assign modal opens
+  useEffect(() => {
+    if (showSchedule || showAssign) {
+      loadTechnicians();
+    }
+  }, [showSchedule, showAssign, loadTechnicians]);
 
   // Publish state for AI Brain
   useEffect(() => {
@@ -211,23 +243,125 @@ const ServiceTicketDetail = () => {
 
     try {
       setSaving(true);
-      await serviceScheduleService.create({
+
+      // Create schedule in database
+      const scheduleData = {
         ticket_id: ticket.id,
-        ...scheduleForm
-      });
+        scheduled_date: scheduleForm.scheduled_date,
+        scheduled_time_start: scheduleForm.scheduled_time_start || null,
+        scheduled_time_end: scheduleForm.scheduled_time_end || null,
+        technician_id: scheduleForm.technician_id || null,
+        technician_name: scheduleForm.technician_name || null,
+        service_address: scheduleForm.service_address || null,
+        pre_visit_notes: scheduleForm.pre_visit_notes || null
+      };
+
+      await serviceScheduleService.create(scheduleData);
+
+      // Create calendar event if requested and technician has email
+      if (scheduleForm.addToCalendar && scheduleForm.technician_email) {
+        try {
+          const calendarEvent = {
+            title: `Service: ${ticket.title}`,
+            doBy: scheduleForm.scheduled_date,
+            doByTime: scheduleForm.scheduled_time_start || '09:00',
+            plannedHours: calculateDuration(),
+            description: buildCalendarDescription()
+          };
+
+          const attendees = [{
+            email: scheduleForm.technician_email,
+            name: scheduleForm.technician_name
+          }];
+
+          const result = await createCalendarEvent(user, calendarEvent, attendees);
+          if (result.success) {
+            console.log('[ServiceTicketDetail] Calendar event created:', result.eventId);
+          } else {
+            console.warn('[ServiceTicketDetail] Calendar event failed:', result.error);
+          }
+        } catch (calErr) {
+          console.error('[ServiceTicketDetail] Calendar error:', calErr);
+          // Don't fail the whole operation if calendar fails
+        }
+      }
+
       setShowSchedule(false);
       setScheduleForm({
         scheduled_date: '',
         scheduled_time_start: '',
         scheduled_time_end: '',
+        technician_id: '',
         technician_name: '',
+        technician_email: '',
         service_address: ticket?.customer_address || '',
-        pre_visit_notes: ''
+        pre_visit_notes: '',
+        addToCalendar: true
       });
       await loadTicket();
     } catch (err) {
       console.error('[ServiceTicketDetail] Failed to create schedule:', err);
       setError('Failed to schedule visit');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Helper to calculate duration from start/end times
+  const calculateDuration = () => {
+    if (!scheduleForm.scheduled_time_start || !scheduleForm.scheduled_time_end) {
+      return 2; // Default 2 hours
+    }
+    const [startH, startM] = scheduleForm.scheduled_time_start.split(':').map(Number);
+    const [endH, endM] = scheduleForm.scheduled_time_end.split(':').map(Number);
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+    return Math.max(1, (endMins - startMins) / 60);
+  };
+
+  // Build description for calendar event
+  const buildCalendarDescription = () => {
+    const parts = [
+      `Ticket: ${ticket.ticket_number}`,
+      `Issue: ${ticket.title}`,
+      ticket.description ? `Description: ${ticket.description}` : null,
+      ticket.customer_name ? `Customer: ${ticket.customer_name}` : null,
+      ticket.customer_phone ? `Phone: ${ticket.customer_phone}` : null,
+      scheduleForm.service_address ? `Address: ${scheduleForm.service_address}` : null,
+      scheduleForm.pre_visit_notes ? `Notes: ${scheduleForm.pre_visit_notes}` : null
+    ].filter(Boolean);
+    return parts.join('\n');
+  };
+
+  // Handle technician selection
+  const handleTechnicianChange = (techId) => {
+    const tech = technicians.find(t => t.id === techId);
+    setScheduleForm(prev => ({
+      ...prev,
+      technician_id: techId,
+      technician_name: tech?.full_name || '',
+      technician_email: tech?.email || ''
+    }));
+  };
+
+  // Handle ticket assignment
+  const handleAssign = async (techId) => {
+    const tech = technicians.find(t => t.id === techId);
+    if (!tech || !ticket) return;
+
+    try {
+      setSaving(true);
+      await serviceTicketService.assign(
+        ticket.id,
+        techId,
+        tech.full_name,
+        user?.name || user?.email || 'User'
+      );
+      setShowAssign(false);
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to assign ticket:', err);
+      setError('Failed to assign ticket');
     } finally {
       setSaving(false);
     }
@@ -579,6 +713,13 @@ const ServiceTicketDetail = () => {
               <h2 className="font-semibold text-white mb-3">Actions</h2>
               <div className="space-y-2">
                 <button
+                  onClick={() => setShowAssign(true)}
+                  className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
+                >
+                  <User size={16} />
+                  Assign Ticket
+                </button>
+                <button
                   onClick={() => setShowSchedule(true)}
                   className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
                 >
@@ -656,7 +797,7 @@ const ServiceTicketDetail = () => {
       {/* Schedule Modal */}
       {showSchedule && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-800 rounded-lg w-full max-w-md">
+          <div className="bg-zinc-800 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b border-zinc-700">
               <h3 className="font-semibold text-white">Schedule Service Visit</h3>
             </div>
@@ -693,13 +834,33 @@ const ServiceTicketDetail = () => {
               </div>
               <div>
                 <label className="text-sm text-zinc-400 mb-1 block">Technician</label>
-                <input
-                  type="text"
-                  value={scheduleForm.technician_name}
-                  onChange={(e) => setScheduleForm(prev => ({ ...prev, technician_name: e.target.value }))}
-                  placeholder="Technician name"
-                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                />
+                {loadingTechnicians ? (
+                  <div className="flex items-center gap-2 text-zinc-400 py-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-400" />
+                    Loading technicians...
+                  </div>
+                ) : technicians.length > 0 ? (
+                  <select
+                    value={scheduleForm.technician_id}
+                    onChange={(e) => handleTechnicianChange(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                  >
+                    <option value="">Select technician...</option>
+                    {technicians.map(tech => (
+                      <option key={tech.id} value={tech.id}>
+                        {tech.full_name}{tech.role ? ` (${tech.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={scheduleForm.technician_name}
+                    onChange={(e) => setScheduleForm(prev => ({ ...prev, technician_name: e.target.value }))}
+                    placeholder="Technician name"
+                    className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
+                  />
+                )}
               </div>
               <div>
                 <label className="text-sm text-zinc-400 mb-1 block">Service Address</label>
@@ -721,6 +882,25 @@ const ServiceTicketDetail = () => {
                   className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500 resize-none"
                 />
               </div>
+              {/* Calendar Integration */}
+              <div className="flex items-center gap-3 p-3 bg-zinc-700/50 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="addToCalendar"
+                  checked={scheduleForm.addToCalendar}
+                  onChange={(e) => setScheduleForm(prev => ({ ...prev, addToCalendar: e.target.checked }))}
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-[#94AF32] focus:ring-[#94AF32]"
+                />
+                <label htmlFor="addToCalendar" className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                  <Calendar size={16} />
+                  Add to technician's calendar
+                </label>
+              </div>
+              {scheduleForm.addToCalendar && !scheduleForm.technician_email && scheduleForm.technician_id && (
+                <p className="text-xs text-amber-400">
+                  Note: Selected technician has no email - calendar invite won't be sent.
+                </p>
+              )}
               <div className="flex gap-2 justify-end pt-2">
                 <button
                   type="button"
@@ -739,6 +919,61 @@ const ServiceTicketDetail = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Ticket Modal */}
+      {showAssign && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-zinc-800 rounded-lg w-full max-w-md">
+            <div className="p-4 border-b border-zinc-700">
+              <h3 className="font-semibold text-white">Assign Ticket</h3>
+            </div>
+            <div className="p-4">
+              {loadingTechnicians ? (
+                <div className="flex items-center justify-center gap-2 text-zinc-400 py-8">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-zinc-400" />
+                  Loading team members...
+                </div>
+              ) : technicians.length > 0 ? (
+                <div className="space-y-2">
+                  {technicians.map(tech => (
+                    <button
+                      key={tech.id}
+                      onClick={() => handleAssign(tech.id)}
+                      disabled={saving}
+                      className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50"
+                    >
+                      <div className="p-2 bg-zinc-600 rounded-full">
+                        <User size={16} className="text-zinc-300" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-white">{tech.full_name}</div>
+                        {tech.role && (
+                          <div className="text-xs text-zinc-400">{tech.role}</div>
+                        )}
+                      </div>
+                      {ticket?.assigned_to === tech.id && (
+                        <CheckCircle size={16} style={{ color: brandColors.success }} />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-zinc-400 text-center py-8">
+                  No team members found. Add internal contacts to assign tickets.
+                </p>
+              )}
+            </div>
+            <div className="p-4 border-t border-zinc-700 flex justify-end">
+              <button
+                onClick={() => setShowAssign(false)}
+                className="px-4 py-2 text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
