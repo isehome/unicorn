@@ -408,8 +408,9 @@ ${buildContextString(state)}`;
 
     // Diagnostic: Play a test beep to verify audio output
     const playTestSound = useCallback(async () => {
-        addDebugLog('Playing test sound...', 'audio');
+        addDebugLog('Playing test sound (Web Audio + HTML5)...', 'audio');
         try {
+            // Method 1: Web Audio API Oscillator
             if (!audioContext.current) {
                 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                 audioContext.current = new AudioContextClass();
@@ -420,8 +421,8 @@ ${buildContextString(state)}`;
             const gain = audioContext.current.createGain();
 
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(440, audioContext.current.currentTime); // A4
-            osc.frequency.exponentialRampToValueAtTime(880, audioContext.current.currentTime + 0.5); // Slide up to A5
+            osc.frequency.setValueAtTime(440, audioContext.current.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(880, audioContext.current.currentTime + 0.5);
 
             gain.gain.setValueAtTime(0.5, audioContext.current.currentTime);
             gain.gain.linearRampToValueAtTime(0, audioContext.current.currentTime + 0.5);
@@ -431,7 +432,19 @@ ${buildContextString(state)}`;
 
             osc.start();
             osc.stop(audioContext.current.currentTime + 0.5);
-            addDebugLog('Test sound scheduled');
+            addDebugLog('Web Audio test scheduled');
+
+            // Method 2: HTML5 Audio Element (Fallback)
+            // Simple beep data URI
+            const beepUrl = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'; // (Truncated for brevity, using a real short beep)
+            // Using a generated oscillator beep data URI would be better, but for now let's just log.
+            // Actually, let's create a temporary audio element.
+            const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
+            audio.volume = 1.0;
+            audio.onplay = () => addDebugLog('HTML5 Audio: Playing...', 'audio');
+            audio.onerror = (e) => addDebugLog(`HTML5 Audio Error: ${e.message || 'Unknown'}`, 'error');
+            audio.play().catch(e => addDebugLog(`HTML5 Audio Play Error: ${e.message}`, 'error'));
+
         } catch (e) {
             addDebugLog(`Test sound failed: ${e.message}`, 'error');
         }
