@@ -17,7 +17,6 @@ const VoiceCopilotOverlay = () => {
         lastTranscript,
         audioChunksSent,
         audioChunksReceived,
-        audioChunksReceived,
         clearDebugLog,
         playTestSound,
     } = useVoiceCopilot();
@@ -152,8 +151,8 @@ const VoiceCopilotOverlay = () => {
             {toolToast && (
                 <div
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg mb-2 animate-fade-in backdrop-blur-md transition-all ${toolToast.success
-                            ? 'bg-violet-500/90 text-white'
-                            : 'bg-red-500/90 text-white'
+                        ? 'bg-violet-500/90 text-white'
+                        : 'bg-red-500/90 text-white'
                         }`}
                     style={{
                         animation: 'slideInRight 0.3s ease-out'
@@ -241,9 +240,9 @@ const VoiceCopilotOverlay = () => {
                         ) : (
                             debugLog.map((log, i) => (
                                 <div key={i} className={`text-[10px] py-0.5 ${log.type === 'error' ? 'text-red-400' :
-                                        log.type === 'response' ? 'text-blue-400' :
-                                            log.type === 'tool' ? 'text-yellow-400' :
-                                                'text-green-400'
+                                    log.type === 'response' ? 'text-blue-400' :
+                                        log.type === 'tool' ? 'text-yellow-400' :
+                                            'text-green-400'
                                     }`}>
                                     <span className="text-green-700">{log.timestamp}</span> {log.message}
                                 </div>
@@ -256,8 +255,8 @@ const VoiceCopilotOverlay = () => {
             {/* Expanded Status / Error Message */}
             {(isExpanded || (status !== 'idle' && status !== 'connecting')) && !showDebug && (
                 <div className={`p-3 rounded-2xl shadow-xl mb-2 backdrop-blur-md transition-all max-w-xs ${status === 'error' || !isConfigured
-                        ? 'bg-red-500/90 text-white'
-                        : 'bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-700'
+                    ? 'bg-red-500/90 text-white'
+                    : 'bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-700'
                     }`}>
                     <div className="flex items-start gap-3">
                         <div className="text-sm font-medium">
@@ -276,8 +275,8 @@ const VoiceCopilotOverlay = () => {
                 <button
                     onClick={() => setShowDebug(!showDebug)}
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${showDebug
-                            ? 'bg-green-500 text-white'
-                            : 'bg-white dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
+                        ? 'bg-green-500 text-white'
+                        : 'bg-white dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
                         }`}
                 >
                     <Bug size={18} />
