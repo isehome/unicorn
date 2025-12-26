@@ -64,6 +64,12 @@ const TodoDetailPage = lazy(() => import('./components/TodoDetailPage'));
 const HeadEndToolsPage = lazy(() => import('./components/HeadEndToolsPage'));
 const KnowledgeManagementPanel = lazy(() => import('./components/knowledge/KnowledgeManagementPanel'));
 
+// Service CRM
+const ServiceDashboard = lazy(() => import('./components/Service/ServiceDashboard'));
+const ServiceTicketList = lazy(() => import('./components/Service/ServiceTicketList'));
+const ServiceTicketDetail = lazy(() => import('./components/Service/ServiceTicketDetail'));
+const NewTicketForm = lazy(() => import('./components/Service/NewTicketForm'));
+
 const AppRoutes = () => {
   const location = useLocation();
   const isPublicRoute = location.pathname.startsWith('/public') || location.pathname.startsWith('/shade-portal');
@@ -373,6 +379,39 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <TodoDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Service CRM Routes */}
+              <Route
+                path="/service"
+                element={
+                  <ProtectedRoute>
+                    <ServiceDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/service/tickets"
+                element={
+                  <ProtectedRoute>
+                    <ServiceTicketList />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/service/tickets/new"
+                element={
+                  <ProtectedRoute>
+                    <NewTicketForm />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/service/tickets/:id"
+                element={
+                  <ProtectedRoute>
+                    <ServiceTicketDetail />
                   </ProtectedRoute>
                 }
               />

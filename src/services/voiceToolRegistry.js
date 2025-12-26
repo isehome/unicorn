@@ -23,6 +23,7 @@ export const TOOL_CATEGORIES = {
     EQUIPMENT: 'equipment',        // Equipment management
     PROJECTS: 'projects',          // Project management
     KNOWLEDGE: 'knowledge',        // Knowledge base queries
+    SERVICE: 'service',            // Service CRM tickets
 };
 
 // Page contexts where tools can be active
@@ -36,6 +37,8 @@ export const PAGE_CONTEXTS = {
     WIRE_DROPS: 'wire_drops',
     PROJECT: 'project',
     SETTINGS: 'settings',
+    SERVICE: 'service',            // Service CRM dashboard/tickets
+    SERVICE_TICKET: 'service_ticket', // Service ticket detail
 };
 
 /**
@@ -305,6 +308,132 @@ export const TOOL_DEFINITIONS = {
             required: ['roomName']
         }
     },
+
+    // ===== SERVICE CRM TOOLS =====
+    go_to_service: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.GLOBAL],
+        description: 'Navigate to the Service CRM dashboard to manage support tickets.',
+        parameters: { type: 'object', properties: {} }
+    },
+    get_service_overview: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'Get overview of service tickets - open count, urgent issues, today\'s schedule.',
+        parameters: { type: 'object', properties: {} }
+    },
+    list_service_tickets: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'List service tickets with optional filters.',
+        parameters: {
+            type: 'object',
+            properties: {
+                status: { type: 'string', description: "Filter: 'open', 'scheduled', 'in_progress', 'resolved', 'all'" },
+                priority: { type: 'string', description: "Filter: 'urgent', 'high', 'medium', 'low'" },
+                category: { type: 'string', description: "Filter: 'network', 'av', 'shades', 'control', 'wiring', 'general'" }
+            }
+        }
+    },
+    search_tickets: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'Search service tickets by customer name, phone, or ticket description.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search term (customer name, phone, or keywords)' }
+            },
+            required: ['query']
+        }
+    },
+    create_service_ticket: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'Create a new service ticket for a customer support request.',
+        parameters: {
+            type: 'object',
+            properties: {
+                title: { type: 'string', description: 'Brief description of the issue' },
+                description: { type: 'string', description: 'Detailed description of the problem' },
+                category: { type: 'string', description: "'network', 'av', 'shades', 'control', 'wiring', 'installation', 'maintenance', 'general'" },
+                priority: { type: 'string', description: "'low', 'medium', 'high', 'urgent'" },
+                customer_name: { type: 'string', description: 'Customer name' },
+                customer_phone: { type: 'string', description: 'Customer phone number' }
+            },
+            required: ['title']
+        }
+    },
+    open_ticket: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'Open a specific service ticket by number or search.',
+        parameters: {
+            type: 'object',
+            properties: {
+                ticketNumber: { type: 'string', description: 'Ticket number (e.g., SVC-2025-00001)' },
+                ticketId: { type: 'string', description: 'Ticket UUID' }
+            }
+        }
+    },
+    get_ticket_details: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE_TICKET],
+        description: 'Get full details of the current ticket including notes and schedule.',
+        parameters: { type: 'object', properties: {} }
+    },
+    update_ticket_status: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE_TICKET],
+        description: 'Update the status of the current ticket.',
+        parameters: {
+            type: 'object',
+            properties: {
+                status: { type: 'string', description: "'triaged', 'scheduled', 'in_progress', 'waiting_parts', 'waiting_customer', 'resolved', 'closed'" }
+            },
+            required: ['status']
+        }
+    },
+    add_ticket_note: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE_TICKET],
+        description: 'Add a note to the current service ticket.',
+        parameters: {
+            type: 'object',
+            properties: {
+                content: { type: 'string', description: 'Note content' },
+                noteType: { type: 'string', description: "'note', 'phone_call', 'tech_note', 'customer_update'" }
+            },
+            required: ['content']
+        }
+    },
+    schedule_service_visit: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE_TICKET],
+        description: 'Schedule a service visit for the current ticket.',
+        parameters: {
+            type: 'object',
+            properties: {
+                date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
+                time: { type: 'string', description: 'Time in HH:MM format' },
+                technician: { type: 'string', description: 'Technician name' },
+                notes: { type: 'string', description: 'Pre-visit notes' }
+            },
+            required: ['date']
+        }
+    },
+    lookup_customer: {
+        category: TOOL_CATEGORIES.SERVICE,
+        contexts: [PAGE_CONTEXTS.SERVICE, PAGE_CONTEXTS.GLOBAL],
+        description: 'Look up a customer by phone number to find their projects and history.',
+        parameters: {
+            type: 'object',
+            properties: {
+                phone: { type: 'string', description: 'Customer phone number' }
+            },
+            required: ['phone']
+        }
+    },
 };
 
 /**
@@ -349,6 +478,8 @@ export function getContextFromPath(path) {
     if (path.includes('/wire-drops')) return PAGE_CONTEXTS.WIRE_DROPS;
     if (path === '/pm-dashboard' || path === '/') return PAGE_CONTEXTS.DASHBOARD;
     if (path === '/settings') return PAGE_CONTEXTS.SETTINGS;
+    if (path.match(/\/service\/tickets\/[^/]+$/)) return PAGE_CONTEXTS.SERVICE_TICKET;
+    if (path.startsWith('/service')) return PAGE_CONTEXTS.SERVICE;
     if (path.includes('/project')) return PAGE_CONTEXTS.PROJECT;
     return PAGE_CONTEXTS.GLOBAL;
 }
@@ -393,6 +524,24 @@ You are on the DASHBOARD showing all projects.
 - "Go to [project] windows" → open_project with projectName and section="windows"
 - "Go to prewire" → go_to_app_section with section="prewire"
 - "Show my projects" → list_projects`,
+
+        [PAGE_CONTEXTS.SERVICE]: `
+You are in the SERVICE CRM for managing customer support tickets.
+Available actions: get_service_overview, list_service_tickets, search_tickets, create_service_ticket, open_ticket, lookup_customer
+- "How many open tickets?" → get_service_overview
+- "Show urgent tickets" → list_service_tickets with priority="urgent"
+- "Create ticket for [issue]" → create_service_ticket
+- "Find tickets for [customer]" → search_tickets
+- "Open ticket [number]" → open_ticket
+- "Look up [phone number]" → lookup_customer`,
+
+        [PAGE_CONTEXTS.SERVICE_TICKET]: `
+You are viewing a SERVICE TICKET detail page.
+Available actions: get_ticket_details, update_ticket_status, add_ticket_note, schedule_service_visit
+- "What's the status?" → get_ticket_details
+- "Mark as resolved" → update_ticket_status with status="resolved"
+- "Add note: [content]" → add_ticket_note
+- "Schedule for [date]" → schedule_service_visit`,
     };
 
     return instructions[context] || '';

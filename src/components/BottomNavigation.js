@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Users, Activity, QrCode, Home, Boxes } from 'lucide-react';
+import { Users, QrCode, Home, Boxes, Headphones } from 'lucide-react';
 
 const BottomNavigation = () => {
   const navigate = useNavigate();
@@ -15,9 +15,9 @@ const BottomNavigation = () => {
 
   const navItems = [
     { icon: Home, label: 'Home', path: homePath, isHome: true },
+    { icon: Headphones, label: 'Service', path: '/service' },
     { icon: Boxes, label: 'Parts', path: '/parts' },
     { icon: Users, label: 'People', path: '/people' },
-    { icon: Activity, label: 'UniFi Import', path: '/unifi-test' },
     { icon: QrCode, label: 'Scan Tag', path: '/scan-tag' },
   ];
 

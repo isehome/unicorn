@@ -171,7 +171,17 @@ ${buildContextString(state)}`;
     };
 
     const handleNavigation = async (destination, section) => {
-        const sections = { dashboard: '/pm-dashboard', home: '/pm-dashboard', prewire: '/prewire-mode', settings: '/settings', issues: '/issues', todos: '/todos' };
+        const sections = {
+            dashboard: '/pm-dashboard',
+            home: '/pm-dashboard',
+            prewire: '/prewire-mode',
+            settings: '/settings',
+            issues: '/issues',
+            todos: '/todos',
+            service: '/service',
+            tickets: '/service/tickets',
+            'new ticket': '/service/tickets/new'
+        };
         if (sections[destination.toLowerCase()]) {
             navigateRef.current(sections[destination.toLowerCase()]);
             return { success: true, message: `Going to ${destination}` };
