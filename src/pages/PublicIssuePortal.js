@@ -267,22 +267,26 @@ const PublicIssuePortal = () => {
                   <span className="text-xs text-gray-500">{photos.length} {photos.length === 1 ? 'photo' : 'photos'}</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                  {photos.map((photo) => (
-                    <a
-                      key={photo.id}
-                      href={photo.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-violet-400 transition-colors"
-                    >
-                      <img
-                        src={photo.url}
-                        alt={photo.fileName || 'Issue photo'}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
-                    </a>
-                  ))}
+                  {photos.map((photo) => {
+                    // Route through image proxy for authenticated access
+                    const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+                    return (
+                      <a
+                        key={photo.id}
+                        href={proxyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative aspect-square rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 hover:border-violet-400 transition-colors"
+                      >
+                        <img
+                          src={proxyUrl}
+                          alt={photo.fileName || 'Issue photo'}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                      </a>
+                    );
+                  })}
                 </div>
               </section>
             )}
