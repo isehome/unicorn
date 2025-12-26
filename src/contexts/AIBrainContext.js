@@ -17,7 +17,7 @@ const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
 // The native audio model works best for voice
-const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-09-2025';
+const DEFAULT_MODEL = 'gemini-2.0-flash-exp';
 
 const AIBrainContext = createContext(null);
 
@@ -623,8 +623,8 @@ ${buildContextString(state)}`;
                 // IMPORTANT: Validate that the model is supported for bidiGenerateContent (Live API)
                 // Only native-audio models work with the Live API
                 const VALID_LIVE_MODELS = [
+                    'gemini-2.0-flash-exp',
                     'gemini-2.5-flash-native-audio-preview-09-2025',
-                    'gemini-2.0-flash-live-001-native-audio', // if this ever exists
                 ];
                 let selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
                 // If stored model isn't valid for Live API, use default
@@ -686,6 +686,12 @@ ${buildContextString(state)}`;
 
             socket.onclose = (e) => {
                 addDebugLog(`WebSocket closed: ${e.code} ${e.reason || ''}`);
+
+                // Code 1000 is generic "normal closure" but if we didn't initiate it, it might be a server timeout or limit
+                if (e.code === 1000 && status !== 'idle') {
+                    addDebugLog('Session ended by server (Model may have finished turn)', 'warn');
+                }
+
                 setStatus('idle');
                 stopAudioCapture();
             };
@@ -717,7 +723,7 @@ ${buildContextString(state)}`;
             debugLog, clearDebugLog, audioChunksSent, audioChunksReceived,
             // Platform info
             platformInfo: { isIOS: /iPhone|iPad|iPod/.test(navigator.userAgent), isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent) },
-            registerTools: () => {}, unregisterTools: () => {},
+            registerTools: () => { }, unregisterTools: () => { },
         }}>
             {children}
         </AIBrainContext.Provider>

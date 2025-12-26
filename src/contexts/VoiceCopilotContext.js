@@ -558,7 +558,7 @@ export const VoiceCopilotProvider = ({ children }) => {
                 addLog(`Page context: ${pageContext}`, 'info');
 
                 // Get user's model preference (default to latest native audio model)
-                const selectedModel = localStorage.getItem('ai_model') || 'gemini-2.5-flash-native-audio-preview-09-2025';
+                const selectedModel = localStorage.getItem('ai_model') || 'gemini-2.0-flash-exp';
 
                 // Build config using camelCase as per Gemini API spec
                 // Docs: https://ai.google.dev/api/live
