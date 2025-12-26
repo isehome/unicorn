@@ -630,13 +630,10 @@ ${buildContextString(state)}`;
             isPlaying.current = false;
 
             // Request microphone - iOS Safari needs specific config
-            addDebugLog('Requesting microphone...');
+            // Request microphone - Relaxed constraints to fix silent input issues
+            addDebugLog('Requesting microphone (simple constraints)...');
             mediaStream.current = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true
-                }
+                audio: true // Use simple constraints to avoid browser silencing input
             });
             const audioTrack = mediaStream.current.getAudioTracks()[0];
             addDebugLog(`Microphone acquired: ${audioTrack?.label || 'default mic'}`);
