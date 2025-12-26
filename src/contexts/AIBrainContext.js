@@ -369,11 +369,18 @@ ${buildContextString(state)}`;
     const sendToolResponse = useCallback((name, result, id) => {
         if (ws.current?.readyState === WebSocket.OPEN) {
             // Function Response format for Gemini Live API
+            // CRITICAL: result must be the EXACT response object Gemini expects.
+            // Do NOT double-wrap it in { result: ... } if it's already an object.
+            let responseData = result;
+            if (typeof result !== 'object' || result === null) {
+                responseData = { result };
+            }
+
             const response = {
                 toolResponse: {
                     functionResponses: [{
                         name,
-                        response: result,
+                        response: responseData,
                         id // CRITICAL: ID must match the call ID
                     }]
                 }
