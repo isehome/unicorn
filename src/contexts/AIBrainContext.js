@@ -640,11 +640,7 @@ ${buildContextString(state)}`;
                             speechConfig: {
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
-                                },
-                                // Explicitly request LINEAR16 (16-bit PCM) output at 24kHz
-                                // This matches our decoding in base64ToFloat32
-                                outputAudioEncoding: 'LINEAR16',
-                                sampleRateHertz: 24000
+                                }
                             }
                         },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
