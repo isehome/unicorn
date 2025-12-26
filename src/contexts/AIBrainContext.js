@@ -258,11 +258,11 @@ ${buildContextString(state)}`;
     // It plays chunks immediately as they arrive, without complex scheduling
     const playNextChunk = useCallback(() => {
         if (!audioContext.current) {
-            addDebugLog('playNextChunk: No audioContext - creating one', 'warn');
-            // Try to create audio context if missing
+            // This should ideally not happen now that startSession creates it, 
+            // but we keep as fallback.
+            addDebugLog('playNextChunk: No audioContext - creating one (fallback)', 'warn');
             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
             audioContext.current = new AudioContextClass();
-            addDebugLog(`Created new AudioContext: ${audioContext.current.sampleRate}Hz, state=${audioContext.current.state}`, 'audio');
         }
         if (audioQueue.current.length === 0) {
             if (VERBOSE_LOGGING) addDebugLog('playNextChunk: Queue empty', 'audio');
@@ -656,13 +656,21 @@ ${buildContextString(state)}`;
             setError(null);
             clearDebugLog();
 
-            // Create AudioContext - iOS Safari requires user gesture, don't specify sample rate
-            // Note: iOS Safari's webkitAudioContext doesn't accept constructor options
-            addDebugLog('Creating AudioContext...');
-            if (!audioContext.current || audioContext.current.state === 'closed') {
-                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                audioContext.current = new AudioContextClass();
+            // CRITICAL FIX: Always create a FRESH AudioContext for a new session
+            // This resolves issues where the context becomes stale/suspended/silent
+            addDebugLog('Creating FRESH AudioContext...');
+
+            // Close existing if open
+            if (audioContext.current) {
+                try {
+                    await audioContext.current.close();
+                } catch (e) { /* ignore */ }
+                audioContext.current = null;
             }
+
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            audioContext.current = new AudioContextClass();
+
             if (audioContext.current.state === 'suspended') {
                 addDebugLog('Resuming suspended AudioContext...');
                 await audioContext.current.resume();
