@@ -96,7 +96,8 @@ const TechnicianFilterBar = ({
 
   const getEmbedCode = () => {
     const url = getEmbedUrl();
-    return `<iframe src="${url}" width="100%" height="800" frameborder="0" style="border-radius: 8px;"></iframe>`;
+    // Height: 100px filter bar + 960px calendar (16 hours × 60px) + 80px padding/headers = ~1140px
+    return `<iframe src="${url}" width="100%" height="1140" frameborder="0" style="border-radius: 8px;"></iframe>`;
   };
 
   const handleCopyEmbed = async () => {
