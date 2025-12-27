@@ -87,7 +87,7 @@ const TechnicianFilterBar = ({
   // Generate embed URL - use production domain or current origin
   const getEmbedUrl = () => {
     // Use production Vercel domain when available, otherwise current origin
-    const productionDomain = 'https://unicorn-isehome.vercel.app';
+    const productionDomain = 'https://unicorn-one.vercel.app';
     const baseUrl = window.location.hostname === 'localhost'
       ? productionDomain
       : window.location.origin;

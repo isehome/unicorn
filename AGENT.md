@@ -2532,3 +2532,61 @@ The application needs a proper user capabilities/roles system to control access 
 - Critical for hands-free measuring workflow
 
 ---
+
+## 2025-12-27
+
+### Service CRM - Weekly Planning Module
+- **"Air Traffic Control" Interface** for drag-and-drop service ticket scheduling
+- **Iframe Embeddable** for Alleo integration
+
+#### Weekly Planning Features
+- Week-view calendar with work hours (6 AM - 10 PM)
+- **Configurable**: Toggle between Mon-Fri (work week) and Sun-Sat (full week)
+- **Horizontal scrolling/infinite weeks** - scroll right to load next weeks
+- Drag-and-drop service ticket CARDS onto calendar time slots
+- **Card height = estimated service length** (uses ticket's estimated_hours field)
+- Default 2-hour blocks, 30-min buffer between events
+- Toggle views: per-technician OR all overlapping
+- **Show ALL Microsoft 365 calendar events as blocked time**
+- Colors: AMBER = tentative, GREEN = confirmed
+
+#### Embed URL
+```
+https://unicorn-one.vercel.app/service/weekly-planning?embed=true
+```
+
+#### Iframe Embed Code
+```html
+<iframe src="https://unicorn-one.vercel.app/service/weekly-planning?embed=true"
+        width="100%" height="800" frameborder="0"
+        style="border-radius: 8px;"></iframe>
+```
+
+**Note:** When `?embed=true` is present, the page:
+- Skips authentication (public access)
+- Hides navigation header/footer
+- Optimized for iframe display
+
+#### Files Created
+- `src/pages/WeeklyPlanning.js` - Main weekly planning page
+- `src/components/Service/WeekCalendarGrid.jsx` - Week grid with hour rows
+- `src/components/Service/UnscheduledTicketsPanel.jsx` - Draggable tickets sidebar
+- `src/components/Service/TechnicianFilterBar.jsx` - Controls and embed modal
+- `src/services/weeklyPlanningService.js` - Schedule management service
+- `database/migrations/20251228_weekly_planning_confirmation.sql` - DB migration
+
+#### Database Schema Additions
+```sql
+-- service_schedules additions:
+schedule_status TEXT DEFAULT 'tentative' -- 'tentative' | 'confirmed' | 'cancelled'
+calendar_event_id TEXT
+confirmed_at TIMESTAMPTZ
+confirmed_by TEXT
+confirmation_method TEXT
+estimated_duration_minutes INTEGER DEFAULT 120
+
+-- New table for customer confirmations:
+service_schedule_confirmations (token-based portal access)
+```
+
+---
