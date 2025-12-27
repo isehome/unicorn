@@ -13,8 +13,8 @@ const HOUR_HEIGHT = 60; // pixels per hour
 const START_HOUR = 6;   // 6 AM
 const END_HOUR = 22;    // 10 PM
 const TOTAL_HOURS = END_HOUR - START_HOUR;
-const DAY_WIDTH = 180;  // pixels per day column
-const TIME_COLUMN_WIDTH = 50;
+const MIN_DAY_WIDTH = 150;  // minimum pixels per day column
+const TIME_COLUMN_WIDTH = 60;
 
 // Schedule status colors
 const scheduleStatusColors = {
@@ -295,8 +295,8 @@ const DayColumn = memo(({
 
   return (
     <div
-      className="relative flex-shrink-0 border-r border-zinc-700"
-      style={{ width: `${DAY_WIDTH}px` }}
+      className="relative flex-1 border-r border-zinc-700"
+      style={{ minWidth: `${MIN_DAY_WIDTH}px` }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
@@ -531,19 +531,22 @@ const WeekCalendarGrid = ({
     setDropPreview(null);
   }, [onDropTicket]);
 
+  // Calculate number of days for current view
+  const numDays = showWorkWeekOnly ? 5 : 7;
+
   return (
     <div className="flex flex-col h-full bg-zinc-900 rounded-lg overflow-hidden">
       {/* Scrollable container */}
       <div
         ref={containerRef}
-        className="flex overflow-x-auto overflow-y-auto flex-1"
+        className="flex overflow-y-auto flex-1"
         onScroll={handleScroll}
       >
         {/* Sticky time column */}
         <TimeColumn />
 
-        {/* Day columns */}
-        {allDays.map(day => (
+        {/* Day columns - show only current week's days */}
+        {allDays.slice(0, numDays).map(day => (
           <DayColumn
             key={day.dateStr}
             date={day.date}
@@ -561,7 +564,7 @@ const WeekCalendarGrid = ({
 
         {/* Loading indicator */}
         {isLoading && (
-          <div className="flex items-center justify-center px-8" style={{ width: `${DAY_WIDTH}px` }}>
+          <div className="flex items-center justify-center px-8" style={{ minWidth: `${MIN_DAY_WIDTH}px` }}>
             <div className="text-zinc-400 text-sm animate-pulse">Loading...</div>
           </div>
         )}
@@ -573,4 +576,4 @@ const WeekCalendarGrid = ({
 export default memo(WeekCalendarGrid);
 
 // Export constants for use in parent components
-export { HOUR_HEIGHT, START_HOUR, END_HOUR, DAY_WIDTH, scheduleStatusColors, priorityColors };
+export { HOUR_HEIGHT, START_HOUR, END_HOUR, MIN_DAY_WIDTH, TIME_COLUMN_WIDTH, scheduleStatusColors, priorityColors };
