@@ -68,7 +68,7 @@ const ensureInternalContact = async (spec) => {
   const email = normalizeEmail(spec.email);
 
   try {
-    // Use .limit(1) instead of maybeSingle() to handle case where duplicates exist
+    // First, check if contact already exists (handle duplicates by returning first match)
     const { data: existingList } = await supabase
       .from('contacts')
       .select('id')
@@ -96,13 +96,39 @@ const ensureInternalContact = async (spec) => {
       is_active: true
     };
 
+    // Use upsert with email as the conflict target to prevent duplicates
+    // If email already exists, just return the existing record
     const { data, error } = await supabase
       .from('contacts')
-      .insert([insertPayload])
+      .upsert([insertPayload], {
+        onConflict: 'email',
+        ignoreDuplicates: true
+      })
       .select('id')
       .single();
 
-    if (error) throw error;
+    // If upsert returned nothing (ignored duplicate), look up the existing contact
+    if (!data && !error) {
+      const { data: lookupData } = await supabase
+        .from('contacts')
+        .select('id')
+        .ilike('email', email)
+        .limit(1);
+      return lookupData?.[0]?.id || null;
+    }
+
+    if (error) {
+      // Handle duplicate key error gracefully
+      if (error.code === '23505') {
+        const { data: lookupData } = await supabase
+          .from('contacts')
+          .select('id')
+          .ilike('email', email)
+          .limit(1);
+        return lookupData?.[0]?.id || null;
+      }
+      throw error;
+    }
     return data?.id || null;
   } catch (error) {
     console.error('Failed to ensure contact exists:', error);

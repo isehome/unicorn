@@ -561,6 +561,129 @@ export const fetchUserProfile = async (authContext) => {
   }
 };
 
+/**
+ * Check if a user has calendar availability for a specific time slot
+ * Uses Microsoft Graph findMeetingTimes or calendar view to check conflicts
+ * @param {Object} authContext - Auth context with token
+ * @param {string} userEmail - Email of the user to check availability for
+ * @param {string} date - Date in YYYY-MM-DD format
+ * @param {string} startTime - Start time in HH:MM format
+ * @param {string} endTime - End time in HH:MM format (optional, defaults to startTime + 2 hours)
+ * @param {number} bufferMinutes - Buffer time in minutes to add before and after (default 30)
+ * @returns {Object} { available: boolean, conflicts: Array, error?: string }
+ */
+export const checkUserAvailability = async (authContext, userEmail, date, startTime, endTime, bufferMinutes = 30) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { available: true, conflicts: [], error: 'Not authenticated - skipping availability check' };
+    }
+
+    if (!userEmail) {
+      return { available: true, conflicts: [], error: 'No email provided - skipping availability check' };
+    }
+
+    const timezone = getTimeZone();
+
+    // Parse times
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    let endHour, endMinute;
+
+    if (endTime) {
+      [endHour, endMinute] = endTime.split(':').map(Number);
+    } else {
+      // Default to 2 hours if no end time
+      endHour = startHour + 2;
+      endMinute = startMinute;
+    }
+
+    // Calculate buffer times (30 minutes before and after)
+    const startWithBufferMinutes = (startHour * 60 + startMinute) - bufferMinutes;
+    const endWithBufferMinutes = (endHour * 60 + endMinute) + bufferMinutes;
+
+    const bufferedStartHour = Math.floor(Math.max(0, startWithBufferMinutes) / 60);
+    const bufferedStartMin = Math.max(0, startWithBufferMinutes) % 60;
+    const bufferedEndHour = Math.floor(Math.min(24 * 60 - 1, endWithBufferMinutes) / 60);
+    const bufferedEndMin = Math.min(24 * 60 - 1, endWithBufferMinutes) % 60;
+
+    // Create datetime strings for the buffered time range
+    const startDateTime = `${date}T${String(bufferedStartHour).padStart(2, '0')}:${String(bufferedStartMin).padStart(2, '0')}:00`;
+    const endDateTime = `${date}T${String(bufferedEndHour).padStart(2, '0')}:${String(bufferedEndMin).padStart(2, '0')}:00`;
+
+    console.log(`[Calendar] Checking availability for ${userEmail} on ${date} from ${startTime} to ${endTime || 'TBD'} (with ${bufferMinutes}min buffer)`);
+
+    // Use the calendar view endpoint to get events in the time range
+    // We query the user's calendar using the /users/{email}/calendarView endpoint
+    const url = new URL(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userEmail)}/calendarView`);
+    url.searchParams.set('startDateTime', `${startDateTime}`);
+    url.searchParams.set('endDateTime', `${endDateTime}`);
+    url.searchParams.set('$select', 'id,subject,start,end,showAs,isCancelled');
+    url.searchParams.set('$top', '20');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Prefer': `outlook.timezone="${timezone}"`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      // If we can't access the calendar, we can't check availability
+      // Log the error but don't block scheduling
+      const errorText = await response.text();
+      console.warn('[Calendar] Could not check availability:', response.status, errorText);
+
+      if (response.status === 403) {
+        return { available: true, conflicts: [], error: 'No permission to check calendar - schedule at your discretion' };
+      }
+
+      return { available: true, conflicts: [], error: `Could not verify availability (${response.status})` };
+    }
+
+    const data = await response.json();
+    const events = data.value || [];
+
+    // Filter out cancelled events and free/tentative events
+    const conflictingEvents = events.filter(event => {
+      if (event.isCancelled) return false;
+      // showAs: 'free', 'tentative', 'busy', 'oof' (out of office), 'workingElsewhere'
+      if (event.showAs === 'free') return false;
+      return true;
+    });
+
+    if (conflictingEvents.length > 0) {
+      const conflicts = conflictingEvents.map(event => ({
+        subject: event.subject || 'Busy',
+        start: event.start?.dateTime,
+        end: event.end?.dateTime,
+        showAs: event.showAs
+      }));
+
+      console.log(`[Calendar] Found ${conflicts.length} conflicts for ${userEmail}:`, conflicts);
+
+      return {
+        available: false,
+        conflicts,
+        error: null
+      };
+    }
+
+    console.log(`[Calendar] ${userEmail} is available for the requested time slot`);
+    return { available: true, conflicts: [], error: null };
+
+  } catch (error) {
+    console.error('[Calendar] Availability check error:', error);
+    // Don't block scheduling if we can't check availability
+    return { available: true, conflicts: [], error: error.message };
+  }
+};
+
 export default {
   fetchTodayEvents,
   hasCalendarConnection,
@@ -569,4 +692,5 @@ export default {
   createCalendarEvent,
   updateCalendarEvent,
   deleteCalendarEvent,
+  checkUserAvailability,
 };

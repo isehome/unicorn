@@ -18,7 +18,8 @@ import {
   Tv,
   Sun,
   Settings,
-  Cable
+  Cable,
+  LayoutGrid
 } from 'lucide-react';
 import {
   serviceTicketService,
@@ -233,14 +234,23 @@ const ServiceDashboard = () => {
             <h1 className="text-2xl font-bold text-white">Service Dashboard</h1>
             <p className="text-zinc-400">Manage support tickets and service calls</p>
           </div>
-          <button
-            onClick={() => navigate('/service/tickets/new')}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: brandColors.success, color: '#000' }}
-          >
-            <Plus size={18} />
-            New Ticket
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/service/weekly-planning')}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-700 transition-colors text-white"
+            >
+              <LayoutGrid size={18} />
+              Weekly Planning
+            </button>
+            <button
+              onClick={() => navigate('/service/tickets/new')}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: brandColors.success, color: '#000' }}
+            >
+              <Plus size={18} />
+              New Ticket
+            </button>
+          </div>
         </div>
 
         {error && (

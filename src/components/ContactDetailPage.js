@@ -50,6 +50,25 @@ const ContactDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Contact edit state
+  const [showEditContact, setShowEditContact] = useState(false);
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactFormData, setContactFormData] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    company: '',
+    role: '',
+    department: '',
+    is_internal: false,
+    address1: '',
+    address2: '',
+    city: '',
+    state: '',
+    zip: ''
+  });
+
   // Secure data
   const [secureData, setSecureData] = useState([]);
   const [visiblePasswords, setVisiblePasswords] = useState({});
@@ -317,6 +336,101 @@ const ContactDetailPage = () => {
     setError('');
   };
 
+  // Contact edit handlers
+  const handleEditContact = () => {
+    if (!contact) return;
+    setContactFormData({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      company: contact.company || '',
+      role: contact.role || '',
+      department: contact.department || '',
+      is_internal: contact.is_internal || false,
+      address1: contact.address1 || '',
+      address2: contact.address2 || '',
+      city: contact.city || '',
+      state: contact.state || '',
+      zip: contact.zip || ''
+    });
+    setShowEditContact(true);
+  };
+
+  const handleSaveContact = async (e) => {
+    e.preventDefault();
+    try {
+      setSavingContact(true);
+
+      // Build full_name from first_name and last_name
+      const fullName = `${contactFormData.first_name || ''} ${contactFormData.last_name || ''}`.trim();
+
+      // Consolidate address
+      const addressParts = [];
+      if (contactFormData.address1) addressParts.push(contactFormData.address1);
+      if (contactFormData.address2) addressParts.push(contactFormData.address2);
+      const cityStateZip = [];
+      if (contactFormData.city) cityStateZip.push(contactFormData.city);
+      if (contactFormData.state) cityStateZip.push(contactFormData.state);
+      if (contactFormData.zip) cityStateZip.push(contactFormData.zip);
+      if (cityStateZip.length > 0) {
+        let formatted = '';
+        if (contactFormData.city) formatted += contactFormData.city;
+        if (contactFormData.state) formatted += (formatted ? ', ' : '') + contactFormData.state;
+        if (contactFormData.zip) formatted += (formatted ? ' ' : '') + contactFormData.zip;
+        addressParts.push(formatted);
+      }
+
+      const payload = {
+        ...contactFormData,
+        full_name: fullName || 'Unknown',
+        name: fullName || 'Unknown',
+        address: addressParts.join(', ')
+      };
+
+      const { data, error: updateError } = await supabase
+        .from('contacts')
+        .update(payload)
+        .eq('id', contactId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      setContact(data);
+      setShowEditContact(false);
+    } catch (err) {
+      console.error('Failed to update contact:', err);
+      alert('Failed to update contact: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  const handleDeleteContact = async () => {
+    if (!window.confirm('Are you sure you want to delete this contact? This action cannot be undone.')) return;
+
+    try {
+      setSavingContact(true);
+
+      // Soft delete by setting is_active to false
+      const { error: deleteError } = await supabase
+        .from('contacts')
+        .update({ is_active: false })
+        .eq('id', contactId);
+
+      if (deleteError) throw deleteError;
+
+      // Navigate back to contacts list
+      navigate('/people');
+    } catch (err) {
+      console.error('Failed to delete contact:', err);
+      alert('Failed to delete contact: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   // Helper to get display address
   const getDisplayAddress = (contact) => {
     if (!contact) return null;
@@ -380,12 +494,14 @@ const ContactDetailPage = () => {
         {/* Contact Info Card */}
         <div className="rounded-2xl p-6" style={styles.card}>
           <div className="flex items-start gap-4">
-            <div
-              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0"
+            <button
+              onClick={handleEditContact}
+              className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 transition-transform hover:scale-105 active:scale-95"
               style={{ backgroundColor: contact?.is_internal ? `${palette.accent}20` : `${palette.success}20` }}
+              title="Edit contact"
             >
               <User className="w-8 h-8" style={{ color: contact?.is_internal ? palette.accent : palette.success }} />
-            </div>
+            </button>
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold" style={styles.textPrimary}>
                 {contact?.full_name || contact?.name || `${contact?.first_name} ${contact?.last_name}`}
@@ -712,6 +828,182 @@ const ContactDetailPage = () => {
           </div>
         )}
       </div>
+
+      {/* Edit Contact Modal */}
+      {showEditContact && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold" style={styles.textPrimary}>
+                Edit Contact
+              </h2>
+              <button
+                onClick={() => setShowEditContact(false)}
+                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg"
+              >
+                <X className="w-5 h-5" style={styles.textSecondary} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveContact} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <input
+                  type="text"
+                  placeholder="First Name"
+                  value={contactFormData.first_name}
+                  onChange={(e) => setContactFormData({ ...contactFormData, first_name: e.target.value })}
+                  className="px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+                <input
+                  type="text"
+                  placeholder="Last Name"
+                  value={contactFormData.last_name}
+                  onChange={(e) => setContactFormData({ ...contactFormData, last_name: e.target.value })}
+                  className="px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+              </div>
+
+              <input
+                type="email"
+                placeholder="Email"
+                value={contactFormData.email}
+                onChange={(e) => setContactFormData({ ...contactFormData, email: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                style={styles.input}
+              />
+
+              <input
+                type="tel"
+                placeholder="Phone"
+                value={contactFormData.phone}
+                onChange={(e) => setContactFormData({ ...contactFormData, phone: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                style={styles.input}
+              />
+
+              <input
+                type="text"
+                placeholder="Role/Title (optional)"
+                value={contactFormData.role}
+                onChange={(e) => setContactFormData({ ...contactFormData, role: e.target.value })}
+                className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                style={styles.input}
+              />
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={contactFormData.is_internal}
+                    onChange={(e) => setContactFormData({ ...contactFormData, is_internal: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm" style={styles.textSecondary}>Internal Contact</span>
+                </label>
+              </div>
+
+              {contactFormData.is_internal ? (
+                <input
+                  type="text"
+                  placeholder="Department"
+                  value={contactFormData.department}
+                  onChange={(e) => setContactFormData({ ...contactFormData, department: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Company"
+                  value={contactFormData.company}
+                  onChange={(e) => setContactFormData({ ...contactFormData, company: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+              )}
+
+              {/* Address Fields */}
+              <div className="space-y-3 pt-2 border-t border-zinc-200 dark:border-zinc-700">
+                <p className="text-sm font-medium" style={styles.textSecondary}>Address</p>
+                <input
+                  type="text"
+                  placeholder="Street Address"
+                  value={contactFormData.address1}
+                  onChange={(e) => setContactFormData({ ...contactFormData, address1: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+                <input
+                  type="text"
+                  placeholder="Apt, Suite, Unit, etc. (optional)"
+                  value={contactFormData.address2}
+                  onChange={(e) => setContactFormData({ ...contactFormData, address2: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                  style={styles.input}
+                />
+                <div className="grid grid-cols-6 gap-2">
+                  <input
+                    type="text"
+                    placeholder="City"
+                    value={contactFormData.city}
+                    onChange={(e) => setContactFormData({ ...contactFormData, city: e.target.value })}
+                    className="col-span-3 px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                    style={styles.input}
+                  />
+                  <input
+                    type="text"
+                    placeholder="State"
+                    value={contactFormData.state}
+                    onChange={(e) => setContactFormData({ ...contactFormData, state: e.target.value })}
+                    className="col-span-1 px-2 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600 text-center"
+                    style={styles.input}
+                    maxLength={2}
+                  />
+                  <input
+                    type="text"
+                    placeholder="ZIP"
+                    value={contactFormData.zip}
+                    onChange={(e) => setContactFormData({ ...contactFormData, zip: e.target.value })}
+                    className="col-span-2 px-4 py-2 border rounded-lg dark:bg-zinc-700 dark:border-zinc-600"
+                    style={styles.input}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 justify-between pt-2">
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={handleDeleteContact}
+                  icon={Trash2}
+                  disabled={savingContact}
+                >
+                  Delete
+                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowEditContact(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    icon={savingContact ? Loader : Save}
+                    disabled={savingContact}
+                  >
+                    {savingContact ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
