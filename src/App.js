@@ -21,6 +21,7 @@ import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
 import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
+import BugReporter from './components/BugReporter';
 import './index.css';
 
 // Lazy load all route components
@@ -449,6 +450,7 @@ const AppRoutes = () => {
         </ErrorBoundary>
       </main>
       <VoiceCopilotOverlay />
+      <BugReporter />
       {!hideChrome && <BottomNavigation />}
     </div>
   );
