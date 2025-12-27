@@ -84,9 +84,13 @@ const TechnicianFilterBar = ({
   const weekRangeText = formatWeekRange(currentWeekStart, showWorkWeekOnly);
   const isThisWeek = isCurrentWeek(currentWeekStart);
 
-  // Generate embed URL based on current domain
+  // Generate embed URL - use production domain or current origin
   const getEmbedUrl = () => {
-    const baseUrl = window.location.origin;
+    // Use production Vercel domain when available, otherwise current origin
+    const productionDomain = 'https://unicorn-isehome.vercel.app';
+    const baseUrl = window.location.hostname === 'localhost'
+      ? productionDomain
+      : window.location.origin;
     return `${baseUrl}/service/weekly-planning?embed=true`;
   };
 
