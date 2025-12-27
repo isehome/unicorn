@@ -68,24 +68,10 @@ export const weeklyPlanningService = {
     if (!supabase) return [];
 
     try {
+      // First try with foreign key join
       let query = supabase
         .from('service_schedules')
-        .select(`
-          *,
-          ticket:service_tickets(
-            id,
-            ticket_number,
-            title,
-            status,
-            priority,
-            category,
-            estimated_hours,
-            customer_name,
-            customer_phone,
-            customer_email,
-            service_address
-          )
-        `)
+        .select('*')
         .gte('scheduled_date', formatDate(startDate))
         .lte('scheduled_date', formatDate(endDate))
         .neq('status', 'cancelled')
@@ -96,17 +82,42 @@ export const weeklyPlanningService = {
         query = query.eq('technician_id', technicianId);
       }
 
-      const { data, error } = await query;
+      const { data: schedules, error } = await query;
 
       if (error) {
         console.error('[WeeklyPlanningService] Failed to fetch schedules:', error);
-        throw error;
+        // Return empty instead of throwing to prevent UI crash
+        return [];
       }
 
-      return data || [];
+      if (!schedules || schedules.length === 0) {
+        return [];
+      }
+
+      // Fetch ticket details separately to avoid join issues
+      const ticketIds = [...new Set(schedules.map(s => s.ticket_id).filter(Boolean))];
+      let ticketMap = {};
+
+      if (ticketIds.length > 0) {
+        const { data: tickets } = await supabase
+          .from('service_tickets')
+          .select('id, ticket_number, title, status, priority, category, estimated_hours, customer_name, customer_phone, customer_email, service_address')
+          .in('id', ticketIds);
+
+        if (tickets) {
+          ticketMap = tickets.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+        }
+      }
+
+      // Merge ticket data into schedules
+      return schedules.map(s => ({
+        ...s,
+        ticket: ticketMap[s.ticket_id] || null
+      }));
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to fetch schedules:', error);
-      throw error;
+      // Return empty instead of throwing to prevent UI crash
+      return [];
     }
   },
 

@@ -2558,20 +2558,11 @@ https://unicorn-one.vercel.app/service/weekly-planning?embed=true
 #### Iframe Embed Code
 ```html
 <iframe src="https://unicorn-one.vercel.app/service/weekly-planning?embed=true"
-        width="1250" height="1140" frameborder="0"
+        width="1920" height="1080" frameborder="0"
         style="border-radius: 8px;"></iframe>
 ```
 
-**Dimensions breakdown:**
-- **Width: 1250px**
-  - Sidebar (unscheduled tickets): 220px
-  - Time column: 50px
-  - Day columns: 900px (5 days × 180px)
-  - Gaps/padding: ~80px
-- **Height: 1140px**
-  - Filter bar: ~100px
-  - Calendar grid: 960px (16 hours × 60px/hour, 6 AM - 10 PM)
-  - Headers/padding: ~80px
+**Dimensions: 16:9 aspect ratio (1920×1080 / 1080p)**
 
 **Note:** When `?embed=true` is present, the page:
 - Skips authentication (public access)

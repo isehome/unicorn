@@ -96,9 +96,8 @@ const TechnicianFilterBar = ({
 
   const getEmbedCode = () => {
     const url = getEmbedUrl();
-    // Height: 100px filter bar + 960px calendar (16 hours × 60px) + 80px padding/headers = ~1140px
-    // Width: 220px sidebar + 50px time col + 900px (5 days × 180px) + 32px gaps = ~1202px
-    return `<iframe src="${url}" width="1250" height="1140" frameborder="0" style="border-radius: 8px;"></iframe>`;
+    // 16:9 aspect ratio: 1920×1080 (1080p)
+    return `<iframe src="${url}" width="1920" height="1080" frameborder="0" style="border-radius: 8px;"></iframe>`;
   };
 
   const handleCopyEmbed = async () => {
