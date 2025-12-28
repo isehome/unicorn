@@ -684,6 +684,265 @@ export const checkUserAvailability = async (authContext, userEmail, date, startT
   }
 };
 
+/**
+ * Create a calendar event for a service appointment
+ * Includes customer email as an attendee and proper service details
+ * @param {Object} authContext - Auth context with token
+ * @param {Object} scheduleData - Schedule data with ticket info
+ * @returns {Object} { success: boolean, eventId?: string, error?: string }
+ */
+export const createServiceAppointmentEvent = async (authContext, scheduleData) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Not authenticated. Please sign in.' };
+    }
+
+    const {
+      scheduled_date,
+      scheduled_time_start,
+      scheduled_time_end,
+      ticket,
+      customer_name,
+      customer_email,
+      service_address,
+      technician_name,
+      is_tentative = true
+    } = scheduleData;
+
+    if (!scheduled_date || !scheduled_time_start) {
+      return { success: false, error: 'Schedule date and start time are required.' };
+    }
+
+    const timezone = getTimeZone();
+
+    // Parse start time
+    const [startHour, startMinute] = scheduled_time_start.split(':').map(Number);
+
+    // Parse end time (default to start + 2 hours)
+    let endHour, endMinute;
+    if (scheduled_time_end) {
+      [endHour, endMinute] = scheduled_time_end.split(':').map(Number);
+    } else {
+      const estimatedHours = ticket?.estimated_hours || 2;
+      const startMinutes = startHour * 60 + startMinute;
+      const endMinutes = startMinutes + (estimatedHours * 60);
+      endHour = Math.floor(endMinutes / 60);
+      endMinute = endMinutes % 60;
+    }
+
+    // Format datetimes
+    const startDateTime = `${scheduled_date}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`;
+    const endDateTime = `${scheduled_date}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
+
+    // Build event subject
+    const ticketNumber = ticket?.ticket_number || '';
+    const customerDisplayName = customer_name || ticket?.customer_name || 'Customer';
+    const statusPrefix = is_tentative ? '[TENTATIVE] ' : '';
+    const subject = `${statusPrefix}Service: ${customerDisplayName}${ticketNumber ? ` (#${ticketNumber})` : ''}`;
+
+    // Build event body
+    const bodyContent = [
+      ticket?.title || 'Service Appointment',
+      '',
+      `Customer: ${customerDisplayName}`,
+      service_address || ticket?.service_address ? `Address: ${service_address || ticket?.service_address}` : '',
+      ticket?.customer_phone ? `Phone: ${ticket.customer_phone}` : '',
+      customer_email || ticket?.customer_email ? `Email: ${customer_email || ticket?.customer_email}` : '',
+      '',
+      ticket?.description ? `Notes: ${ticket.description}` : '',
+      ticketNumber ? `Ticket: #${ticketNumber}` : '',
+    ].filter(Boolean).join('\n');
+
+    const eventBody = {
+      subject,
+      start: {
+        dateTime: startDateTime,
+        timeZone: timezone,
+      },
+      end: {
+        dateTime: endDateTime,
+        timeZone: timezone,
+      },
+      body: {
+        contentType: 'text',
+        content: bodyContent,
+      },
+      location: {
+        displayName: service_address || ticket?.service_address || '',
+      },
+      categories: ['Service Appointment'],
+      showAs: is_tentative ? 'tentative' : 'busy',
+    };
+
+    // Add customer as attendee if email is available
+    const customerEmailAddress = customer_email || ticket?.customer_email;
+    if (customerEmailAddress) {
+      eventBody.attendees = [{
+        emailAddress: {
+          address: customerEmailAddress,
+          name: customerDisplayName
+        },
+        type: 'required'
+      }];
+    }
+
+    console.log('[Calendar] Creating service appointment event:', eventBody);
+
+    const response = await fetch(graphConfig.graphEventsEndpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(eventBody),
+    });
+
+    if (response.status === 401) {
+      // Token expired, try to refresh
+      if (authContext?.acquireToken) {
+        const newToken = await authContext.acquireToken(false);
+        if (newToken) {
+          const retryResponse = await fetch(graphConfig.graphEventsEndpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${newToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(eventBody),
+          });
+
+          if (retryResponse.ok) {
+            const data = await retryResponse.json();
+            console.log('[Calendar] Service appointment event created after token refresh:', data.id);
+            return { success: true, eventId: data.id };
+          }
+        }
+      }
+      return { success: false, error: 'Session expired. Please sign in again.' };
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Calendar] Failed to create service event:', response.status, errorText);
+
+      if (response.status === 403) {
+        return { success: false, error: 'Calendar write access denied. Please check permissions.' };
+      }
+
+      return { success: false, error: 'Failed to create calendar event.' };
+    }
+
+    const data = await response.json();
+    console.log('[Calendar] Service appointment event created successfully:', data.id);
+
+    return { success: true, eventId: data.id };
+
+  } catch (error) {
+    console.error('[Calendar] Create service event error:', error);
+    return { success: false, error: error.message || 'Failed to create calendar event.' };
+  }
+};
+
+/**
+ * Update a service appointment calendar event (e.g., when confirmed)
+ * @param {Object} authContext - Auth context with token
+ * @param {string} eventId - Microsoft Graph event ID
+ * @param {Object} updates - Fields to update
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const updateServiceAppointmentEvent = async (authContext, eventId, updates) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Not authenticated.' };
+    }
+
+    const timezone = getTimeZone();
+    const patchBody = {};
+
+    // Update subject (remove [TENTATIVE] prefix if confirmed)
+    if (updates.is_confirmed !== undefined) {
+      // We need to get the current subject first and update it
+      if (updates.subject) {
+        patchBody.subject = updates.is_confirmed
+          ? updates.subject.replace('[TENTATIVE] ', '')
+          : updates.subject;
+      }
+      patchBody.showAs = updates.is_confirmed ? 'busy' : 'tentative';
+    }
+
+    // Update times if provided
+    if (updates.scheduled_date && updates.scheduled_time_start) {
+      const [startHour, startMinute] = updates.scheduled_time_start.split(':').map(Number);
+      const startDateTime = `${updates.scheduled_date}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`;
+
+      patchBody.start = {
+        dateTime: startDateTime,
+        timeZone: timezone,
+      };
+
+      if (updates.scheduled_time_end) {
+        const [endHour, endMinute] = updates.scheduled_time_end.split(':').map(Number);
+        const endDateTime = `${updates.scheduled_date}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
+        patchBody.end = {
+          dateTime: endDateTime,
+          timeZone: timezone,
+        };
+      }
+    }
+
+    // Update location
+    if (updates.service_address) {
+      patchBody.location = {
+        displayName: updates.service_address,
+      };
+    }
+
+    // Update attendees (customer email)
+    if (updates.customer_email) {
+      patchBody.attendees = [{
+        emailAddress: {
+          address: updates.customer_email,
+          name: updates.customer_name || updates.customer_email
+        },
+        type: 'required'
+      }];
+    }
+
+    const response = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patchBody),
+    });
+
+    if (!response.ok) {
+      console.error('[Calendar] Failed to update service event:', response.status);
+      return { success: false, error: 'Failed to update calendar event.' };
+    }
+
+    console.log('[Calendar] Service appointment event updated successfully:', eventId);
+    return { success: true };
+
+  } catch (error) {
+    console.error('[Calendar] Update service event error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   fetchTodayEvents,
   hasCalendarConnection,
@@ -693,4 +952,6 @@ export default {
   updateCalendarEvent,
   deleteCalendarEvent,
   checkUserAvailability,
+  createServiceAppointmentEvent,
+  updateServiceAppointmentEvent,
 };

@@ -191,34 +191,23 @@ export const weeklyPlanningService = {
       // Filter out tickets that already have active schedules
       const ticketIds = activeTickets.map(t => t.id);
 
-      // Query existing schedules - be graceful if schedule_status column doesn't exist
+      // Query existing schedules - use basic columns only
       let existingSchedules = [];
       try {
         const { data, error: schedError } = await supabase
           .from('service_schedules')
-          .select('ticket_id, status, schedule_status')
+          .select('ticket_id, status')
           .in('ticket_id', ticketIds)
           .neq('status', 'cancelled')
           .neq('status', 'completed');
 
         if (schedError) {
-          // If schedule_status column doesn't exist, try without it
-          if (schedError.message?.includes('schedule_status')) {
-            console.warn('[WeeklyPlanningService] schedule_status column not found, using fallback query');
-            const { data: fallbackData } = await supabase
-              .from('service_schedules')
-              .select('ticket_id, status')
-              .in('ticket_id', ticketIds)
-              .neq('status', 'cancelled')
-              .neq('status', 'completed');
-            existingSchedules = fallbackData || [];
-          } else {
-            console.error('[WeeklyPlanningService] Schedule query error:', schedError);
-          }
-        } else {
-          // Filter out cancelled schedule_status if the column exists
-          existingSchedules = (data || []).filter(s => s.schedule_status !== 'cancelled');
+          console.error('[WeeklyPlanningService] Schedule query error:', schedError);
+          // Return all active tickets if schedule query fails
+          return activeTickets;
         }
+
+        existingSchedules = data || [];
       } catch (schedQueryError) {
         console.warn('[WeeklyPlanningService] Schedule query failed, returning all active tickets:', schedQueryError);
         // Return all active tickets if schedule query fails
@@ -245,12 +234,10 @@ export const weeklyPlanningService = {
     if (!supabase || !technicianId) return [];
 
     try {
-      // Get all schedules for technician on date
-      // Try with schedule_status first, fall back if column doesn't exist
-      let schedules = [];
+      // Get all schedules for technician on date - use basic columns only
       let query = supabase
         .from('service_schedules')
-        .select('id, scheduled_time_start, scheduled_time_end, estimated_duration_minutes, status, ticket:service_tickets(title)')
+        .select('id, scheduled_time_start, scheduled_time_end, status, ticket_id')
         .eq('technician_id', technicianId)
         .eq('scheduled_date', formatDate(date))
         .neq('status', 'cancelled');
@@ -259,14 +246,12 @@ export const weeklyPlanningService = {
         query = query.neq('id', excludeScheduleId);
       }
 
-      const { data, error } = await query;
+      const { data: schedules, error } = await query;
 
       if (error) {
         console.error('[WeeklyPlanningService] Failed to check conflicts:', error);
         return []; // Return empty to allow scheduling
       }
-
-      schedules = data || [];
 
       if (!schedules || schedules.length === 0) return [];
 
@@ -277,10 +262,9 @@ export const weeklyPlanningService = {
       // Find conflicts
       const conflicts = schedules.filter(s => {
         const schedStart = timeToMinutes(s.scheduled_time_start);
-        const duration = s.estimated_duration_minutes || DEFAULT_DURATION_MINUTES;
         const schedEnd = s.scheduled_time_end
           ? timeToMinutes(s.scheduled_time_end)
-          : schedStart + duration;
+          : schedStart + DEFAULT_DURATION_MINUTES;
 
         // Check overlap (including buffer)
         return !(requestedEnd <= schedStart || requestedStart >= schedEnd);
@@ -289,12 +273,12 @@ export const weeklyPlanningService = {
       return conflicts.map(c => ({
         id: c.id,
         start: c.scheduled_time_start,
-        end: c.scheduled_time_end || minutesToTime(timeToMinutes(c.scheduled_time_start) + (c.estimated_duration_minutes || DEFAULT_DURATION_MINUTES)),
-        title: c.ticket?.title || 'Scheduled service'
+        end: c.scheduled_time_end || minutesToTime(timeToMinutes(c.scheduled_time_start) + DEFAULT_DURATION_MINUTES),
+        title: 'Scheduled service'
       }));
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to check conflicts:', error);
-      throw error;
+      return []; // Return empty to allow scheduling on error
     }
   },
 
@@ -307,11 +291,15 @@ export const weeklyPlanningService = {
 
     try {
       // Get ticket info for duration
-      const { data: ticket } = await supabase
+      const { data: ticket, error: ticketError } = await supabase
         .from('service_tickets')
         .select('estimated_hours, service_address, customer_name')
         .eq('id', ticketId)
         .single();
+
+      if (ticketError) {
+        console.warn('[WeeklyPlanningService] Could not fetch ticket details:', ticketError);
+      }
 
       const estimatedMinutes = ticket?.estimated_hours
         ? ticket.estimated_hours * 60
@@ -321,7 +309,7 @@ export const weeklyPlanningService = {
       const startMinutes = timeToMinutes(scheduleData.scheduled_time_start);
       const endTime = scheduleData.scheduled_time_end || minutesToTime(startMinutes + estimatedMinutes);
 
-      // Build insert object - only include columns that exist
+      // Build insert object - use only basic columns that definitely exist
       const insertData = {
         ticket_id: ticketId,
         scheduled_date: scheduleData.scheduled_date,
@@ -329,44 +317,36 @@ export const weeklyPlanningService = {
         scheduled_time_end: endTime,
         technician_id: scheduleData.technician_id,
         technician_name: scheduleData.technician_name,
-        service_address: scheduleData.service_address || ticket?.service_address,
+        service_address: scheduleData.service_address || ticket?.service_address || '',
         pre_visit_notes: scheduleData.pre_visit_notes || '',
-        status: 'pending'
+        status: 'scheduled'
       };
 
-      // Try to create with new columns first
-      let { data, error } = await supabase
+      console.log('[WeeklyPlanningService] Creating schedule with data:', insertData);
+
+      // Create schedule with basic columns only (safe approach)
+      const { data, error } = await supabase
         .from('service_schedules')
-        .insert([{
-          ...insertData,
-          schedule_status: 'tentative',
-          estimated_duration_minutes: estimatedMinutes
-        }])
+        .insert([insertData])
         .select()
         .single();
-
-      // If error mentions missing column, retry without new columns
-      if (error && (error.message?.includes('schedule_status') || error.message?.includes('estimated_duration_minutes'))) {
-        console.warn('[WeeklyPlanningService] New columns not found, creating without them');
-        const fallbackResult = await supabase
-          .from('service_schedules')
-          .insert([insertData])
-          .select()
-          .single();
-        data = fallbackResult.data;
-        error = fallbackResult.error;
-      }
 
       if (error) {
         console.error('[WeeklyPlanningService] Failed to create schedule:', error);
         throw error;
       }
 
+      console.log('[WeeklyPlanningService] Schedule created:', data);
+
       // Update ticket status to 'scheduled'
-      await supabase
+      const { error: updateError } = await supabase
         .from('service_tickets')
         .update({ status: 'scheduled' })
         .eq('id', ticketId);
+
+      if (updateError) {
+        console.warn('[WeeklyPlanningService] Failed to update ticket status:', updateError);
+      }
 
       return data;
     } catch (error) {
@@ -377,22 +357,48 @@ export const weeklyPlanningService = {
 
   /**
    * Move schedule to new date/time (drag-drop on calendar)
+   * Preserves the original duration from ticket's estimated_hours
    */
-  async moveSchedule(scheduleId, newDate, newTime, newTechnicianId = null, newTechnicianName = null) {
+  async moveSchedule(scheduleId, newDate, newTime, newTechnicianId = null, newTechnicianName = null, estimatedHours = null) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!scheduleId) throw new Error('Schedule ID is required');
 
     try {
-      // Get current schedule for duration
+      // Get current schedule with ticket info for duration
       const { data: current } = await supabase
         .from('service_schedules')
-        .select('estimated_duration_minutes, technician_id, technician_name')
+        .select('ticket_id, technician_id, technician_name, scheduled_time_start, scheduled_time_end')
         .eq('id', scheduleId)
         .single();
 
-      const duration = current?.estimated_duration_minutes || DEFAULT_DURATION_MINUTES;
+      // Calculate duration from multiple sources
+      let durationMinutes = DEFAULT_DURATION_MINUTES;
+
+      // Use passed estimatedHours first (from drag data)
+      if (estimatedHours) {
+        durationMinutes = estimatedHours * 60;
+      }
+      // Fallback: calculate from current schedule's start/end times
+      else if (current?.scheduled_time_start && current?.scheduled_time_end) {
+        const currentStart = timeToMinutes(current.scheduled_time_start);
+        const currentEnd = timeToMinutes(current.scheduled_time_end);
+        durationMinutes = currentEnd - currentStart;
+      }
+      // Fallback: get from ticket's estimated_hours
+      else if (current?.ticket_id) {
+        const { data: ticket } = await supabase
+          .from('service_tickets')
+          .select('estimated_hours')
+          .eq('id', current.ticket_id)
+          .single();
+
+        if (ticket?.estimated_hours) {
+          durationMinutes = ticket.estimated_hours * 60;
+        }
+      }
+
       const startMinutes = timeToMinutes(newTime);
-      const endTime = minutesToTime(startMinutes + duration);
+      const endTime = minutesToTime(startMinutes + durationMinutes);
 
       const updates = {
         scheduled_date: newDate,
@@ -417,6 +423,8 @@ export const weeklyPlanningService = {
         console.error('[WeeklyPlanningService] Failed to move schedule:', error);
         throw error;
       }
+
+      console.log('[WeeklyPlanningService] Schedule moved:', data, 'Duration:', durationMinutes, 'minutes');
 
       return data;
     } catch (error) {

@@ -102,7 +102,7 @@ const snapToQuarter = (hour) => Math.round(hour * 4) / 4;
 const pixelToHour = (pixelY) => START_HOUR + (pixelY / HOUR_HEIGHT);
 
 /**
- * Schedule Block Component
+ * Schedule Block Component - Now draggable for rescheduling
  */
 const ScheduleBlock = memo(({
   schedule,
@@ -112,19 +112,65 @@ const ScheduleBlock = memo(({
   onClick,
   showTechnician = false
 }) => {
+  const [isDragging, setIsDragging] = useState(false);
   const status = schedule.schedule_status || 'tentative';
   const colors = scheduleStatusColors[status] || scheduleStatusColors.tentative;
   const ticket = schedule.ticket || {};
 
+  // Calculate estimated hours from schedule times or ticket
+  const getEstimatedHours = () => {
+    if (schedule.scheduled_time_start && schedule.scheduled_time_end) {
+      const startHour = timeToHour(schedule.scheduled_time_start);
+      const endHour = timeToHour(schedule.scheduled_time_end);
+      return endHour - startHour;
+    }
+    return ticket.estimated_hours || 2;
+  };
+
+  // Handle drag start for rescheduling
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+
+    // Create data payload that includes schedule info for moving
+    const dragData = {
+      id: ticket.id || schedule.ticket_id,
+      ticket_number: ticket.ticket_number,
+      title: ticket.title,
+      customer_name: ticket.customer_name || schedule.customer_name,
+      service_address: ticket.service_address || schedule.service_address,
+      estimated_hours: getEstimatedHours(),
+      priority: ticket.priority,
+      category: ticket.category,
+      assigned_to: ticket.assigned_to || schedule.technician_id,
+      // Include schedule info so we know we're moving an existing schedule
+      _isReschedule: true,
+      _scheduleId: schedule.id,
+      _originalDate: schedule.scheduled_date,
+      _originalTime: schedule.scheduled_time_start
+    };
+
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <div
-      className="absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 cursor-pointer hover:shadow-lg transition-all overflow-hidden group"
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      className={`absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 cursor-grab active:cursor-grabbing hover:shadow-lg transition-all overflow-hidden group ${
+        isDragging ? 'opacity-50 scale-95' : ''
+      }`}
       style={{
         top: `${top}px`,
         height: `${Math.max(height, 30)}px`,
         backgroundColor: colors.bg,
         borderLeftColor: colors.border,
-        zIndex: 20
+        zIndex: isDragging ? 50 : 20
       }}
       onClick={() => onClick?.(schedule)}
     >
@@ -139,7 +185,7 @@ const ScheduleBlock = memo(({
             className="text-xs font-medium truncate"
             style={{ color: colors.text }}
           >
-            {ticket.customer_name || 'Service'}
+            {ticket.customer_name || schedule.customer_name || 'Service'}
           </span>
         </div>
         {/* Edit button - visible on hover */}
@@ -149,7 +195,7 @@ const ScheduleBlock = memo(({
             e.stopPropagation();
             onEdit?.(schedule);
           }}
-          title="Open ticket"
+          title="Open ticket details"
         >
           <ExternalLink size={12} style={{ color: colors.text }} />
         </button>
@@ -261,9 +307,23 @@ const DayColumn = memo(({
   const positionedSchedules = useMemo(() => {
     return schedules.map(schedule => {
       const startHour = timeToHour(schedule.scheduled_time_start);
-      const endHour = schedule.scheduled_time_end
-        ? timeToHour(schedule.scheduled_time_end)
-        : startHour + (schedule.estimated_duration_minutes || 120) / 60;
+      const ticket = schedule.ticket || {};
+
+      // Calculate end hour from multiple sources (in order of priority):
+      // 1. Explicit scheduled_time_end
+      // 2. estimated_duration_minutes on the schedule
+      // 3. estimated_hours from the ticket
+      // 4. Default 2 hours
+      let endHour;
+      if (schedule.scheduled_time_end) {
+        endHour = timeToHour(schedule.scheduled_time_end);
+      } else if (schedule.estimated_duration_minutes) {
+        endHour = startHour + schedule.estimated_duration_minutes / 60;
+      } else if (ticket.estimated_hours) {
+        endHour = startHour + ticket.estimated_hours;
+      } else {
+        endHour = startHour + 2; // Default 2 hours
+      }
 
       const clampedStart = Math.max(startHour, START_HOUR);
       const clampedEnd = Math.min(endHour, END_HOUR);

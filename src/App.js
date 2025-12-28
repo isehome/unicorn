@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -72,16 +72,6 @@ const ServiceTicketDetail = lazy(() => import('./components/Service/ServiceTicke
 const NewTicketForm = lazy(() => import('./components/Service/NewTicketForm'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
 
-// Wrapper for routes that can be either protected or public based on URL params
-const ConditionalProtectedRoute = ({ children, publicWhenEmbedded = false }) => {
-  const [searchParams] = useSearchParams();
-  const isEmbedded = searchParams.get('embed') === 'true';
-
-  if (publicWhenEmbedded && isEmbedded) {
-    return children;
-  }
-  return <ProtectedRoute>{children}</ProtectedRoute>;
-};
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -432,9 +422,9 @@ const AppRoutes = () => {
               <Route
                 path="/service/weekly-planning"
                 element={
-                  <ConditionalProtectedRoute publicWhenEmbedded={true}>
+                  <ProtectedRoute>
                     <WeeklyPlanning />
-                  </ConditionalProtectedRoute>
+                  </ProtectedRoute>
                 }
               />
               <Route

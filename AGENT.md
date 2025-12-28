@@ -173,6 +173,165 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **UniFi** | Match equipment to network clients by MAC |
 | **SharePoint** | Photo storage |
 | **Brady Printer** | Print equipment labels |
+| **Microsoft 365 Calendar** | Technician calendar sync for service appointments |
+| **Retell AI** | Voice-based service intake (inbound calls) |
+
+---
+
+### 8. Service CRM Module
+
+A full-featured service ticket management system for residential A/V and smart home service calls.
+
+#### 8.1 Service Tickets
+
+Service tickets represent customer service requests. Each ticket has:
+- **Ticket Number**: Auto-generated sequence (e.g., `SVC-2025-00042`)
+- **Customer Info**: Name, phone, email, service address
+- **Category**: Networking, Audio/Video, Automation, Shades, etc.
+- **Priority**: Urgent, High, Normal, Low
+- **Status Flow**: `new` → `triaged` → `scheduled` → `in_progress` → `completed` → `closed`
+- **Estimated Hours**: Used for calendar block sizing
+
+**Triage Process:**
+1. Ticket created (from call, form, or voice intake)
+2. PM/Dispatcher reviews and assigns priority, category, estimated hours
+3. Ticket assigned to technician
+4. Ticket scheduled via Weekly Planning
+
+#### 8.2 Weekly Planning ("Air Traffic Control")
+
+A drag-and-drop scheduling interface for dispatching service technicians.
+
+**Access:** `/service/weekly-planning` or `/service/weekly-planning?embed=true` (iframe)
+
+**Features:**
+| Feature | Description |
+|---------|-------------|
+| **Week Calendar Grid** | 7-day view with hour rows (6 AM - 10 PM) |
+| **Drag-and-Drop** | Drag unscheduled tickets onto calendar slots |
+| **Block Sizing** | Block height = `estimated_hours` field from ticket |
+| **Rescheduling** | Drag existing blocks to move appointments |
+| **30-min Buffer** | Automatic buffer enforcement between appointments |
+| **M365 Calendar Overlay** | Shows blocked time from technician's Outlook calendar |
+| **Status Colors** | AMBER = tentative, GREEN = confirmed |
+| **Technician Filter** | View one technician or all overlapping |
+| **Week Mode Toggle** | Mon-Fri (work week) or Sun-Sat (full week) |
+| **Ticket Detail Modal** | Quick view of ticket without leaving planning screen |
+
+**Iframe Embedding (for Alleo):**
+```html
+<iframe src="https://unicorn-one.vercel.app/service/weekly-planning?embed=true"
+        width="1920" height="1080" frameborder="0"
+        style="border-radius: 8px;"></iframe>
+```
+
+**Calendar Integration:**
+When a ticket is scheduled:
+1. Creates calendar event on technician's M365 calendar
+2. Event subject: `[TENTATIVE] Service: Customer Name (#ticket_number)`
+3. Customer email added as attendee (sends invite)
+4. Event body includes: title, address, phone, email, notes
+5. Location set to service address
+6. When confirmed, `[TENTATIVE]` prefix is removed
+
+#### 8.3 Schedule Status Flow
+
+```
+Ticket Created → Triaged → Scheduled (TENTATIVE) → Confirmed → In Progress → Completed
+                              ↓                        ↑
+                    Customer receives                Customer clicks
+                    confirmation link               confirm button
+```
+
+**Status Values:**
+| Status | Color | Description |
+|--------|-------|-------------|
+| `tentative` | Amber | Scheduled but not confirmed by customer |
+| `confirmed` | Green | Customer confirmed the appointment |
+| `cancelled` | Gray | Appointment cancelled |
+| `completed` | Green | Service visit completed |
+
+#### 8.4 Customer Confirmation (Planned)
+
+Customer-facing portal for appointment confirmation:
+1. Schedule created as `tentative`
+2. System sends email + SMS with confirmation link
+3. Customer clicks link → `/public/service-confirm/:token`
+4. OTP verification (phone or email)
+5. Customer sees appointment details
+6. Options: Confirm or Request Reschedule
+7. On confirm: status → `confirmed`, calendar event updated
+
+#### 8.5 Service Dashboard
+
+**Route:** `/service`
+
+Dashboard showing:
+- Active tickets count by status
+- Today's scheduled appointments
+- Pending confirmations
+- Quick stats (open tickets, scheduled this week)
+- Navigation to ticket list and weekly planning
+
+#### 8.6 Service Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service module dashboard |
+| ServiceTicketList | `src/components/Service/ServiceTicketList.js` | Ticket list with filters |
+| ServiceTicketDetail | `src/components/Service/ServiceTicketDetail.js` | Full ticket detail page |
+| NewTicketForm | `src/components/Service/NewTicketForm.js` | Create new service ticket |
+| WeekCalendarGrid | `src/components/Service/WeekCalendarGrid.jsx` | Week view calendar grid |
+| ScheduleBlock | (in WeekCalendarGrid) | Draggable schedule block component |
+| UnscheduledTicketsPanel | `src/components/Service/UnscheduledTicketsPanel.jsx` | Left sidebar with unscheduled tickets |
+| TechnicianFilterBar | `src/components/Service/TechnicianFilterBar.jsx` | Top controls (tech filter, week nav, view mode) |
+| WeeklyPlanning | `src/pages/WeeklyPlanning.js` | Main weekly planning page (embed-aware) |
+
+#### 8.7 Service Services
+
+| Service | File | Purpose |
+|---------|------|---------|
+| serviceTicketService | `src/services/serviceTicketService.js` | Ticket CRUD, status updates |
+| serviceScheduleService | `src/services/serviceTicketService.js` | Schedule management |
+| technicianService | `src/services/serviceTicketService.js` | Technician list for assignment |
+| weeklyPlanningService | `src/services/weeklyPlanningService.js` | Week schedules, buffer checking, drag-drop |
+| microsoftCalendarService | `src/services/microsoftCalendarService.js` | Calendar event creation with attendees |
+
+#### 8.8 Service Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled appointments with technician/date/time |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
+
+**service_tickets columns:**
+- `id`, `ticket_number`, `title`, `description`
+- `customer_name`, `customer_phone`, `customer_email`, `service_address`
+- `category`, `priority`, `status`
+- `estimated_hours` (for calendar block sizing)
+- `assigned_to` (technician UUID)
+- `created_at`, `created_by`, `updated_at`
+
+**service_schedules columns:**
+- `id`, `ticket_id`, `technician_id`, `technician_name`
+- `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`
+- `status` (scheduled, in_progress, completed, cancelled)
+- `schedule_status` (tentative, confirmed, cancelled)
+- `calendar_event_id` (M365 event ID for updates)
+- `confirmed_at`, `confirmed_by`, `confirmation_method`
+- `service_address`, `pre_visit_notes`, `post_visit_notes`
+
+#### 8.9 Service Routes
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/service` | ServiceDashboard | Service module home |
+| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service/tickets/new` | NewTicketForm | Create new ticket |
+| `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
+| `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
 
 ---
 
@@ -192,6 +351,10 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | `issues` | Problems/issues |
 | `contacts` | People |
 | `suppliers` | Vendors |
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled service appointments |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
 
 ---
 
@@ -215,6 +378,13 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | Knowledge service | `src/services/knowledgeService.js` |
 | Knowledge management UI | `src/components/knowledge/KnowledgeManagementPanel.js` |
 | Lutron shade knowledge | `src/data/lutronShadeKnowledge.js` |
+| **Service ticket service** | `src/services/serviceTicketService.js` |
+| **Weekly planning service** | `src/services/weeklyPlanningService.js` |
+| **Service dashboard** | `src/components/Service/ServiceDashboard.js` |
+| **Weekly planning page** | `src/pages/WeeklyPlanning.js` |
+| **Week calendar grid** | `src/components/Service/WeekCalendarGrid.jsx` |
+| **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
+| **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
 
 ---
 
@@ -2533,9 +2703,9 @@ The application needs a proper user capabilities/roles system to control access 
 
 ---
 
-## 2025-12-27
+## 2025-12-27 & 2025-12-28
 
-### Service CRM - Weekly Planning Module
+### Service CRM - Weekly Planning Module (Complete)
 - **"Air Traffic Control" Interface** for drag-and-drop service ticket scheduling
 - **Iframe Embeddable** for Alleo integration
 
@@ -2544,11 +2714,27 @@ The application needs a proper user capabilities/roles system to control access 
 - **Configurable**: Toggle between Mon-Fri (work week) and Sun-Sat (full week)
 - **Horizontal scrolling/infinite weeks** - scroll right to load next weeks
 - Drag-and-drop service ticket CARDS onto calendar time slots
-- **Card height = estimated service length** (uses ticket's estimated_hours field)
+- **Card height = estimated service length** (uses ticket's `estimated_hours` field)
 - Default 2-hour blocks, 30-min buffer between events
 - Toggle views: per-technician OR all overlapping
 - **Show ALL Microsoft 365 calendar events as blocked time**
 - Colors: AMBER = tentative, GREEN = confirmed
+- **Rescheduling**: Drag existing scheduled blocks to move appointments
+- **Ticket Detail Modal**: Click scheduled block to see ticket details without leaving planning
+
+#### Calendar Integration (New 2025-12-28)
+When scheduling a ticket:
+1. Creates M365 calendar event on technician's calendar
+2. Event subject: `[TENTATIVE] Service: Customer Name (#ticket_number)`
+3. **Customer email added as attendee** (sends calendar invite)
+4. Event body includes customer info, address, phone, notes
+5. Location set to service address
+6. Duration matches ticket's `estimated_hours`
+
+#### Block Sizing Fix (2025-12-28)
+- Scheduled blocks now correctly reflect ticket's `estimated_hours` field
+- Duration preserved when rescheduling (moving blocks)
+- Fallback chain: `scheduled_time_end` → `estimated_duration_minutes` → `ticket.estimated_hours` → default 2 hours
 
 #### Embed URL
 ```
@@ -2564,31 +2750,44 @@ https://unicorn-one.vercel.app/service/weekly-planning?embed=true
 
 **Dimensions: 16:9 aspect ratio (1920×1080 / 1080p)**
 
-**Note:** When `?embed=true` is present, the page:
-- Skips authentication (public access)
-- Hides navigation header/footer
-- Optimized for iframe display
+**Note:** Embed mode requires authentication (RLS policies enforced)
 
-#### Files Created
-- `src/pages/WeeklyPlanning.js` - Main weekly planning page
-- `src/components/Service/WeekCalendarGrid.jsx` - Week grid with hour rows
-- `src/components/Service/UnscheduledTicketsPanel.jsx` - Draggable tickets sidebar
-- `src/components/Service/TechnicianFilterBar.jsx` - Controls and embed modal
-- `src/services/weeklyPlanningService.js` - Schedule management service
-- `database/migrations/20251228_weekly_planning_confirmation.sql` - DB migration
+#### Files Created/Modified
+| File | Purpose |
+|------|---------|
+| `src/pages/WeeklyPlanning.js` | Main weekly planning page (embed-aware) |
+| `src/components/Service/WeekCalendarGrid.jsx` | Week grid with hour rows, draggable blocks |
+| `src/components/Service/UnscheduledTicketsPanel.jsx` | Draggable tickets sidebar |
+| `src/components/Service/TechnicianFilterBar.jsx` | Controls, week nav, embed modal |
+| `src/services/weeklyPlanningService.js` | Schedule management, buffer checking |
+| `src/services/microsoftCalendarService.js` | Added `createServiceAppointmentEvent`, `updateServiceAppointmentEvent` |
+| `database/migrations/20251228_weekly_planning_confirmation.sql` | DB migration |
 
 #### Database Schema Additions
 ```sql
 -- service_schedules additions:
 schedule_status TEXT DEFAULT 'tentative' -- 'tentative' | 'confirmed' | 'cancelled'
-calendar_event_id TEXT
+calendar_event_id TEXT                   -- M365 event ID for updates
 confirmed_at TIMESTAMPTZ
 confirmed_by TEXT
-confirmation_method TEXT
+confirmation_method TEXT                 -- 'portal' | 'phone' | 'email' | 'sms' | 'internal'
 estimated_duration_minutes INTEGER DEFAULT 120
 
 -- New table for customer confirmations:
 service_schedule_confirmations (token-based portal access)
 ```
+
+#### weeklyPlanningService.js Functions
+| Function | Purpose |
+|----------|---------|
+| `getSchedulesForDateRange()` | Fetch schedules with ticket details for date range |
+| `getWeekSchedules()` | Convenience wrapper for week data |
+| `getUnscheduledTickets()` | Get triaged tickets not yet scheduled |
+| `checkBufferConflicts()` | Validate 30-min buffer between appointments |
+| `createTentativeSchedule()` | Create new schedule from drag-drop |
+| `moveSchedule()` | Reschedule existing appointment |
+| `confirmSchedule()` | Mark schedule as confirmed |
+| `cancelSchedule()` | Cancel a schedule |
+| `updateCalendarEventId()` | Store M365 event ID for later updates |
 
 ---
