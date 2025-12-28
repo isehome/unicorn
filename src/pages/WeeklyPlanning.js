@@ -12,7 +12,7 @@ import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
 import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
-import { checkUserAvailability, fetchEventsForDate, createServiceAppointmentEvent } from '../services/microsoftCalendarService';
+import { checkUserAvailability, fetchEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
 import { brandColors } from '../styles/styleSystem';
 
@@ -265,14 +265,10 @@ const WeeklyPlanning = () => {
     const isReschedule = ticket._isReschedule;
     const scheduleId = ticket._scheduleId;
 
-    if (!selectedTechnician && viewMode === 'single' && !isReschedule) {
-      setError('Please select a technician first');
-      return;
-    }
-
+    // Use selected technician from filter bar, or fall back to ticket's assigned technician
     const techId = selectedTechnician || ticket.assigned_to;
     if (!techId && !isReschedule) {
-      setError('No technician assigned to this ticket');
+      setError('No technician assigned to this ticket. Please assign a technician in the ticket first.');
       return;
     }
 
@@ -391,7 +387,23 @@ const WeeklyPlanning = () => {
   // Move existing schedule to new date/time
   const moveSchedule = async (scheduleId, newDate, newTime, estimatedHours = null) => {
     try {
-      await weeklyPlanningService.moveSchedule(scheduleId, newDate, newTime, null, null, estimatedHours);
+      // Move schedule in database
+      const updatedSchedule = await weeklyPlanningService.moveSchedule(scheduleId, newDate, newTime, null, null, estimatedHours);
+
+      // Update calendar event if one exists
+      if (updatedSchedule?.calendar_event_id && authContext) {
+        try {
+          await updateServiceAppointmentEvent(authContext, updatedSchedule.calendar_event_id, {
+            scheduled_date: newDate,
+            scheduled_time_start: newTime,
+            scheduled_time_end: updatedSchedule.scheduled_time_end
+          });
+          console.log('[WeeklyPlanning] Calendar event updated:', updatedSchedule.calendar_event_id);
+        } catch (calendarErr) {
+          console.warn('[WeeklyPlanning] Failed to update calendar event:', calendarErr);
+        }
+      }
+
       // Refresh data
       await handleRefresh();
     } catch (err) {
@@ -859,12 +871,50 @@ const WeeklyPlanning = () => {
                         {ticketDetailModal.schedule.scheduled_time_start?.slice(0, 5)} - {ticketDetailModal.schedule.scheduled_time_end?.slice(0, 5)}
                       </span>
                     </div>
-                    {ticketDetailModal.schedule.technician_name && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <User size={14} className="text-zinc-400" />
-                        <span className="text-white">{ticketDetailModal.schedule.technician_name}</span>
-                      </div>
-                    )}
+                    {/* Technician Dropdown */}
+                    <div className="md:col-span-2">
+                      <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
+                      <select
+                        value={ticketDetailModal.schedule.technician_id || ''}
+                        onChange={async (e) => {
+                          const newTechId = e.target.value;
+                          const newTech = technicians.find(t => t.id === newTechId);
+                          if (newTech && ticketDetailModal.schedule?.id) {
+                            try {
+                              await weeklyPlanningService.moveSchedule(
+                                ticketDetailModal.schedule.id,
+                                ticketDetailModal.schedule.scheduled_date,
+                                ticketDetailModal.schedule.scheduled_time_start,
+                                newTechId,
+                                newTech.full_name
+                              );
+                              // Update the modal state
+                              setTicketDetailModal(prev => ({
+                                ...prev,
+                                schedule: {
+                                  ...prev.schedule,
+                                  technician_id: newTechId,
+                                  technician_name: newTech.full_name
+                                }
+                              }));
+                              // Refresh calendar
+                              await handleRefresh();
+                            } catch (err) {
+                              console.error('[WeeklyPlanning] Failed to update technician:', err);
+                              setError('Failed to update technician');
+                            }
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                      >
+                        <option value="">-- Select Technician --</option>
+                        {technicians.map(tech => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}

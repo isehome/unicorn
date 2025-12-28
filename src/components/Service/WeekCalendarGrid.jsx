@@ -5,7 +5,7 @@
  */
 
 import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, ExternalLink, User, AlertCircle, Trash2 } from 'lucide-react';
+import { Clock, ExternalLink, User, AlertCircle, Trash2, Check, X } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 
 // Constants
@@ -16,22 +16,67 @@ const TOTAL_HOURS = END_HOUR - START_HOUR;
 const MIN_DAY_WIDTH = 150;  // minimum pixels per day column
 const TIME_COLUMN_WIDTH = 60;
 
-// Schedule status colors
+// Module-level variable to store dragged ticket's estimated hours
+// This is a workaround for browser security - dataTransfer.getData() returns empty during dragover
+// The actual value is only accessible on drop event
+let currentDragEstimatedHours = 2;
+
+/**
+ * Set the current drag estimated hours - call this from drag source
+ * This allows the drop preview to show the correct duration
+ */
+export const setDragEstimatedHours = (hours) => {
+  currentDragEstimatedHours = hours || 2;
+};
+
+/**
+ * Reset drag estimated hours to default
+ */
+export const resetDragEstimatedHours = () => {
+  currentDragEstimatedHours = 2;
+};
+
+// Schedule status colors - 3-step approval workflow
 const scheduleStatusColors = {
+  // Step 1: Waiting for technician to accept calendar invite
+  pending_tech: {
+    bg: 'rgba(245, 158, 11, 0.2)',   // Amber
+    border: '#F59E0B',
+    text: '#F59E0B',
+    label: 'Waiting: Tech',
+    icon: 'clock'
+  },
+  // Step 2: Tech accepted, waiting for customer to accept
+  pending_customer: {
+    bg: 'rgba(59, 130, 246, 0.2)',   // Blue
+    border: '#3B82F6',
+    text: '#3B82F6',
+    label: 'Waiting: Customer',
+    icon: 'clock'
+  },
+  // Step 3: All confirmed
+  confirmed: {
+    bg: 'rgba(148, 175, 50, 0.2)',   // Green (brand)
+    border: '#94AF32',
+    text: '#94AF32',
+    label: 'Confirmed',
+    icon: 'check'
+  },
+  // Cancelled
+  cancelled: {
+    bg: 'rgba(113, 113, 122, 0.2)',  // Gray
+    border: '#71717A',
+    text: '#71717A',
+    label: 'Cancelled',
+    icon: 'x'
+  },
+  // Legacy support for 'tentative' status (maps to pending_tech)
   tentative: {
     bg: 'rgba(245, 158, 11, 0.2)',
     border: '#F59E0B',
-    text: '#F59E0B'
-  },
-  confirmed: {
-    bg: 'rgba(148, 175, 50, 0.2)',
-    border: '#94AF32',
-    text: '#94AF32'
-  },
-  cancelled: {
-    bg: 'rgba(113, 113, 122, 0.2)',
-    border: '#71717A',
-    text: '#71717A'
+    text: '#F59E0B',
+    label: 'Tentative',
+    icon: 'clock'
   }
 };
 
@@ -162,9 +207,12 @@ const ScheduleBlock = memo(({
   showTechnician = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const status = schedule.schedule_status || 'tentative';
-  const colors = scheduleStatusColors[status] || scheduleStatusColors.tentative;
+  const status = schedule.schedule_status || 'pending_tech';
+  const colors = scheduleStatusColors[status] || scheduleStatusColors.pending_tech;
   const ticket = schedule.ticket || {};
+
+  // Get status icon component
+  const StatusIcon = status === 'confirmed' ? Check : (status === 'cancelled' ? X : Clock);
 
   // Get technician info
   const technicianName = schedule.technician_name || ticket.assigned_to_name || '';
@@ -193,6 +241,10 @@ const ScheduleBlock = memo(({
   const handleDragStart = (e) => {
     setIsDragging(true);
 
+    const estimatedHours = getEstimatedHours();
+    // Set the estimated hours for the drop preview (module-level workaround for browser security)
+    currentDragEstimatedHours = estimatedHours;
+
     // Create data payload that includes schedule info for moving
     const dragData = {
       id: ticket.id || schedule.ticket_id,
@@ -200,7 +252,7 @@ const ScheduleBlock = memo(({
       title: ticket.title,
       customer_name: ticket.customer_name || schedule.customer_name,
       service_address: ticket.service_address || schedule.service_address,
-      estimated_hours: getEstimatedHours(),
+      estimated_hours: estimatedHours,
       priority: ticket.priority,
       category: ticket.category,
       assigned_to: ticket.assigned_to || schedule.technician_id,
@@ -217,6 +269,8 @@ const ScheduleBlock = memo(({
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    // Reset the drag estimated hours back to default
+    currentDragEstimatedHours = 2;
   };
 
   return (
@@ -317,6 +371,21 @@ const ScheduleBlock = memo(({
         <div className="flex items-center gap-1 text-xs opacity-60 mt-0.5" style={{ color: colors.text }}>
           <User size={10} />
           <span className="truncate">{technicianName}</span>
+        </div>
+      )}
+
+      {/* Status badge - shows workflow state */}
+      {height >= 50 && colors.label && (
+        <div
+          className="flex items-center gap-1 text-[10px] mt-0.5 px-1.5 py-0.5 rounded-full w-fit"
+          style={{
+            backgroundColor: colors.bg,
+            color: colors.text,
+            border: `1px solid ${colors.border}`
+          }}
+        >
+          <StatusIcon size={10} />
+          <span>{colors.label}</span>
         </div>
       )}
 
@@ -654,17 +723,9 @@ const WeekCalendarGrid = ({
     const hour = snapToQuarter(pixelToHour(relativeY));
     const clampedHour = Math.max(START_HOUR, Math.min(hour, END_HOUR - 1));
 
-    // Get duration from dragged ticket data
-    let durationHours = 2; // default
-    try {
-      const ticketData = e.dataTransfer.getData('application/json');
-      if (ticketData) {
-        const ticket = JSON.parse(ticketData);
-        durationHours = ticket.estimated_hours || 2;
-      }
-    } catch {
-      // Ignore - use default
-    }
+    // Use module-level variable for duration (set by drag source)
+    // Browser security prevents reading dataTransfer during dragover
+    const durationHours = currentDragEstimatedHours;
 
     setDropPreview({
       date: date.toISOString().split('T')[0],

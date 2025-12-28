@@ -94,18 +94,42 @@ export const weeklyPlanningService = {
         return [];
       }
 
-      // Fetch technician avatar colors
+      // Fetch technician avatar colors from profiles table (via contacts email)
       const technicianIds = [...new Set(schedules.filter(s => s.technician_id).map(s => s.technician_id))];
       let technicianMap = {};
 
       if (technicianIds.length > 0) {
-        const { data: technicians } = await supabase
+        // First get contact emails
+        const { data: contacts } = await supabase
           .from('contacts')
-          .select('id, avatar_color')
+          .select('id, email')
           .in('id', technicianIds);
 
-        if (technicians) {
-          technicianMap = technicians.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+        if (contacts && contacts.length > 0) {
+          // Get avatar colors from profiles via email
+          const emails = contacts.filter(c => c.email).map(c => c.email.toLowerCase());
+          if (emails.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('email, avatar_color')
+              .in('email', emails);
+
+            // Build contact ID -> avatar_color map
+            if (profiles) {
+              const emailToColor = profiles.reduce((acc, p) => {
+                if (p.email && p.avatar_color) {
+                  acc[p.email.toLowerCase()] = p.avatar_color;
+                }
+                return acc;
+              }, {});
+
+              contacts.forEach(c => {
+                if (c.email && emailToColor[c.email.toLowerCase()]) {
+                  technicianMap[c.id] = { avatar_color: emailToColor[c.email.toLowerCase()] };
+                }
+              });
+            }
+          }
         }
       }
 
@@ -333,6 +357,7 @@ export const weeklyPlanningService = {
       const endTime = scheduleData.scheduled_time_end || minutesToTime(startMinutes + estimatedMinutes);
 
       // Build insert object - use only basic columns that definitely exist
+      // Start with 'pending_tech' status for 3-step approval workflow
       const insertData = {
         ticket_id: ticketId,
         scheduled_date: scheduleData.scheduled_date,
@@ -340,9 +365,11 @@ export const weeklyPlanningService = {
         scheduled_time_end: endTime,
         technician_id: scheduleData.technician_id,
         technician_name: scheduleData.technician_name,
+        technician_email: scheduleData.technician_email || null,
         service_address: scheduleData.service_address || ticket?.service_address || '',
         pre_visit_notes: scheduleData.pre_visit_notes || '',
-        status: 'scheduled'
+        status: 'scheduled',
+        schedule_status: 'pending_tech' // Step 1: Waiting for technician to accept calendar invite
       };
 
       console.log('[WeeklyPlanningService] Creating schedule with data:', insertData);
@@ -624,6 +651,205 @@ export const weeklyPlanningService = {
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to update calendar event ID:', error);
       throw error;
+    }
+  },
+
+  // ============================================================================
+  // 3-STEP APPROVAL WORKFLOW FUNCTIONS
+  // ============================================================================
+
+  /**
+   * Handle technician acceptance (Step 2 of 3-step workflow)
+   * Called when cron job detects technician accepted calendar invite
+   * Updates status to pending_customer
+   */
+  async handleTechnicianAccepted(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .update({
+          schedule_status: 'pending_customer',
+          tech_calendar_response: 'accepted',
+          technician_accepted_at: new Date().toISOString()
+        })
+        .eq('id', scheduleId)
+        .select(`
+          *,
+          ticket:service_tickets(customer_email, customer_name)
+        `)
+        .single();
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to handle tech accepted:', error);
+        throw error;
+      }
+
+      console.log('[WeeklyPlanningService] Technician accepted schedule:', scheduleId);
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to handle tech accepted:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Handle customer acceptance (Step 3 of 3-step workflow)
+   * Called when cron job detects customer accepted calendar invite
+   * Updates status to confirmed
+   */
+  async handleCustomerAccepted(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .update({
+          schedule_status: 'confirmed',
+          customer_calendar_response: 'accepted',
+          customer_accepted_at: new Date().toISOString(),
+          confirmed_at: new Date().toISOString(),
+          confirmation_method: 'calendar'
+        })
+        .eq('id', scheduleId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to handle customer accepted:', error);
+        throw error;
+      }
+
+      console.log('[WeeklyPlanningService] Customer accepted schedule:', scheduleId);
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to handle customer accepted:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Handle decline (tech or customer declined calendar invite)
+   * Returns ticket to unscheduled state
+   */
+  async handleDecline(scheduleId, declinedBy = 'unknown') {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    try {
+      // Get schedule with ticket info
+      const { data: schedule } = await supabase
+        .from('service_schedules')
+        .select('ticket_id, schedule_status')
+        .eq('id', scheduleId)
+        .single();
+
+      if (!schedule) {
+        throw new Error('Schedule not found');
+      }
+
+      // Update the appropriate response field based on who declined
+      const updates = {
+        schedule_status: 'cancelled',
+        status: 'cancelled'
+      };
+
+      if (declinedBy === 'technician') {
+        updates.tech_calendar_response = 'declined';
+      } else if (declinedBy === 'customer') {
+        updates.customer_calendar_response = 'declined';
+      }
+
+      // Cancel the schedule
+      const { error: scheduleError } = await supabase
+        .from('service_schedules')
+        .update(updates)
+        .eq('id', scheduleId);
+
+      if (scheduleError) {
+        console.error('[WeeklyPlanningService] Failed to cancel schedule:', scheduleError);
+        throw scheduleError;
+      }
+
+      // Return ticket to triaged status (unscheduled)
+      if (schedule.ticket_id) {
+        const { error: ticketError } = await supabase
+          .from('service_tickets')
+          .update({ status: 'triaged' })
+          .eq('id', schedule.ticket_id);
+
+        if (ticketError) {
+          console.warn('[WeeklyPlanningService] Failed to update ticket status:', ticketError);
+        }
+      }
+
+      console.log(`[WeeklyPlanningService] Schedule ${scheduleId} declined by ${declinedBy}, returned to unscheduled`);
+      return { success: true, declinedBy };
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to handle decline:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Update calendar response status
+   * Called by cron job when processing webhook notifications
+   */
+  async updateCalendarResponse(scheduleId, responseType, response) {
+    if (!supabase) throw new Error('Supabase not configured');
+
+    const field = responseType === 'technician' ? 'tech_calendar_response' : 'customer_calendar_response';
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .update({ [field]: response })
+        .eq('id', scheduleId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to update calendar response:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to update calendar response:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get schedule by calendar event ID
+   * Used by cron job to find schedule from webhook notification
+   */
+  async getScheduleByCalendarEventId(calendarEventId) {
+    if (!supabase) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .select(`
+          *,
+          ticket:service_tickets(id, customer_email, customer_name, customer_phone, service_address)
+        `)
+        .eq('calendar_event_id', calendarEventId)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No rows returned
+          return null;
+        }
+        console.error('[WeeklyPlanningService] Failed to get schedule by event ID:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to get schedule by event ID:', error);
+      return null;
     }
   }
 };

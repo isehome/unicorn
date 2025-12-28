@@ -686,12 +686,19 @@ export const checkUserAvailability = async (authContext, userEmail, date, startT
 
 /**
  * Create a calendar event for a service appointment
- * Includes customer email as an attendee and proper service details
+ *
+ * NEW 3-STEP WORKFLOW:
+ * 1. Initially only invites the technician (pending_tech status)
+ * 2. When tech accepts, customer is added via addCustomerToServiceEvent()
+ * 3. When customer accepts, event is finalized via finalizeServiceEvent()
+ *
  * @param {Object} authContext - Auth context with token
  * @param {Object} scheduleData - Schedule data with ticket info
+ * @param {Object} options - Additional options
+ * @param {boolean} options.techOnly - If true, only invite technician (default: true for new workflow)
  * @returns {Object} { success: boolean, eventId?: string, error?: string }
  */
-export const createServiceAppointmentEvent = async (authContext, scheduleData) => {
+export const createServiceAppointmentEvent = async (authContext, scheduleData, options = {}) => {
   try {
     let token = authContext?.accessToken;
 
@@ -712,8 +719,12 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData) =
       customer_email,
       service_address,
       technician_name,
+      technician_email,
       is_tentative = true
     } = scheduleData;
+
+    // Default to tech-only for new 3-step workflow
+    const { techOnly = true } = options;
 
     if (!scheduled_date || !scheduled_time_start) {
       return { success: false, error: 'Schedule date and start time are required.' };
@@ -740,10 +751,12 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData) =
     const startDateTime = `${scheduled_date}T${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}:00`;
     const endDateTime = `${scheduled_date}T${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}:00`;
 
-    // Build event subject
+    // Build event subject with status prefix
     const ticketNumber = ticket?.ticket_number || '';
     const customerDisplayName = customer_name || ticket?.customer_name || 'Customer';
-    const statusPrefix = is_tentative ? '[TENTATIVE] ' : '';
+
+    // Use [PENDING] for tech-only (step 1), [AWAITING CUSTOMER] will be used in step 2
+    const statusPrefix = techOnly ? '[PENDING] ' : (is_tentative ? '[TENTATIVE] ' : '');
     const subject = `${statusPrefix}Service: ${customerDisplayName}${ticketNumber ? ` (#${ticketNumber})` : ''}`;
 
     // Build event body
@@ -757,6 +770,8 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData) =
       '',
       ticket?.description ? `Notes: ${ticket.description}` : '',
       ticketNumber ? `Ticket: #${ticketNumber}` : '',
+      '',
+      techOnly ? '⏳ Awaiting technician confirmation' : '',
     ].filter(Boolean).join('\n');
 
     const eventBody = {
@@ -777,22 +792,42 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData) =
         displayName: service_address || ticket?.service_address || '',
       },
       categories: ['Service Appointment'],
-      showAs: is_tentative ? 'tentative' : 'busy',
+      showAs: 'tentative',
     };
 
-    // Add customer as attendee if email is available
-    const customerEmailAddress = customer_email || ticket?.customer_email;
-    if (customerEmailAddress) {
-      eventBody.attendees = [{
+    // Build attendees list
+    const attendees = [];
+
+    // Add technician as attendee if email is provided
+    if (technician_email) {
+      attendees.push({
         emailAddress: {
-          address: customerEmailAddress,
-          name: customerDisplayName
+          address: technician_email,
+          name: technician_name || technician_email
         },
         type: 'required'
-      }];
+      });
     }
 
-    console.log('[Calendar] Creating service appointment event:', eventBody);
+    // Only add customer if NOT tech-only mode (backwards compatibility)
+    if (!techOnly) {
+      const customerEmailAddress = customer_email || ticket?.customer_email;
+      if (customerEmailAddress) {
+        attendees.push({
+          emailAddress: {
+            address: customerEmailAddress,
+            name: customerDisplayName
+          },
+          type: 'required'
+        });
+      }
+    }
+
+    if (attendees.length > 0) {
+      eventBody.attendees = attendees;
+    }
+
+    console.log('[Calendar] Creating service appointment event:', { subject, techOnly, attendees: attendees.length });
 
     const response = await fetch(graphConfig.graphEventsEndpoint, {
       method: 'POST',
@@ -846,6 +881,244 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData) =
   } catch (error) {
     console.error('[Calendar] Create service event error:', error);
     return { success: false, error: error.message || 'Failed to create calendar event.' };
+  }
+};
+
+/**
+ * Add customer to an existing service appointment event
+ * Called when technician accepts the calendar invite (Step 2 of 3-step workflow)
+ *
+ * @param {Object} authContext - Auth context with token
+ * @param {string} eventId - Microsoft Graph event ID
+ * @param {string} customerEmail - Customer's email address
+ * @param {string} customerName - Customer's display name
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const addCustomerToServiceEvent = async (authContext, eventId, customerEmail, customerName) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Not authenticated.' };
+    }
+
+    if (!customerEmail) {
+      return { success: false, error: 'Customer email is required.' };
+    }
+
+    // First, get the current event to preserve existing attendees
+    const getResponse = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}?$select=subject,attendees,body`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!getResponse.ok) {
+      console.error('[Calendar] Failed to get event for customer addition:', getResponse.status);
+      return { success: false, error: 'Failed to retrieve event.' };
+    }
+
+    const currentEvent = await getResponse.json();
+    const currentAttendees = currentEvent.attendees || [];
+
+    // Check if customer is already an attendee
+    const customerAlreadyAdded = currentAttendees.some(
+      a => a.emailAddress?.address?.toLowerCase() === customerEmail.toLowerCase()
+    );
+
+    if (customerAlreadyAdded) {
+      console.log('[Calendar] Customer already an attendee, skipping addition');
+      return { success: true };
+    }
+
+    // Add customer to attendees
+    const updatedAttendees = [
+      ...currentAttendees,
+      {
+        emailAddress: {
+          address: customerEmail,
+          name: customerName || customerEmail
+        },
+        type: 'required'
+      }
+    ];
+
+    // Update subject to show waiting for customer
+    let newSubject = currentEvent.subject || '';
+    if (newSubject.startsWith('[PENDING]')) {
+      newSubject = newSubject.replace('[PENDING]', '[AWAITING CUSTOMER]');
+    }
+
+    // Update body to show status
+    let newBody = currentEvent.body?.content || '';
+    newBody = newBody.replace('⏳ Awaiting technician confirmation', '✅ Technician confirmed\n⏳ Awaiting customer confirmation');
+
+    const patchBody = {
+      subject: newSubject,
+      attendees: updatedAttendees,
+      body: {
+        contentType: 'text',
+        content: newBody
+      }
+    };
+
+    const response = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patchBody),
+    });
+
+    if (!response.ok) {
+      console.error('[Calendar] Failed to add customer to event:', response.status);
+      return { success: false, error: 'Failed to add customer to calendar event.' };
+    }
+
+    console.log('[Calendar] Customer added to service event:', eventId);
+    return { success: true };
+
+  } catch (error) {
+    console.error('[Calendar] Add customer to event error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Finalize a service appointment event
+ * Called when customer accepts the calendar invite (Step 3 of 3-step workflow)
+ * Removes status prefix and sets showAs to busy
+ *
+ * @param {Object} authContext - Auth context with token
+ * @param {string} eventId - Microsoft Graph event ID
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const finalizeServiceEvent = async (authContext, eventId) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Not authenticated.' };
+    }
+
+    // Get current event to update subject
+    const getResponse = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}?$select=subject,body`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!getResponse.ok) {
+      console.error('[Calendar] Failed to get event for finalization:', getResponse.status);
+      return { success: false, error: 'Failed to retrieve event.' };
+    }
+
+    const currentEvent = await getResponse.json();
+
+    // Remove all status prefixes from subject
+    let newSubject = (currentEvent.subject || '')
+      .replace('[PENDING] ', '')
+      .replace('[AWAITING CUSTOMER] ', '')
+      .replace('[TENTATIVE] ', '')
+      .trim();
+
+    // Update body to show confirmed status
+    let newBody = currentEvent.body?.content || '';
+    newBody = newBody
+      .replace('⏳ Awaiting technician confirmation', '✅ Confirmed')
+      .replace('✅ Technician confirmed\n⏳ Awaiting customer confirmation', '✅ Technician confirmed\n✅ Customer confirmed');
+
+    const patchBody = {
+      subject: newSubject,
+      showAs: 'busy',
+      body: {
+        contentType: 'text',
+        content: newBody
+      }
+    };
+
+    const response = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patchBody),
+    });
+
+    if (!response.ok) {
+      console.error('[Calendar] Failed to finalize event:', response.status);
+      return { success: false, error: 'Failed to finalize calendar event.' };
+    }
+
+    console.log('[Calendar] Service event finalized:', eventId);
+    return { success: true };
+
+  } catch (error) {
+    console.error('[Calendar] Finalize event error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get attendee response statuses for a calendar event
+ * Used to check if technician/customer has accepted
+ *
+ * @param {Object} authContext - Auth context with token
+ * @param {string} eventId - Microsoft Graph event ID
+ * @returns {Object} { success: boolean, attendees?: Array, error?: string }
+ */
+export const getEventAttendeeResponses = async (authContext, eventId) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token && authContext?.acquireToken) {
+      token = await authContext.acquireToken(false);
+    }
+
+    if (!token) {
+      return { success: false, error: 'Not authenticated.' };
+    }
+
+    const response = await fetch(`${graphConfig.graphEventsEndpoint}/${eventId}?$select=attendees`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        return { success: false, error: 'Event not found.', notFound: true };
+      }
+      console.error('[Calendar] Failed to get event attendees:', response.status);
+      return { success: false, error: 'Failed to retrieve event.' };
+    }
+
+    const data = await response.json();
+    const attendees = (data.attendees || []).map(a => ({
+      email: a.emailAddress?.address,
+      name: a.emailAddress?.name,
+      response: a.status?.response || 'none',
+      time: a.status?.time
+    }));
+
+    return { success: true, attendees };
+
+  } catch (error) {
+    console.error('[Calendar] Get attendee responses error:', error);
+    return { success: false, error: error.message };
   }
 };
 
@@ -954,4 +1227,8 @@ export default {
   checkUserAvailability,
   createServiceAppointmentEvent,
   updateServiceAppointmentEvent,
+  // New 3-step workflow functions
+  addCustomerToServiceEvent,
+  finalizeServiceEvent,
+  getEventAttendeeResponses,
 };

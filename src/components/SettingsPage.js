@@ -7,8 +7,8 @@ import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import ColorPicker from './ui/ColorPicker';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight, Loader2, Palette } from 'lucide-react';
-import { technicianService } from '../services/serviceTicketService';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight, Loader2, X } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 import AISettings from './UserSettings/AISettings';
 
@@ -37,54 +37,72 @@ const SettingsPage = () => {
   const [loggingOut, setLoggingOut] = useState(false);
 
   // Avatar color state
-  const [userContact, setUserContact] = useState(null);
   const [avatarColor, setAvatarColor] = useState('#8B5CF6');
   const [loadingAvatarColor, setLoadingAvatarColor] = useState(false);
   const [savingAvatarColor, setSavingAvatarColor] = useState(false);
   const [avatarColorMessage, setAvatarColorMessage] = useState('');
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
 
-  const displayName = user?.full_name || user?.name || user?.email || 'User';
+  const displayName = user?.displayName || user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || 'demo@example.com';
   const initials = useMemo(() => (displayName?.[0] || 'U').toUpperCase(), [displayName]);
 
-  // Load user's current avatar color from contacts table
+  // Load user's current avatar color from profiles table (keyed by user.id)
   const loadUserAvatarColor = useCallback(async () => {
-    if (!email || email === 'demo@example.com') return;
+    if (!user?.id || !supabase) return;
 
     try {
       setLoadingAvatarColor(true);
-      const contact = await technicianService.getByEmail(email);
-      if (contact) {
-        setUserContact(contact);
-        if (contact.avatar_color) {
-          setAvatarColor(contact.avatar_color);
-        }
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('avatar_color')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.log('[SettingsPage] Profile not found, will create on first save:', error.message);
+      } else if (data?.avatar_color) {
+        setAvatarColor(data.avatar_color);
       }
     } catch (err) {
       console.error('[SettingsPage] Failed to load avatar color:', err);
     } finally {
       setLoadingAvatarColor(false);
     }
-  }, [email]);
+  }, [user?.id]);
 
   useEffect(() => {
     loadUserAvatarColor();
   }, [loadUserAvatarColor]);
 
-  // Handle avatar color change
+  // Handle avatar color change - saves directly to profiles table
   const handleAvatarColorChange = async (newColor) => {
     setAvatarColor(newColor);
 
-    // Auto-save after a brief delay
-    if (!userContact?.id) {
-      setAvatarColorMessage('Your account is not linked to an internal contact. Avatar color cannot be saved.');
+    if (!user?.id || !supabase) {
+      setAvatarColorMessage('Unable to save - not signed in');
       return;
     }
 
     try {
       setSavingAvatarColor(true);
       setAvatarColorMessage('');
-      await technicianService.updateAvatarColor(userContact.id, newColor);
+
+      // Upsert to profiles table - creates profile if it doesn't exist
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          email: user.email,
+          full_name: displayName,
+          avatar_color: newColor,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id'
+        });
+
+      if (error) throw error;
+
       setAvatarColorMessage('Avatar color saved!');
       setTimeout(() => setAvatarColorMessage(''), 2000);
     } catch (err) {
@@ -124,15 +142,25 @@ const SettingsPage = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-24 space-y-4">
       <section className="rounded-2xl border p-4 flex items-center gap-4" style={sectionStyles.card}>
-        <div
-          className="w-12 h-12 rounded-full text-white flex items-center justify-center text-lg font-semibold shadow-lg"
-          style={{ backgroundColor: avatarColor }}
+        <button
+          onClick={() => setShowAvatarModal(true)}
+          className="relative group"
+          title="Click to change avatar color"
         >
-          {initials}
-        </div>
-        <div className="min-w-0">
+          <div
+            className="w-12 h-12 rounded-full text-white flex items-center justify-center text-lg font-semibold shadow-lg transition-transform group-hover:scale-105"
+            style={{ backgroundColor: avatarColor }}
+          >
+            {initials}
+          </div>
+          <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <span className="text-white text-xs font-medium">Edit</span>
+          </div>
+        </button>
+        <div className="min-w-0 flex-1">
           <p className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{email}</p>
+          <p className="text-xs text-violet-500 dark:text-violet-400 mt-0.5">Tap avatar to customize color</p>
         </div>
       </section>
 
@@ -144,49 +172,6 @@ const SettingsPage = () => {
           </div>
           <ThemeToggle />
         </div>
-      </section>
-
-      {/* Avatar Color Section */}
-      <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Palette size={16} />
-              Avatar Color
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Choose your color for calendar and scheduling views
-            </p>
-          </div>
-          {savingAvatarColor && (
-            <Loader2 size={16} className="animate-spin text-violet-500" />
-          )}
-        </div>
-
-        {loadingAvatarColor ? (
-          <div className="flex items-center gap-2 text-gray-400">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Loading...</span>
-          </div>
-        ) : (
-          <ColorPicker
-            value={avatarColor}
-            onChange={handleAvatarColorChange}
-            userName={displayName}
-            showPreview={true}
-            label=""
-          />
-        )}
-
-        {avatarColorMessage && (
-          <p className={`text-xs ${avatarColorMessage.includes('Failed') || avatarColorMessage.includes('not linked') ? 'text-red-500' : 'text-green-500'}`}>
-            {avatarColorMessage}
-          </p>
-        )}
-
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          This color will be used to identify you in the weekly scheduling calendar and other team views.
-        </p>
       </section>
 
       {/* Printer Setup Section */}
@@ -407,6 +392,70 @@ const SettingsPage = () => {
           </Button>
         </div>
       </section>
+
+      {/* Avatar Color Modal */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Customize Avatar Color
+              </h2>
+              <button
+                onClick={() => setShowAvatarModal(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+              >
+                <X size={20} className="text-gray-500 dark:text-gray-400" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            {loadingAvatarColor ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={24} className="animate-spin text-violet-500" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <ColorPicker
+                  value={avatarColor}
+                  onChange={handleAvatarColorChange}
+                  userName={displayName}
+                  showPreview={true}
+                  label="Choose your color"
+                />
+
+                {avatarColorMessage && (
+                  <p className={`text-sm ${avatarColorMessage.includes('Failed') || avatarColorMessage.includes('not linked') ? 'text-red-500' : 'text-green-500'}`}>
+                    {avatarColorMessage}
+                  </p>
+                )}
+
+                {savingAvatarColor && (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="text-sm">Saving...</span>
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  This color identifies you in the weekly scheduling calendar and team views.
+                </p>
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex justify-end mt-6">
+              <Button
+                onClick={() => setShowAvatarModal(false)}
+                size="sm"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -7,6 +7,7 @@
 import React, { memo, useState, useMemo } from 'react';
 import { Clock, User, MapPin, AlertCircle, Search, Filter, ExternalLink, GripVertical } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
+import { setDragEstimatedHours, resetDragEstimatedHours } from './WeekCalendarGrid';
 
 // Constants
 const HOUR_HEIGHT = 60; // pixels per hour - matches WeekCalendarGrid
@@ -64,6 +65,9 @@ const TicketCard = memo(({
   const handleDragStart = (e) => {
     setIsDragging(true);
 
+    // Set the estimated hours for the drop preview (module-level workaround for browser security)
+    setDragEstimatedHours(estimatedHours);
+
     // Set ticket data for drop handler
     const ticketData = {
       id: ticket.id,
@@ -99,6 +103,8 @@ const TicketCard = memo(({
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    // Reset the drag estimated hours back to default
+    resetDragEstimatedHours();
   };
 
   return (

@@ -8,6 +8,14 @@
     {
       "path": "/api/cron/sync-sharepoint-knowledge",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/process-calendar-responses",
+      "schedule": "*/3 * * * *"
+    },
+    {
+      "path": "/api/cron/refresh-graph-subscriptions",
+      "schedule": "0 4 * * *"
     }
   ],
   "rewrites": [

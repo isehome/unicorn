@@ -701,7 +701,6 @@ export const customerLookupService = {
       const { data, error } = await supabase
         .from('contacts')
         .select('id, full_name, phone, email, company')
-        .eq('is_active', true)
         .or([
           `full_name.ilike.${term}`,
           `phone.ilike.${term}`,
@@ -738,9 +737,8 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
+        .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
-        .eq('is_active', true)
         .order('full_name');
 
       if (error) {
@@ -764,7 +762,7 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
+        .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('id', id)
         .eq('is_internal', true)
         .single();
@@ -788,50 +786,34 @@ export const technicianService = {
     if (!supabase || !email) return null;
 
     try {
+      // Use ilike for case-insensitive email matching
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
-        .eq('email', email.toLowerCase())
+        .select('id, full_name, first_name, last_name, email, phone, role')
+        .ilike('email', email.trim())
         .eq('is_internal', true)
         .single();
 
       if (error) {
-        console.error('[TechnicianService] Failed to fetch technician by email:', error);
-        return null;
+        // Try without is_internal filter as fallback (some users may not be marked internal)
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('contacts')
+          .select('id, full_name, first_name, last_name, email, phone, role')
+          .ilike('email', email.trim())
+          .single();
+
+        if (fallbackError) {
+          console.error('[TechnicianService] Failed to fetch contact by email:', fallbackError);
+          return null;
+        }
+
+        return fallbackData;
       }
 
       return data;
     } catch (error) {
       console.error('[TechnicianService] Failed to fetch technician by email:', error);
       return null;
-    }
-  },
-
-  /**
-   * Update technician's avatar color
-   */
-  async updateAvatarColor(technicianId, avatarColor) {
-    if (!supabase) throw new Error('Supabase not configured');
-    if (!technicianId) throw new Error('Technician ID is required');
-
-    try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .update({ avatar_color: avatarColor })
-        .eq('id', technicianId)
-        .eq('is_internal', true)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('[TechnicianService] Failed to update avatar color:', error);
-        throw new Error(error.message || 'Failed to update avatar color');
-      }
-
-      return data;
-    } catch (error) {
-      console.error('[TechnicianService] Failed to update avatar color:', error);
-      throw error;
     }
   },
 
@@ -844,9 +826,8 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
+        .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
-        .eq('is_active', true)
         .ilike('role', `%${role}%`)
         .order('full_name');
 
@@ -906,12 +887,16 @@ export const serviceTriageService = {
         throw new Error(error.message || 'Failed to save triage');
       }
 
-      // Add activity note for triage update
-      await serviceTicketService.addNote(ticketId, {
-        note_type: 'triage',
-        content: `Triage updated by ${triageData.triaged_by_name}. Est. ${triageData.estimated_hours || 0} hours. ${triageData.parts_needed ? 'Parts needed. ' : ''}${triageData.proposal_needed ? 'Proposal needed.' : ''}`,
-        author_name: triageData.triaged_by_name
-      });
+      // Add activity note for triage update (don't fail if this fails)
+      try {
+        await serviceTicketService.addNote(ticketId, {
+          note_type: 'internal',
+          content: `Triage updated by ${triageData.triaged_by_name}. Est. ${triageData.estimated_hours || 0} hours. ${triageData.parts_needed ? 'Parts needed. ' : ''}${triageData.proposal_needed ? 'Proposal needed.' : ''}`,
+          author_name: triageData.triaged_by_name
+        });
+      } catch (noteErr) {
+        console.warn('[ServiceTriageService] Failed to add triage note, but triage was saved:', noteErr);
+      }
 
       return data;
     } catch (error) {
