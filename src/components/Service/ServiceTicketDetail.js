@@ -125,8 +125,59 @@ const ServiceTicketDetail = () => {
   const [partsCount, setPartsCount] = useState(0);
   const [posCount, setPosCount] = useState(0);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Initialize edit data when entering edit mode
+  const handleStartEdit = () => {
+    setEditData({
+      title: ticket?.title || '',
+      description: ticket?.description || '',
+      priority: ticket?.priority || 'normal',
+      category: ticket?.category || 'general',
+      customer_name: ticket?.customer_name || '',
+      customer_phone: ticket?.customer_phone || '',
+      customer_email: ticket?.customer_email || '',
+      customer_address: ticket?.customer_address || '',
+      service_address: ticket?.service_address || ''
+    });
+    setIsEditing(true);
+  };
+
+  // Save ticket edits
+  const handleSaveEdit = async () => {
+    if (!ticket?.id) return;
+
+    try {
+      setSaving(true);
+      await serviceTicketService.update(ticket.id, editData);
+
+      // Add note about the edit
+      await serviceTicketService.addNote(ticket.id, {
+        note_type: 'note',
+        content: 'Ticket details updated',
+        author_name: user?.name || user?.email || 'User'
+      });
+
+      setIsEditing(false);
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to save edits:', err);
+      setError('Failed to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Cancel edit mode
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditData({});
   };
 
   const loadTicket = useCallback(async () => {
@@ -659,17 +710,72 @@ const ServiceTicketDetail = () => {
           <div className="flex-1">
             <div className="flex items-center gap-2 text-sm text-zinc-400 mb-1">
               <span className="font-mono">{ticket.ticket_number}</span>
-              <span
-                className={`px-2 py-0.5 rounded border ${typeof statusStyle === 'string' ? statusStyle : ''}`}
-                style={typeof statusStyle === 'object' ? statusStyle : undefined}
-              >
-                {ticket.status?.replace('_', ' ')}
-              </span>
-              <span className={`px-2 py-0.5 rounded ${getPriorityStyles(ticket.priority)}`}>
-                {ticket.priority}
-              </span>
+              {isEditing ? (
+                <>
+                  <select
+                    value={editData.priority}
+                    onChange={(e) => setEditData(prev => ({ ...prev, priority: e.target.value }))}
+                    className="px-2 py-0.5 bg-zinc-700 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-zinc-500"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </>
+              ) : (
+                <>
+                  <span
+                    className={`px-2 py-0.5 rounded border ${typeof statusStyle === 'string' ? statusStyle : ''}`}
+                    style={typeof statusStyle === 'object' ? statusStyle : undefined}
+                  >
+                    {ticket.status?.replace('_', ' ')}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded ${getPriorityStyles(ticket.priority)}`}>
+                    {ticket.priority}
+                  </span>
+                </>
+              )}
             </div>
-            <h1 className="text-xl font-bold text-white">{ticket.title}</h1>
+            {isEditing ? (
+              <input
+                type="text"
+                value={editData.title}
+                onChange={(e) => setEditData(prev => ({ ...prev, title: e.target.value }))}
+                className="text-xl font-bold text-white bg-zinc-700 border border-zinc-600 rounded-lg px-3 py-1 w-full focus:outline-none focus:border-zinc-500"
+              />
+            ) : (
+              <h1 className="text-xl font-bold text-white">{ticket.title}</h1>
+            )}
+          </div>
+          {/* Edit/Save/Cancel buttons */}
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <>
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-3 py-1.5 text-zinc-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-1.5 rounded-lg disabled:opacity-50"
+                  style={{ backgroundColor: brandColors.success, color: '#000' }}
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleStartEdit}
+                className="flex items-center gap-2 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
+              >
+                <Edit size={14} />
+                Edit Ticket
+              </button>
+            )}
           </div>
         </div>
 
@@ -678,10 +784,38 @@ const ServiceTicketDetail = () => {
           <div className="lg:col-span-2 space-y-6">
             {/* Description */}
             <div className="bg-zinc-800 rounded-lg p-4">
-              <h2 className="font-semibold text-white mb-3">Description</h2>
-              <p className="text-zinc-300 whitespace-pre-wrap">
-                {ticket.description || 'No description provided'}
-              </p>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-white">Description</h2>
+                {isEditing && (
+                  <select
+                    value={editData.category}
+                    onChange={(e) => setEditData(prev => ({ ...prev, category: e.target.value }))}
+                    className="px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-zinc-500"
+                  >
+                    <option value="network">Network</option>
+                    <option value="av">AV</option>
+                    <option value="shades">Shades</option>
+                    <option value="control">Control</option>
+                    <option value="wiring">Wiring</option>
+                    <option value="installation">Installation</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="general">General</option>
+                  </select>
+                )}
+              </div>
+              {isEditing ? (
+                <textarea
+                  value={editData.description}
+                  onChange={(e) => setEditData(prev => ({ ...prev, description: e.target.value }))}
+                  rows={4}
+                  placeholder="Describe the issue..."
+                  className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500 resize-none"
+                />
+              ) : (
+                <p className="text-zinc-300 whitespace-pre-wrap">
+                  {ticket.description || 'No description provided'}
+                </p>
+              )}
             </div>
 
             {/* Triage Section - Collapsible */}
@@ -951,38 +1085,117 @@ const ServiceTicketDetail = () => {
             {/* Customer Info */}
             <div className="bg-zinc-800 rounded-lg p-4">
               <h2 className="font-semibold text-white mb-3">Customer</h2>
-              <div className="space-y-3">
-                {(ticket.customer_name || ticket.contact?.full_name) && (
-                  <div className="flex items-center gap-2 text-zinc-300">
-                    <User size={16} className="text-zinc-500" />
-                    {ticket.customer_name || ticket.contact?.full_name}
+              {isEditing ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Name</label>
+                    <div className="flex items-center gap-2">
+                      <User size={16} className="text-zinc-500" />
+                      <input
+                        type="text"
+                        value={editData.customer_name}
+                        onChange={(e) => setEditData(prev => ({ ...prev, customer_name: e.target.value }))}
+                        placeholder="Customer name"
+                        className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
                   </div>
-                )}
-                {(ticket.customer_phone || ticket.contact?.phone) && (
-                  <a
-                    href={`tel:${ticket.customer_phone || ticket.contact?.phone}`}
-                    className="flex items-center gap-2 text-zinc-300 hover:text-white"
-                  >
-                    <Phone size={16} className="text-zinc-500" />
-                    {ticket.customer_phone || ticket.contact?.phone}
-                  </a>
-                )}
-                {(ticket.customer_email || ticket.contact?.email) && (
-                  <a
-                    href={`mailto:${ticket.customer_email || ticket.contact?.email}`}
-                    className="flex items-center gap-2 text-zinc-300 hover:text-white"
-                  >
-                    <Mail size={16} className="text-zinc-500" />
-                    {ticket.customer_email || ticket.contact?.email}
-                  </a>
-                )}
-                {ticket.customer_address && (
-                  <div className="flex items-start gap-2 text-zinc-300">
-                    <MapPin size={16} className="text-zinc-500 mt-0.5" />
-                    <span>{ticket.customer_address}</span>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Phone</label>
+                    <div className="flex items-center gap-2">
+                      <Phone size={16} className="text-zinc-500" />
+                      <input
+                        type="tel"
+                        value={editData.customer_phone}
+                        onChange={(e) => setEditData(prev => ({ ...prev, customer_phone: e.target.value }))}
+                        placeholder="Phone number"
+                        className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
                   </div>
-                )}
-              </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Email</label>
+                    <div className="flex items-center gap-2">
+                      <Mail size={16} className="text-zinc-500" />
+                      <input
+                        type="email"
+                        value={editData.customer_email}
+                        onChange={(e) => setEditData(prev => ({ ...prev, customer_email: e.target.value }))}
+                        placeholder="Email address"
+                        className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Address</label>
+                    <div className="flex items-start gap-2">
+                      <MapPin size={16} className="text-zinc-500 mt-1" />
+                      <textarea
+                        value={editData.customer_address}
+                        onChange={(e) => setEditData(prev => ({ ...prev, customer_address: e.target.value }))}
+                        placeholder="Customer address"
+                        rows={2}
+                        className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500 resize-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-1 block">Service Address (if different)</label>
+                    <div className="flex items-start gap-2">
+                      <MapPin size={16} className="text-zinc-500 mt-1" />
+                      <textarea
+                        value={editData.service_address}
+                        onChange={(e) => setEditData(prev => ({ ...prev, service_address: e.target.value }))}
+                        placeholder="Service address (if different from above)"
+                        rows={2}
+                        className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500 resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(ticket.customer_name || ticket.contact?.full_name) && (
+                    <div className="flex items-center gap-2 text-zinc-300">
+                      <User size={16} className="text-zinc-500" />
+                      {ticket.customer_name || ticket.contact?.full_name}
+                    </div>
+                  )}
+                  {(ticket.customer_phone || ticket.contact?.phone) && (
+                    <a
+                      href={`tel:${ticket.customer_phone || ticket.contact?.phone}`}
+                      className="flex items-center gap-2 text-zinc-300 hover:text-white"
+                    >
+                      <Phone size={16} className="text-zinc-500" />
+                      {ticket.customer_phone || ticket.contact?.phone}
+                    </a>
+                  )}
+                  {(ticket.customer_email || ticket.contact?.email) && (
+                    <a
+                      href={`mailto:${ticket.customer_email || ticket.contact?.email}`}
+                      className="flex items-center gap-2 text-zinc-300 hover:text-white"
+                    >
+                      <Mail size={16} className="text-zinc-500" />
+                      {ticket.customer_email || ticket.contact?.email}
+                    </a>
+                  )}
+                  {ticket.customer_address && (
+                    <div className="flex items-start gap-2 text-zinc-300">
+                      <MapPin size={16} className="text-zinc-500 mt-0.5" />
+                      <span>{ticket.customer_address}</span>
+                    </div>
+                  )}
+                  {ticket.service_address && ticket.service_address !== ticket.customer_address && (
+                    <div className="flex items-start gap-2 text-zinc-300">
+                      <MapPin size={16} className="text-amber-500 mt-0.5" />
+                      <div>
+                        <span className="text-xs text-zinc-500 block">Service Address:</span>
+                        <span>{ticket.service_address}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {ticket.project && (
                 <div className="mt-4 pt-4 border-t border-zinc-700">

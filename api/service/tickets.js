@@ -6,7 +6,6 @@
  *   POST /api/service/tickets - Create a ticket
  *   GET /api/service/tickets - List tickets (with optional filters)
  */
-
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -23,6 +22,17 @@ module.exports = async (req, res) => {
 
     try {
         if (req.method === 'POST') {
+            // Log raw body for debugging
+            console.log('[Service Tickets] Raw body type:', typeof req.body);
+            console.log('[Service Tickets] Raw body:', JSON.stringify(req.body));
+            
+            // Handle case where body might be nested in 'args' (Retell format)
+            let body = req.body;
+            if (req.body && req.body.args) {
+                console.log('[Service Tickets] Found args wrapper, unwrapping');
+                body = req.body.args;
+            }
+            
             // Create ticket
             const {
                 title,
@@ -37,13 +47,15 @@ module.exports = async (req, res) => {
                 project_id,
                 source = 'phone_ai',
                 source_reference
-            } = req.body;
+            } = body;
 
+            console.log('[Service Tickets] Extracted title:', title);
+            
             if (!title) {
-                return res.status(400).json({ error: 'Title is required' });
+                return res.status(400).json({ success: false, error: 'Title is required' });
             }
 
-            console.log(`[Service Tickets] Creating ticket: "${title}" | Source: ${source}`);
+            console.log('[Service Tickets] Creating ticket:', title, '| Source:', source);
 
             const { data: ticket, error } = await supabase
                 .from('service_tickets')
@@ -73,11 +85,11 @@ module.exports = async (req, res) => {
             await supabase.from('service_ticket_notes').insert([{
                 ticket_id: ticket.id,
                 note_type: 'note',
-                content: `Ticket created via ${source}${source_reference ? ` (Ref: ${source_reference})` : ''}`,
+                content: 'Ticket created via ' + source + (source_reference ? ' (Ref: ' + source_reference + ')' : ''),
                 author_name: source === 'phone_ai' ? 'AI Phone Agent' : 'System'
             }]);
 
-            console.log(`[Service Tickets] Created ticket: ${ticket.ticket_number}`);
+            console.log('[Service Tickets] Created ticket:', ticket.ticket_number);
 
             return res.json({
                 success: true,
@@ -95,7 +107,7 @@ module.exports = async (req, res) => {
             // Get tickets (with optional filters)
             const { contact_id, project_id, status, phone, limit = 10 } = req.query;
 
-            console.log(`[Service Tickets] Fetching tickets | Status: ${status || 'all'} | Limit: ${limit}`);
+            console.log('[Service Tickets] Fetching tickets | Status:', status || 'all', '| Limit:', limit);
 
             let query = supabase
                 .from('service_tickets')
@@ -109,12 +121,13 @@ module.exports = async (req, res) => {
             if (phone) query = query.eq('customer_phone', phone);
 
             const { data, error } = await query;
+
             if (error) {
                 console.error('[Service Tickets] Fetch error:', error);
                 throw error;
             }
 
-            console.log(`[Service Tickets] Found ${data?.length || 0} tickets`);
+            console.log('[Service Tickets] Found', (data && data.length) || 0, 'tickets');
 
             return res.json({ success: true, tickets: data || [] });
         }

@@ -3,9 +3,8 @@
  * Identifies caller by phone number for Retell AI
  *
  * Endpoint: POST /api/service/identify
- * Body: { phone }
+ * Body: { phone } - phone number from call metadata
  */
-
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -23,12 +22,29 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
-        const { phone } = req.body;
+        // Log raw body for debugging
+        console.log('[Service Identify] Raw body:', JSON.stringify(req.body));
+        
+        // Handle case where body might be nested in 'args' (Retell format)
+        let body = req.body;
+        if (req.body && req.body.args) {
+            console.log('[Service Identify] Found args wrapper, unwrapping');
+            body = req.body.args;
+        }
+        
+        // Also check for call object with caller phone (Retell call metadata)
+        let phone = body.phone;
+        if (!phone && req.body.call && req.body.call.from_number) {
+            phone = req.body.call.from_number;
+            console.log('[Service Identify] Got phone from call metadata:', phone);
+        }
+
         if (!phone) {
+            console.log('[Service Identify] No phone provided');
             return res.status(400).json({ success: false, error: 'Phone number required' });
         }
 
-        console.log(`[Service Identify] Looking up phone: ${phone}`);
+        console.log('[Service Identify] Looking up phone:', phone);
 
         // Use database function for lookup
         const { data, error } = await supabase.rpc('find_customer_by_phone', {
@@ -41,7 +57,7 @@ module.exports = async (req, res) => {
         }
 
         if (!data || data.length === 0) {
-            console.log(`[Service Identify] Customer not found for phone: ${phone}`);
+            console.log('[Service Identify] Customer not found for phone:', phone);
             return res.json({
                 success: true,
                 identified: false,
@@ -51,7 +67,7 @@ module.exports = async (req, res) => {
         }
 
         const customer = data[0];
-        console.log(`[Service Identify] Found customer: ${customer.contact_name}`);
+        console.log('[Service Identify] Found customer:', customer.contact_name);
 
         return res.json({
             success: true,

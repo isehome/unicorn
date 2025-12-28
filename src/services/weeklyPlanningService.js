@@ -94,6 +94,21 @@ export const weeklyPlanningService = {
         return [];
       }
 
+      // Fetch technician avatar colors
+      const technicianIds = [...new Set(schedules.filter(s => s.technician_id).map(s => s.technician_id))];
+      let technicianMap = {};
+
+      if (technicianIds.length > 0) {
+        const { data: technicians } = await supabase
+          .from('contacts')
+          .select('id, avatar_color')
+          .in('id', technicianIds);
+
+        if (technicians) {
+          technicianMap = technicians.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+        }
+      }
+
       // Fetch ticket details separately to avoid join issues
       const ticketIds = [...new Set(schedules.map(s => s.ticket_id).filter(Boolean))];
       let ticketMap = {};
@@ -109,10 +124,11 @@ export const weeklyPlanningService = {
         }
       }
 
-      // Merge ticket data into schedules
+      // Merge ticket data and technician avatar color into schedules
       return schedules.map(s => ({
         ...s,
-        ticket: ticketMap[s.ticket_id] || null
+        ticket: ticketMap[s.ticket_id] || null,
+        technician_avatar_color: technicianMap[s.technician_id]?.avatar_color || null
       }));
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to fetch schedules:', error);

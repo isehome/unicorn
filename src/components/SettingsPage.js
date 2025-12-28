@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -6,7 +6,9 @@ import { usePrinter } from '../contexts/PrinterContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight } from 'lucide-react';
+import ColorPicker from './ui/ColorPicker';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight, Loader2, Palette } from 'lucide-react';
+import { technicianService } from '../services/serviceTicketService';
 
 import AISettings from './UserSettings/AISettings';
 
@@ -34,9 +36,64 @@ const SettingsPage = () => {
   });
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Avatar color state
+  const [userContact, setUserContact] = useState(null);
+  const [avatarColor, setAvatarColor] = useState('#8B5CF6');
+  const [loadingAvatarColor, setLoadingAvatarColor] = useState(false);
+  const [savingAvatarColor, setSavingAvatarColor] = useState(false);
+  const [avatarColorMessage, setAvatarColorMessage] = useState('');
+
   const displayName = user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || 'demo@example.com';
   const initials = useMemo(() => (displayName?.[0] || 'U').toUpperCase(), [displayName]);
+
+  // Load user's current avatar color from contacts table
+  const loadUserAvatarColor = useCallback(async () => {
+    if (!email || email === 'demo@example.com') return;
+
+    try {
+      setLoadingAvatarColor(true);
+      const contact = await technicianService.getByEmail(email);
+      if (contact) {
+        setUserContact(contact);
+        if (contact.avatar_color) {
+          setAvatarColor(contact.avatar_color);
+        }
+      }
+    } catch (err) {
+      console.error('[SettingsPage] Failed to load avatar color:', err);
+    } finally {
+      setLoadingAvatarColor(false);
+    }
+  }, [email]);
+
+  useEffect(() => {
+    loadUserAvatarColor();
+  }, [loadUserAvatarColor]);
+
+  // Handle avatar color change
+  const handleAvatarColorChange = async (newColor) => {
+    setAvatarColor(newColor);
+
+    // Auto-save after a brief delay
+    if (!userContact?.id) {
+      setAvatarColorMessage('Your account is not linked to an internal contact. Avatar color cannot be saved.');
+      return;
+    }
+
+    try {
+      setSavingAvatarColor(true);
+      setAvatarColorMessage('');
+      await technicianService.updateAvatarColor(userContact.id, newColor);
+      setAvatarColorMessage('Avatar color saved!');
+      setTimeout(() => setAvatarColorMessage(''), 2000);
+    } catch (err) {
+      console.error('[SettingsPage] Failed to save avatar color:', err);
+      setAvatarColorMessage('Failed to save avatar color');
+    } finally {
+      setSavingAvatarColor(false);
+    }
+  };
 
   // Handle default workspace change
   const handleDefaultWorkspaceChange = (workspace) => {
@@ -67,7 +124,10 @@ const SettingsPage = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-24 space-y-4">
       <section className="rounded-2xl border p-4 flex items-center gap-4" style={sectionStyles.card}>
-        <div className="w-12 h-12 rounded-full bg-violet-500 text-white flex items-center justify-center text-lg font-semibold">
+        <div
+          className="w-12 h-12 rounded-full text-white flex items-center justify-center text-lg font-semibold shadow-lg"
+          style={{ backgroundColor: avatarColor }}
+        >
           {initials}
         </div>
         <div className="min-w-0">
@@ -84,6 +144,49 @@ const SettingsPage = () => {
           </div>
           <ThemeToggle />
         </div>
+      </section>
+
+      {/* Avatar Color Section */}
+      <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Palette size={16} />
+              Avatar Color
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Choose your color for calendar and scheduling views
+            </p>
+          </div>
+          {savingAvatarColor && (
+            <Loader2 size={16} className="animate-spin text-violet-500" />
+          )}
+        </div>
+
+        {loadingAvatarColor ? (
+          <div className="flex items-center gap-2 text-gray-400">
+            <Loader2 size={16} className="animate-spin" />
+            <span className="text-sm">Loading...</span>
+          </div>
+        ) : (
+          <ColorPicker
+            value={avatarColor}
+            onChange={handleAvatarColorChange}
+            userName={displayName}
+            showPreview={true}
+            label=""
+          />
+        )}
+
+        {avatarColorMessage && (
+          <p className={`text-xs ${avatarColorMessage.includes('Failed') || avatarColorMessage.includes('not linked') ? 'text-red-500' : 'text-green-500'}`}>
+            {avatarColorMessage}
+          </p>
+        )}
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          This color will be used to identify you in the weekly scheduling calendar and other team views.
+        </p>
       </section>
 
       {/* Printer Setup Section */}

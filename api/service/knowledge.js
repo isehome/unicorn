@@ -82,7 +82,7 @@ const TROUBLESHOOTING_SCRIPTS = {
     'control4_not_responding': {
         title: 'Control4 System Not Responding',
         steps: [
-            'Check if Control4 app shows "Offline"',
+            'Check if Control4 app shows Offline',
             'Reboot your Control4 controller (power cycle)',
             'Check network connection to the controller',
             'Try using physical buttons instead of app',
@@ -95,7 +95,7 @@ const TROUBLESHOOTING_SCRIPTS = {
         steps: [
             'Check if Sonos app shows your speakers',
             'Make sure phone is on same WiFi as Sonos',
-            'Try playing from a different source/app',
+            'Try playing from a different source or app',
             'Reboot the Sonos speaker (unplug for 30 seconds)',
             'Check if other Sonos speakers are working'
         ],
@@ -112,17 +112,27 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
-        const { topic, query, manufacturer } = req.body;
+        // Log raw body for debugging
+        console.log('[Service Knowledge] Raw body:', JSON.stringify(req.body));
+        
+        // Handle case where body might be nested in 'args' (Retell format)
+        let body = req.body;
+        if (req.body && req.body.args) {
+            console.log('[Service Knowledge] Found args wrapper, unwrapping');
+            body = req.body.args;
+        }
+        
+        const { topic, query, manufacturer } = body;
 
-        console.log(`[Service Knowledge] Topic: ${topic || 'none'} | Query: ${query || 'none'} | Manufacturer: ${manufacturer || 'all'}`);
+        console.log('[Service Knowledge] Topic:', topic || 'none', '| Query:', query || 'none', '| Manufacturer:', manufacturer || 'all');
 
         // Check for built-in scripts first
         if (topic) {
             const normalizedTopic = topic.toLowerCase().replace(/[\s-]+/g, '_');
             const script = TROUBLESHOOTING_SCRIPTS[normalizedTopic];
-
+            
             if (script) {
-                console.log(`[Service Knowledge] Found built-in script: ${script.title}`);
+                console.log('[Service Knowledge] Found built-in script:', script.title);
                 return res.json({
                     success: true,
                     found: true,
@@ -134,8 +144,16 @@ module.exports = async (req, res) => {
 
         // Fall back to Azure AI Search
         const searchQuery = query || topic;
+        
         if (!searchQuery) {
-            return res.status(400).json({ error: 'Query or topic required' });
+            // If no query and no topic matched, return a helpful response
+            console.log('[Service Knowledge] No query or matching topic');
+            return res.json({
+                success: true,
+                found: false,
+                message: 'Please describe the issue so I can help troubleshoot',
+                suggestion: 'Common issues include wifi problems, TV signal issues, or audio problems'
+            });
         }
 
         // Check Azure Search configuration
@@ -149,7 +167,7 @@ module.exports = async (req, res) => {
             });
         }
 
-        const searchUrl = `https://${AZURE_SEARCH_SERVICE}.search.windows.net/indexes/${AZURE_SEARCH_INDEX}/docs/search?api-version=${API_VERSION}`;
+        const searchUrl = 'https://' + AZURE_SEARCH_SERVICE + '.search.windows.net/indexes/' + AZURE_SEARCH_INDEX + '/docs/search?api-version=' + API_VERSION;
 
         const searchBody = {
             search: searchQuery,
@@ -161,7 +179,7 @@ module.exports = async (req, res) => {
 
         // Add manufacturer filter if specified
         if (manufacturer) {
-            searchBody.filter = `search.ismatch('${manufacturer}', 'metadata_spo_item_path')`;
+            searchBody.filter = 'search.ismatch(\'' + manufacturer + '\', \'metadata_spo_item_path\')';
         }
 
         const azureResponse = await fetch(searchUrl, {
@@ -175,7 +193,7 @@ module.exports = async (req, res) => {
 
         if (!azureResponse.ok) {
             const errorText = await azureResponse.text();
-            console.error(`[Service Knowledge] Azure search failed: ${azureResponse.status}`, errorText);
+            console.error('[Service Knowledge] Azure search failed:', azureResponse.status, errorText);
             return res.json({
                 success: true,
                 found: false,
@@ -196,17 +214,19 @@ module.exports = async (req, res) => {
             });
         }
 
-        console.log(`[Service Knowledge] Found ${searchResults.value.length} results from Azure`);
+        console.log('[Service Knowledge] Found', searchResults.value.length, 'results from Azure');
 
         return res.json({
             success: true,
             found: true,
             source: 'knowledge-base',
-            results: searchResults.value.map(r => ({
-                title: r.metadata_spo_item_name,
-                content: r.content?.substring(0, 1000), // Limit content for phone agent
-                path: r.metadata_spo_item_path
-            }))
+            results: searchResults.value.map(function(r) {
+                return {
+                    title: r.metadata_spo_item_name,
+                    content: r.content ? r.content.substring(0, 1000) : '',
+                    path: r.metadata_spo_item_path
+                };
+            })
         });
 
     } catch (error) {

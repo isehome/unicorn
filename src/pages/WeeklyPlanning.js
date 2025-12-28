@@ -11,7 +11,7 @@ import TechnicianFilterBar from '../components/Service/TechnicianFilterBar';
 import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
 import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
-import { technicianService, serviceTicketService } from '../services/serviceTicketService';
+import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
 import { checkUserAvailability, fetchEventsForDate, createServiceAppointmentEvent } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
 import { brandColors } from '../styles/styleSystem';
@@ -282,9 +282,29 @@ const WeeklyPlanning = () => {
       return;
     }
 
+    // IMPORTANT: Fetch fresh ticket data from database to get latest estimated_hours
+    // The drag data might be stale if triage was updated after the panel loaded
+    let freshTicket = ticket;
+    if (ticket.id) {
+      try {
+        const freshData = await serviceTicketService.getById(ticket.id);
+        if (freshData) {
+          freshTicket = { ...ticket, ...freshData };
+          console.log('[WeeklyPlanning] Fetched fresh ticket data:', {
+            id: freshData.id,
+            estimated_hours: freshData.estimated_hours,
+            customer_name: freshData.customer_name,
+            category: freshData.category
+          });
+        }
+      } catch (err) {
+        console.warn('[WeeklyPlanning] Could not fetch fresh ticket data, using drag data:', err);
+      }
+    }
+
     // Calculate end time based on estimated hours
     // Parse as number to handle string values from database
-    const rawEstimatedHours = ticket.estimated_hours;
+    const rawEstimatedHours = freshTicket.estimated_hours;
     const estimatedHours = typeof rawEstimatedHours === 'number'
       ? rawEstimatedHours
       : (parseFloat(rawEstimatedHours) || 2);
@@ -302,7 +322,7 @@ const WeeklyPlanning = () => {
     try {
       // Check for conflicts (exclude current schedule if rescheduling)
       const conflicts = await weeklyPlanningService.checkBufferConflicts(
-        techId || ticket.assigned_to,
+        techId || freshTicket.assigned_to,
         date,
         startTime,
         endTime,
@@ -311,7 +331,7 @@ const WeeklyPlanning = () => {
 
       // Also check M365 calendar if available
       let calendarConflicts = [];
-      const techForCalendar = tech || technicians.find(t => t.id === ticket.assigned_to);
+      const techForCalendar = tech || technicians.find(t => t.id === freshTicket.assigned_to);
       if (techForCalendar?.email && authContext) {
         try {
           const availability = await checkUserAvailability(
@@ -335,7 +355,7 @@ const WeeklyPlanning = () => {
       if (allConflicts.length > 0) {
         // Show conflict modal
         setConflictModal({
-          ticket,
+          ticket: freshTicket,
           date,
           startTime,
           endTime,
@@ -347,7 +367,7 @@ const WeeklyPlanning = () => {
             if (isReschedule) {
               await moveSchedule(scheduleId, date, startTime, estimatedHours);
             } else {
-              await createTentativeSchedule(ticket, date, startTime, tech);
+              await createTentativeSchedule(freshTicket, date, startTime, tech);
             }
             setConflictModal(null);
           },
@@ -360,7 +380,7 @@ const WeeklyPlanning = () => {
       if (isReschedule) {
         await moveSchedule(scheduleId, date, startTime, estimatedHours);
       } else {
-        await createTentativeSchedule(ticket, date, startTime, tech);
+        await createTentativeSchedule(freshTicket, date, startTime, tech);
       }
     } catch (err) {
       console.error('[WeeklyPlanning] Drop failed:', err);
@@ -574,6 +594,19 @@ const WeeklyPlanning = () => {
     handleOpenTicket(schedule);
   };
 
+  // Handle schedule delete
+  const handleScheduleDelete = async (schedule) => {
+    try {
+      await serviceScheduleService.remove(schedule.id);
+      console.log('[WeeklyPlanning] Schedule deleted:', schedule.id);
+      // Refresh to update the view
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to delete schedule:', err);
+      setError('Failed to delete schedule');
+    }
+  };
+
   // Open full ticket page in new tab
   const handleOpenTicketFullPage = (ticketId) => {
     window.open(`/service/tickets/${ticketId}`, '_blank');
@@ -651,6 +684,7 @@ const WeeklyPlanning = () => {
             showTechnician={viewMode === 'all'}
             onScheduleClick={handleScheduleClick}
             onScheduleEdit={handleOpenTicket}
+            onScheduleDelete={handleScheduleDelete}
             onDropTicket={handleDropTicket}
             onLoadMoreWeeks={handleLoadMoreWeeks}
             isLoading={refreshing}

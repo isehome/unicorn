@@ -5,7 +5,7 @@
  */
 
 import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, ExternalLink, User, AlertCircle } from 'lucide-react';
+import { Clock, ExternalLink, User, AlertCircle, Trash2 } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 
 // Constants
@@ -104,18 +104,80 @@ const pixelToHour = (pixelY) => START_HOUR + (pixelY / HOUR_HEIGHT);
 /**
  * Schedule Block Component - Now draggable for rescheduling
  */
+// Category labels for display
+const categoryLabels = {
+  network: 'Network',
+  av: 'AV',
+  shades: 'Shades',
+  control: 'Control',
+  wiring: 'Wiring',
+  lighting: 'Lighting',
+  hvac: 'HVAC',
+  security: 'Security',
+  installation: 'Install',
+  maintenance: 'Maint',
+  general: 'Service',
+  other: 'Other'
+};
+
+/**
+ * Get initials from a name (first letter of first and last name)
+ */
+const getInitials = (name) => {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+};
+
+/**
+ * Generate a consistent color based on technician name
+ */
+const getTechnicianColor = (name) => {
+  if (!name) return '#71717A'; // zinc-500 default
+  const colors = [
+    '#8B5CF6', // violet
+    '#3B82F6', // blue
+    '#10B981', // emerald
+    '#F59E0B', // amber
+    '#EF4444', // red
+    '#EC4899', // pink
+    '#6366F1', // indigo
+    '#14B8A6', // teal
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return colors[Math.abs(hash) % colors.length];
+};
+
 const ScheduleBlock = memo(({
   schedule,
   top,
   height,
   onEdit,
   onClick,
+  onDelete,
   showTechnician = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const status = schedule.schedule_status || 'tentative';
   const colors = scheduleStatusColors[status] || scheduleStatusColors.tentative;
   const ticket = schedule.ticket || {};
+
+  // Get technician info
+  const technicianName = schedule.technician_name || ticket.assigned_to_name || '';
+  const technicianInitials = getInitials(technicianName);
+  // Use user-selected avatar color if available, otherwise fall back to generated color
+  const technicianColor = schedule.technician_avatar_color || getTechnicianColor(technicianName);
+
+  // Get display name - customer name first, then fallback
+  const displayName = ticket.customer_name || schedule.customer_name || 'Service';
+
+  // Get category label
+  const category = ticket.category || '';
+  const categoryLabel = categoryLabels[category] || '';
 
   // Calculate estimated hours from schedule times or ticket
   const getEstimatedHours = () => {
@@ -174,8 +236,19 @@ const ScheduleBlock = memo(({
       }}
       onClick={() => onClick?.(schedule)}
     >
-      {/* Status indicator */}
-      <div className="flex items-center justify-between gap-1">
+      {/* Technician Avatar - positioned at top for visibility */}
+      {showTechnician && technicianName && (
+        <div
+          className="absolute -top-2 -left-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border border-zinc-800 z-10"
+          style={{ backgroundColor: technicianColor, color: '#fff' }}
+          title={technicianName}
+        >
+          {technicianInitials}
+        </div>
+      )}
+
+      {/* Header row - customer name and category */}
+      <div className={`flex items-center justify-between gap-1 ${showTechnician && technicianName ? 'ml-4' : ''}`}>
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
@@ -185,25 +258,51 @@ const ScheduleBlock = memo(({
             className="text-xs font-medium truncate"
             style={{ color: colors.text }}
           >
-            {ticket.customer_name || schedule.customer_name || 'Service'}
+            {displayName}
           </span>
+          {categoryLabel && (
+            <span
+              className="text-xs opacity-70 flex-shrink-0"
+              style={{ color: colors.text }}
+            >
+              • {categoryLabel}
+            </span>
+          )}
         </div>
-        {/* Edit button - visible on hover */}
-        <button
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-black/10"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit?.(schedule);
-          }}
-          title="Open ticket details"
-        >
-          <ExternalLink size={12} style={{ color: colors.text }} />
-        </button>
+        {/* Action buttons - visible on hover */}
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            className="p-0.5 rounded hover:bg-black/10"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit?.(schedule);
+            }}
+            title="Open ticket details"
+          >
+            <ExternalLink size={12} style={{ color: colors.text }} />
+          </button>
+          <button
+            className="p-0.5 rounded hover:bg-red-500/20"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (window.confirm('Delete this scheduled appointment? The ticket will return to the unscheduled list.')) {
+                onDelete?.(schedule);
+              }
+            }}
+            title="Delete schedule"
+          >
+            <Trash2 size={12} className="text-red-400 hover:text-red-300" />
+          </button>
+        </div>
       </div>
 
-      {/* Time range */}
-      <div className="text-xs opacity-70 truncate" style={{ color: colors.text }}>
-        {schedule.scheduled_time_start?.slice(0, 5)} - {schedule.scheduled_time_end?.slice(0, 5)}
+      {/* Time range and duration */}
+      <div className="flex items-center gap-1 text-xs opacity-70" style={{ color: colors.text }}>
+        <Clock size={10} className="flex-shrink-0" />
+        <span className="truncate">
+          {schedule.scheduled_time_start?.slice(0, 5)} - {schedule.scheduled_time_end?.slice(0, 5)}
+          {height >= 40 && ` (${getEstimatedHours().toFixed(1)}h)`}
+        </span>
       </div>
 
       {/* Additional info for taller blocks */}
@@ -213,10 +312,11 @@ const ScheduleBlock = memo(({
         </div>
       )}
 
-      {height >= 80 && showTechnician && schedule.technician_name && (
+      {/* Show technician name text on taller blocks if NOT already showing avatar, or if extra space */}
+      {height >= 100 && technicianName && (
         <div className="flex items-center gap-1 text-xs opacity-60 mt-0.5" style={{ color: colors.text }}>
           <User size={10} />
-          <span className="truncate">{schedule.technician_name}</span>
+          <span className="truncate">{technicianName}</span>
         </div>
       )}
 
@@ -298,6 +398,7 @@ const DayColumn = memo(({
   onDrop,
   onScheduleClick,
   onScheduleEdit,
+  onScheduleDelete,
   showTechnician
 }) => {
   const dateInfo = formatDayHeader(date);
@@ -439,6 +540,7 @@ const DayColumn = memo(({
             height={schedule.height}
             onClick={onScheduleClick}
             onEdit={onScheduleEdit}
+            onDelete={onScheduleDelete}
             showTechnician={showTechnician}
           />
         ))}
@@ -503,6 +605,7 @@ const WeekCalendarGrid = ({
   showTechnician = false,
   onScheduleClick,
   onScheduleEdit,
+  onScheduleDelete,
   onDropTicket,
   onLoadMoreWeeks,
   isLoading = false
@@ -626,6 +729,7 @@ const WeekCalendarGrid = ({
             onDrop={handleDrop}
             onScheduleClick={onScheduleClick}
             onScheduleEdit={onScheduleEdit}
+            onScheduleDelete={onScheduleDelete}
             showTechnician={showTechnician}
           />
         ))}

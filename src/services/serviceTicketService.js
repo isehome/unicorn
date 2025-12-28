@@ -738,7 +738,7 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role')
+        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
         .eq('is_internal', true)
         .eq('is_active', true)
         .order('full_name');
@@ -764,7 +764,7 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role')
+        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
         .eq('id', id)
         .eq('is_internal', true)
         .single();
@@ -782,6 +782,60 @@ export const technicianService = {
   },
 
   /**
+   * Get a technician by email address
+   */
+  async getByEmail(email) {
+    if (!supabase || !email) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
+        .eq('email', email.toLowerCase())
+        .eq('is_internal', true)
+        .single();
+
+      if (error) {
+        console.error('[TechnicianService] Failed to fetch technician by email:', error);
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[TechnicianService] Failed to fetch technician by email:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Update technician's avatar color
+   */
+  async updateAvatarColor(technicianId, avatarColor) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!technicianId) throw new Error('Technician ID is required');
+
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .update({ avatar_color: avatarColor })
+        .eq('id', technicianId)
+        .eq('is_internal', true)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[TechnicianService] Failed to update avatar color:', error);
+        throw new Error(error.message || 'Failed to update avatar color');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[TechnicianService] Failed to update avatar color:', error);
+      throw error;
+    }
+  },
+
+  /**
    * Get technicians by role (e.g., 'Technician', 'Lead Technician', 'Project Manager')
    */
   async getByRole(role) {
@@ -790,7 +844,7 @@ export const technicianService = {
     try {
       const { data, error } = await supabase
         .from('contacts')
-        .select('id, full_name, first_name, last_name, email, phone, role')
+        .select('id, full_name, first_name, last_name, email, phone, role, avatar_color')
         .eq('is_internal', true)
         .eq('is_active', true)
         .ilike('role', `%${role}%`)
@@ -815,25 +869,27 @@ export const technicianService = {
 
 export const serviceTriageService = {
   /**
-   * Save triage information for a ticket
+   * Save triage information for a ticket (estimated hours, parts/proposal flags)
+   * Auto-populates triaged_by from current user
    */
   async saveTriage(ticketId, triageData) {
     if (!supabase) throw new Error('Supabase not configured');
     if (!ticketId) throw new Error('Ticket ID is required');
 
     try {
+      // Get current ticket to check status
+      const ticket = await serviceTicketService.getById(ticketId);
+
       const updates = {
         triaged_by: triageData.triaged_by,
         triaged_by_name: triageData.triaged_by_name,
-        triaged_at: new Date().toISOString(),
-        triage_notes: triageData.triage_notes,
+        triaged_at: ticket?.triaged_at || new Date().toISOString(), // Only set if not already triaged
         estimated_hours: triageData.estimated_hours,
         parts_needed: triageData.parts_needed || false,
         proposal_needed: triageData.proposal_needed || false
       };
 
       // Update status to triaged if currently open
-      const ticket = await serviceTicketService.getById(ticketId);
       if (ticket && ticket.status === 'open') {
         updates.status = 'triaged';
       }
@@ -850,16 +906,95 @@ export const serviceTriageService = {
         throw new Error(error.message || 'Failed to save triage');
       }
 
-      // Add triage note
+      // Add activity note for triage update
       await serviceTicketService.addNote(ticketId, {
         note_type: 'triage',
-        content: `Triaged by ${triageData.triaged_by_name}. Est. ${triageData.estimated_hours || 0} hours. ${triageData.parts_needed ? 'Parts needed. ' : ''}${triageData.proposal_needed ? 'Proposal needed.' : ''}`,
+        content: `Triage updated by ${triageData.triaged_by_name}. Est. ${triageData.estimated_hours || 0} hours. ${triageData.parts_needed ? 'Parts needed. ' : ''}${triageData.proposal_needed ? 'Proposal needed.' : ''}`,
         author_name: triageData.triaged_by_name
       });
 
       return data;
     } catch (error) {
       console.error('[ServiceTriageService] Failed to save triage:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Add a timestamped triage comment
+   * Comments are stored as JSONB array in triage_comments column
+   */
+  async addTriageComment(ticketId, commentData) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!ticketId) throw new Error('Ticket ID is required');
+    if (!commentData.content) throw new Error('Comment content is required');
+
+    try {
+      // Get current ticket to get existing comments
+      const { data: ticket, error: fetchError } = await supabase
+        .from('service_tickets')
+        .select('triage_comments, triaged_at, triaged_by, triaged_by_name')
+        .eq('id', ticketId)
+        .single();
+
+      if (fetchError) {
+        console.error('[ServiceTriageService] Failed to fetch ticket:', fetchError);
+        throw new Error(fetchError.message || 'Failed to fetch ticket');
+      }
+
+      // Parse existing comments or initialize empty array
+      let comments = [];
+      if (ticket?.triage_comments) {
+        if (Array.isArray(ticket.triage_comments)) {
+          comments = ticket.triage_comments;
+        } else if (typeof ticket.triage_comments === 'string') {
+          try {
+            comments = JSON.parse(ticket.triage_comments);
+          } catch (e) {
+            comments = [];
+          }
+        }
+      }
+
+      // Create new comment with UUID and timestamp
+      const newComment = {
+        id: crypto.randomUUID(),
+        content: commentData.content,
+        author_id: commentData.author_id,
+        author_name: commentData.author_name,
+        created_at: new Date().toISOString()
+      };
+
+      // Add new comment to array
+      comments.push(newComment);
+
+      // Build update object
+      const updates = {
+        triage_comments: comments
+      };
+
+      // If this is the first triage activity, set triaged_at and triaged_by
+      if (!ticket.triaged_at) {
+        updates.triaged_at = new Date().toISOString();
+        updates.triaged_by = commentData.author_id;
+        updates.triaged_by_name = commentData.author_name;
+      }
+
+      const { data, error } = await supabase
+        .from('service_tickets')
+        .update(updates)
+        .eq('id', ticketId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[ServiceTriageService] Failed to add triage comment:', error);
+        throw new Error(error.message || 'Failed to add triage comment');
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[ServiceTriageService] Failed to add triage comment:', error);
       throw error;
     }
   }
