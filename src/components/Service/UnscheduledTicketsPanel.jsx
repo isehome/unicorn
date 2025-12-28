@@ -55,7 +55,9 @@ const TicketCard = memo(({
 
   const priority = ticket.priority || 'normal';
   const colors = priorityColors[priority] || priorityColors.normal;
-  const estimatedHours = ticket.estimated_hours || 2;
+  // Parse estimated_hours as number (database returns NUMERIC as string sometimes)
+  const rawHours = ticket.estimated_hours;
+  const estimatedHours = typeof rawHours === 'number' ? rawHours : (parseFloat(rawHours) || 2);
   const cardHeight = getCardHeight(estimatedHours);
 
   // Handle drag start

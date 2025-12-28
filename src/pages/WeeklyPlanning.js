@@ -283,7 +283,17 @@ const WeeklyPlanning = () => {
     }
 
     // Calculate end time based on estimated hours
-    const estimatedHours = ticket.estimated_hours || 2;
+    // Parse as number to handle string values from database
+    const rawEstimatedHours = ticket.estimated_hours;
+    const estimatedHours = typeof rawEstimatedHours === 'number'
+      ? rawEstimatedHours
+      : (parseFloat(rawEstimatedHours) || 2);
+
+    console.log('[WeeklyPlanning] Ticket estimated_hours:', {
+      raw: rawEstimatedHours,
+      parsed: estimatedHours,
+      type: typeof rawEstimatedHours
+    });
     const [startH, startM] = startTime.split(':').map(Number);
     const startMinutes = startH * 60 + startM;
     const endMinutes = startMinutes + (estimatedHours * 60);
@@ -370,51 +380,163 @@ const WeeklyPlanning = () => {
     }
   };
 
-  // Create tentative schedule
+  // Constants for work day limits
+  const MAX_WORK_HOURS_PER_DAY = 8;
+  const WORK_DAY_START_HOUR = 8; // 8 AM default start for subsequent days
+
+  // Helper to add days to a date string (skips weekends)
+  const addWorkDaysToDate = (dateStr, days) => {
+    const date = new Date(dateStr);
+    let daysAdded = 0;
+    while (daysAdded < days) {
+      date.setDate(date.getDate() + 1);
+      const dayOfWeek = date.getDay();
+      // Skip weekends (0 = Sunday, 6 = Saturday)
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        daysAdded++;
+      }
+    }
+    return date.toISOString().split('T')[0];
+  };
+
+  // Create tentative schedule (handles multi-day appointments automatically)
   const createTentativeSchedule = async (ticket, date, startTime, technician) => {
     try {
       // Calculate end time based on estimated hours
-      const estimatedHours = ticket.estimated_hours || 2;
-      const [startH, startM] = startTime.split(':').map(Number);
-      const startMinutes = startH * 60 + startM;
-      const endMinutes = startMinutes + (estimatedHours * 60);
-      const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
+      // Parse as number to handle string values from database
+      const rawHours = ticket.estimated_hours;
+      const estimatedHours = typeof rawHours === 'number' ? rawHours : (parseFloat(rawHours) || 2);
 
-      // Create the schedule in the database
-      const schedule = await weeklyPlanningService.createTentativeSchedule(ticket.id, {
-        scheduled_date: date,
-        scheduled_time_start: startTime,
-        scheduled_time_end: endTime,
-        technician_id: technician.id,
-        technician_name: technician.full_name,
-        service_address: ticket.service_address
+      console.log('[WeeklyPlanning] createTentativeSchedule - estimated_hours:', {
+        raw: rawHours,
+        parsed: estimatedHours
       });
 
-      // Create calendar event with customer as attendee (if authContext available)
-      if (authContext) {
-        try {
-          const calendarResult = await createServiceAppointmentEvent(authContext, {
-            scheduled_date: date,
-            scheduled_time_start: startTime,
-            scheduled_time_end: endTime,
-            ticket: ticket,
-            customer_name: ticket.customer_name,
-            customer_email: ticket.customer_email,
-            service_address: ticket.service_address,
-            technician_name: technician.full_name,
-            is_tentative: true
+      // Check if we need to split into multiple appointments (over 8 hours)
+      if (estimatedHours > MAX_WORK_HOURS_PER_DAY) {
+        // Split into multiple appointments across days
+        const appointments = [];
+        let remainingHours = estimatedHours;
+        let currentDate = date;
+        let appointmentNumber = 1;
+        const totalAppointments = Math.ceil(estimatedHours / MAX_WORK_HOURS_PER_DAY);
+
+        while (remainingHours > 0) {
+          const hoursForThisDay = Math.min(remainingHours, MAX_WORK_HOURS_PER_DAY);
+          // First appointment uses the dropped time, subsequent ones start at WORK_DAY_START_HOUR
+          const dayStartTime = appointmentNumber === 1
+            ? startTime
+            : `${WORK_DAY_START_HOUR.toString().padStart(2, '0')}:00`;
+
+          const [startH, startM] = dayStartTime.split(':').map(Number);
+          const startMinutes = startH * 60 + startM;
+          const endMinutes = startMinutes + (hoursForThisDay * 60);
+          const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
+
+          appointments.push({
+            date: currentDate,
+            startTime: dayStartTime,
+            endTime: endTime,
+            hours: hoursForThisDay,
+            appointmentNumber,
+            totalAppointments
           });
 
-          if (calendarResult.success && calendarResult.eventId) {
-            // Update schedule with calendar event ID
-            await weeklyPlanningService.updateCalendarEventId(schedule.id, calendarResult.eventId);
-            console.log('[WeeklyPlanning] Calendar event created:', calendarResult.eventId);
-          } else {
-            console.warn('[WeeklyPlanning] Calendar event creation skipped or failed:', calendarResult.error);
+          remainingHours -= hoursForThisDay;
+          if (remainingHours > 0) {
+            currentDate = addWorkDaysToDate(currentDate, 1);
           }
-        } catch (calendarErr) {
-          console.warn('[WeeklyPlanning] Failed to create calendar event:', calendarErr);
-          // Don't fail the schedule creation if calendar fails
+          appointmentNumber++;
+        }
+
+        console.log('[WeeklyPlanning] Creating multi-day appointments:', appointments);
+
+        // Create each appointment
+        for (const appt of appointments) {
+          const scheduleNotes = `Part ${appt.appointmentNumber} of ${appt.totalAppointments} (${appt.hours}h of ${estimatedHours}h total)`;
+
+          const schedule = await weeklyPlanningService.createTentativeSchedule(ticket.id, {
+            scheduled_date: appt.date,
+            scheduled_time_start: appt.startTime,
+            scheduled_time_end: appt.endTime,
+            technician_id: technician.id,
+            technician_name: technician.full_name,
+            service_address: ticket.service_address,
+            pre_visit_notes: scheduleNotes
+          });
+
+          // Create calendar event for each appointment
+          if (authContext) {
+            try {
+              const calendarResult = await createServiceAppointmentEvent(authContext, {
+                scheduled_date: appt.date,
+                scheduled_time_start: appt.startTime,
+                scheduled_time_end: appt.endTime,
+                ticket: {
+                  ...ticket,
+                  title: `${ticket.title || 'Service'} (${scheduleNotes})`
+                },
+                customer_name: ticket.customer_name,
+                customer_email: ticket.customer_email,
+                service_address: ticket.service_address,
+                technician_name: technician.full_name,
+                is_tentative: true
+              });
+
+              if (calendarResult.success && calendarResult.eventId) {
+                await weeklyPlanningService.updateCalendarEventId(schedule.id, calendarResult.eventId);
+                console.log(`[WeeklyPlanning] Calendar event ${appt.appointmentNumber}/${appt.totalAppointments} created:`, calendarResult.eventId);
+              }
+            } catch (calendarErr) {
+              console.warn('[WeeklyPlanning] Failed to create calendar event:', calendarErr);
+            }
+          }
+        }
+
+        console.log(`[WeeklyPlanning] Created ${appointments.length} appointments for ${estimatedHours}h ticket`);
+      } else {
+        // Single appointment (8 hours or less)
+        const [startH, startM] = startTime.split(':').map(Number);
+        const startMinutes = startH * 60 + startM;
+        const endMinutes = startMinutes + (estimatedHours * 60);
+        const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
+
+        // Create the schedule in the database
+        const schedule = await weeklyPlanningService.createTentativeSchedule(ticket.id, {
+          scheduled_date: date,
+          scheduled_time_start: startTime,
+          scheduled_time_end: endTime,
+          technician_id: technician.id,
+          technician_name: technician.full_name,
+          service_address: ticket.service_address
+        });
+
+        // Create calendar event with customer as attendee (if authContext available)
+        if (authContext) {
+          try {
+            const calendarResult = await createServiceAppointmentEvent(authContext, {
+              scheduled_date: date,
+              scheduled_time_start: startTime,
+              scheduled_time_end: endTime,
+              ticket: ticket,
+              customer_name: ticket.customer_name,
+              customer_email: ticket.customer_email,
+              service_address: ticket.service_address,
+              technician_name: technician.full_name,
+              is_tentative: true
+            });
+
+            if (calendarResult.success && calendarResult.eventId) {
+              // Update schedule with calendar event ID
+              await weeklyPlanningService.updateCalendarEventId(schedule.id, calendarResult.eventId);
+              console.log('[WeeklyPlanning] Calendar event created:', calendarResult.eventId);
+            } else {
+              console.warn('[WeeklyPlanning] Calendar event creation skipped or failed:', calendarResult.error);
+            }
+          } catch (calendarErr) {
+            console.warn('[WeeklyPlanning] Failed to create calendar event:', calendarErr);
+            // Don't fail the schedule creation if calendar fails
+          }
         }
       }
 

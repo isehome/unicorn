@@ -301,9 +301,16 @@ export const weeklyPlanningService = {
         console.warn('[WeeklyPlanningService] Could not fetch ticket details:', ticketError);
       }
 
-      const estimatedMinutes = ticket?.estimated_hours
-        ? ticket.estimated_hours * 60
-        : DEFAULT_DURATION_MINUTES;
+      // Parse estimated_hours as number (database NUMERIC may return string)
+      const rawHours = ticket?.estimated_hours;
+      const parsedHours = typeof rawHours === 'number' ? rawHours : parseFloat(rawHours);
+      const estimatedMinutes = parsedHours > 0 ? parsedHours * 60 : DEFAULT_DURATION_MINUTES;
+
+      console.log('[WeeklyPlanningService] createTentativeSchedule - estimatedHours:', {
+        raw: rawHours,
+        parsed: parsedHours,
+        minutes: estimatedMinutes
+      });
 
       // Calculate end time
       const startMinutes = timeToMinutes(scheduleData.scheduled_time_start);
@@ -393,7 +400,12 @@ export const weeklyPlanningService = {
           .single();
 
         if (ticket?.estimated_hours) {
-          durationMinutes = ticket.estimated_hours * 60;
+          // Parse as number (database NUMERIC may return string)
+          const rawHours = ticket.estimated_hours;
+          const parsedHours = typeof rawHours === 'number' ? rawHours : parseFloat(rawHours);
+          if (parsedHours > 0) {
+            durationMinutes = parsedHours * 60;
+          }
         }
       }
 

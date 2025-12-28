@@ -318,9 +318,17 @@ const DayColumn = memo(({
       if (schedule.scheduled_time_end) {
         endHour = timeToHour(schedule.scheduled_time_end);
       } else if (schedule.estimated_duration_minutes) {
-        endHour = startHour + schedule.estimated_duration_minutes / 60;
+        // Parse as number (database may return string)
+        const mins = typeof schedule.estimated_duration_minutes === 'number'
+          ? schedule.estimated_duration_minutes
+          : parseFloat(schedule.estimated_duration_minutes);
+        endHour = startHour + (mins || 120) / 60;
       } else if (ticket.estimated_hours) {
-        endHour = startHour + ticket.estimated_hours;
+        // Parse as number (database NUMERIC may return string)
+        const hours = typeof ticket.estimated_hours === 'number'
+          ? ticket.estimated_hours
+          : parseFloat(ticket.estimated_hours);
+        endHour = startHour + (hours || 2);
       } else {
         endHour = startHour + 2; // Default 2 hours
       }
