@@ -3,17 +3,12 @@
  * Creates an invoice in QuickBooks from a service ticket
  */
 
-import OAuthClient from 'intuit-oauth';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
 // Helper to get fresh OAuth client with valid tokens
-async function getAuthenticatedClient() {
+async function getAuthenticatedClient(supabase) {
+  // Import intuit-oauth dynamically to avoid cold start issues
+  const OAuthClient = (await import('intuit-oauth')).default;
   // Get stored tokens
   const { data: tokenData, error: tokenError } = await supabase
     .from('qbo_auth_tokens')
@@ -73,7 +68,7 @@ async function getAuthenticatedClient() {
 }
 
 // Get or create QBO customer
-async function getOrCreateQBOCustomer(client, realmId, ticket, contact) {
+async function getOrCreateQBOCustomer(supabase, client, realmId, ticket, contact) {
   const baseUrl = `https://${process.env.QBO_ENVIRONMENT === 'production' ? '' : 'sandbox-'}quickbooks.api.intuit.com/v3/company/${realmId}`;
 
   // Check for existing mapping
@@ -177,8 +172,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Initialize Supabase client
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     // Get authenticated QBO client
-    const { client, realmId } = await getAuthenticatedClient();
+    const { client, realmId } = await getAuthenticatedClient(supabase);
     const baseUrl = `https://${process.env.QBO_ENVIRONMENT === 'production' ? '' : 'sandbox-'}quickbooks.api.intuit.com/v3/company/${realmId}`;
 
     // Get ticket with all related data
@@ -217,7 +218,7 @@ export default async function handler(req, res) {
       .eq('ticket_id', ticketId);
 
     // Get or create QBO customer
-    const qboCustomerId = await getOrCreateQBOCustomer(client, realmId, ticket, ticket.contact);
+    const qboCustomerId = await getOrCreateQBOCustomer(supabase, client, realmId, ticket, ticket.contact);
 
     // Calculate totals
     const hourlyRate = ticket.hourly_rate || 150;

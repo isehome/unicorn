@@ -3,15 +3,6 @@
  * Returns the authorization URL for QuickBooks OAuth2 flow
  */
 
-import OAuthClient from 'intuit-oauth';
-
-const oauthClient = new OAuthClient({
-  clientId: process.env.QBO_CLIENT_ID,
-  clientSecret: process.env.QBO_CLIENT_SECRET,
-  environment: process.env.QBO_ENVIRONMENT || 'sandbox',
-  redirectUri: process.env.QBO_REDIRECT_URI
-});
-
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -42,6 +33,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Import intuit-oauth dynamically inside handler to avoid cold start issues
+    const OAuthClient = (await import('intuit-oauth')).default;
+
+    const oauthClient = new OAuthClient({
+      clientId: process.env.QBO_CLIENT_ID,
+      clientSecret: process.env.QBO_CLIENT_SECRET,
+      environment: process.env.QBO_ENVIRONMENT || 'sandbox',
+      redirectUri: process.env.QBO_REDIRECT_URI
+    });
+
     // Generate authorization URL
     const authUrl = oauthClient.authorizeUri({
       scope: [

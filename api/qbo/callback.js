@@ -3,21 +3,7 @@
  * Handles the OAuth2 callback from QuickBooks and stores tokens
  */
 
-import OAuthClient from 'intuit-oauth';
 import { createClient } from '@supabase/supabase-js';
-
-const oauthClient = new OAuthClient({
-  clientId: process.env.QBO_CLIENT_ID,
-  clientSecret: process.env.QBO_CLIENT_SECRET,
-  environment: process.env.QBO_ENVIRONMENT || 'sandbox',
-  redirectUri: process.env.QBO_REDIRECT_URI
-});
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -38,6 +24,22 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Import intuit-oauth dynamically inside handler to avoid cold start issues
+    const OAuthClient = (await import('intuit-oauth')).default;
+
+    const oauthClient = new OAuthClient({
+      clientId: process.env.QBO_CLIENT_ID,
+      clientSecret: process.env.QBO_CLIENT_SECRET,
+      environment: process.env.QBO_ENVIRONMENT || 'sandbox',
+      redirectUri: process.env.QBO_REDIRECT_URI
+    });
+
+    // Initialize Supabase client
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     // Exchange authorization code for tokens
     const authResponse = await oauthClient.createToken(req.url);
     const token = authResponse.getJson();
