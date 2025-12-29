@@ -71,6 +71,7 @@ const ServiceTicketList = lazy(() => import('./components/Service/ServiceTicketL
 const ServiceTicketDetail = lazy(() => import('./components/Service/ServiceTicketDetail'));
 const NewTicketForm = lazy(() => import('./components/Service/NewTicketForm'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
+const ServiceReports = lazy(() => import('./pages/ServiceReports'));
 
 
 const AppRoutes = () => {
@@ -424,6 +425,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <WeeklyPlanning />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/service/reports"
+                element={
+                  <ProtectedRoute>
+                    <ServiceReports />
                   </ProtectedRoute>
                 }
               />

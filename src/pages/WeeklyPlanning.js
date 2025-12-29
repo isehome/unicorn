@@ -35,6 +35,17 @@ const statusColors = {
 };
 
 /**
+ * Format date to YYYY-MM-DD (using local timezone, not UTC)
+ */
+const formatDateLocal = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Get Monday of the current week
  */
 const getCurrentWeekStart = () => {
@@ -128,7 +139,7 @@ const WeeklyPlanning = () => {
             // Fetch events for each day in the week
             const dayPromises = [];
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-              const dateStr = new Date(d).toISOString().split('T')[0];
+              const dateStr = formatDateLocal(new Date(d));
               dayPromises.push(
                 fetchEventsForDate(authContext, dateStr)
                   .then(events => (events || []).map(e => ({ ...e, fetchedDate: dateStr })))
@@ -143,7 +154,7 @@ const WeeklyPlanning = () => {
               const endHour = new Date(event.end).getHours() + new Date(event.end).getMinutes() / 60;
               return {
                 ...event,
-                date: new Date(event.start).toISOString().split('T')[0],
+                date: formatDateLocal(new Date(event.start)),
                 startHour,
                 endHour
               };
@@ -428,7 +439,7 @@ const WeeklyPlanning = () => {
         daysAdded++;
       }
     }
-    return date.toISOString().split('T')[0];
+    return formatDateLocal(date);
   };
 
   // Create tentative schedule (handles multi-day appointments automatically)
@@ -619,6 +630,30 @@ const WeeklyPlanning = () => {
     }
   };
 
+  // Handle unscheduling a ticket (dragged back to panel)
+  const handleUnschedule = async (scheduleId, ticketData) => {
+    if (!window.confirm(`Remove "${ticketData.customer_name || ticketData.title}" from schedule? The ticket will return to the unscheduled panel.`)) {
+      return;
+    }
+
+    try {
+      // Delete the schedule (this returns the ticket to unscheduled status)
+      await serviceScheduleService.remove(scheduleId);
+      console.log('[WeeklyPlanning] Ticket unscheduled:', scheduleId);
+
+      // Update ticket status back to triaged
+      if (ticketData.id) {
+        await serviceTicketService.update(ticketData.id, { status: 'triaged' });
+      }
+
+      // Refresh to update the view
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to unschedule ticket:', err);
+      setError('Failed to unschedule ticket');
+    }
+  };
+
   // Open full ticket page in new tab
   const handleOpenTicketFullPage = (ticketId) => {
     window.open(`/service/tickets/${ticketId}`, '_blank');
@@ -684,6 +719,7 @@ const WeeklyPlanning = () => {
             selectedTechnician={selectedTechnician}
             onTechnicianChange={handleTechnicianChange}
             onOpenTicket={handleOpenTicket}
+            onUnschedule={handleUnschedule}
             isLoading={loadingTickets}
           />
         </div>
@@ -846,7 +882,62 @@ const WeeklyPlanning = () => {
                 </div>
               </div>
 
-              {/* Schedule Info */}
+              {/* Assignment Section - for unscheduled tickets */}
+              {!ticketDetailModal.schedule && (
+                <div className="bg-zinc-700/50 rounded-lg p-4">
+                  <h5 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">
+                    <User size={14} />
+                    Assignment
+                  </h5>
+                  <div>
+                    <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
+                    <select
+                      value={ticketDetailModal.ticket?.assigned_to || ''}
+                      onChange={async (e) => {
+                        const newTechId = e.target.value;
+                        const newTech = technicians.find(t => t.id === newTechId);
+                        if (ticketDetailModal.ticket?.id) {
+                          try {
+                            await serviceTicketService.update(ticketDetailModal.ticket.id, {
+                              assigned_to: newTechId || null,
+                              status: newTechId ? 'triaged' : ticketDetailModal.ticket.status
+                            });
+                            // Update the modal state
+                            setTicketDetailModal(prev => ({
+                              ...prev,
+                              ticket: {
+                                ...prev.ticket,
+                                assigned_to: newTechId,
+                                assigned_to_name: newTech?.full_name || null
+                              }
+                            }));
+                            // Refresh the panels
+                            await handleRefresh();
+                          } catch (err) {
+                            console.error('[WeeklyPlanning] Failed to assign technician:', err);
+                            setError('Failed to assign technician');
+                          }
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                    >
+                      <option value="">-- Select Technician --</option>
+                      {technicians.map(tech => (
+                        <option key={tech.id} value={tech.id}>
+                          {tech.full_name}
+                        </option>
+                      ))}
+                    </select>
+                    {!ticketDetailModal.ticket?.assigned_to && (
+                      <p className="text-xs text-amber-400 mt-2">
+                        Assign a technician before scheduling this ticket
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule Info - for scheduled tickets */}
               {ticketDetailModal.schedule && (
                 <div className="bg-zinc-700/50 rounded-lg p-4">
                   <h5 className="text-sm font-medium text-zinc-300 mb-3 flex items-center gap-2">

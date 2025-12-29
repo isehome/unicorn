@@ -2791,3 +2791,241 @@ service_schedule_confirmations (token-based portal access)
 | `updateCalendarEventId()` | Store M365 event ID for later updates |
 
 ---
+## 2025-12-29
+
+### Service System Enhancements (Complete)
+
+Four major enhancements to the service ticket system:
+
+#### 1. Service Time Tracking
+Check-in/check-out functionality for technicians working on service tickets.
+
+**Features:**
+- Technicians can check in when starting work on a ticket
+- Live timer displays elapsed time
+- Check out when done to record duration
+- Manual time entry for forgotten check-ins
+- Time logs history with edit/delete capability
+- Per-ticket hourly rate (default $150/hr)
+- Total hours summary per technician
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/serviceTimeService.js` | Time log CRUD, check-in/out logic |
+| `src/hooks/useServiceTimeTracking.js` | Hook with localStorage fallback |
+| `src/components/Service/ServiceTimeTracker.js` | Time tracking UI component |
+| `src/components/Service/ServiceTimeEntryModal.js` | Manual time entry modal |
+| `database/migrations/20251229_service_time_logs.sql` | Database schema |
+
+**Database Table: `service_time_logs`**
+- `ticket_id`, `technician_id`, `technician_email`, `technician_name`
+- `check_in`, `check_out` (timestamps)
+- `notes` (optional work description)
+
+#### 2. Service Photos in SharePoint
+Photo upload/management for service tickets with SharePoint integration.
+
+**Folder Structure:**
+```
+SharePoint/
+└── Service/                     # Top-level service folder
+    └── {CustomerName}/          # Customer subfolder
+        └── {TicketNumber}/      # Ticket subfolder
+            ├── before/          # Pre-work photos
+            ├── during/          # Work-in-progress
+            ├── after/           # Completed work
+            └── documentation/   # Manuals, receipts
+```
+
+**Features:**
+- Photo categories: Before, During, After, Documentation
+- Drag-and-drop upload
+- Mobile camera capture
+- Thumbnail gallery with lightbox
+- Photo captions
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/servicePhotoService.js` | Upload/delete/list photos |
+| `src/components/Service/ServicePhotosManager.js` | Photo gallery UI |
+| `database/migrations/20251229_service_ticket_photos.sql` | Database schema |
+
+**Database Table: `service_ticket_photos`**
+- `ticket_id`, `photo_url`, `category`
+- `sharepoint_drive_id`, `sharepoint_item_id` (for Graph API)
+- `caption`, `uploaded_by`, `uploaded_by_name`
+
+#### 3. Service Reporting
+Query and export service data by date range, customer, technician.
+
+**Route:** `/service/reports`
+
+**Features:**
+- Date presets (This Month, Last Month, Last 30/90 Days, This Quarter, This Year, Custom)
+- Filter by customer, technician
+- Summary cards: Total Tickets, Hours, Labor Cost, Parts Cost, Revenue
+- Tabbed interface: Overview, Tickets, Technicians, Customers
+- Charts: Hours by technician, Revenue by customer
+- CSV export
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/serviceReportService.js` | Report queries, date presets, CSV export |
+| `src/pages/ServiceReports.js` | Full reporting dashboard |
+| `database/migrations/20251229_service_reports.sql` | Views and functions |
+
+**Database Views:**
+- `service_customer_summary` - Per-customer ticket/hours/cost totals
+- `service_technician_summary` - Per-tech hours by month
+
+**Database Functions:**
+- `get_service_report()` - Detailed ticket report with filters
+- `get_service_summary()` - Summary totals for date range
+- `get_service_monthly_overview()` - Daily breakdown for charts
+- `get_technician_hours_report()` - Tech hours for date range
+- `get_customer_hours_report()` - Customer hours for date range
+
+#### 4. QuickBooks Online Export
+Manual export of completed service tickets to QuickBooks for invoicing.
+
+**Features:**
+- Export button on resolved/closed tickets
+- Creates invoice with labor (hours × rate) + parts line items
+- Auto-creates/maps customers in QBO
+- Tracks sync status on ticket
+- Connect/disconnect QBO from Settings page
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/quickbooksService.js` | OAuth flow, invoice creation |
+| `api/qbo/auth.js` | OAuth initiation endpoint |
+| `api/qbo/callback.js` | OAuth callback handler |
+| `api/qbo/create-invoice.js` | Create invoice from ticket |
+| `api/qbo/customers.js` | Search/create QBO customers |
+| `database/migrations/20251229_quickbooks_integration.sql` | QBO tables |
+
+**Database Tables:**
+- `qbo_auth_tokens` - OAuth tokens (encrypted)
+- `qbo_customer_mapping` - Maps contacts to QBO customer IDs
+
+**service_tickets additions:**
+- `qbo_invoice_id`, `qbo_invoice_number`
+- `qbo_synced_at`, `qbo_sync_status`, `qbo_sync_error`
+
+---
+
+### QuickBooks Online Setup Instructions
+
+#### Step 1: Create Intuit Developer Account
+1. Go to https://developer.intuit.com/
+2. Sign up or log in
+3. Click "Create an app"
+4. Select "QuickBooks Online and Payments"
+5. Name your app (e.g., "Unicorn Service CRM")
+
+#### Step 2: Configure App Settings
+In the Intuit Developer Portal:
+
+1. **Keys & credentials** tab:
+   - Note your **Client ID** and **Client Secret**
+
+2. **Redirect URIs** section:
+   - Add: `https://unicorn-one.vercel.app/api/qbo/callback`
+   - For local dev: `http://localhost:3000/api/qbo/callback`
+
+3. **Scopes** section (select these):
+   - `com.intuit.quickbooks.accounting` (read/write accounting data)
+
+#### Step 3: Set Environment Variables
+Add to your Vercel project (Settings → Environment Variables):
+
+```
+QBO_CLIENT_ID=your_client_id_here
+QBO_CLIENT_SECRET=your_client_secret_here
+QBO_REDIRECT_URI=https://unicorn-one.vercel.app/api/qbo/callback
+QBO_ENVIRONMENT=sandbox
+```
+
+**Note:** Use `sandbox` for testing, `production` when ready for real invoices.
+
+#### Step 4: Install Dependencies
+```bash
+npm install intuit-oauth
+```
+
+#### Step 5: Connect QuickBooks
+1. Go to Settings page in Unicorn
+2. Scroll to "QuickBooks Integration" section
+3. Click "Connect to QuickBooks"
+4. Log in with your QuickBooks Online account
+5. Authorize the app
+6. You'll be redirected back - connection status shows "Connected"
+
+#### Step 6: Test with Sandbox
+1. Create a test service ticket
+2. Add time logs (check in/out)
+3. Add parts to the ticket
+4. Set status to "Resolved" or "Closed"
+5. Click "Export to QuickBooks" button
+6. Verify invoice created in QBO sandbox
+
+#### Switching to Production
+1. In Intuit Developer Portal, submit app for review
+2. Once approved, update environment variable:
+   ```
+   QBO_ENVIRONMENT=production
+   ```
+3. Reconnect QuickBooks from Settings (need to re-authorize)
+
+#### Troubleshooting
+
+**"QuickBooks not connected" error:**
+- Go to Settings and click "Connect to QuickBooks"
+- Ensure OAuth tokens haven't expired (auto-refresh should handle this)
+
+**"Customer not found" error:**
+- System will auto-create customer in QBO using contact's name/email
+- Ensure ticket has a valid contact linked
+
+**Invoice not showing expected amounts:**
+- Check that time logs have check_out times (incomplete sessions not included)
+- Verify parts have unit_cost values set
+
+**Rate limiting:**
+- QBO has API limits; exports are batched automatically
+- If hitting limits, wait a few minutes and retry
+
+---
+
+### Service Module Routes (Updated)
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/service` | ServiceDashboard | Service module home |
+| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service/tickets/new` | NewTicketForm | Create new ticket |
+| `/service/tickets/:id` | ServiceTicketDetail | Ticket detail (photos, time, QBO) |
+| `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
+| `/service/reports` | ServiceReports | **NEW** - Reporting dashboard |
+
+---
+
+### Service Database Tables (Updated)
+
+| Table | Purpose |
+|-------|---------|
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled appointments |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
+| `service_time_logs` | **NEW** - Time tracking entries |
+| `service_ticket_photos` | **NEW** - Photo metadata |
+| `service_ticket_parts` | Parts used on tickets |
+| `qbo_auth_tokens` | **NEW** - QuickBooks OAuth tokens |
+| `qbo_customer_mapping` | **NEW** - QBO customer mappings |
+
+---

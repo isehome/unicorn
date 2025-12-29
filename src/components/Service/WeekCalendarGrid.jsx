@@ -96,6 +96,17 @@ const priorityColors = {
 };
 
 /**
+ * Format date to YYYY-MM-DD (using local timezone, not UTC)
+ */
+const formatDateLocal = (date) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
  * Format date to display string
  */
 const formatDayHeader = (date) => {
@@ -105,7 +116,7 @@ const formatDayHeader = (date) => {
     day: days[d.getDay()],
     date: d.getDate(),
     month: d.toLocaleDateString('en-US', { month: 'short' }),
-    full: d.toISOString().split('T')[0]
+    full: formatDateLocal(d)
   };
 };
 
@@ -686,14 +697,18 @@ const WeekCalendarGrid = ({
   const allDays = useMemo(() => {
     const days = [];
     weeks.forEach(week => {
-      const startDate = new Date(week.startDate);
+      // Parse date string as local date (not UTC) to avoid timezone shift
+      // YYYY-MM-DD format when passed to new Date() is treated as UTC
+      // We need to parse it manually to get local midnight
+      const [year, month, day] = week.startDate.split('-').map(Number);
+      const startDate = new Date(year, month - 1, day); // month is 0-indexed
       const numDays = showWorkWeekOnly ? 5 : 7;
       const startOffset = showWorkWeekOnly ? 0 : 0; // Mon or Sun
 
       for (let i = startOffset; i < startOffset + numDays; i++) {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = formatDateLocal(date);
 
         days.push({
           date,
@@ -728,7 +743,7 @@ const WeekCalendarGrid = ({
     const durationHours = currentDragEstimatedHours;
 
     setDropPreview({
-      date: date.toISOString().split('T')[0],
+      date: formatDateLocal(date),
       startHour: clampedHour,
       durationHours
     });
@@ -752,7 +767,7 @@ const WeekCalendarGrid = ({
         const ticket = JSON.parse(ticketData);
         onDropTicket?.({
           ticket,
-          date: date.toISOString().split('T')[0],
+          date: formatDateLocal(date),
           startTime: hourToTimeStr(clampedHour)
         });
       }

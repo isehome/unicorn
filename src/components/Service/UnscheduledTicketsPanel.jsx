@@ -205,12 +205,57 @@ const UnscheduledTicketsPanel = ({
   selectedTechnician,
   onTechnicianChange,
   onOpenTicket,
+  onUnschedule, // New: callback when a scheduled ticket is dropped here
   isLoading = false,
   compactMode = false
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Handle drag over for drop zone
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Only show drop indicator if this is a reschedule (from calendar)
+    try {
+      const types = e.dataTransfer.types;
+      if (types.includes('application/json')) {
+        e.dataTransfer.dropEffect = 'move';
+        setIsDragOver(true);
+      }
+    } catch {
+      // Ignore errors
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  // Handle drop - unschedule the ticket
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    try {
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (!jsonData) return;
+
+      const data = JSON.parse(jsonData);
+
+      // Only handle reschedules (tickets with _isReschedule flag from calendar)
+      if (data._isReschedule && data._scheduleId && onUnschedule) {
+        onUnschedule(data._scheduleId, data);
+      }
+    } catch (err) {
+      console.error('[UnscheduledTicketsPanel] Drop failed:', err);
+    }
+  };
 
   // Filter tickets
   const filteredTickets = useMemo(() => {
@@ -256,7 +301,23 @@ const UnscheduledTicketsPanel = ({
   }, [filteredTickets]);
 
   return (
-    <div className="flex flex-col h-full bg-zinc-800 rounded-lg overflow-hidden">
+    <div
+      className={`relative flex flex-col h-full bg-zinc-800 rounded-lg overflow-hidden transition-all ${
+        isDragOver ? 'ring-2 ring-amber-500 ring-opacity-70' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drop indicator overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-amber-500/10 z-10 flex items-center justify-center pointer-events-none rounded-lg">
+          <div className="bg-amber-500/90 text-black px-4 py-2 rounded-lg font-medium text-sm shadow-lg">
+            Drop to Unschedule
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-3 border-b border-zinc-700">
         <h3 className="font-semibold text-white mb-2 flex items-center gap-2">

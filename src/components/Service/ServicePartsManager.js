@@ -3,7 +3,7 @@
  * Parts management for service tickets - add parts, track status, send requests
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Package,
   Plus,
@@ -14,11 +14,11 @@ import {
   Edit,
   X,
   CheckCircle,
-  Clock,
-  Truck,
-  AlertCircle
+  Search,
+  Database
 } from 'lucide-react';
 import { servicePartsService } from '../../services/serviceTicketService';
+import { partsService } from '../../services/partsService';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
 
@@ -40,6 +40,16 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
   const [editingPart, setEditingPart] = useState(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Global parts search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedGlobalPart, setSelectedGlobalPart] = useState(null);
+  const searchRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
 
   // Form state for adding/editing parts
   const [partForm, setPartForm] = useState({
@@ -52,16 +62,90 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
     notes: ''
   });
 
+  // Search global parts database
+  const searchGlobalParts = useCallback(async (query) => {
+    if (!query || query.length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      const results = await partsService.list({ search: query });
+      setSearchResults(results.slice(0, 10)); // Limit to 10 results
+      setShowSearchResults(true);
+    } catch (err) {
+      console.error('[ServicePartsManager] Search failed:', err);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  // Debounced search
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setSelectedGlobalPart(null);
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Debounce search
+    searchTimeoutRef.current = setTimeout(() => {
+      searchGlobalParts(value);
+    }, 300);
+  }, [searchGlobalParts]);
+
+  // Select a part from search results
+  const handleSelectGlobalPart = useCallback((globalPart) => {
+    setSelectedGlobalPart(globalPart);
+    setSearchQuery(globalPart.name || globalPart.part_number);
+    setShowSearchResults(false);
+
+    // Auto-fill the form with global part data
+    setPartForm({
+      name: globalPart.name || '',
+      part_number: globalPart.part_number || '',
+      manufacturer: globalPart.manufacturer || '',
+      description: globalPart.description || '',
+      quantity_needed: 1,
+      unit_cost: '', // Don't auto-fill cost - service pricing may differ
+      notes: ''
+    });
+  }, []);
+
+  // Click outside to close search results
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Load parts
   useEffect(() => {
     const loadParts = async () => {
       if (!ticket?.id) return;
       try {
         setLoading(true);
+        setError(null);
         const data = await servicePartsService.getPartsForTicket(ticket.id);
         setParts(data);
       } catch (err) {
         console.error('[ServicePartsManager] Failed to load parts:', err);
+        // Check if it's a "table doesn't exist" error
+        if (err.message?.includes('does not exist') || err.message?.includes('relation')) {
+          setError('Parts system not configured. Please run the database migration.');
+        } else {
+          setError('Failed to load parts: ' + (err.message || 'Unknown error'));
+        }
       } finally {
         setLoading(false);
       }
@@ -79,6 +163,10 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
       unit_cost: '',
       notes: ''
     });
+    setSearchQuery('');
+    setSearchResults([]);
+    setSelectedGlobalPart(null);
+    setShowSearchResults(false);
   };
 
   const handleOpenAdd = () => {
@@ -97,6 +185,9 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
       unit_cost: part.unit_cost || '',
       notes: part.notes || ''
     });
+    setSearchQuery(part.name || '');
+    setSelectedGlobalPart(null);
+    setShowSearchResults(false);
     setEditingPart(part);
     setShowAddPart(true);
   };
@@ -112,6 +203,7 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
 
     try {
       setSaving(true);
+      setError(null);
 
       if (editingPart) {
         // Update existing part
@@ -125,8 +217,9 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
           notes: partForm.notes.trim() || null
         });
       } else {
-        // Add new part
+        // Add new part - include global_part_id if selected from global database
         await servicePartsService.addPart(ticket.id, {
+          global_part_id: selectedGlobalPart?.id || null,
           name: partForm.name.trim(),
           part_number: partForm.part_number.trim() || null,
           manufacturer: partForm.manufacturer.trim() || null,
@@ -149,6 +242,12 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
       }
     } catch (err) {
       console.error('[ServicePartsManager] Failed to save part:', err);
+      // Check if it's a "table doesn't exist" error
+      if (err.message?.includes('does not exist') || err.message?.includes('relation')) {
+        setError('Parts system not configured. Please run the database migration.');
+      } else {
+        setError('Failed to save part: ' + (err.message || 'Unknown error'));
+      }
     } finally {
       setSaving(false);
     }
@@ -241,6 +340,19 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
 
   return (
     <div className="space-y-4">
+      {/* Error Display */}
+      {error && (
+        <div className="p-3 bg-red-500/20 border border-red-500/40 rounded-lg text-red-400 text-sm flex items-start gap-2">
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-300"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Summary Bar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm">
@@ -385,7 +497,7 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
       {/* Add/Edit Part Modal */}
       {showAddPart && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-800 rounded-lg w-full max-w-md">
+          <div className="bg-zinc-800 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b border-zinc-700 flex items-center justify-between">
               <h3 className="font-semibold text-white">
                 {editingPart ? 'Edit Part' : 'Add Part'}
@@ -398,6 +510,98 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
               </button>
             </div>
             <div className="p-4 space-y-4">
+              {/* Search Global Parts - only show for new parts */}
+              {!editingPart && (
+                <div ref={searchRef} className="relative">
+                  <label className="text-sm text-zinc-400 mb-1 block flex items-center gap-2">
+                    <Database size={14} />
+                    Search Parts Database
+                  </label>
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => handleSearchChange(e.target.value)}
+                      onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                      placeholder="Search by name, part number, or manufacturer..."
+                      className="w-full pl-9 pr-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
+                      autoFocus
+                    />
+                    {searchLoading && (
+                      <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 animate-spin" />
+                    )}
+                  </div>
+
+                  {/* Search Results Dropdown */}
+                  {showSearchResults && (
+                    <div className="absolute z-10 w-full mt-1 bg-zinc-700 border border-zinc-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {searchResults.length > 0 ? (
+                        <>
+                          {searchResults.map((part) => (
+                            <button
+                              key={part.id}
+                              onClick={() => handleSelectGlobalPart(part)}
+                              className="w-full px-3 py-2 text-left hover:bg-zinc-600 transition-colors border-b border-zinc-600 last:border-0"
+                            >
+                              <div className="font-medium text-white text-sm">
+                                {part.name || part.part_number}
+                              </div>
+                              <div className="text-xs text-zinc-400 flex items-center gap-2">
+                                {part.part_number && <span className="font-mono">#{part.part_number}</span>}
+                                {part.manufacturer && <span>{part.manufacturer}</span>}
+                                {part.model && <span className="text-zinc-500">{part.model}</span>}
+                              </div>
+                            </button>
+                          ))}
+                          {/* Option to add new part */}
+                          <button
+                            onClick={() => {
+                              setShowSearchResults(false);
+                              setPartForm(prev => ({ ...prev, name: searchQuery }));
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-zinc-600 transition-colors flex items-center gap-2 text-sm"
+                            style={{ color: brandColors.success }}
+                          >
+                            <Plus size={14} />
+                            Add "{searchQuery}" as new part
+                          </button>
+                        </>
+                      ) : searchQuery.length >= 2 && !searchLoading ? (
+                        <div className="p-3">
+                          <p className="text-sm text-zinc-400 mb-2">No parts found matching "{searchQuery}"</p>
+                          <button
+                            onClick={() => {
+                              setShowSearchResults(false);
+                              setPartForm(prev => ({ ...prev, name: searchQuery }));
+                            }}
+                            className="flex items-center gap-2 text-sm"
+                            style={{ color: brandColors.success }}
+                          >
+                            <Plus size={14} />
+                            Add as new part
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Selected Part Indicator */}
+                  {selectedGlobalPart && (
+                    <div className="mt-2 p-2 bg-zinc-700/50 rounded-lg flex items-center gap-2">
+                      <CheckCircle size={16} style={{ color: brandColors.success }} />
+                      <span className="text-sm text-zinc-300">
+                        Selected: <span className="text-white font-medium">{selectedGlobalPart.name}</span>
+                        {selectedGlobalPart.part_number && (
+                          <span className="text-zinc-400 ml-1">#{selectedGlobalPart.part_number}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Part Name - editable if not from global database */}
               <div>
                 <label className="text-sm text-zinc-400 mb-1 block">Part Name *</label>
                 <input
@@ -406,7 +610,6 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
                   onChange={(e) => setPartForm(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="e.g., Crestron MC4-R"
                   className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                  autoFocus
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">

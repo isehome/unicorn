@@ -31,7 +31,10 @@ import {
   ExternalLink,
   ClipboardCheck,
   Package,
-  ShoppingCart
+  ShoppingCart,
+  Camera,
+  DollarSign,
+  Loader2
 } from 'lucide-react';
 import {
   serviceTicketService,
@@ -40,9 +43,12 @@ import {
   servicePartsService,
   servicePOService
 } from '../../services/serviceTicketService';
+import { quickbooksService } from '../../services/quickbooksService';
 import ServiceTriageForm from './ServiceTriageForm';
 import ServicePartsManager from './ServicePartsManager';
 import ServicePOManager from './ServicePOManager';
+import ServiceTimeTracker from './ServiceTimeTracker';
+import ServicePhotosManager from './ServicePhotosManager';
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -117,6 +123,8 @@ const ServiceTicketDetail = () => {
   // Collapsible section states
   const [expandedSections, setExpandedSections] = useState({
     triage: true,
+    timeTracking: false,
+    photos: false,
     parts: false,
     purchaseOrders: false
   });
@@ -124,6 +132,10 @@ const ServiceTicketDetail = () => {
   // Parts and PO counts for badges
   const [partsCount, setPartsCount] = useState(0);
   const [posCount, setPosCount] = useState(0);
+
+  // QuickBooks export state
+  const [exportingToQBO, setExportingToQBO] = useState(false);
+  const [qboError, setQboError] = useState(null);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -178,6 +190,60 @@ const ServiceTicketDetail = () => {
   const handleCancelEdit = () => {
     setIsEditing(false);
     setEditData({});
+  };
+
+  // Delete ticket permanently
+  const handleDeleteTicket = async () => {
+    if (!ticket) return;
+
+    const ticketNumber = ticket.ticket_number || ticket.id;
+    const customerName = ticket.customer_name || 'Unknown Customer';
+
+    // First confirmation
+    if (!window.confirm(
+      `Are you sure you want to DELETE ticket #${ticketNumber} for "${customerName}"?\n\n` +
+      `This action cannot be undone.`
+    )) {
+      return;
+    }
+
+    // Second confirmation for safety
+    if (!window.confirm(
+      `FINAL WARNING: You are about to permanently delete ticket #${ticketNumber}.\n\n` +
+      `All associated schedules, notes, and history will be lost.\n\n` +
+      `Type "DELETE" in the next prompt to confirm.`
+    )) {
+      return;
+    }
+
+    const confirmText = window.prompt('Type DELETE to confirm permanent deletion:');
+    if (confirmText !== 'DELETE') {
+      setError('Deletion cancelled - confirmation text did not match');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      // If there are schedules, delete them first
+      if (ticket.schedules && ticket.schedules.length > 0) {
+        for (const schedule of ticket.schedules) {
+          await serviceScheduleService.remove(schedule.id);
+        }
+      }
+
+      // Delete the ticket
+      await serviceTicketService.remove(ticket.id);
+      console.log('[ServiceTicketDetail] Ticket deleted:', ticket.id);
+
+      // Navigate back to tickets list
+      navigate('/service/tickets');
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to delete ticket:', err);
+      setError('Failed to delete ticket: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const loadTicket = useCallback(async () => {
@@ -597,6 +663,48 @@ const ServiceTicketDetail = () => {
     }
   };
 
+  // Export ticket to QuickBooks
+  const handleExportToQuickBooks = async () => {
+    if (!ticket?.id) return;
+
+    // Confirm export
+    if (!window.confirm(
+      `Export ticket #${ticket.ticket_number} to QuickBooks?\n\n` +
+      `This will create an invoice with:\n` +
+      `- Labor hours logged\n` +
+      `- Parts added to the ticket\n\n` +
+      `Continue?`
+    )) {
+      return;
+    }
+
+    try {
+      setExportingToQBO(true);
+      setQboError(null);
+
+      const result = await quickbooksService.createInvoiceFromTicket(ticket.id);
+
+      // Show success and offer to view invoice
+      if (result.invoiceUrl) {
+        const viewNow = window.confirm(
+          `Invoice #${result.invoiceNumber} created successfully!\n\n` +
+          `Click OK to view in QuickBooks, or Cancel to stay here.`
+        );
+        if (viewNow) {
+          window.open(result.invoiceUrl, '_blank');
+        }
+      }
+
+      // Reload ticket to get updated QBO status
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] QBO export failed:', err);
+      setQboError(err.message || 'Failed to export to QuickBooks');
+    } finally {
+      setExportingToQBO(false);
+    }
+  };
+
   const getStatusStyles = (status) => {
     switch (status) {
       case 'open':
@@ -779,6 +887,29 @@ const ServiceTicketDetail = () => {
           </div>
         </div>
 
+        {/* Delete Ticket - only visible in edit mode */}
+        {isEditing && (
+          <div className="max-w-4xl mx-auto mb-4">
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+              <h3 className="text-red-400 font-medium mb-2 flex items-center gap-2">
+                <Trash2 size={16} />
+                Danger Zone
+              </h3>
+              <p className="text-sm text-zinc-400 mb-3">
+                Permanently delete this ticket and all associated data. This action cannot be undone.
+              </p>
+              <button
+                onClick={handleDeleteTicket}
+                disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600/20 border border-red-500/50 text-red-400 hover:bg-red-600/30 hover:text-red-300 transition-colors disabled:opacity-50"
+              >
+                <Trash2 size={16} />
+                Delete Ticket Permanently
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
@@ -850,6 +981,65 @@ const ServiceTicketDetail = () => {
               {expandedSections.triage && (
                 <div className="p-4 pt-0 border-t border-zinc-700">
                   <ServiceTriageForm ticket={ticket} onUpdate={loadTicket} />
+                </div>
+              )}
+            </div>
+
+            {/* Time Tracking Section - Collapsible */}
+            <div className="bg-zinc-800 rounded-lg overflow-hidden">
+              <button
+                onClick={() => toggleSection('timeTracking')}
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock size={18} className="text-cyan-400" />
+                  <h2 className="font-semibold text-white">Time Tracking</h2>
+                  {ticket.hourly_rate && (
+                    <span className="text-xs text-zinc-400">
+                      ${ticket.hourly_rate}/hr
+                    </span>
+                  )}
+                </div>
+                {expandedSections.timeTracking ? (
+                  <ChevronDown size={18} className="text-zinc-400" />
+                ) : (
+                  <ChevronRight size={18} className="text-zinc-400" />
+                )}
+              </button>
+              {expandedSections.timeTracking && (
+                <div className="p-4 pt-0 border-t border-zinc-700">
+                  <ServiceTimeTracker
+                    ticket={ticket}
+                    technicians={technicians}
+                    onUpdate={loadTicket}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Photos Section - Collapsible */}
+            <div className="bg-zinc-800 rounded-lg overflow-hidden">
+              <button
+                onClick={() => toggleSection('photos')}
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Camera size={18} className="text-green-400" />
+                  <h2 className="font-semibold text-white">Photos</h2>
+                </div>
+                {expandedSections.photos ? (
+                  <ChevronDown size={18} className="text-zinc-400" />
+                ) : (
+                  <ChevronRight size={18} className="text-zinc-400" />
+                )}
+              </button>
+              {expandedSections.photos && (
+                <div className="p-4 pt-0 border-t border-zinc-700">
+                  <ServicePhotosManager
+                    ticketId={ticket.id}
+                    user={user}
+                    sharePointFolderUrl={ticket.sharepoint_folder_url}
+                  />
                 </div>
               )}
             </div>
@@ -1278,6 +1468,51 @@ const ServiceTicketDetail = () => {
                   <MessageSquare size={16} />
                   Add Note
                 </button>
+
+                {/* QuickBooks Export - only for resolved/closed tickets */}
+                {(ticket.status === 'resolved' || ticket.status === 'closed') && (
+                  <>
+                    {ticket.qbo_invoice_id ? (
+                      <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                        <div className="flex items-center gap-2 text-green-400 text-sm mb-1">
+                          <CheckCircle size={14} />
+                          <span className="font-medium">Exported to QuickBooks</span>
+                        </div>
+                        <div className="text-xs text-zinc-400">
+                          Invoice #{ticket.qbo_invoice_number || ticket.qbo_invoice_id}
+                          {ticket.qbo_synced_at && (
+                            <span className="ml-2">
+                              • {new Date(ticket.qbo_synced_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleExportToQuickBooks}
+                        disabled={exportingToQBO}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-sm transition-colors disabled:opacity-50"
+                      >
+                        {exportingToQBO ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            Creating Invoice...
+                          </>
+                        ) : (
+                          <>
+                            <DollarSign size={16} />
+                            Export to QuickBooks
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {qboError && (
+                      <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+                        {qboError}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
