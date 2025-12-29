@@ -524,7 +524,7 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
                       value={searchQuery}
                       onChange={(e) => handleSearchChange(e.target.value)}
                       onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
-                      placeholder="Search by name, part number, or manufacturer..."
+                      placeholder="Search by name, part number, description, or manufacturer..."
                       className="w-full pl-9 pr-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
                       autoFocus
                     />
@@ -547,11 +547,16 @@ const ServicePartsManager = ({ ticket, onUpdate }) => {
                               <div className="font-medium text-white text-sm">
                                 {part.name || part.part_number}
                               </div>
-                              <div className="text-xs text-zinc-400 flex items-center gap-2">
+                              <div className="text-xs text-zinc-400 flex items-center gap-2 flex-wrap">
                                 {part.part_number && <span className="font-mono">#{part.part_number}</span>}
                                 {part.manufacturer && <span>{part.manufacturer}</span>}
                                 {part.model && <span className="text-zinc-500">{part.model}</span>}
                               </div>
+                              {part.description && (
+                                <div className="text-xs text-zinc-500 mt-1 line-clamp-2">
+                                  {part.description}
+                                </div>
+                              )}
                             </button>
                           ))}
                           {/* Option to add new part */}
