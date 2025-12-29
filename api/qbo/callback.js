@@ -40,8 +40,16 @@ export default async function handler(req, res) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
+    // Build the full callback URL that intuit-oauth expects
+    // req.url in Vercel only has the path, so we need to construct the full URL
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const fullUrl = `${protocol}://${host}${req.url}`;
+
+    console.log('[QBO Callback] Full URL for token exchange:', fullUrl);
+
     // Exchange authorization code for tokens
-    const authResponse = await oauthClient.createToken(req.url);
+    const authResponse = await oauthClient.createToken(fullUrl);
     const token = authResponse.getJson();
 
     console.log('[QBO Callback] Token received for realmId:', realmId);
