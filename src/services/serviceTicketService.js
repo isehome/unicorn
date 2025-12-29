@@ -1001,7 +1001,7 @@ export const servicePartsService = {
         .from('service_ticket_parts')
         .select(`
           *,
-          global_part:global_parts(id, name, part_number, unit_cost)
+          global_part:global_parts(id, name, part_number, manufacturer, description)
         `)
         .eq('ticket_id', ticketId)
         .order('created_at', { ascending: true });
