@@ -175,6 +175,7 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Brady Printer** | Print equipment labels |
 | **Microsoft 365 Calendar** | Technician calendar sync for service appointments |
 | **Retell AI** | Voice-based service intake (inbound calls) |
+| **QuickBooks Online** | Invoice creation from service tickets |
 
 ---
 
@@ -333,6 +334,70 @@ Dashboard showing:
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
 
+#### 8.10 QuickBooks Online Integration
+
+Service tickets can be exported to QuickBooks Online as invoices for billing.
+
+**OAuth Flow:**
+1. User clicks "Connect to QuickBooks" in Settings
+2. Redirects to QuickBooks authorization (`/api/qbo/auth`)
+3. User logs in and authorizes the app
+4. Callback stores tokens in `qbo_auth_tokens` table
+5. Tokens auto-refresh when expired (access token = 1 hour, refresh token = 100 days rolling)
+
+**Invoice Creation Flow:**
+1. Complete a service ticket (add time logs and/or parts)
+2. Click "Export to QuickBooks" button
+3. System finds or creates QBO customer (maps via `qbo_customer_mapping`)
+4. Creates invoice with labor (from time logs) and parts line items
+5. Stores `qbo_invoice_id` on ticket for tracking
+
+**Environment Variables Required:**
+| Variable | Description |
+|----------|-------------|
+| `QBO_CLIENT_ID` | From QuickBooks Developer Portal |
+| `QBO_CLIENT_SECRET` | From QuickBooks Developer Portal |
+| `QBO_REDIRECT_URI` | `https://unicorn-one.vercel.app/api/qbo/callback` |
+| `QBO_ENVIRONMENT` | `sandbox` or `production` |
+
+**QuickBooks Developer Portal Setup:**
+1. Create app at [developer.intuit.com](https://developer.intuit.com)
+2. Get Client ID and Client Secret from Keys & credentials
+3. Add Redirect URI: `https://unicorn-one.vercel.app/api/qbo/callback`
+4. Use Sandbox keys for testing, Production keys for live
+
+**API Endpoints:**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/qbo/auth` | GET | Initiate OAuth, returns auth URL |
+| `/api/qbo/callback` | GET | OAuth callback, stores tokens |
+| `/api/qbo/create-invoice` | POST | Create invoice from ticket |
+| `/api/qbo/customers` | GET/POST | Search or create QBO customers |
+
+**Database Tables:**
+| Table | Purpose |
+|-------|---------|
+| `qbo_auth_tokens` | OAuth tokens (access, refresh, expiry, realm_id) |
+| `qbo_customer_mapping` | Links contacts to QBO customer IDs |
+
+**Service Ticket QBO Fields:**
+- `qbo_invoice_id` - QuickBooks invoice ID after export
+- `qbo_invoice_number` - Invoice number (e.g., "1042")
+- `qbo_synced_at` - When invoice was created
+- `qbo_sync_status` - pending, synced, failed
+- `qbo_sync_error` - Error message if failed
+
+**Key Files:**
+| Purpose | File |
+|---------|------|
+| OAuth initiation | `api/qbo/auth.js` |
+| OAuth callback | `api/qbo/callback.js` |
+| Invoice creation | `api/qbo/create-invoice.js` |
+| Customer management | `api/qbo/customers.js` |
+| Frontend service | `src/services/quickbooksService.js` |
+
+**NPM Dependency:** `intuit-oauth` (official Intuit OAuth library)
+
 ---
 
 ## Key Database Tables
@@ -355,6 +420,8 @@ Dashboard showing:
 | `service_schedules` | Scheduled service appointments |
 | `service_call_logs` | Call history and notes |
 | `service_schedule_confirmations` | Customer confirmation tokens |
+| `qbo_auth_tokens` | QuickBooks OAuth tokens |
+| `qbo_customer_mapping` | Contact to QBO customer ID mapping |
 
 ---
 
@@ -385,6 +452,7 @@ Dashboard showing:
 | **Week calendar grid** | `src/components/Service/WeekCalendarGrid.jsx` |
 | **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
 | **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
+| **QuickBooks service** | `src/services/quickbooksService.js` |
 
 ---
 
@@ -1346,6 +1414,12 @@ REACT_APP_AZURE_TENANT_ID=
 REACT_APP_UNIFI_API_KEY=        # Optional
 REACT_APP_LUCID_CLIENT_ID=      # Optional
 REACT_APP_LUCID_CLIENT_SECRET=  # Optional
+
+# QuickBooks Online Integration
+QBO_CLIENT_ID=                  # From QuickBooks Developer Portal
+QBO_CLIENT_SECRET=              # From QuickBooks Developer Portal
+QBO_REDIRECT_URI=https://unicorn-one.vercel.app/api/qbo/callback
+QBO_ENVIRONMENT=sandbox         # 'sandbox' or 'production'
 ```
 
 ---
@@ -1364,6 +1438,10 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 | `/api/knowledge-upload` | (Legacy) Upload documents for RAG knowledge base |
 | `/api/knowledge-process` | (Legacy) Process uploaded docs (extract, chunk, embed) |
 | `/api/knowledge-search` | (Legacy) Semantic search via Supabase pgvector |
+| `/api/qbo/auth` | QuickBooks OAuth initiation |
+| `/api/qbo/callback` | QuickBooks OAuth callback |
+| `/api/qbo/create-invoice` | Create invoice from service ticket |
+| `/api/qbo/customers` | Search/create QuickBooks customers |
 
 ---
 
