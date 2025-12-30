@@ -122,10 +122,12 @@ const ServiceTicketDetail = () => {
 
   // Collapsible section states
   const [expandedSections, setExpandedSections] = useState({
+    customer: true,
+    actions: true,
     triage: true,
+    parts: false,
     timeTracking: false,
     photos: false,
-    parts: false,
     purchaseOrders: false
   });
 
@@ -920,6 +922,190 @@ const ServiceTicketDetail = () => {
           </div>
         )}
 
+        {/* Mobile-first: Customer & Actions at top */}
+        <div className="lg:hidden space-y-4 mb-6">
+          {/* Customer Info - Mobile Collapsible */}
+          <div className="bg-zinc-800 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('customer')}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <User size={18} className="text-blue-400" />
+                <h2 className="font-semibold text-white">Customer</h2>
+                <span className="text-sm text-zinc-400 truncate max-w-[150px]">
+                  {ticket.customer_name || ticket.contact?.full_name || 'Unknown'}
+                </span>
+              </div>
+              {expandedSections.customer ? (
+                <ChevronDown size={18} className="text-zinc-400" />
+              ) : (
+                <ChevronRight size={18} className="text-zinc-400" />
+              )}
+            </button>
+            {expandedSections.customer && (
+              <div className="p-4 pt-0 border-t border-zinc-700">
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Name</label>
+                      <div className="flex items-center gap-2">
+                        <User size={16} className="text-zinc-500" />
+                        <input
+                          type="text"
+                          value={editData.customer_name}
+                          onChange={(e) => setEditData(prev => ({ ...prev, customer_name: e.target.value }))}
+                          placeholder="Customer name"
+                          className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Phone</label>
+                      <div className="flex items-center gap-2">
+                        <Phone size={16} className="text-zinc-500" />
+                        <input
+                          type="tel"
+                          value={editData.customer_phone}
+                          onChange={(e) => setEditData(prev => ({ ...prev, customer_phone: e.target.value }))}
+                          placeholder="Phone number"
+                          className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Email</label>
+                      <div className="flex items-center gap-2">
+                        <Mail size={16} className="text-zinc-500" />
+                        <input
+                          type="email"
+                          value={editData.customer_email}
+                          onChange={(e) => setEditData(prev => ({ ...prev, customer_email: e.target.value }))}
+                          placeholder="Email address"
+                          className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-500 mb-1 block">Address</label>
+                      <div className="flex items-start gap-2">
+                        <MapPin size={16} className="text-zinc-500 mt-1" />
+                        <textarea
+                          value={editData.customer_address}
+                          onChange={(e) => setEditData(prev => ({ ...prev, customer_address: e.target.value }))}
+                          placeholder="Customer address"
+                          rows={2}
+                          className="flex-1 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 text-sm focus:outline-none focus:border-zinc-500 resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {(ticket.customer_name || ticket.contact?.full_name) && (
+                      <div className="flex items-center gap-2 text-zinc-300 text-sm">
+                        <User size={14} className="text-zinc-500" />
+                        {ticket.customer_name || ticket.contact?.full_name}
+                      </div>
+                    )}
+                    {(ticket.customer_phone || ticket.contact?.phone) && (
+                      <a
+                        href={`tel:${ticket.customer_phone || ticket.contact?.phone}`}
+                        className="flex items-center gap-2 text-zinc-300 hover:text-white text-sm"
+                      >
+                        <Phone size={14} className="text-zinc-500" />
+                        {ticket.customer_phone || ticket.contact?.phone}
+                      </a>
+                    )}
+                    {(ticket.customer_email || ticket.contact?.email) && (
+                      <a
+                        href={`mailto:${ticket.customer_email || ticket.contact?.email}`}
+                        className="flex items-center gap-2 text-zinc-300 hover:text-white text-sm"
+                      >
+                        <Mail size={14} className="text-zinc-500" />
+                        {ticket.customer_email || ticket.contact?.email}
+                      </a>
+                    )}
+                    {ticket.customer_address && (
+                      <div className="flex items-start gap-2 text-zinc-300 text-sm">
+                        <MapPin size={14} className="text-zinc-500 mt-0.5" />
+                        <span>{ticket.customer_address}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Actions - Mobile Collapsible */}
+          <div className="bg-zinc-800 rounded-lg overflow-hidden">
+            <button
+              onClick={() => toggleSection('actions')}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Settings size={18} className="text-violet-400" />
+                <h2 className="font-semibold text-white">Quick Actions</h2>
+              </div>
+              {expandedSections.actions ? (
+                <ChevronDown size={18} className="text-zinc-400" />
+              ) : (
+                <ChevronRight size={18} className="text-zinc-400" />
+              )}
+            </button>
+            {expandedSections.actions && (
+              <div className="p-4 pt-0 border-t border-zinc-700">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setShowAssign(true)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
+                  >
+                    <User size={14} />
+                    Assign
+                  </button>
+                  <button
+                    onClick={() => setShowSchedule(true)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
+                  >
+                    <Calendar size={14} />
+                    Schedule
+                  </button>
+                  <button
+                    onClick={() => setShowAddNote(true)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
+                  >
+                    <MessageSquare size={14} />
+                    Add Note
+                  </button>
+                  {(ticket.status === 'resolved' || ticket.status === 'closed') && !ticket.qbo_invoice_id && (
+                    <button
+                      onClick={handleExportToQuickBooks}
+                      disabled={exportingToQBO}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-sm transition-colors disabled:opacity-50"
+                    >
+                      {exportingToQBO ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <DollarSign size={14} />
+                      )}
+                      QuickBooks
+                    </button>
+                  )}
+                </div>
+                {ticket.qbo_invoice_id && (
+                  <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                    <div className="flex items-center gap-2 text-green-400 text-xs">
+                      <CheckCircle size={12} />
+                      <span>Invoice #{ticket.qbo_invoice_number || ticket.qbo_invoice_id}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
@@ -995,6 +1181,48 @@ const ServiceTicketDetail = () => {
               )}
             </div>
 
+            {/* Parts Section - Collapsible (right after Triage) */}
+            <div className="bg-zinc-800 rounded-lg overflow-hidden">
+              <button
+                onClick={() => toggleSection('parts')}
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Package size={18} className="text-amber-400" />
+                  <h2 className="font-semibold text-white">Parts & Equipment</h2>
+                  {partsNeededCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
+                      {partsNeededCount} needed
+                    </span>
+                  )}
+                  {partsCount > 0 && partsNeededCount === 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-600 text-zinc-300">
+                      {partsCount} total
+                    </span>
+                  )}
+                </div>
+                {expandedSections.parts ? (
+                  <ChevronDown size={18} className="text-zinc-400" />
+                ) : (
+                  <ChevronRight size={18} className="text-zinc-400" />
+                )}
+              </button>
+              {expandedSections.parts && (
+                <div className="p-4 pt-0 border-t border-zinc-700">
+                  <ServicePartsManager
+                    ticket={ticket}
+                    onUpdate={async () => {
+                      await loadTicket();
+                      // Refresh parts counts
+                      const parts = await servicePartsService.getPartsForTicket(ticket.id);
+                      setPartsCount(parts?.length || 0);
+                      setPartsNeededCount(parts?.filter(p => p.status === 'needed').length || 0);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
             {/* Time Tracking Section - Collapsible */}
             <div className="bg-zinc-800 rounded-lg overflow-hidden">
               <button
@@ -1049,48 +1277,6 @@ const ServiceTicketDetail = () => {
                     ticketId={ticket.id}
                     user={user}
                     sharePointFolderUrl={ticket.sharepoint_folder_url}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Parts Section - Collapsible */}
-            <div className="bg-zinc-800 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection('parts')}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Package size={18} className="text-amber-400" />
-                  <h2 className="font-semibold text-white">Parts & Equipment</h2>
-                  {partsNeededCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
-                      {partsNeededCount} needed
-                    </span>
-                  )}
-                  {partsCount > 0 && partsNeededCount === 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-600 text-zinc-300">
-                      {partsCount} total
-                    </span>
-                  )}
-                </div>
-                {expandedSections.parts ? (
-                  <ChevronDown size={18} className="text-zinc-400" />
-                ) : (
-                  <ChevronRight size={18} className="text-zinc-400" />
-                )}
-              </button>
-              {expandedSections.parts && (
-                <div className="p-4 pt-0 border-t border-zinc-700">
-                  <ServicePartsManager
-                    ticket={ticket}
-                    onUpdate={async () => {
-                      await loadTicket();
-                      // Refresh parts counts
-                      const parts = await servicePartsService.getPartsForTicket(ticket.id);
-                      setPartsCount(parts?.length || 0);
-                      setPartsNeededCount(parts?.filter(p => p.status === 'needed').length || 0);
-                    }}
                   />
                 </div>
               )}
