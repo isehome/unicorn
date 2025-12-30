@@ -865,6 +865,7 @@ export const serviceTriageService = {
         triaged_by: triageData.triaged_by,
         triaged_by_name: triageData.triaged_by_name,
         triaged_at: ticket?.triaged_at || new Date().toISOString(), // Only set if not already triaged
+        initial_customer_comment: triageData.initial_customer_comment || null,
         estimated_hours: triageData.estimated_hours,
         parts_needed: triageData.parts_needed || false,
         proposal_needed: triageData.proposal_needed || false,

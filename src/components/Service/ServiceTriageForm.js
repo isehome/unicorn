@@ -1,11 +1,15 @@
 /**
  * ServiceTriageForm.js
- * Triage section for service tickets - captures timestamped comments, estimated hours
- * Auto-populates triaged_by from current user (no dropdown selector)
+ * Triage section for service tickets - captures initial customer comment and technician triage notes
+ *
+ * Workflow:
+ * 1. Customer calls/texts/emails with an issue - capture their initial comment
+ * 2. Technician triages the issue - adds assessment comments
+ * 3. All fields auto-save on change
  */
 
-import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Clock, Package, FileText, Loader2, CheckCircle, User, Send, MessageSquare, ExternalLink, Link } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Clock, Package, FileText, Loader2, CheckCircle, User, Send, MessageSquare, ExternalLink, Link, Phone } from 'lucide-react';
 import { serviceTriageService } from '../../services/serviceTicketService';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -47,10 +51,12 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [addingComment, setAddingComment] = useState(false);
+  const saveTimeoutRef = useRef(null);
 
   // Form state
   const [newComment, setNewComment] = useState('');
   const [triageData, setTriageData] = useState({
+    initial_customer_comment: ticket?.initial_customer_comment || '',
     estimated_hours: ticket?.estimated_hours || '',
     parts_needed: ticket?.parts_needed || false,
     proposal_needed: ticket?.proposal_needed || false,
@@ -68,6 +74,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
   useEffect(() => {
     if (ticket) {
       setTriageData({
+        initial_customer_comment: ticket.initial_customer_comment || '',
         estimated_hours: ticket.estimated_hours || '',
         parts_needed: ticket.parts_needed || false,
         proposal_needed: ticket.proposal_needed || false,
@@ -75,6 +82,64 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
       });
     }
   }, [ticket]);
+
+  /**
+   * Auto-save triage data with debounce
+   */
+  const autoSave = useCallback(async (data) => {
+    if (!ticket?.id) return;
+
+    try {
+      setSaving(true);
+      await serviceTriageService.saveTriage(ticket.id, {
+        triaged_by: user?.id,
+        triaged_by_name: user?.name || user?.email || 'User',
+        initial_customer_comment: data.initial_customer_comment || null,
+        estimated_hours: data.estimated_hours ? parseFloat(data.estimated_hours) : null,
+        parts_needed: data.parts_needed,
+        proposal_needed: data.proposal_needed,
+        proposal_url: data.proposal_url || null
+      });
+
+      if (onUpdate) {
+        await onUpdate();
+      }
+    } catch (err) {
+      console.error('[ServiceTriageForm] Auto-save failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  }, [ticket?.id, user, onUpdate]);
+
+  /**
+   * Handle field changes with debounced auto-save
+   */
+  const handleFieldChange = (field, value) => {
+    const newData = { ...triageData, [field]: value };
+    setTriageData(newData);
+
+    // Clear existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    // Debounce save for text fields, immediate for checkboxes
+    const isCheckbox = typeof value === 'boolean';
+    const delay = isCheckbox ? 0 : 1000;
+
+    saveTimeoutRef.current = setTimeout(() => {
+      autoSave(newData);
+    }, delay);
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   /**
    * Add a new triage comment
@@ -101,35 +166,6 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
     }
   };
 
-  /**
-   * Save triage data (estimated hours, parts/proposal flags)
-   * Auto-populates triaged_by from current user
-   */
-  const handleSave = async () => {
-    if (!ticket?.id) return;
-
-    try {
-      setSaving(true);
-      await serviceTriageService.saveTriage(ticket.id, {
-        // Auto-populate from current user - no dropdown needed
-        triaged_by: user?.id,
-        triaged_by_name: user?.name || user?.email || 'User',
-        estimated_hours: triageData.estimated_hours ? parseFloat(triageData.estimated_hours) : null,
-        parts_needed: triageData.parts_needed,
-        proposal_needed: triageData.proposal_needed,
-        proposal_url: triageData.proposal_url || null
-      });
-
-      if (onUpdate) {
-        await onUpdate();
-      }
-    } catch (err) {
-      console.error('[ServiceTriageForm] Failed to save triage:', err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const isTriaged = Boolean(ticket?.triaged_at);
 
   return (
@@ -151,14 +187,33 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
               {ticket.triaged_at ? formatTimestamp(ticket.triaged_at) : ''}
             </span>
           </div>
+          {saving && (
+            <Loader2 size={14} className="animate-spin text-zinc-400" />
+          )}
         </div>
       )}
 
-      {/* Triage Comments Section */}
+      {/* Initial Customer Comment - what the customer originally reported */}
+      <div>
+        <label className="text-sm text-zinc-400 mb-1.5 block flex items-center gap-2">
+          <Phone size={14} />
+          Initial Customer Comment
+        </label>
+        <textarea
+          value={triageData.initial_customer_comment}
+          onChange={(e) => handleFieldChange('initial_customer_comment', e.target.value)}
+          rows={3}
+          placeholder="What did the customer report? (e.g., 'TV won't turn on', 'Network is slow', 'Shades not responding')"
+          className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500 resize-none"
+        />
+        <p className="text-xs text-zinc-500 mt-1">Capture the customer's original description of the issue</p>
+      </div>
+
+      {/* Technician Triage Comments Section */}
       <div>
         <label className="text-sm text-zinc-400 mb-1.5 block flex items-center gap-2">
           <MessageSquare size={14} />
-          Triage Comments ({triageComments.length})
+          Technician Triage Notes ({triageComments.length})
         </label>
 
         {/* Existing Comments */}
@@ -170,7 +225,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
                 <TriageComment key={comment.id || index} comment={comment} />
               ))
           ) : (
-            <div className="text-zinc-500 text-sm py-2">No triage comments yet</div>
+            <div className="text-zinc-500 text-sm py-2">No technician notes yet</div>
           )}
         </div>
 
@@ -180,7 +235,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             rows={2}
-            placeholder="Add a triage comment..."
+            placeholder="Add technician assessment (e.g., 'Likely power supply issue', 'Need to check network switch')"
             className="flex-1 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500 resize-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && e.metaKey) {
@@ -194,7 +249,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
             disabled={!newComment.trim() || addingComment}
             className="px-3 py-2 rounded-lg disabled:opacity-50 transition-colors self-end"
             style={{ backgroundColor: brandColors.success, color: '#000' }}
-            title="Add comment (⌘+Enter)"
+            title="Add note (⌘+Enter)"
           >
             {addingComment ? (
               <Loader2 size={16} className="animate-spin" />
@@ -203,7 +258,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
             )}
           </button>
         </div>
-        <p className="text-xs text-zinc-500 mt-1">Press ⌘+Enter to add comment</p>
+        <p className="text-xs text-zinc-500 mt-1">Add technician assessment to help understand the issue better</p>
       </div>
 
       {/* Estimated Hours */}
@@ -211,11 +266,12 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
         <label className="text-sm text-zinc-400 mb-1.5 block flex items-center gap-2">
           <Clock size={14} />
           Estimated Time to Complete (hours)
+          {saving && <Loader2 size={12} className="animate-spin" />}
         </label>
         <input
           type="number"
           value={triageData.estimated_hours}
-          onChange={(e) => setTriageData(prev => ({ ...prev, estimated_hours: e.target.value }))}
+          onChange={(e) => handleFieldChange('estimated_hours', e.target.value)}
           min="0"
           step="0.5"
           placeholder="e.g., 2.5"
@@ -230,7 +286,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
           type="checkbox"
           id="partsNeeded"
           checked={triageData.parts_needed}
-          onChange={(e) => setTriageData(prev => ({ ...prev, parts_needed: e.target.checked }))}
+          onChange={(e) => handleFieldChange('parts_needed', e.target.checked)}
           className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-violet-600 focus:ring-violet-500"
         />
         <label htmlFor="partsNeeded" className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
@@ -245,7 +301,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
           type="checkbox"
           id="proposalNeeded"
           checked={triageData.proposal_needed}
-          onChange={(e) => setTriageData(prev => ({ ...prev, proposal_needed: e.target.checked }))}
+          onChange={(e) => handleFieldChange('proposal_needed', e.target.checked)}
           className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-violet-600 focus:ring-violet-500"
         />
         <label htmlFor="proposalNeeded" className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
@@ -265,7 +321,7 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
             <input
               type="url"
               value={triageData.proposal_url}
-              onChange={(e) => setTriageData(prev => ({ ...prev, proposal_url: e.target.value }))}
+              onChange={(e) => handleFieldChange('proposal_url', e.target.value)}
               placeholder="https://portal.io/..."
               className="flex-1 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
             />
@@ -284,28 +340,6 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
           <p className="text-xs text-zinc-500 mt-1">Link to the proposal in Portal.io or other proposal tool</p>
         </div>
       )}
-
-      {/* Save Button */}
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
-          style={{ backgroundColor: brandColors.success, color: '#000' }}
-        >
-          {saving ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <CheckCircle size={16} />
-              {isTriaged ? 'Update Triage' : 'Save Triage'}
-            </>
-          )}
-        </button>
-      </div>
     </div>
   );
 };
