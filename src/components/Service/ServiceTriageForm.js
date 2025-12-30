@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ClipboardCheck, Clock, Package, FileText, Loader2, CheckCircle, User, Send, MessageSquare } from 'lucide-react';
+import { ClipboardCheck, Clock, Package, FileText, Loader2, CheckCircle, User, Send, MessageSquare, ExternalLink, Link } from 'lucide-react';
 import { serviceTriageService } from '../../services/serviceTicketService';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -53,7 +53,8 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
   const [triageData, setTriageData] = useState({
     estimated_hours: ticket?.estimated_hours || '',
     parts_needed: ticket?.parts_needed || false,
-    proposal_needed: ticket?.proposal_needed || false
+    proposal_needed: ticket?.proposal_needed || false,
+    proposal_url: ticket?.proposal_url || ''
   });
 
   // Parse triage comments from ticket
@@ -69,7 +70,8 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
       setTriageData({
         estimated_hours: ticket.estimated_hours || '',
         parts_needed: ticket.parts_needed || false,
-        proposal_needed: ticket.proposal_needed || false
+        proposal_needed: ticket.proposal_needed || false,
+        proposal_url: ticket.proposal_url || ''
       });
     }
   }, [ticket]);
@@ -114,7 +116,8 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
         triaged_by_name: user?.name || user?.email || 'User',
         estimated_hours: triageData.estimated_hours ? parseFloat(triageData.estimated_hours) : null,
         parts_needed: triageData.parts_needed,
-        proposal_needed: triageData.proposal_needed
+        proposal_needed: triageData.proposal_needed,
+        proposal_url: triageData.proposal_url || null
       });
 
       if (onUpdate) {
@@ -250,6 +253,37 @@ const ServiceTriageForm = ({ ticket, onUpdate }) => {
           Customer Proposal Needed
         </label>
       </div>
+
+      {/* Proposal URL Field - shows when proposal_needed is checked */}
+      {triageData.proposal_needed && (
+        <div>
+          <label className="text-sm text-zinc-400 mb-1.5 block flex items-center gap-2">
+            <Link size={14} />
+            Proposal URL (Portal.io)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="url"
+              value={triageData.proposal_url}
+              onChange={(e) => setTriageData(prev => ({ ...prev, proposal_url: e.target.value }))}
+              placeholder="https://portal.io/..."
+              className="flex-1 px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
+            />
+            {triageData.proposal_url && (
+              <a
+                href={triageData.proposal_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors flex items-center"
+                title="Open proposal"
+              >
+                <ExternalLink size={16} />
+              </a>
+            )}
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">Link to the proposal in Portal.io or other proposal tool</p>
+        </div>
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end pt-2">

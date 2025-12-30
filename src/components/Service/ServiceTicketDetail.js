@@ -131,6 +131,7 @@ const ServiceTicketDetail = () => {
 
   // Parts and PO counts for badges
   const [partsCount, setPartsCount] = useState(0);
+  const [partsNeededCount, setPartsNeededCount] = useState(0);
   const [posCount, setPosCount] = useState(0);
 
   // QuickBooks export state
@@ -321,6 +322,8 @@ const ServiceTicketDetail = () => {
           servicePOService.getPOsForTicket(ticket.id)
         ]);
         setPartsCount(parts?.length || 0);
+        // Count only parts with status 'needed' for the badge
+        setPartsNeededCount(parts?.filter(p => p.status === 'needed').length || 0);
         setPosCount(pos?.length || 0);
       } catch (err) {
         console.error('[ServiceTicketDetail] Failed to load counts:', err);
@@ -328,6 +331,13 @@ const ServiceTicketDetail = () => {
     };
     loadCounts();
   }, [ticket?.id]);
+
+  // Auto-expand parts section when parts_needed is checked
+  useEffect(() => {
+    if (ticket?.parts_needed) {
+      setExpandedSections(prev => ({ ...prev, parts: true }));
+    }
+  }, [ticket?.parts_needed]);
 
   // Publish state for AI Brain
   useEffect(() => {
@@ -1053,13 +1063,15 @@ const ServiceTicketDetail = () => {
                 <div className="flex items-center gap-2">
                   <Package size={18} className="text-amber-400" />
                   <h2 className="font-semibold text-white">Parts & Equipment</h2>
-                  {partsCount > 0 && (
+                  {partsNeededCount > 0 && (
                     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400">
-                      {partsCount}
+                      {partsNeededCount} needed
                     </span>
                   )}
-                  {ticket.parts_needed && (
-                    <span className="text-xs text-amber-400">Parts needed</span>
+                  {partsCount > 0 && partsNeededCount === 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-600 text-zinc-300">
+                      {partsCount} total
+                    </span>
                   )}
                 </div>
                 {expandedSections.parts ? (
@@ -1074,9 +1086,10 @@ const ServiceTicketDetail = () => {
                     ticket={ticket}
                     onUpdate={async () => {
                       await loadTicket();
-                      // Refresh parts count
+                      // Refresh parts counts
                       const parts = await servicePartsService.getPartsForTicket(ticket.id);
                       setPartsCount(parts?.length || 0);
+                      setPartsNeededCount(parts?.filter(p => p.status === 'needed').length || 0);
                     }}
                   />
                 </div>

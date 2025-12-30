@@ -867,7 +867,8 @@ export const serviceTriageService = {
         triaged_at: ticket?.triaged_at || new Date().toISOString(), // Only set if not already triaged
         estimated_hours: triageData.estimated_hours,
         parts_needed: triageData.parts_needed || false,
-        proposal_needed: triageData.proposal_needed || false
+        proposal_needed: triageData.proposal_needed || false,
+        proposal_url: triageData.proposal_url || null
       };
 
       // Update status to triaged if currently open
