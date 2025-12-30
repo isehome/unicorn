@@ -9,30 +9,36 @@ import { serviceTimeService } from '../../services/serviceTimeService';
 import { brandColors } from '../../styles/styleSystem';
 
 /**
- * Format date for datetime-local input
+ * Format date for date input (YYYY-MM-DD)
  */
-const formatDateTimeLocal = (date) => {
+const formatDateInput = (date) => {
   if (!date) return '';
   const d = new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return `${year}-${month}-${day}`;
 };
 
 /**
- * Calculate duration between two dates in hours and minutes
+ * Calculate hours from check_in and check_out for editing existing entries
  */
-const calculateDuration = (checkIn, checkOut) => {
-  if (!checkIn || !checkOut) return null;
+const calculateHoursFromEntry = (checkIn, checkOut) => {
+  if (!checkIn || !checkOut) return 1;
   const diff = new Date(checkOut) - new Date(checkIn);
-  if (diff <= 0) return null;
-  const hours = Math.floor(diff / 3600000);
-  const minutes = Math.floor((diff % 3600000) / 60000);
-  return { hours, minutes, totalMinutes: hours * 60 + minutes };
+  if (diff <= 0) return 1;
+  const hours = diff / 3600000;
+  // Round to nearest 0.5
+  return Math.round(hours * 2) / 2;
 };
+
+/**
+ * Generate hours options in 0.5 increments
+ */
+const hoursOptions = [];
+for (let h = 0.5; h <= 12; h += 0.5) {
+  hoursOptions.push(h);
+}
 
 const ServiceTimeEntryModal = ({
   isOpen,
@@ -46,14 +52,13 @@ const ServiceTimeEntryModal = ({
   const [formData, setFormData] = useState({
     technician_email: '',
     technician_name: '',
-    check_in: '',
-    check_out: '',
+    work_date: '',
+    hours: 1,
     notes: ''
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
-  const [duration, setDuration] = useState(null);
 
   const isEditing = !!entry;
 
@@ -63,29 +68,21 @@ const ServiceTimeEntryModal = ({
       setFormData({
         technician_email: entry.technician_email || '',
         technician_name: entry.technician_name || '',
-        check_in: formatDateTimeLocal(entry.check_in),
-        check_out: formatDateTimeLocal(entry.check_out),
+        work_date: formatDateInput(entry.check_in),
+        hours: calculateHoursFromEntry(entry.check_in, entry.check_out),
         notes: entry.notes || ''
       });
     } else {
-      // Default to current user and now
-      const now = new Date();
-      const oneHourAgo = new Date(now.getTime() - 3600000);
+      // Default to current user and today
       setFormData({
         technician_email: currentUser?.email || '',
         technician_name: currentUser?.name || currentUser?.full_name || '',
-        check_in: formatDateTimeLocal(oneHourAgo),
-        check_out: formatDateTimeLocal(now),
+        work_date: formatDateInput(new Date()),
+        hours: 1,
         notes: ''
       });
     }
   }, [entry, currentUser]);
-
-  // Calculate duration when times change
-  useEffect(() => {
-    const dur = calculateDuration(formData.check_in, formData.check_out);
-    setDuration(dur);
-  }, [formData.check_in, formData.check_out]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -111,18 +108,20 @@ const ServiceTimeEntryModal = ({
       setError('Please select a technician');
       return;
     }
-    if (!formData.check_in || !formData.check_out) {
-      setError('Please enter both check-in and check-out times');
+    if (!formData.work_date) {
+      setError('Please select a date');
+      return;
+    }
+    if (!formData.hours || formData.hours <= 0) {
+      setError('Please enter valid hours');
       return;
     }
 
-    const checkInDate = new Date(formData.check_in);
-    const checkOutDate = new Date(formData.check_out);
-
-    if (checkOutDate <= checkInDate) {
-      setError('Check-out time must be after check-in time');
-      return;
-    }
+    // Create check_in and check_out from date and hours
+    // Set check_in to 8:00 AM on the work date, check_out based on hours
+    const workDate = new Date(formData.work_date + 'T08:00:00');
+    const checkInDate = workDate;
+    const checkOutDate = new Date(workDate.getTime() + (formData.hours * 3600000));
 
     try {
       setSaving(true);
@@ -235,47 +234,38 @@ const ServiceTimeEntryModal = ({
             )}
           </div>
 
-          {/* Check-in Time */}
+          {/* Work Date */}
           <div>
             <label className="text-sm text-zinc-400 mb-1 block flex items-center gap-2">
               <Calendar size={14} />
-              Check-in Time
+              Date
             </label>
             <input
-              type="datetime-local"
-              value={formData.check_in}
-              onChange={(e) => handleChange('check_in', e.target.value)}
+              type="date"
+              value={formData.work_date}
+              onChange={(e) => handleChange('work_date', e.target.value)}
               className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
             />
           </div>
 
-          {/* Check-out Time */}
+          {/* Hours */}
           <div>
             <label className="text-sm text-zinc-400 mb-1 block flex items-center gap-2">
-              <Calendar size={14} />
-              Check-out Time
+              <Clock size={14} />
+              Hours
             </label>
-            <input
-              type="datetime-local"
-              value={formData.check_out}
-              onChange={(e) => handleChange('check_out', e.target.value)}
+            <select
+              value={formData.hours}
+              onChange={(e) => handleChange('hours', parseFloat(e.target.value))}
               className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-            />
+            >
+              {hoursOptions.map(h => (
+                <option key={h} value={h}>
+                  {h} {h === 1 ? 'hour' : 'hours'}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Duration Display */}
-          {duration && (
-            <div className="p-3 bg-zinc-700/50 rounded-lg">
-              <div className="text-sm text-zinc-400 mb-1">Duration</div>
-              <div className="text-lg font-medium text-white">
-                {duration.hours > 0 && `${duration.hours}h `}
-                {duration.minutes}m
-                <span className="text-sm text-zinc-400 ml-2">
-                  ({duration.totalMinutes} minutes)
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* Notes */}
           <div>
@@ -320,7 +310,7 @@ const ServiceTimeEntryModal = ({
               </button>
               <button
                 type="submit"
-                disabled={saving || deleting || !duration}
+                disabled={saving || deleting || !formData.work_date || !formData.hours}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg disabled:opacity-50 transition-colors"
                 style={{ backgroundColor: brandColors.success, color: '#000' }}
               >
