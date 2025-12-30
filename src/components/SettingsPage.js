@@ -7,9 +7,8 @@ import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import ColorPicker from './ui/ColorPicker';
-import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, BookOpen, ChevronRight, Loader2, X, Link2, Link2Off, ExternalLink } from 'lucide-react';
+import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, ChevronRight, Loader2, X, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { quickbooksService } from '../services/quickbooksService';
 
 import AISettings from './UserSettings/AISettings';
 
@@ -43,10 +42,6 @@ const SettingsPage = () => {
   const [savingAvatarColor, setSavingAvatarColor] = useState(false);
   const [avatarColorMessage, setAvatarColorMessage] = useState('');
   const [showAvatarModal, setShowAvatarModal] = useState(false);
-
-  // QuickBooks state
-  const [qboStatus, setQboStatus] = useState({ connected: false, loading: true });
-  const [qboConnecting, setQboConnecting] = useState(false);
 
   const displayName = user?.displayName || user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || 'demo@example.com';
@@ -122,56 +117,6 @@ const SettingsPage = () => {
   const handleDefaultWorkspaceChange = (workspace) => {
     setDefaultWorkspace(workspace);
     localStorage.setItem('default-workspace-mode', workspace);
-  };
-
-  // Load QuickBooks connection status
-  useEffect(() => {
-    const loadQboStatus = async () => {
-      try {
-        const status = await quickbooksService.getConnectionStatus();
-        setQboStatus({ ...status, loading: false });
-      } catch (err) {
-        console.error('[SettingsPage] Failed to load QBO status:', err);
-        setQboStatus({ connected: false, loading: false, error: err.message });
-      }
-    };
-    loadQboStatus();
-
-    // Check for QBO callback query params
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('qbo_connected') === 'true') {
-      loadQboStatus();
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-    if (params.get('qbo_error')) {
-      setQboStatus(prev => ({ ...prev, error: params.get('qbo_error') }));
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
-
-  // Handle QBO connect
-  const handleQboConnect = async () => {
-    try {
-      setQboConnecting(true);
-      await quickbooksService.initiateOAuth();
-    } catch (err) {
-      console.error('[SettingsPage] QBO connect failed:', err);
-      setQboStatus(prev => ({ ...prev, error: err.message }));
-      setQboConnecting(false);
-    }
-  };
-
-  // Handle QBO disconnect
-  const handleQboDisconnect = async () => {
-    if (!window.confirm('Disconnect QuickBooks? You will need to reconnect to export invoices.')) return;
-    try {
-      await quickbooksService.disconnect();
-      setQboStatus({ connected: false, loading: false });
-    } catch (err) {
-      console.error('[SettingsPage] QBO disconnect failed:', err);
-      setQboStatus(prev => ({ ...prev, error: err.message }));
-    }
   };
 
   // Handle logout
@@ -350,97 +295,23 @@ const SettingsPage = () => {
       {/* AI Copilot Settings */}
       <AISettings />
 
-      {/* Knowledge Base Section */}
+      {/* Admin Section */}
       <section className="rounded-2xl border p-4" style={sectionStyles.card}>
         <button
-          onClick={() => navigate('/settings/knowledge')}
+          onClick={() => navigate('/admin')}
           className="w-full flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
-              <BookOpen size={20} className="text-violet-600 dark:text-violet-400" />
+            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Shield size={20} className="text-amber-600 dark:text-amber-400" />
             </div>
             <div className="text-left">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Knowledge Base</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Upload technical docs for AI-powered search</p>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Admin</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Manage users, roles, integrations, and system settings</p>
             </div>
           </div>
           <ChevronRight size={20} className="text-gray-400" />
         </button>
-      </section>
-
-      {/* QuickBooks Integration */}
-      <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">QuickBooks Online</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Connect to QuickBooks to export service invoices.</p>
-        </div>
-
-        {qboStatus.loading ? (
-          <div className="flex items-center gap-2 text-gray-500">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="text-sm">Checking connection...</span>
-          </div>
-        ) : qboStatus.connected ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-              <CheckCircle size={20} className="text-green-600 dark:text-green-400" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                  Connected to QuickBooks
-                </p>
-                {qboStatus.companyName && (
-                  <p className="text-xs text-green-700 dark:text-green-300">
-                    Company: {qboStatus.companyName}
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon={Link2Off}
-                onClick={handleQboDisconnect}
-              >
-                Disconnect
-              </Button>
-            </div>
-            {qboStatus.needsRefresh && (
-              <p className="text-xs text-amber-500">
-                Note: Token will auto-refresh on next API call.
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700">
-              <Link2Off size={20} className="text-gray-400" />
-              <div className="flex-1">
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Not connected
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Connect to export service tickets as invoices.
-                </p>
-              </div>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={Link2}
-                onClick={handleQboConnect}
-                disabled={qboConnecting}
-              >
-                {qboConnecting ? 'Connecting...' : 'Connect'}
-              </Button>
-            </div>
-            {qboStatus.error && (
-              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">
-                  {qboStatus.error}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
