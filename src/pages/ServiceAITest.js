@@ -4,38 +4,36 @@ import { Phone, PhoneOff, Mic, MicOff, Volume2, AlertCircle, CheckCircle, Loader
 /**
  * ServiceAITest - Browser-based testing page for Retell AI voice agent
  * Accessible at /service/ai-test
- *
- * Uses Retell Web SDK to connect via WebRTC
  */
 const ServiceAITest = () => {
-  const [status, setStatus] = useState('idle'); // idle, connecting, connected, ended, error
+  const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [transcript, setTranscript] = useState([]);
   const [callId, setCallId] = useState(null);
   const [testPhone, setTestPhone] = useState('+15125551234');
-
+  const [sdkReady, setSdkReady] = useState(false);
+  
   const retellClientRef = useRef(null);
-  const sdkLoadedRef = useRef(false);
 
-  // Load Retell SDK from CDN
+  // Load Retell SDK via npm package dynamically
   useEffect(() => {
-    if (sdkLoadedRef.current) return;
-
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/retell-client-js-sdk@2.0.3/dist/index.umd.min.js';
-    script.async = true;
-    script.onload = () => {
-      console.log('[ServiceAITest] Retell SDK loaded');
-      sdkLoadedRef.current = true;
+    const loadSDK = async () => {
+      try {
+        // Dynamic import of the retell-client-js-sdk package
+        const RetellModule = await import('retell-client-js-sdk');
+        window.RetellWebClient = RetellModule.RetellWebClient;
+        console.log('[ServiceAITest] Retell SDK loaded via npm');
+        setSdkReady(true);
+      } catch (err) {
+        console.error('[ServiceAITest] Failed to load SDK:', err);
+        setError('Failed to load Retell SDK. Please refresh the page.');
+      }
     };
-    script.onerror = () => {
-      setError('Failed to load Retell SDK');
-    };
-    document.body.appendChild(script);
+    
+    loadSDK();
 
     return () => {
-      // Cleanup on unmount
       if (retellClientRef.current) {
         try {
           retellClientRef.current.stopCall();
@@ -46,7 +44,16 @@ const ServiceAITest = () => {
     };
   }, []);
 
-  // Start a web call
+  const addTranscript = useCallback((role, content) => {
+    setTranscript(prev => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === role && last.content === content) {
+        return prev;
+      }
+      return [...prev, { role, content, timestamp: new Date() }];
+    });
+  }, []);
+
   const startCall = async () => {
     setError(null);
     setStatus('connecting');
@@ -60,21 +67,20 @@ const ServiceAITest = () => {
         body: JSON.stringify({ test_phone: testPhone })
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create web call');
+      const data = await response.json();
+      
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to create web call');
       }
 
-      const { access_token, call_id } = await response.json();
-      setCallId(call_id);
+      setCallId(data.call_id);
 
-      // Check if SDK is loaded
-      if (!window.Retell) {
-        throw new Error('Retell SDK not loaded');
+      if (!window.RetellWebClient) {
+        throw new Error('Retell SDK not loaded. Please refresh and try again.');
       }
 
       // Initialize Retell client
-      const retellClient = new window.Retell.RetellWebClient();
+      const retellClient = new window.RetellWebClient();
       retellClientRef.current = retellClient;
 
       // Set up event listeners
@@ -91,26 +97,27 @@ const ServiceAITest = () => {
       });
 
       retellClient.on('error', (err) => {
-        console.error('[ServiceAITest] Error:', err);
-        setError(err.message || 'Call error occurred');
+        console.error('[ServiceAITest] Call error:', err);
+        setError(typeof err === 'string' ? err : err.message || 'Call error occurred');
         setStatus('error');
       });
 
       retellClient.on('update', (update) => {
-        // Handle transcript updates
         if (update.transcript) {
-          const lastEntry = update.transcript[update.transcript.length - 1];
-          if (lastEntry) {
-            addTranscript(lastEntry.role, lastEntry.content);
+          const entries = update.transcript;
+          if (entries && entries.length > 0) {
+            const lastEntry = entries[entries.length - 1];
+            if (lastEntry && lastEntry.content) {
+              addTranscript(lastEntry.role === 'agent' ? 'agent' : 'user', lastEntry.content);
+            }
           }
         }
       });
 
       // Start the call
       await retellClient.startCall({
-        accessToken: access_token,
-        sampleRate: 24000,
-        captureDeviceId: 'default'
+        accessToken: data.access_token,
+        sampleRate: 24000
       });
 
     } catch (err) {
@@ -120,7 +127,6 @@ const ServiceAITest = () => {
     }
   };
 
-  // End the call
   const endCall = () => {
     if (retellClientRef.current) {
       try {
@@ -133,7 +139,6 @@ const ServiceAITest = () => {
     setStatus('ended');
   };
 
-  // Toggle mute
   const toggleMute = () => {
     if (retellClientRef.current) {
       if (isMuted) {
@@ -145,31 +150,18 @@ const ServiceAITest = () => {
     }
   };
 
-  // Add transcript entry
-  const addTranscript = useCallback((role, content) => {
-    setTranscript(prev => {
-      // Dedupe consecutive identical messages
-      const last = prev[prev.length - 1];
-      if (last && last.role === role && last.content === content) {
-        return prev;
-      }
-      return [...prev, { role, content, timestamp: new Date() }];
-    });
-  }, []);
-
-  // Status indicator colors
   const getStatusColor = () => {
     switch (status) {
       case 'connected': return 'bg-green-500';
       case 'connecting': return 'bg-yellow-500 animate-pulse';
       case 'error': return 'bg-red-500';
-      default: return 'bg-gray-400';
+      default: return 'bg-zinc-400';
     }
   };
 
   const getStatusText = () => {
     switch (status) {
-      case 'idle': return 'Ready to connect';
+      case 'idle': return sdkReady ? 'Ready to connect' : 'Loading SDK...';
       case 'connecting': return 'Connecting...';
       case 'connected': return 'Connected - Speaking with Sarah';
       case 'ended': return 'Call ended';
@@ -179,9 +171,9 @@ const ServiceAITest = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white pb-20">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 text-zinc-900 dark:text-white pb-20">
       {/* Header */}
-      <div className="bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+      <div className="bg-white dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 p-4 shadow-sm">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
@@ -189,7 +181,7 @@ const ServiceAITest = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold">AI Voice Agent Test</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
                 Test the Intelligent Systems service phone agent via browser
               </p>
             </div>
@@ -200,14 +192,14 @@ const ServiceAITest = () => {
       {/* Main Content */}
       <div className="max-w-3xl mx-auto p-4 space-y-4">
         {/* Status Card */}
-        <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+        <div className="bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm p-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${getStatusColor()}`} />
               <span className="font-medium">{getStatusText()}</span>
             </div>
             {callId && (
-              <span className="text-xs text-gray-400 font-mono">
+              <span className="text-xs text-zinc-400 font-mono">
                 Call: {callId.slice(0, 12)}...
               </span>
             )}
@@ -215,7 +207,7 @@ const ServiceAITest = () => {
 
           {/* Test Phone Input */}
           <div className="mb-6">
-            <label className="block text-xs uppercase tracking-wider text-gray-500 font-semibold mb-2">
+            <label className="block text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">
               Test Phone Number (for caller ID simulation)
             </label>
             <input
@@ -224,9 +216,9 @@ const ServiceAITest = () => {
               onChange={(e) => setTestPhone(e.target.value)}
               disabled={status === 'connected' || status === 'connecting'}
               placeholder="+15125551234"
-              className="w-full bg-gray-100 dark:bg-zinc-900 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm font-mono disabled:opacity-50"
+              className="w-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-600 rounded-lg px-4 py-2 text-sm font-mono disabled:opacity-50"
             />
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               Enter a phone number to test customer identification. Use a number from your contacts database.
             </p>
           </div>
@@ -244,10 +236,11 @@ const ServiceAITest = () => {
             {status === 'idle' || status === 'ended' || status === 'error' ? (
               <button
                 onClick={startCall}
-                className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-full font-medium shadow-lg transition-all hover:scale-105"
+                disabled={!sdkReady}
+                className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:bg-zinc-400 disabled:cursor-not-allowed text-white rounded-full font-medium shadow-lg transition-all hover:scale-105 disabled:hover:scale-100"
               >
                 <Phone className="w-5 h-5" />
-                Start Call
+                {sdkReady ? 'Start Call' : 'Loading...'}
               </button>
             ) : status === 'connecting' ? (
               <button
@@ -264,12 +257,11 @@ const ServiceAITest = () => {
                   className={`p-4 rounded-full transition-all ${
                     isMuted
                       ? 'bg-red-100 dark:bg-red-900/30 text-red-600'
-                      : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+                      : 'bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-600'
                   }`}
                 >
                   {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
-
                 <button
                   onClick={endCall}
                   className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-full font-medium shadow-lg transition-all hover:scale-105"
@@ -277,9 +269,8 @@ const ServiceAITest = () => {
                   <PhoneOff className="w-5 h-5" />
                   End Call
                 </button>
-
-                <div className="p-4 bg-gray-100 dark:bg-zinc-700 rounded-full">
-                  <Volume2 className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                <div className="p-4 bg-zinc-100 dark:bg-zinc-700 rounded-full">
+                  <Volume2 className="w-6 h-6 text-zinc-600 dark:text-zinc-300" />
                 </div>
               </>
             )}
@@ -287,15 +278,14 @@ const ServiceAITest = () => {
         </div>
 
         {/* Transcript */}
-        <div className="bg-white dark:bg-zinc-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-gray-400" />
+        <div className="bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm">
+          <div className="border-b border-zinc-200 dark:border-zinc-700 px-4 py-3 flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-zinc-400" />
             <span className="font-medium text-sm">Conversation Transcript</span>
           </div>
-
           <div className="p-4 max-h-96 overflow-y-auto space-y-3">
             {transcript.length === 0 ? (
-              <p className="text-center text-gray-400 text-sm py-8">
+              <p className="text-center text-zinc-400 text-sm py-8">
                 Start a call to see the conversation transcript here.
               </p>
             ) : (
@@ -305,17 +295,17 @@ const ServiceAITest = () => {
                   className={`flex ${entry.role === 'agent' ? 'justify-start' : entry.role === 'user' ? 'justify-end' : 'justify-center'}`}
                 >
                   {entry.role === 'system' ? (
-                    <span className="text-xs text-gray-400 italic">{entry.content}</span>
+                    <span className="text-xs text-zinc-400 italic">{entry.content}</span>
                   ) : (
                     <div
                       className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
                         entry.role === 'agent'
-                          ? 'bg-gray-100 dark:bg-zinc-700 text-gray-900 dark:text-gray-100'
+                          ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
                           : 'bg-violet-600 text-white'
                       }`}
                     >
                       <p>{entry.content}</p>
-                      <p className={`text-xs mt-1 ${entry.role === 'agent' ? 'text-gray-400' : 'text-violet-200'}`}>
+                      <p className={`text-xs mt-1 ${entry.role === 'agent' ? 'text-zinc-400' : 'text-violet-200'}`}>
                         {entry.role === 'agent' ? 'Sarah' : 'You'} - {entry.timestamp.toLocaleTimeString()}
                       </p>
                     </div>

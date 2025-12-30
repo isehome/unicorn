@@ -333,7 +333,6 @@ Dashboard showing:
 | `/service/tickets/new` | NewTicketForm | Create new ticket |
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
-| `/service/ai-test` | ServiceAITest | AI voice agent browser testing |
 
 #### 8.10 QuickBooks Online Integration
 
@@ -399,76 +398,6 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 
 **NPM Dependency:** `intuit-oauth` (official Intuit OAuth library)
 
-#### 8.11 Retell AI Voice Integration
-
-AI-powered phone agent for customer service intake. The agent (Sarah) handles inbound calls, identifies customers, creates service tickets, and checks availability.
-
-**Agent Configuration:**
-| Setting | Value |
-|---------|-------|
-| Agent ID | `agent_569081761d8bbd630c0794095d` |
-| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
-| Voice | ElevenLabs Hailey (American, young, professional) |
-| Model | GPT-4.1 |
-
-**Custom Tools (webhooks):**
-| Tool | Endpoint | Purpose |
-|------|----------|---------|
-| `identify_customer` | `/api/retell/identify` | Lookup customer by caller ID phone |
-| `search_knowledge` | `/api/service/knowledge` | Search knowledge base for solutions |
-| `create_ticket` | `/api/retell/create-ticket` | Create service ticket from call |
-| `check_schedule` | `/api/retell/check-schedule` | Check technician availability |
-
-**Webhook URL:** `https://unicorn-one.vercel.app/api/retell/webhook`
-
-**Test URL:** `/service/ai-test` (browser-based testing with microphone)
-
-**Environment Variables:**
-| Variable | Description |
-|----------|-------------|
-| `RETELL_API_KEY` | API key from Retell Dashboard |
-
-**API Endpoints:**
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/retell/identify` | POST | Customer lookup for AI agent |
-| `/api/retell/create-ticket` | POST | Create ticket from AI call |
-| `/api/retell/check-schedule` | POST | Check availability (Premium SLA) |
-| `/api/retell/webhook` | POST | Handle Retell call events |
-| `/api/retell/web-call` | POST | Create browser test call |
-
-**Database Tables:**
-| Table | Purpose |
-|-------|---------|
-| `customer_sla_tiers` | SLA tier definitions (standard, priority, premium) |
-| `customer_sla_assignments` | Links contacts to SLA tiers |
-| `retell_call_logs` | All AI phone call records with transcripts |
-
-**SLA Tiers:**
-| Tier | Response Time | Features |
-|------|--------------|----------|
-| Standard | 24 hours | Business hours support |
-| Priority | 4 hours | Extended hours, priority routing |
-| Premium | 1 hour | 24/7 support, direct technician access, scheduling |
-
-**Service Ticket AI Fields:**
-- `source` - Where ticket originated (manual, phone_ai, web)
-- `source_reference` - Retell call_id for phone tickets
-- `ai_triage_notes` - AI-generated issue description
-- `troubleshooting_attempted` - Whether AI guided troubleshooting
-- `troubleshooting_steps` - Steps attempted before dispatch
-
-**Key Files:**
-| Purpose | File |
-|---------|------|
-| Customer lookup | `api/retell/identify.js` |
-| Ticket creation | `api/retell/create-ticket.js` |
-| Schedule check | `api/retell/check-schedule.js` |
-| Webhook handler | `api/retell/webhook.js` |
-| Web call creator | `api/retell/web-call.js` |
-| Test page | `src/pages/ServiceAITest.js` |
-| DB migration | `database/migrations/20251230_retell_ai_integration.sql` |
-
 ---
 
 ## Key Database Tables
@@ -493,9 +422,6 @@ AI-powered phone agent for customer service intake. The agent (Sarah) handles in
 | `service_schedule_confirmations` | Customer confirmation tokens |
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
-| `customer_sla_tiers` | SLA tier definitions |
-| `customer_sla_assignments` | Customer SLA assignments |
-| `retell_call_logs` | AI phone call records |
 
 ---
 

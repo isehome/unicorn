@@ -842,6 +842,114 @@ export const technicianService = {
       console.error('[TechnicianService] Failed to fetch technicians by role:', error);
       throw error;
     }
+  },
+
+  /**
+   * Get all technicians with their skills for a given category
+   * Returns technicians sorted by skill match (qualified first, then others)
+   * @param {string} category - The ticket category to match skills against
+   */
+  async getAllWithSkills(category) {
+    if (!supabase) return [];
+
+    try {
+      // Get all internal technicians
+      const { data: techs, error: techsError } = await supabase
+        .from('contacts')
+        .select('id, full_name, first_name, last_name, email, phone, role')
+        .eq('is_internal', true)
+        .order('full_name');
+
+      if (techsError) {
+        console.error('[TechnicianService] Failed to fetch technicians:', techsError);
+        throw new Error(techsError.message || 'Failed to fetch technicians');
+      }
+
+      if (!techs || techs.length === 0) return [];
+
+      // Get employee skills for the specified category
+      const { data: skillsData, error: skillsError } = await supabase
+        .from('employee_skills')
+        .select(`
+          employee_id,
+          proficiency_level,
+          skill:global_skills(id, name, category)
+        `)
+        .eq('skill.category', category);
+
+      if (skillsError) {
+        console.error('[TechnicianService] Failed to fetch skills:', skillsError);
+        // Return technicians without skill info on error
+        return techs.map(t => ({ ...t, skills: [], qualified: false }));
+      }
+
+      // Map skills to employees - need to find matching profile by email
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, email');
+
+      // Create email -> profile_id mapping
+      const emailToProfileId = {};
+      if (profiles) {
+        profiles.forEach(p => {
+          if (p.email) emailToProfileId[p.email.toLowerCase()] = p.id;
+        });
+      }
+
+      // Group skills by employee_id
+      const skillsByEmployee = {};
+      if (skillsData) {
+        skillsData.forEach(es => {
+          if (es.skill) { // Filter out null skills (from the foreign key filter)
+            if (!skillsByEmployee[es.employee_id]) {
+              skillsByEmployee[es.employee_id] = [];
+            }
+            skillsByEmployee[es.employee_id].push({
+              skill_name: es.skill.name,
+              proficiency_level: es.proficiency_level
+            });
+          }
+        });
+      }
+
+      // Attach skills to technicians
+      const techsWithSkills = techs.map(tech => {
+        // Try to find profile by email
+        const profileId = tech.email ? emailToProfileId[tech.email.toLowerCase()] : null;
+        const skills = profileId ? (skillsByEmployee[profileId] || []) : [];
+
+        // Determine highest proficiency
+        const levels = ['training', 'proficient', 'expert'];
+        const highestLevel = skills.reduce((max, s) => {
+          const idx = levels.indexOf(s.proficiency_level);
+          const maxIdx = levels.indexOf(max);
+          return idx > maxIdx ? s.proficiency_level : max;
+        }, 'none');
+
+        return {
+          ...tech,
+          skills,
+          qualified: skills.length > 0,
+          highestProficiency: highestLevel,
+          skillCount: skills.length
+        };
+      });
+
+      // Sort: qualified technicians first, then by skill count, then alphabetically
+      techsWithSkills.sort((a, b) => {
+        // Qualified first
+        if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+        // Higher skill count first
+        if (a.skillCount !== b.skillCount) return b.skillCount - a.skillCount;
+        // Alphabetically
+        return (a.full_name || '').localeCompare(b.full_name || '');
+      });
+
+      return techsWithSkills;
+    } catch (error) {
+      console.error('[TechnicianService] Failed to fetch technicians with skills:', error);
+      throw error;
+    }
   }
 };
 

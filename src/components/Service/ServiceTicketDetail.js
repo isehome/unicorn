@@ -273,30 +273,39 @@ const ServiceTicketDetail = () => {
     }
   }, [id]);
 
-  // Load technicians when schedule modal opens
+  // Load technicians when schedule modal opens - with skill matching
   const loadTechnicians = useCallback(async () => {
     try {
       setLoadingTechnicians(true);
-      const data = await technicianService.getAll();
+      // Load technicians with skills for the ticket's category
+      const category = ticket?.category || 'general';
+      const data = await technicianService.getAllWithSkills(category);
       setTechnicians(data);
     } catch (err) {
       console.error('[ServiceTicketDetail] Failed to load technicians:', err);
+      // Fallback to basic list
+      try {
+        const fallbackData = await technicianService.getAll();
+        setTechnicians(fallbackData);
+      } catch (fallbackErr) {
+        console.error('[ServiceTicketDetail] Fallback failed:', fallbackErr);
+      }
     } finally {
       setLoadingTechnicians(false);
     }
-  }, []);
+  }, [ticket?.category]);
 
   useEffect(() => {
     loadTicket();
     setView('service-ticket-detail');
   }, [loadTicket, setView]);
 
-  // Load technicians when schedule or assign modal opens
+  // Load technicians when schedule or assign modal opens, or when ticket loads
   useEffect(() => {
-    if (showSchedule || showAssign) {
+    if (showSchedule || showAssign || ticket) {
       loadTechnicians();
     }
-  }, [showSchedule, showAssign, loadTechnicians]);
+  }, [showSchedule, showAssign, ticket, loadTechnicians]);
 
   // Pre-fill schedule form with assigned technician when opening schedule modal
   useEffect(() => {
@@ -893,7 +902,30 @@ const ServiceTicketDetail = () => {
                 className="px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-sm text-white focus:outline-none focus:border-zinc-500"
               >
                 <option value="">-- Unassigned --</option>
-                {technicians.map(tech => (
+                {/* Qualified technicians first (with skills matching ticket category) */}
+                {technicians.filter(t => t.qualified).length > 0 && (
+                  <optgroup label={`✓ Qualified for ${ticket.category || 'this category'}`}>
+                    {technicians.filter(t => t.qualified).map(tech => (
+                      <option key={tech.id} value={tech.id}>
+                        {tech.highestProficiency === 'expert' ? '★ ' : tech.highestProficiency === 'proficient' ? '● ' : '○ '}
+                        {tech.full_name || tech.name || tech.email}
+                        {tech.skillCount > 0 ? ` (${tech.skillCount} skill${tech.skillCount > 1 ? 's' : ''})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {/* Other technicians */}
+                {technicians.filter(t => !t.qualified).length > 0 && (
+                  <optgroup label="Other Technicians">
+                    {technicians.filter(t => !t.qualified).map(tech => (
+                      <option key={tech.id} value={tech.id}>
+                        {tech.full_name || tech.name || tech.email}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {/* Fallback if no grouping info */}
+                {!technicians.some(t => t.hasOwnProperty('qualified')) && technicians.map(tech => (
                   <option key={tech.id} value={tech.id}>
                     {tech.full_name || tech.name || tech.email}
                   </option>
@@ -1832,7 +1864,29 @@ const ServiceTicketDetail = () => {
                     className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                   >
                     <option value="">Select technician...</option>
-                    {technicians.map(tech => (
+                    {/* Qualified technicians first */}
+                    {technicians.filter(t => t.qualified).length > 0 && (
+                      <optgroup label={`✓ Qualified for ${ticket?.category || 'this category'}`}>
+                        {technicians.filter(t => t.qualified).map(tech => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.highestProficiency === 'expert' ? '★ ' : tech.highestProficiency === 'proficient' ? '● ' : '○ '}
+                            {tech.full_name}{tech.role ? ` (${tech.role})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* Other technicians */}
+                    {technicians.filter(t => !t.qualified).length > 0 && (
+                      <optgroup label="Other Technicians">
+                        {technicians.filter(t => !t.qualified).map(tech => (
+                          <option key={tech.id} value={tech.id}>
+                            {tech.full_name}{tech.role ? ` (${tech.role})` : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {/* Fallback if no grouping info */}
+                    {!technicians.some(t => t.hasOwnProperty('qualified')) && technicians.map(tech => (
                       <option key={tech.id} value={tech.id}>
                         {tech.full_name}{tech.role ? ` (${tech.role})` : ''}
                       </option>
@@ -1989,7 +2043,75 @@ const ServiceTicketDetail = () => {
                 </div>
               ) : technicians.length > 0 ? (
                 <div className="space-y-2">
-                  {technicians.map(tech => (
+                  {/* Qualified technicians section */}
+                  {technicians.filter(t => t.qualified).length > 0 && (
+                    <>
+                      <div className="text-xs text-zinc-500 font-medium px-1 py-1 border-b border-zinc-700">
+                        ✓ Qualified for {ticket?.category || 'this category'}
+                      </div>
+                      {technicians.filter(t => t.qualified).map(tech => (
+                        <button
+                          key={tech.id}
+                          onClick={() => handleAssign(tech.id)}
+                          disabled={saving}
+                          className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50 border-l-2"
+                          style={{ borderLeftColor: tech.highestProficiency === 'expert' ? '#10B981' : tech.highestProficiency === 'proficient' ? '#3B82F6' : '#F59E0B' }}
+                        >
+                          <div className="p-2 bg-zinc-600 rounded-full">
+                            <User size={16} className="text-zinc-300" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-white flex items-center gap-2">
+                              {tech.full_name}
+                              <span className="text-xs px-1.5 py-0.5 rounded" style={{
+                                backgroundColor: tech.highestProficiency === 'expert' ? '#10B98120' : tech.highestProficiency === 'proficient' ? '#3B82F620' : '#F59E0B20',
+                                color: tech.highestProficiency === 'expert' ? '#10B981' : tech.highestProficiency === 'proficient' ? '#3B82F6' : '#F59E0B'
+                              }}>
+                                {tech.highestProficiency === 'expert' ? '★ Expert' : tech.highestProficiency === 'proficient' ? '● Proficient' : '○ Training'}
+                              </span>
+                            </div>
+                            {tech.role && (
+                              <div className="text-xs text-zinc-400">{tech.role} • {tech.skillCount} skill{tech.skillCount !== 1 ? 's' : ''}</div>
+                            )}
+                          </div>
+                          {ticket?.assigned_to === tech.id && (
+                            <CheckCircle size={16} style={{ color: brandColors.success }} />
+                          )}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {/* Other technicians section */}
+                  {technicians.filter(t => !t.qualified).length > 0 && (
+                    <>
+                      <div className="text-xs text-zinc-500 font-medium px-1 py-1 border-b border-zinc-700 mt-3">
+                        Other Technicians
+                      </div>
+                      {technicians.filter(t => !t.qualified).map(tech => (
+                        <button
+                          key={tech.id}
+                          onClick={() => handleAssign(tech.id)}
+                          disabled={saving}
+                          className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50"
+                        >
+                          <div className="p-2 bg-zinc-600 rounded-full">
+                            <User size={16} className="text-zinc-300" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="text-white">{tech.full_name}</div>
+                            {tech.role && (
+                              <div className="text-xs text-zinc-400">{tech.role}</div>
+                            )}
+                          </div>
+                          {ticket?.assigned_to === tech.id && (
+                            <CheckCircle size={16} style={{ color: brandColors.success }} />
+                          )}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {/* Fallback for when no qualification data */}
+                  {!technicians.some(t => t.hasOwnProperty('qualified')) && technicians.map(tech => (
                     <button
                       key={tech.id}
                       onClick={() => handleAssign(tech.id)}

@@ -1,0 +1,18 @@
+{
+  "name": "retell-mcp-fixed",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.11.0",
+    "dotenv": "^16.5.0",
+    "retell-sdk": "^4.28.0",
+    "zod": "^3.23.8"
+  },
+  "bin": {
+    "retell-mcp-fixed": "build/index.js"
+  }
+}
