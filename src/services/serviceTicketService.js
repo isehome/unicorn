@@ -241,6 +241,7 @@ export const serviceTicketService = {
     try {
       const ticket = await this.update(id, {
         assigned_to: technicianId,
+        assigned_to_name: technicianName,
         assigned_at: new Date().toISOString(),
         status: 'triaged'
       });

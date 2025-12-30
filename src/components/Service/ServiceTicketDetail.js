@@ -867,6 +867,47 @@ const ServiceTicketDetail = () => {
             ) : (
               <h1 className="text-xl font-bold text-white">{ticket.title}</h1>
             )}
+            {/* Assigned Technician - inline in header */}
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-xs text-zinc-500">Assigned:</span>
+              <select
+                value={ticket.assigned_to || ''}
+                onChange={async (e) => {
+                  const techId = e.target.value;
+                  if (!techId) return;
+                  const tech = technicians.find(t => t.id === techId);
+                  if (tech) {
+                    try {
+                      await serviceTicketService.assign(
+                        ticket.id,
+                        techId,
+                        tech.full_name || tech.name || tech.email,
+                        user?.name || user?.email || 'User'
+                      );
+                      await loadTicket();
+                    } catch (err) {
+                      console.error('[ServiceTicketDetail] Failed to assign:', err);
+                    }
+                  }
+                }}
+                className="px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-sm text-white focus:outline-none focus:border-zinc-500"
+              >
+                <option value="">-- Unassigned --</option>
+                {technicians.map(tech => (
+                  <option key={tech.id} value={tech.id}>
+                    {tech.full_name || tech.name || tech.email}
+                  </option>
+                ))}
+              </select>
+              {ticket.assigned_to_name && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-700/50 rounded-lg">
+                  <div className="w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center text-xs text-white font-medium">
+                    {(ticket.assigned_to_name || '?')[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm text-zinc-300">{ticket.assigned_to_name}</span>
+                </div>
+              )}
+            </div>
           </div>
           {/* Edit/Save/Cancel buttons */}
           <div className="flex items-center gap-2">
@@ -1056,27 +1097,13 @@ const ServiceTicketDetail = () => {
             </button>
             {expandedSections.actions && (
               <div className="p-4 pt-0 border-t border-zinc-700">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setShowAssign(true)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
-                  >
-                    <User size={14} />
-                    Assign
-                  </button>
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setShowSchedule(true)}
                     className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
                   >
                     <Calendar size={14} />
-                    Schedule
-                  </button>
-                  <button
-                    onClick={() => setShowAddNote(true)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
-                  >
-                    <MessageSquare size={14} />
-                    Add Note
+                    Schedule Visit
                   </button>
                   {(ticket.status === 'resolved' || ticket.status === 'closed') && !ticket.qbo_invoice_id && (
                     <button
@@ -1089,7 +1116,7 @@ const ServiceTicketDetail = () => {
                       ) : (
                         <DollarSign size={14} />
                       )}
-                      QuickBooks
+                      Export to QuickBooks
                     </button>
                   )}
                 </div>
@@ -1623,14 +1650,6 @@ const ServiceTicketDetail = () => {
                     {formatDateTime(ticket.created_at)}
                   </span>
                 </div>
-                {ticket.assigned_to && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Assigned To</span>
-                    <span className="text-zinc-300">
-                      {ticket.assigned_to}
-                    </span>
-                  </div>
-                )}
                 {ticket.resolved_at && (
                   <div className="flex items-center justify-between">
                     <span className="text-zinc-500">Resolved</span>
@@ -1647,25 +1666,11 @@ const ServiceTicketDetail = () => {
               <h2 className="font-semibold text-white mb-3">Actions</h2>
               <div className="space-y-2">
                 <button
-                  onClick={() => setShowAssign(true)}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
-                >
-                  <User size={16} />
-                  Assign Ticket
-                </button>
-                <button
                   onClick={() => setShowSchedule(true)}
                   className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
                 >
                   <Calendar size={16} />
                   Schedule Visit
-                </button>
-                <button
-                  onClick={() => setShowAddNote(true)}
-                  className="w-full flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white text-sm transition-colors"
-                >
-                  <MessageSquare size={16} />
-                  Add Note
                 </button>
 
                 {/* QuickBooks Export - only for resolved/closed tickets */}
