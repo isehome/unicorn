@@ -72,6 +72,10 @@ const ServiceTicketDetail = lazy(() => import('./components/Service/ServiceTicke
 const NewTicketForm = lazy(() => import('./components/Service/NewTicketForm'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
 const ServiceReports = lazy(() => import('./pages/ServiceReports'));
+const ServiceAITest = lazy(() => import('./pages/ServiceAITest'));
+
+// Admin
+const AdminPage = lazy(() => import('./pages/AdminPage'));
 
 
 const AppRoutes = () => {
@@ -437,6 +441,14 @@ const AppRoutes = () => {
                 }
               />
               <Route
+                path="/service/ai-test"
+                element={
+                  <ProtectedRoute>
+                    <ServiceAITest />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/lucid-test"
                 element={
                   <ProtectedRoute>
@@ -461,6 +473,14 @@ const AppRoutes = () => {
                 }
               />
               <Route path="/debug-unifi" element={<UnifiDebug />} />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/public/issues/:token" element={<PublicIssuePortal />} />
               <Route path="/public/po/:token" element={<PublicPurchaseOrderPortal />} />
               <Route path="/shade-portal/:token" element={<PublicShadePortal />} />

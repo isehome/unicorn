@@ -173,6 +173,301 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **UniFi** | Match equipment to network clients by MAC |
 | **SharePoint** | Photo storage |
 | **Brady Printer** | Print equipment labels |
+| **Microsoft 365 Calendar** | Technician calendar sync for service appointments |
+| **Retell AI** | Voice-based service intake (inbound calls) |
+| **QuickBooks Online** | Invoice creation from service tickets |
+
+---
+
+### 8. Service CRM Module
+
+A full-featured service ticket management system for residential A/V and smart home service calls.
+
+#### 8.1 Service Tickets
+
+Service tickets represent customer service requests. Each ticket has:
+- **Ticket Number**: Auto-generated sequence (e.g., `SVC-2025-00042`)
+- **Customer Info**: Name, phone, email, service address
+- **Category**: Networking, Audio/Video, Automation, Shades, etc.
+- **Priority**: Urgent, High, Normal, Low
+- **Status Flow**: `new` → `triaged` → `scheduled` → `in_progress` → `completed` → `closed`
+- **Estimated Hours**: Used for calendar block sizing
+
+**Triage Process:**
+1. Ticket created (from call, form, or voice intake)
+2. PM/Dispatcher reviews and assigns priority, category, estimated hours
+3. Ticket assigned to technician
+4. Ticket scheduled via Weekly Planning
+
+#### 8.2 Weekly Planning ("Air Traffic Control")
+
+A drag-and-drop scheduling interface for dispatching service technicians.
+
+**Access:** `/service/weekly-planning` or `/service/weekly-planning?embed=true` (iframe)
+
+**Features:**
+| Feature | Description |
+|---------|-------------|
+| **Week Calendar Grid** | 7-day view with hour rows (6 AM - 10 PM) |
+| **Drag-and-Drop** | Drag unscheduled tickets onto calendar slots |
+| **Block Sizing** | Block height = `estimated_hours` field from ticket |
+| **Rescheduling** | Drag existing blocks to move appointments |
+| **30-min Buffer** | Automatic buffer enforcement between appointments |
+| **M365 Calendar Overlay** | Shows blocked time from technician's Outlook calendar |
+| **Status Colors** | AMBER = tentative, GREEN = confirmed |
+| **Technician Filter** | View one technician or all overlapping |
+| **Week Mode Toggle** | Mon-Fri (work week) or Sun-Sat (full week) |
+| **Ticket Detail Modal** | Quick view of ticket without leaving planning screen |
+
+**Iframe Embedding (for Alleo):**
+```html
+<iframe src="https://unicorn-one.vercel.app/service/weekly-planning?embed=true"
+        width="1920" height="1080" frameborder="0"
+        style="border-radius: 8px;"></iframe>
+```
+
+**Calendar Integration:**
+When a ticket is scheduled:
+1. Creates calendar event on technician's M365 calendar
+2. Event subject: `[TENTATIVE] Service: Customer Name (#ticket_number)`
+3. Customer email added as attendee (sends invite)
+4. Event body includes: title, address, phone, email, notes
+5. Location set to service address
+6. When confirmed, `[TENTATIVE]` prefix is removed
+
+#### 8.3 Schedule Status Flow
+
+```
+Ticket Created → Triaged → Scheduled (TENTATIVE) → Confirmed → In Progress → Completed
+                              ↓                        ↑
+                    Customer receives                Customer clicks
+                    confirmation link               confirm button
+```
+
+**Status Values:**
+| Status | Color | Description |
+|--------|-------|-------------|
+| `tentative` | Amber | Scheduled but not confirmed by customer |
+| `confirmed` | Green | Customer confirmed the appointment |
+| `cancelled` | Gray | Appointment cancelled |
+| `completed` | Green | Service visit completed |
+
+#### 8.4 Customer Confirmation (Planned)
+
+Customer-facing portal for appointment confirmation:
+1. Schedule created as `tentative`
+2. System sends email + SMS with confirmation link
+3. Customer clicks link → `/public/service-confirm/:token`
+4. OTP verification (phone or email)
+5. Customer sees appointment details
+6. Options: Confirm or Request Reschedule
+7. On confirm: status → `confirmed`, calendar event updated
+
+#### 8.5 Service Dashboard
+
+**Route:** `/service`
+
+Dashboard showing:
+- Active tickets count by status
+- Today's scheduled appointments
+- Pending confirmations
+- Quick stats (open tickets, scheduled this week)
+- Navigation to ticket list and weekly planning
+
+#### 8.6 Service Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service module dashboard |
+| ServiceTicketList | `src/components/Service/ServiceTicketList.js` | Ticket list with filters |
+| ServiceTicketDetail | `src/components/Service/ServiceTicketDetail.js` | Full ticket detail page |
+| NewTicketForm | `src/components/Service/NewTicketForm.js` | Create new service ticket |
+| WeekCalendarGrid | `src/components/Service/WeekCalendarGrid.jsx` | Week view calendar grid |
+| ScheduleBlock | (in WeekCalendarGrid) | Draggable schedule block component |
+| UnscheduledTicketsPanel | `src/components/Service/UnscheduledTicketsPanel.jsx` | Left sidebar with unscheduled tickets |
+| TechnicianFilterBar | `src/components/Service/TechnicianFilterBar.jsx` | Top controls (tech filter, week nav, view mode) |
+| WeeklyPlanning | `src/pages/WeeklyPlanning.js` | Main weekly planning page (embed-aware) |
+
+#### 8.7 Service Services
+
+| Service | File | Purpose |
+|---------|------|---------|
+| serviceTicketService | `src/services/serviceTicketService.js` | Ticket CRUD, status updates |
+| serviceScheduleService | `src/services/serviceTicketService.js` | Schedule management |
+| technicianService | `src/services/serviceTicketService.js` | Technician list for assignment |
+| weeklyPlanningService | `src/services/weeklyPlanningService.js` | Week schedules, buffer checking, drag-drop |
+| microsoftCalendarService | `src/services/microsoftCalendarService.js` | Calendar event creation with attendees |
+
+#### 8.8 Service Database Tables
+
+| Table | Purpose |
+|-------|---------|
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled appointments with technician/date/time |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
+
+**service_tickets columns:**
+- `id`, `ticket_number`, `title`, `description`
+- `customer_name`, `customer_phone`, `customer_email`, `service_address`
+- `category`, `priority`, `status`
+- `estimated_hours` (for calendar block sizing)
+- `assigned_to` (technician UUID)
+- `created_at`, `created_by`, `updated_at`
+
+**service_schedules columns:**
+- `id`, `ticket_id`, `technician_id`, `technician_name`
+- `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`
+- `status` (scheduled, in_progress, completed, cancelled)
+- `schedule_status` (tentative, confirmed, cancelled)
+- `calendar_event_id` (M365 event ID for updates)
+- `confirmed_at`, `confirmed_by`, `confirmation_method`
+- `service_address`, `pre_visit_notes`, `post_visit_notes`
+
+#### 8.9 Service Routes
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/service` | ServiceDashboard | Service module home |
+| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service/tickets/new` | NewTicketForm | Create new ticket |
+| `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
+| `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
+| `/service/ai-test` | ServiceAITest | AI voice agent browser testing |
+
+#### 8.10 QuickBooks Online Integration
+
+Service tickets can be exported to QuickBooks Online as invoices for billing.
+
+**OAuth Flow:**
+1. User clicks "Connect to QuickBooks" in Settings
+2. Redirects to QuickBooks authorization (`/api/qbo/auth`)
+3. User logs in and authorizes the app
+4. Callback stores tokens in `qbo_auth_tokens` table
+5. Tokens auto-refresh when expired (access token = 1 hour, refresh token = 100 days rolling)
+
+**Invoice Creation Flow:**
+1. Complete a service ticket (add time logs and/or parts)
+2. Click "Export to QuickBooks" button
+3. System finds or creates QBO customer (maps via `qbo_customer_mapping`)
+4. Creates invoice with labor (from time logs) and parts line items
+5. Stores `qbo_invoice_id` on ticket for tracking
+
+**Environment Variables Required:**
+| Variable | Description |
+|----------|-------------|
+| `QBO_CLIENT_ID` | From QuickBooks Developer Portal |
+| `QBO_CLIENT_SECRET` | From QuickBooks Developer Portal |
+| `QBO_REDIRECT_URI` | `https://unicorn-one.vercel.app/api/qbo/callback` |
+| `QBO_ENVIRONMENT` | `sandbox` or `production` |
+
+**QuickBooks Developer Portal Setup:**
+1. Create app at [developer.intuit.com](https://developer.intuit.com)
+2. Get Client ID and Client Secret from Keys & credentials
+3. Add Redirect URI: `https://unicorn-one.vercel.app/api/qbo/callback`
+4. Use Sandbox keys for testing, Production keys for live
+
+**API Endpoints:**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/qbo/auth` | GET | Initiate OAuth, returns auth URL |
+| `/api/qbo/callback` | GET | OAuth callback, stores tokens |
+| `/api/qbo/create-invoice` | POST | Create invoice from ticket |
+| `/api/qbo/customers` | GET/POST | Search or create QBO customers |
+
+**Database Tables:**
+| Table | Purpose |
+|-------|---------|
+| `qbo_auth_tokens` | OAuth tokens (access, refresh, expiry, realm_id) |
+| `qbo_customer_mapping` | Links contacts to QBO customer IDs |
+
+**Service Ticket QBO Fields:**
+- `qbo_invoice_id` - QuickBooks invoice ID after export
+- `qbo_invoice_number` - Invoice number (e.g., "1042")
+- `qbo_synced_at` - When invoice was created
+- `qbo_sync_status` - pending, synced, failed
+- `qbo_sync_error` - Error message if failed
+
+**Key Files:**
+| Purpose | File |
+|---------|------|
+| OAuth initiation | `api/qbo/auth.js` |
+| OAuth callback | `api/qbo/callback.js` |
+| Invoice creation | `api/qbo/create-invoice.js` |
+| Customer management | `api/qbo/customers.js` |
+| Frontend service | `src/services/quickbooksService.js` |
+
+**NPM Dependency:** `intuit-oauth` (official Intuit OAuth library)
+
+#### 8.11 Retell AI Voice Integration
+
+AI-powered phone agent for customer service intake. The agent (Sarah) handles inbound calls, identifies customers, creates service tickets, and checks availability.
+
+**Agent Configuration:**
+| Setting | Value |
+|---------|-------|
+| Agent ID | `agent_569081761d8bbd630c0794095d` |
+| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
+| Voice | ElevenLabs Hailey (American, young, professional) |
+| Model | GPT-4.1 |
+
+**Custom Tools (webhooks):**
+| Tool | Endpoint | Purpose |
+|------|----------|---------|
+| `identify_customer` | `/api/retell/identify` | Lookup customer by caller ID phone |
+| `search_knowledge` | `/api/service/knowledge` | Search knowledge base for solutions |
+| `create_ticket` | `/api/retell/create-ticket` | Create service ticket from call |
+| `check_schedule` | `/api/retell/check-schedule` | Check technician availability |
+
+**Webhook URL:** `https://unicorn-one.vercel.app/api/retell/webhook`
+
+**Test URL:** `/service/ai-test` (browser-based testing with microphone)
+
+**Environment Variables:**
+| Variable | Description |
+|----------|-------------|
+| `RETELL_API_KEY` | API key from Retell Dashboard |
+
+**API Endpoints:**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/retell/identify` | POST | Customer lookup for AI agent |
+| `/api/retell/create-ticket` | POST | Create ticket from AI call |
+| `/api/retell/check-schedule` | POST | Check availability (Premium SLA) |
+| `/api/retell/webhook` | POST | Handle Retell call events |
+| `/api/retell/web-call` | POST | Create browser test call |
+
+**Database Tables:**
+| Table | Purpose |
+|-------|---------|
+| `customer_sla_tiers` | SLA tier definitions (standard, priority, premium) |
+| `customer_sla_assignments` | Links contacts to SLA tiers |
+| `retell_call_logs` | All AI phone call records with transcripts |
+
+**SLA Tiers:**
+| Tier | Response Time | Features |
+|------|--------------|----------|
+| Standard | 24 hours | Business hours support |
+| Priority | 4 hours | Extended hours, priority routing |
+| Premium | 1 hour | 24/7 support, direct technician access, scheduling |
+
+**Service Ticket AI Fields:**
+- `source` - Where ticket originated (manual, phone_ai, web)
+- `source_reference` - Retell call_id for phone tickets
+- `ai_triage_notes` - AI-generated issue description
+- `troubleshooting_attempted` - Whether AI guided troubleshooting
+- `troubleshooting_steps` - Steps attempted before dispatch
+
+**Key Files:**
+| Purpose | File |
+|---------|------|
+| Customer lookup | `api/retell/identify.js` |
+| Ticket creation | `api/retell/create-ticket.js` |
+| Schedule check | `api/retell/check-schedule.js` |
+| Webhook handler | `api/retell/webhook.js` |
+| Web call creator | `api/retell/web-call.js` |
+| Test page | `src/pages/ServiceAITest.js` |
+| DB migration | `database/migrations/20251230_retell_ai_integration.sql` |
 
 ---
 
@@ -192,6 +487,15 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | `issues` | Problems/issues |
 | `contacts` | People |
 | `suppliers` | Vendors |
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled service appointments |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
+| `qbo_auth_tokens` | QuickBooks OAuth tokens |
+| `qbo_customer_mapping` | Contact to QBO customer ID mapping |
+| `customer_sla_tiers` | SLA tier definitions |
+| `customer_sla_assignments` | Customer SLA assignments |
+| `retell_call_logs` | AI phone call records |
 
 ---
 
@@ -215,6 +519,14 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | Knowledge service | `src/services/knowledgeService.js` |
 | Knowledge management UI | `src/components/knowledge/KnowledgeManagementPanel.js` |
 | Lutron shade knowledge | `src/data/lutronShadeKnowledge.js` |
+| **Service ticket service** | `src/services/serviceTicketService.js` |
+| **Weekly planning service** | `src/services/weeklyPlanningService.js` |
+| **Service dashboard** | `src/components/Service/ServiceDashboard.js` |
+| **Weekly planning page** | `src/pages/WeeklyPlanning.js` |
+| **Week calendar grid** | `src/components/Service/WeekCalendarGrid.jsx` |
+| **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
+| **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
+| **QuickBooks service** | `src/services/quickbooksService.js` |
 
 ---
 
@@ -1176,6 +1488,12 @@ REACT_APP_AZURE_TENANT_ID=
 REACT_APP_UNIFI_API_KEY=        # Optional
 REACT_APP_LUCID_CLIENT_ID=      # Optional
 REACT_APP_LUCID_CLIENT_SECRET=  # Optional
+
+# QuickBooks Online Integration
+QBO_CLIENT_ID=                  # From QuickBooks Developer Portal
+QBO_CLIENT_SECRET=              # From QuickBooks Developer Portal
+QBO_REDIRECT_URI=https://unicorn-one.vercel.app/api/qbo/callback
+QBO_ENVIRONMENT=sandbox         # 'sandbox' or 'production'
 ```
 
 ---
@@ -1194,6 +1512,10 @@ REACT_APP_LUCID_CLIENT_SECRET=  # Optional
 | `/api/knowledge-upload` | (Legacy) Upload documents for RAG knowledge base |
 | `/api/knowledge-process` | (Legacy) Process uploaded docs (extract, chunk, embed) |
 | `/api/knowledge-search` | (Legacy) Semantic search via Supabase pgvector |
+| `/api/qbo/auth` | QuickBooks OAuth initiation |
+| `/api/qbo/callback` | QuickBooks OAuth callback |
+| `/api/qbo/create-invoice` | Create invoice from service ticket |
+| `/api/qbo/customers` | Search/create QuickBooks customers |
 
 ---
 
@@ -2530,5 +2852,332 @@ The application needs a proper user capabilities/roles system to control access 
 - ShadeDetailPage now highlights measurement fields with violet glow when AI prompts
 - 5-second animation duration for visual feedback
 - Critical for hands-free measuring workflow
+
+---
+
+## 2025-12-27 & 2025-12-28
+
+### Service CRM - Weekly Planning Module (Complete)
+- **"Air Traffic Control" Interface** for drag-and-drop service ticket scheduling
+- **Iframe Embeddable** for Alleo integration
+
+#### Weekly Planning Features
+- Week-view calendar with work hours (6 AM - 10 PM)
+- **Configurable**: Toggle between Mon-Fri (work week) and Sun-Sat (full week)
+- **Horizontal scrolling/infinite weeks** - scroll right to load next weeks
+- Drag-and-drop service ticket CARDS onto calendar time slots
+- **Card height = estimated service length** (uses ticket's `estimated_hours` field)
+- Default 2-hour blocks, 30-min buffer between events
+- Toggle views: per-technician OR all overlapping
+- **Show ALL Microsoft 365 calendar events as blocked time**
+- Colors: AMBER = tentative, GREEN = confirmed
+- **Rescheduling**: Drag existing scheduled blocks to move appointments
+- **Ticket Detail Modal**: Click scheduled block to see ticket details without leaving planning
+
+#### Calendar Integration (New 2025-12-28)
+When scheduling a ticket:
+1. Creates M365 calendar event on technician's calendar
+2. Event subject: `[TENTATIVE] Service: Customer Name (#ticket_number)`
+3. **Customer email added as attendee** (sends calendar invite)
+4. Event body includes customer info, address, phone, notes
+5. Location set to service address
+6. Duration matches ticket's `estimated_hours`
+
+#### Block Sizing Fix (2025-12-28)
+- Scheduled blocks now correctly reflect ticket's `estimated_hours` field
+- Duration preserved when rescheduling (moving blocks)
+- Fallback chain: `scheduled_time_end` → `estimated_duration_minutes` → `ticket.estimated_hours` → default 2 hours
+
+#### Embed URL
+```
+https://unicorn-one.vercel.app/service/weekly-planning?embed=true
+```
+
+#### Iframe Embed Code
+```html
+<iframe src="https://unicorn-one.vercel.app/service/weekly-planning?embed=true"
+        width="1920" height="1080" frameborder="0"
+        style="border-radius: 8px;"></iframe>
+```
+
+**Dimensions: 16:9 aspect ratio (1920×1080 / 1080p)**
+
+**Note:** Embed mode requires authentication (RLS policies enforced)
+
+#### Files Created/Modified
+| File | Purpose |
+|------|---------|
+| `src/pages/WeeklyPlanning.js` | Main weekly planning page (embed-aware) |
+| `src/components/Service/WeekCalendarGrid.jsx` | Week grid with hour rows, draggable blocks |
+| `src/components/Service/UnscheduledTicketsPanel.jsx` | Draggable tickets sidebar |
+| `src/components/Service/TechnicianFilterBar.jsx` | Controls, week nav, embed modal |
+| `src/services/weeklyPlanningService.js` | Schedule management, buffer checking |
+| `src/services/microsoftCalendarService.js` | Added `createServiceAppointmentEvent`, `updateServiceAppointmentEvent` |
+| `database/migrations/20251228_weekly_planning_confirmation.sql` | DB migration |
+
+#### Database Schema Additions
+```sql
+-- service_schedules additions:
+schedule_status TEXT DEFAULT 'tentative' -- 'tentative' | 'confirmed' | 'cancelled'
+calendar_event_id TEXT                   -- M365 event ID for updates
+confirmed_at TIMESTAMPTZ
+confirmed_by TEXT
+confirmation_method TEXT                 -- 'portal' | 'phone' | 'email' | 'sms' | 'internal'
+estimated_duration_minutes INTEGER DEFAULT 120
+
+-- New table for customer confirmations:
+service_schedule_confirmations (token-based portal access)
+```
+
+#### weeklyPlanningService.js Functions
+| Function | Purpose |
+|----------|---------|
+| `getSchedulesForDateRange()` | Fetch schedules with ticket details for date range |
+| `getWeekSchedules()` | Convenience wrapper for week data |
+| `getUnscheduledTickets()` | Get triaged tickets not yet scheduled |
+| `checkBufferConflicts()` | Validate 30-min buffer between appointments |
+| `createTentativeSchedule()` | Create new schedule from drag-drop |
+| `moveSchedule()` | Reschedule existing appointment |
+| `confirmSchedule()` | Mark schedule as confirmed |
+| `cancelSchedule()` | Cancel a schedule |
+| `updateCalendarEventId()` | Store M365 event ID for later updates |
+
+---
+## 2025-12-29
+
+### Service System Enhancements (Complete)
+
+Four major enhancements to the service ticket system:
+
+#### 1. Service Time Tracking
+Check-in/check-out functionality for technicians working on service tickets.
+
+**Features:**
+- Technicians can check in when starting work on a ticket
+- Live timer displays elapsed time
+- Check out when done to record duration
+- Manual time entry for forgotten check-ins
+- Time logs history with edit/delete capability
+- Per-ticket hourly rate (default $150/hr)
+- Total hours summary per technician
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/serviceTimeService.js` | Time log CRUD, check-in/out logic |
+| `src/hooks/useServiceTimeTracking.js` | Hook with localStorage fallback |
+| `src/components/Service/ServiceTimeTracker.js` | Time tracking UI component |
+| `src/components/Service/ServiceTimeEntryModal.js` | Manual time entry modal |
+| `database/migrations/20251229_service_time_logs.sql` | Database schema |
+
+**Database Table: `service_time_logs`**
+- `ticket_id`, `technician_id`, `technician_email`, `technician_name`
+- `check_in`, `check_out` (timestamps)
+- `notes` (optional work description)
+
+#### 2. Service Photos in SharePoint
+Photo upload/management for service tickets with SharePoint integration.
+
+**Folder Structure:**
+```
+SharePoint/
+└── Service/                     # Top-level service folder
+    └── {CustomerName}/          # Customer subfolder
+        └── {TicketNumber}/      # Ticket subfolder
+            ├── before/          # Pre-work photos
+            ├── during/          # Work-in-progress
+            ├── after/           # Completed work
+            └── documentation/   # Manuals, receipts
+```
+
+**Features:**
+- Photo categories: Before, During, After, Documentation
+- Drag-and-drop upload
+- Mobile camera capture
+- Thumbnail gallery with lightbox
+- Photo captions
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/servicePhotoService.js` | Upload/delete/list photos |
+| `src/components/Service/ServicePhotosManager.js` | Photo gallery UI |
+| `database/migrations/20251229_service_ticket_photos.sql` | Database schema |
+
+**Database Table: `service_ticket_photos`**
+- `ticket_id`, `photo_url`, `category`
+- `sharepoint_drive_id`, `sharepoint_item_id` (for Graph API)
+- `caption`, `uploaded_by`, `uploaded_by_name`
+
+#### 3. Service Reporting
+Query and export service data by date range, customer, technician.
+
+**Route:** `/service/reports`
+
+**Features:**
+- Date presets (This Month, Last Month, Last 30/90 Days, This Quarter, This Year, Custom)
+- Filter by customer, technician
+- Summary cards: Total Tickets, Hours, Labor Cost, Parts Cost, Revenue
+- Tabbed interface: Overview, Tickets, Technicians, Customers
+- Charts: Hours by technician, Revenue by customer
+- CSV export
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/serviceReportService.js` | Report queries, date presets, CSV export |
+| `src/pages/ServiceReports.js` | Full reporting dashboard |
+| `database/migrations/20251229_service_reports.sql` | Views and functions |
+
+**Database Views:**
+- `service_customer_summary` - Per-customer ticket/hours/cost totals
+- `service_technician_summary` - Per-tech hours by month
+
+**Database Functions:**
+- `get_service_report()` - Detailed ticket report with filters
+- `get_service_summary()` - Summary totals for date range
+- `get_service_monthly_overview()` - Daily breakdown for charts
+- `get_technician_hours_report()` - Tech hours for date range
+- `get_customer_hours_report()` - Customer hours for date range
+
+#### 4. QuickBooks Online Export
+Manual export of completed service tickets to QuickBooks for invoicing.
+
+**Features:**
+- Export button on resolved/closed tickets
+- Creates invoice with labor (hours × rate) + parts line items
+- Auto-creates/maps customers in QBO
+- Tracks sync status on ticket
+- Connect/disconnect QBO from Settings page
+
+**Files:**
+| File | Purpose |
+|------|---------|
+| `src/services/quickbooksService.js` | OAuth flow, invoice creation |
+| `api/qbo/auth.js` | OAuth initiation endpoint |
+| `api/qbo/callback.js` | OAuth callback handler |
+| `api/qbo/create-invoice.js` | Create invoice from ticket |
+| `api/qbo/customers.js` | Search/create QBO customers |
+| `database/migrations/20251229_quickbooks_integration.sql` | QBO tables |
+
+**Database Tables:**
+- `qbo_auth_tokens` - OAuth tokens (encrypted)
+- `qbo_customer_mapping` - Maps contacts to QBO customer IDs
+
+**service_tickets additions:**
+- `qbo_invoice_id`, `qbo_invoice_number`
+- `qbo_synced_at`, `qbo_sync_status`, `qbo_sync_error`
+
+---
+
+### QuickBooks Online Setup Instructions
+
+#### Step 1: Create Intuit Developer Account
+1. Go to https://developer.intuit.com/
+2. Sign up or log in
+3. Click "Create an app"
+4. Select "QuickBooks Online and Payments"
+5. Name your app (e.g., "Unicorn Service CRM")
+
+#### Step 2: Configure App Settings
+In the Intuit Developer Portal:
+
+1. **Keys & credentials** tab:
+   - Note your **Client ID** and **Client Secret**
+
+2. **Redirect URIs** section:
+   - Add: `https://unicorn-one.vercel.app/api/qbo/callback`
+   - For local dev: `http://localhost:3000/api/qbo/callback`
+
+3. **Scopes** section (select these):
+   - `com.intuit.quickbooks.accounting` (read/write accounting data)
+
+#### Step 3: Set Environment Variables
+Add to your Vercel project (Settings → Environment Variables):
+
+```
+QBO_CLIENT_ID=your_client_id_here
+QBO_CLIENT_SECRET=your_client_secret_here
+QBO_REDIRECT_URI=https://unicorn-one.vercel.app/api/qbo/callback
+QBO_ENVIRONMENT=sandbox
+```
+
+**Note:** Use `sandbox` for testing, `production` when ready for real invoices.
+
+#### Step 4: Install Dependencies
+```bash
+npm install intuit-oauth
+```
+
+#### Step 5: Connect QuickBooks
+1. Go to Settings page in Unicorn
+2. Scroll to "QuickBooks Integration" section
+3. Click "Connect to QuickBooks"
+4. Log in with your QuickBooks Online account
+5. Authorize the app
+6. You'll be redirected back - connection status shows "Connected"
+
+#### Step 6: Test with Sandbox
+1. Create a test service ticket
+2. Add time logs (check in/out)
+3. Add parts to the ticket
+4. Set status to "Resolved" or "Closed"
+5. Click "Export to QuickBooks" button
+6. Verify invoice created in QBO sandbox
+
+#### Switching to Production
+1. In Intuit Developer Portal, submit app for review
+2. Once approved, update environment variable:
+   ```
+   QBO_ENVIRONMENT=production
+   ```
+3. Reconnect QuickBooks from Settings (need to re-authorize)
+
+#### Troubleshooting
+
+**"QuickBooks not connected" error:**
+- Go to Settings and click "Connect to QuickBooks"
+- Ensure OAuth tokens haven't expired (auto-refresh should handle this)
+
+**"Customer not found" error:**
+- System will auto-create customer in QBO using contact's name/email
+- Ensure ticket has a valid contact linked
+
+**Invoice not showing expected amounts:**
+- Check that time logs have check_out times (incomplete sessions not included)
+- Verify parts have unit_cost values set
+
+**Rate limiting:**
+- QBO has API limits; exports are batched automatically
+- If hitting limits, wait a few minutes and retry
+
+---
+
+### Service Module Routes (Updated)
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/service` | ServiceDashboard | Service module home |
+| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service/tickets/new` | NewTicketForm | Create new ticket |
+| `/service/tickets/:id` | ServiceTicketDetail | Ticket detail (photos, time, QBO) |
+| `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
+| `/service/reports` | ServiceReports | **NEW** - Reporting dashboard |
+
+---
+
+### Service Database Tables (Updated)
+
+| Table | Purpose |
+|-------|---------|
+| `service_tickets` | Service ticket records |
+| `service_schedules` | Scheduled appointments |
+| `service_call_logs` | Call history and notes |
+| `service_schedule_confirmations` | Customer confirmation tokens |
+| `service_time_logs` | **NEW** - Time tracking entries |
+| `service_ticket_photos` | **NEW** - Photo metadata |
+| `service_ticket_parts` | Parts used on tickets |
+| `qbo_auth_tokens` | **NEW** - QuickBooks OAuth tokens |
+| `qbo_customer_mapping` | **NEW** - QBO customer mappings |
 
 ---
