@@ -731,6 +731,7 @@ export const technicianService = {
   /**
    * Get all internal employees (technicians) who can be assigned to tickets
    * Uses the contacts table with is_internal = true
+   * Excludes internal groups (like Accounting, Orders) that have roles with bullet separators
    */
   async getAll() {
     if (!supabase) return [];
@@ -740,7 +741,7 @@ export const technicianService = {
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
-        .not('email', 'is', null) // Only contacts with emails (filters out internal groups like "Accounting")
+        .not('email', 'is', null)
         .order('full_name');
 
       if (error) {
@@ -748,7 +749,26 @@ export const technicianService = {
         throw new Error(error.message || 'Failed to fetch technicians');
       }
 
-      return data || [];
+      // Filter out internal groups (identified by roles containing "•" like "Accounting • Finance")
+      // and deduplicate by email to prevent duplicates
+      const seen = new Set();
+      const filtered = (data || []).filter(contact => {
+        // Exclude roles with bullet separator (internal groups)
+        if (contact.role && contact.role.includes('•')) {
+          return false;
+        }
+        // Deduplicate by email
+        if (contact.email) {
+          const emailLower = contact.email.toLowerCase();
+          if (seen.has(emailLower)) {
+            return false;
+          }
+          seen.add(emailLower);
+        }
+        return true;
+      });
+
+      return filtered;
     } catch (error) {
       console.error('[TechnicianService] Failed to fetch technicians:', error);
       throw error;
@@ -854,8 +874,8 @@ export const technicianService = {
     if (!supabase) return [];
 
     try {
-      // Get all internal technicians (with emails - filters out groups like "Accounting")
-      const { data: techs, error: techsError } = await supabase
+      // Get all internal technicians (with emails)
+      const { data: techsRaw, error: techsError } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
@@ -866,6 +886,18 @@ export const technicianService = {
         console.error('[TechnicianService] Failed to fetch technicians:', techsError);
         throw new Error(techsError.message || 'Failed to fetch technicians');
       }
+
+      // Filter out internal groups and deduplicate
+      const seen = new Set();
+      const techs = (techsRaw || []).filter(contact => {
+        if (contact.role && contact.role.includes('•')) return false;
+        if (contact.email) {
+          const emailLower = contact.email.toLowerCase();
+          if (seen.has(emailLower)) return false;
+          seen.add(emailLower);
+        }
+        return true;
+      });
 
       if (!techs || techs.length === 0) return [];
 
