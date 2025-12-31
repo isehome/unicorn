@@ -687,12 +687,25 @@ const PMProjectViewEnhanced = () => {
     if (selectedClient) {
       return selectedClient;
     }
-    return (
-      availableContacts.find(
-        (contact) =>
-          contact?.name === formData.client || contact?.company === formData.client
-      ) || null
+    const clientLower = formData.client.toLowerCase().trim();
+
+    // Try exact match first (case-insensitive)
+    let match = availableContacts.find(
+      (contact) =>
+        (contact?.name && contact.name.toLowerCase() === clientLower) ||
+        (contact?.company && contact.company.toLowerCase() === clientLower)
     );
+
+    // If no exact match, try partial match
+    if (!match) {
+      match = availableContacts.find(
+        (contact) =>
+          (contact?.name && contact.name.toLowerCase().includes(clientLower)) ||
+          (contact?.company && contact.company.toLowerCase().includes(clientLower))
+      );
+    }
+
+    return match || null;
   }, [availableContacts, formData.client, selectedClient]);
 
   const handleNewRoomNameChange = (normalized, name) => {
@@ -1492,10 +1505,24 @@ const PMProjectViewEnhanced = () => {
         // If no selectedClient, try to find matching contact
         if (!contactToUse) {
           console.log('No selectedClient, searching for matching contact...');
+          const clientLower = formData.client.toLowerCase().trim();
+
+          // Try exact match first (case-insensitive)
           contactToUse = availableContacts.find(c =>
-            c.company === formData.client ||
-            c.name === formData.client
+            (c.name && c.name.toLowerCase() === clientLower) ||
+            (c.company && c.company.toLowerCase() === clientLower)
           );
+
+          // If no exact match, try partial match (name or company contains client string)
+          if (!contactToUse) {
+            contactToUse = availableContacts.find(c =>
+              (c.name && c.name.toLowerCase().includes(clientLower)) ||
+              (c.company && c.company.toLowerCase().includes(clientLower)) ||
+              (c.name && clientLower.includes(c.name.toLowerCase())) ||
+              (c.company && clientLower.includes(c.company.toLowerCase()))
+            );
+          }
+
           console.log('Found matching contact:', contactToUse);
         }
 
@@ -1919,7 +1946,10 @@ const PMProjectViewEnhanced = () => {
 
   const handleClientSelect = (contact) => {
     // Set the client name based on the contact
-    const clientName = contact.company || contact.name || 'Unnamed Contact';
+    // For company contacts (is_company=true), use company name; otherwise use person's name
+    const clientName = contact.is_company
+      ? (contact.company || contact.name || 'Unnamed Contact')
+      : (contact.name || contact.company || 'Unnamed Contact');
     setFormData(prev => ({
       ...prev,
       client: clientName
