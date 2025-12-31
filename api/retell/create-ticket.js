@@ -1,6 +1,7 @@
 /**
  * api/retell/create-ticket.js
- * Create service ticket (issue) from Retell AI call
+ * Create service ticket from Retell AI call
+ * Uses service_tickets table (not issues)
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -9,16 +10,30 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Map Retell priority values to valid database values
+// Generate ticket number: ST-YYYYMMDD-XXXX
+function generateTicketNumber() {
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return 'ST-' + dateStr + '-' + random;
+}
+
+// Map priority values
 const mapPriority = (p) => {
     const map = {
         'urgent': 'urgent',
         'high': 'high',
-        'normal': 'medium',  // Map normal -> medium
+        'normal': 'medium',
         'medium': 'medium',
         'low': 'low'
     };
     return map[p?.toLowerCase()] || 'medium';
+};
+
+// Map category values
+const mapCategory = (c) => {
+    const valid = ['audio_video', 'networking', 'automation', 'shades', 'security', 'general'];
+    return valid.includes(c?.toLowerCase()) ? c.toLowerCase() : 'general';
 };
 
 module.exports = async (req, res) => {
@@ -30,7 +45,7 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
-        console.log('[Retell CreateTicket] Body:', JSON.stringify(req.body));
+        console.log('[Retell CreateTicket] Incoming request');
         
         let body = req.body;
         if (req.body?.args) body = req.body.args;
@@ -38,13 +53,15 @@ module.exports = async (req, res) => {
         const {
             title,
             description,
-            category = 'general',
-            priority = 'medium',
+            category,
+            priority,
             customer_name,
             customer_phone,
             customer_email,
             customer_address,
-            project_id
+            preferred_time,
+            contact_id,
+            call_id
         } = body;
 
         if (!title) {
@@ -56,42 +73,37 @@ module.exports = async (req, res) => {
             });
         }
 
-        if (!project_id) {
-            return res.json({
-                result: {
-                    success: false,
-                    message: "I need to link this to your project. Let me have someone call you back."
-                }
-            });
+        const ticketNumber = generateTicketNumber();
+        const mappedPriority = mapPriority(priority);
+        const mappedCategory = mapCategory(category);
+
+        // Build description with scheduling preference
+        let fullDescription = description || title;
+        if (preferred_time) {
+            fullDescription += '\n\nScheduling Preference: ' + preferred_time;
         }
 
-        const mappedPriority = mapPriority(priority);
-        console.log('[Retell CreateTicket] Creating:', title, 'priority:', mappedPriority, 'project:', project_id);
+        console.log('[Retell CreateTicket] Creating ticket:', ticketNumber, '-', title);
 
-        // Build the full description with customer info
-        const fullDescription = [
-            description || title,
-            '',
-            '--- Customer Info ---',
-            customer_name ? 'Name: ' + customer_name : null,
-            customer_phone ? 'Phone: ' + customer_phone : null,
-            customer_email ? 'Email: ' + customer_email : null,
-            customer_address ? 'Address: ' + customer_address : null,
-            'Category: ' + category,
-            '',
-            'Created via AI Phone Agent (Sarah)'
-        ].filter(Boolean).join('\n');
-
-        const { data: issue, error } = await supabase
-            .from('issues')
+        const { data: ticket, error } = await supabase
+            .from('service_tickets')
             .insert([{
-                title: '[Phone] ' + title,
+                ticket_number: ticketNumber,
+                title: title,
                 description: fullDescription,
-                status: 'open',
+                category: mappedCategory,
                 priority: mappedPriority,
-                project_id: project_id
+                status: 'open',
+                source: 'ai_phone',
+                source_reference: call_id || null,
+                customer_name: customer_name || null,
+                customer_phone: customer_phone || null,
+                customer_email: customer_email || null,
+                customer_address: customer_address || null,
+                contact_id: contact_id || null,
+                initial_customer_comment: 'Created via AI phone agent (Sarah). ' + (preferred_time ? 'Customer requested: ' + preferred_time : '')
             }])
-            .select('id, title, status')
+            .select('id, ticket_number, title, status')
             .single();
 
         if (error) {
@@ -100,29 +112,19 @@ module.exports = async (req, res) => {
                 result: {
                     success: false,
                     error_code: error.code,
-                    message: "I was unable to create the ticket. I will have someone call you back to confirm."
+                    message: "I was unable to create the ticket. Let me have someone call you back to help."
                 }
             });
         }
 
-        if (!issue || !issue.id) {
-            console.error('[Retell CreateTicket] No issue returned');
-            return res.json({
-                result: {
-                    success: false,
-                    message: "Something went wrong. I will have someone call you back."
-                }
-            });
-        }
-
-        console.log('[Retell CreateTicket] SUCCESS - Created issue:', issue.id, issue.title);
+        console.log('[Retell CreateTicket] SUCCESS:', ticket.ticket_number);
 
         return res.json({
             result: {
                 success: true,
-                ticket_id: issue.id,
-                ticket_title: issue.title,
-                message: 'I have created a service ticket for ' + title + '. Someone from our team will reach out to schedule.'
+                ticket_id: ticket.id,
+                ticket_number: ticket.ticket_number,
+                message: 'Service ticket ' + ticket.ticket_number + ' created. Someone from our team will reach out to schedule your appointment.'
             }
         });
 
@@ -131,7 +133,7 @@ module.exports = async (req, res) => {
         return res.json({
             result: {
                 success: false,
-                message: "I encountered an error. I will have someone call you back."
+                message: "I encountered an error. Let me have someone call you back."
             }
         });
     }
