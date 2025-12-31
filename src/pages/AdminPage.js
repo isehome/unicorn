@@ -36,8 +36,9 @@ const USER_ROLES = [
   { id: 'owner', label: 'Owner', icon: Crown, color: '#10B981', level: 100, description: 'Owner - full access including billing and ownership transfer' }
 ];
 
-// Default skill categories (fallback if DB table doesn't exist yet)
-const DEFAULT_SKILL_CATEGORIES = [
+// Default technology categories (fallback if DB table doesn't exist yet)
+// These define types of work for service tickets and employee skills
+const DEFAULT_TECHNOLOGY_CATEGORIES = [
   { id: 'network', name: 'network', label: 'Network', color: '#3B82F6' },
   { id: 'av', name: 'av', label: 'Audio/Video', color: '#8B5CF6' },
   { id: 'shades', name: 'shades', label: 'Shades', color: '#F59E0B' },
@@ -158,7 +159,7 @@ const AdminPage = () => {
   // Skills state
   const [globalSkills, setGlobalSkills] = useState([]);
   const [employeeSkills, setEmployeeSkills] = useState([]);
-  const [skillCategories, setSkillCategories] = useState(DEFAULT_SKILL_CATEGORIES);
+  const [technologyCategories, setTechnologyCategories] = useState(DEFAULT_TECHNOLOGY_CATEGORIES);
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -297,21 +298,21 @@ const AdminPage = () => {
       if (usersError && usersError.code !== 'PGRST116') throw usersError;
       setUsers(usersData || []);
 
-      // Load skill categories from database
+      // Load technology categories from database
       const { data: categoriesData, error: categoriesError } = await supabase
-        .from('skill_categories')
+        .from('technology_categories')
         .select('*')
         .eq('is_active', true)
         .order('sort_order');
 
       if (categoriesError && categoriesError.code !== 'PGRST116') {
-        console.log('[AdminPage] Skill categories table may not exist yet, using defaults');
+        console.log('[AdminPage] Technology categories table may not exist yet, using defaults');
       }
       // Use DB categories if available, otherwise use defaults
       if (categoriesData && categoriesData.length > 0) {
-        setSkillCategories(categoriesData);
+        setTechnologyCategories(categoriesData);
       } else {
-        setSkillCategories(DEFAULT_SKILL_CATEGORIES);
+        setTechnologyCategories(DEFAULT_TECHNOLOGY_CATEGORIES);
       }
 
       // Load global skills
@@ -706,7 +707,7 @@ const AdminPage = () => {
   };
 
   // Build skills grouped by category using dynamic categories
-  const skillsByCategory = skillCategories.map(cat => ({
+  const skillsByCategory = technologyCategories.map(cat => ({
     ...cat,
     id: cat.name || cat.id, // Use name as ID for matching with skills
     skills: globalSkills.filter(s => s.category === (cat.name || cat.id))
@@ -718,10 +719,10 @@ const AdminPage = () => {
 
     try {
       setSaving(true);
-      const maxSortOrder = Math.max(0, ...skillCategories.map(c => c.sort_order || 0));
+      const maxSortOrder = Math.max(0, ...technologyCategories.map(c => c.sort_order || 0));
 
       const { error } = await supabase
-        .from('skill_categories')
+        .from('technology_categories')
         .insert({
           name: newCategory.name.trim().toLowerCase().replace(/\s+/g, '_'),
           label: newCategory.label.trim(),
@@ -750,7 +751,7 @@ const AdminPage = () => {
     try {
       setSaving(true);
       const { error } = await supabase
-        .from('skill_categories')
+        .from('technology_categories')
         .update({
           label: category.label,
           color: category.color,
@@ -786,7 +787,7 @@ const AdminPage = () => {
     try {
       setSaving(true);
       const { error } = await supabase
-        .from('skill_categories')
+        .from('technology_categories')
         .delete()
         .eq('id', categoryId);
 
@@ -1139,8 +1140,8 @@ const AdminPage = () => {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Skill Categories</h2>
-          <p className="text-sm text-zinc-500">Organize skills into categories for better management</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Technology Categories</h2>
+          <p className="text-sm text-zinc-500">Types of work for service tickets and employee skills</p>
         </div>
         <Button onClick={() => setAddingCategory(true)} size="sm" icon={Plus}>
           Add Category
@@ -1214,7 +1215,7 @@ const AdminPage = () => {
 
       {/* Categories List */}
       <div className="space-y-3">
-        {skillCategories.map(category => {
+        {technologyCategories.map(category => {
           const categorySkillCount = globalSkills.filter(s => s.category === (category.name || category.id)).length;
           const isEditing = editingCategory?.id === category.id;
 
@@ -1316,7 +1317,7 @@ const AdminPage = () => {
         })}
       </div>
 
-      {skillCategories.length === 0 && (
+      {technologyCategories.length === 0 && (
         <div className="text-center py-8 text-zinc-500">
           <Layers size={32} className="mx-auto mb-2 opacity-50" />
           <p>No categories yet. Add your first category to get started.</p>
@@ -1357,7 +1358,7 @@ const AdminPage = () => {
               onChange={(e) => setNewSkill(prev => ({ ...prev, category: e.target.value }))}
               className="px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
             >
-              {skillCategories.map(cat => (
+              {technologyCategories.map(cat => (
                 <option key={cat.id || cat.name} value={cat.name || cat.id}>{cat.label}</option>
               ))}
             </select>
@@ -2654,7 +2655,7 @@ const AdminPage = () => {
           }`}
         >
           <Layers size={16} />
-          Categories
+          Technology
         </button>
         <button
           onClick={() => setActiveTab('skills')}

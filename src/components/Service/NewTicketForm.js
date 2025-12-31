@@ -21,8 +21,10 @@ import { serviceTicketService, customerLookupService } from '../../services/serv
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
+import { supabase } from '../../services/supabase';
 
-const CATEGORIES = [
+// Default categories (fallback if DB not available)
+const DEFAULT_CATEGORIES = [
   { value: 'network', label: 'Network', description: 'WiFi, internet, UniFi issues' },
   { value: 'av', label: 'A/V', description: 'Audio/video, TV, speakers' },
   { value: 'shades', label: 'Shades', description: 'Window treatments, Lutron' },
@@ -68,11 +70,36 @@ const NewTicketForm = () => {
   const [selectedContact, setSelectedContact] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
 
   useEffect(() => {
     setView('service-new-ticket');
     publishState({ view: 'service-new-ticket' });
   }, [setView, publishState]);
+
+  // Load technology categories from database
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('technology_categories')
+          .select('name, label, description')
+          .eq('is_active', true)
+          .order('sort_order');
+
+        if (!error && data?.length > 0) {
+          setCategories(data.map(c => ({
+            value: c.name,
+            label: c.label,
+            description: c.description || ''
+          })));
+        }
+      } catch (err) {
+        console.log('[NewTicketForm] Using default categories');
+      }
+    };
+    loadCategories();
+  }, []);
 
   // Search for contacts
   const handleSearch = useCallback(async (query) => {
@@ -342,7 +369,7 @@ const NewTicketForm = () => {
               <div>
                 <label className="text-sm text-zinc-400 mb-2 block">Category</label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                  {CATEGORIES.map(cat => (
+                  {categories.map(cat => (
                     <button
                       key={cat.value}
                       type="button"

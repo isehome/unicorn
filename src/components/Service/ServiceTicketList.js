@@ -22,6 +22,7 @@ import {
 import { serviceTicketService } from '../../services/serviceTicketService';
 import { useAppState } from '../../contexts/AppStateContext';
 import { brandColors } from '../../styles/styleSystem';
+import { supabase } from '../../services/supabase';
 
 // Category icons mapping
 const categoryIcons = {
@@ -53,7 +54,8 @@ const PRIORITIES = [
   { value: 'low', label: 'Low', color: 'bg-zinc-500' }
 ];
 
-const CATEGORIES = [
+// Default categories (fallback if DB not available)
+const DEFAULT_CATEGORIES = [
   { value: 'network', label: 'Network' },
   { value: 'av', label: 'A/V' },
   { value: 'shades', label: 'Shades' },
@@ -74,6 +76,7 @@ const ServiceTicketList = () => {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [showFilters, setShowFilters] = useState(false);
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
 
   // Filters from URL params
   const [filters, setFilters] = useState({
@@ -116,6 +119,26 @@ const ServiceTicketList = () => {
     loadTickets();
     setView('service-ticket-list');
   }, [loadTickets, setView]);
+
+  // Load technology categories from database
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('technology_categories')
+          .select('name, label')
+          .eq('is_active', true)
+          .order('sort_order');
+
+        if (!error && data?.length > 0) {
+          setCategories(data.map(c => ({ value: c.name, label: c.label })));
+        }
+      } catch (err) {
+        console.log('[ServiceTicketList] Using default categories');
+      }
+    };
+    loadCategories();
+  }, []);
 
   // Update URL params when filters change
   useEffect(() => {
@@ -327,7 +350,7 @@ const ServiceTicketList = () => {
                     className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                   >
                     <option value="">All Categories</option>
-                    {CATEGORIES.map(c => (
+                    {categories.map(c => (
                       <option key={c.value} value={c.value}>{c.label}</option>
                     ))}
                   </select>

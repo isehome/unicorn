@@ -53,6 +53,7 @@ import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
 import { createCalendarEvent, checkUserAvailability } from '../../services/microsoftCalendarService';
+import { supabase } from '../../services/supabase';
 
 // Category icons
 const categoryIcons = {
@@ -144,9 +145,41 @@ const ServiceTicketDetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
 
+  // Technology categories from database
+  const [categories, setCategories] = useState([
+    { value: 'network', label: 'Network' },
+    { value: 'av', label: 'AV' },
+    { value: 'shades', label: 'Shades' },
+    { value: 'control', label: 'Control' },
+    { value: 'wiring', label: 'Wiring' },
+    { value: 'installation', label: 'Installation' },
+    { value: 'maintenance', label: 'Maintenance' },
+    { value: 'general', label: 'General' }
+  ]);
+
   const toggleSection = (section) => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
+
+  // Load technology categories from database
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('technology_categories')
+          .select('name, label')
+          .eq('is_active', true)
+          .order('sort_order');
+
+        if (!error && data?.length > 0) {
+          setCategories(data.map(c => ({ value: c.name, label: c.label })));
+        }
+      } catch (err) {
+        console.log('[ServiceTicketDetail] Using default categories');
+      }
+    };
+    loadCategories();
+  }, []);
 
   // Initialize edit data when entering edit mode
   const handleStartEdit = () => {
@@ -1178,14 +1211,9 @@ const ServiceTicketDetail = () => {
                     onChange={(e) => setEditData(prev => ({ ...prev, category: e.target.value }))}
                     className="px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-zinc-500"
                   >
-                    <option value="network">Network</option>
-                    <option value="av">AV</option>
-                    <option value="shades">Shades</option>
-                    <option value="control">Control</option>
-                    <option value="wiring">Wiring</option>
-                    <option value="installation">Installation</option>
-                    <option value="maintenance">Maintenance</option>
-                    <option value="general">General</option>
+                    {categories.map(cat => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
                   </select>
                 )}
               </div>

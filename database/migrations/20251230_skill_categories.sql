@@ -45,6 +45,11 @@ DROP POLICY IF EXISTS skill_categories_write_auth ON public.skill_categories;
 CREATE POLICY skill_categories_write_auth ON public.skill_categories
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+-- Anon users can also write (for API access without auth)
+DROP POLICY IF EXISTS skill_categories_write_anon ON public.skill_categories;
+CREATE POLICY skill_categories_write_anon ON public.skill_categories
+  FOR ALL TO anon USING (true) WITH CHECK (true);
+
 -- ============================================================
 -- PART 3: Update timestamps trigger
 -- ============================================================
