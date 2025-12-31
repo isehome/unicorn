@@ -1,7 +1,7 @@
 /**
  * api/retell/create-ticket.js
  * Create service ticket from Retell AI call
- * Uses service_tickets table (not issues)
+ * Uses service_tickets table
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -30,10 +30,32 @@ const mapPriority = (p) => {
     return map[p?.toLowerCase()] || 'medium';
 };
 
-// Map category values
+// Map category values to valid database values
+// Valid: network, av, shades, control, wiring, installation, maintenance, general
 const mapCategory = (c) => {
-    const valid = ['audio_video', 'networking', 'automation', 'shades', 'security', 'general'];
-    return valid.includes(c?.toLowerCase()) ? c.toLowerCase() : 'general';
+    const map = {
+        'audio_video': 'av',
+        'audio': 'av',
+        'video': 'av',
+        'av': 'av',
+        'networking': 'network',
+        'network': 'network',
+        'wifi': 'network',
+        'internet': 'network',
+        'shades': 'shades',
+        'blinds': 'shades',
+        'automation': 'control',
+        'control': 'control',
+        'lighting': 'control',
+        'security': 'control',
+        'wiring': 'wiring',
+        'cable': 'wiring',
+        'installation': 'installation',
+        'install': 'installation',
+        'maintenance': 'maintenance',
+        'general': 'general'
+    };
+    return map[c?.toLowerCase()] || 'general';
 };
 
 module.exports = async (req, res) => {
@@ -83,7 +105,7 @@ module.exports = async (req, res) => {
             fullDescription += '\n\nScheduling Preference: ' + preferred_time;
         }
 
-        console.log('[Retell CreateTicket] Creating ticket:', ticketNumber, '-', title);
+        console.log('[Retell CreateTicket] Creating ticket:', ticketNumber, '- Category:', mappedCategory, '- Priority:', mappedPriority);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')
