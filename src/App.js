@@ -20,7 +20,6 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useSyncStatus } from './components/SyncStatus';
 import { thumbnailCache } from './lib/thumbnailCache';
 import { PhotoViewerProvider } from './components/photos/PhotoViewerProvider';
-import VoiceCopilotOverlay from './components/VoiceCopilotOverlay';
 import BugReporter from './components/BugReporter';
 import './index.css';
 
@@ -489,7 +488,6 @@ const AppRoutes = () => {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <VoiceCopilotOverlay />
       <BugReporter />
       {!hideChrome && <BottomNavigation />}
     </div>

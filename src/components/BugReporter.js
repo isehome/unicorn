@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Send, Camera, Bug, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, Send, Camera, Bug, Loader2, CheckCircle, AlertCircle, Mic, MicOff } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { useAuth } from '../contexts/AuthContext';
+import { useLocation } from 'react-router-dom';
 
 // Shake detection threshold
 const SHAKE_THRESHOLD = 15;
@@ -42,9 +43,18 @@ export default function BugReporter() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null); // 'success' | 'error' | null
-  const [showHint, setShowHint] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const { user } = useAuth();
+  const location = useLocation();
   const modalRef = useRef(null);
+  const recognitionRef = useRef(null);
+
+  // Check if speech recognition is supported
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setSpeechSupported(!!SpeechRecognition);
+  }, []);
 
   // Shake detection for mobile
   useEffect(() => {
@@ -141,8 +151,8 @@ export default function BugReporter() {
         allowTaint: true,
         scale: 0.5, // Reduce size for email
         ignoreElements: (element) => {
-          // Don't capture the bug reporter modal itself
-          return element.id === 'bug-reporter-modal';
+          // Don't capture the bug reporter modal or button itself
+          return element.id === 'bug-reporter-modal' || element.id === 'bug-reporter-button';
         }
       });
       const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
@@ -168,7 +178,10 @@ export default function BugReporter() {
         logging: false,
         useCORS: true,
         allowTaint: true,
-        scale: 0.5
+        scale: 0.5,
+        ignoreElements: (element) => {
+          return element.id === 'bug-reporter-modal' || element.id === 'bug-reporter-button';
+        }
       });
       setScreenshot(canvas.toDataURL('image/jpeg', 0.7));
     } catch (e) {
@@ -179,8 +192,66 @@ export default function BugReporter() {
     setIsCapturing(false);
   };
 
+  // Voice dictation
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      // Stop recording
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsRecording(false);
+      return;
+    }
+
+    // Start recording
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.warn('[BugReporter] Speech recognition not supported');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let finalTranscript = description;
+
+    recognition.onresult = (event) => {
+      let interimTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += (finalTranscript ? ' ' : '') + transcript;
+          setDescription(finalTranscript);
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('[BugReporter] Speech recognition error:', event.error);
+      setIsRecording(false);
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  }, [isRecording, description]);
+
   const handleSubmit = async () => {
     if (!description.trim()) return;
+
+    // Stop any ongoing recording
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
 
     setIsSubmitting(true);
     setSubmitStatus(null);
@@ -223,39 +294,43 @@ export default function BugReporter() {
   };
 
   const handleClose = () => {
+    // Stop any ongoing recording
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
     setIsOpen(false);
     setDescription('');
     setScreenshot(null);
     setSubmitStatus(null);
   };
 
-  // Show hint on first load
-  useEffect(() => {
-    const hasSeenHint = localStorage.getItem('bugReporterHintSeen');
-    if (!hasSeenHint) {
-      setTimeout(() => {
-        setShowHint(true);
-        setTimeout(() => {
-          setShowHint(false);
-          localStorage.setItem('bugReporterHintSeen', 'true');
-        }, 5000);
-      }, 3000);
-    }
-  }, []);
-
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  // Hide on public pages and login
+  const isPublicPage = location.pathname.includes('/login') ||
+    location.pathname.includes('/public') ||
+    location.pathname.includes('/shade-portal');
+
+  if (isPublicPage) {
+    return null;
+  }
 
   return (
     <>
-      {/* Hint toast */}
-      {showHint && (
-        <div className={`fixed bottom-28 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm animate-fade-in ${
-          isDark ? 'bg-gray-800 text-gray-200' : 'bg-white text-gray-700'
-        }`}>
-          <Bug size={16} className="text-violet-500" />
-          <span>Shake device or press <kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs">Ctrl+Shift+B</kbd> to report bugs</span>
-        </div>
-      )}
+      {/* Floating Bug Button - Always visible */}
+      <button
+        id="bug-reporter-button"
+        onClick={openBugReporter}
+        className={`fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-all hover:scale-110 ${
+          isDark
+            ? 'bg-zinc-800 text-violet-400 border border-zinc-700 hover:bg-zinc-700'
+            : 'bg-white text-violet-600 border border-zinc-200 hover:bg-zinc-50'
+        }`}
+        title="Report a bug (Ctrl+Shift+B)"
+      >
+        <Bug size={22} />
+      </button>
 
       {/* Bug Reporter Modal */}
       {isOpen && (
@@ -312,13 +387,39 @@ export default function BugReporter() {
                 </div>
               )}
 
-              {/* Description */}
+              {/* Description with voice input */}
               <div>
-                <label className={`block text-sm font-medium mb-1.5 ${
-                  isDark ? 'text-gray-300' : 'text-gray-700'
-                }`}>
-                  What went wrong?
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={`text-sm font-medium ${
+                    isDark ? 'text-gray-300' : 'text-gray-700'
+                  }`}>
+                    What went wrong?
+                  </label>
+                  {speechSupported && (
+                    <button
+                      onClick={toggleRecording}
+                      className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg transition-colors ${
+                        isRecording
+                          ? 'bg-red-500 text-white animate-pulse'
+                          : isDark
+                            ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {isRecording ? (
+                        <>
+                          <MicOff size={14} />
+                          Stop
+                        </>
+                      ) : (
+                        <>
+                          <Mic size={14} />
+                          Dictate
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -331,6 +432,11 @@ export default function BugReporter() {
                   } focus:outline-none focus:ring-1 focus:ring-violet-500`}
                   autoFocus
                 />
+                {isRecording && (
+                  <p className={`text-xs mt-1 ${isDark ? 'text-red-400' : 'text-red-500'}`}>
+                    Listening... speak now
+                  </p>
+                )}
               </div>
 
               {/* User info */}
