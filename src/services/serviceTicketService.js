@@ -740,6 +740,7 @@ export const technicianService = {
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
+        .not('email', 'is', null) // Only contacts with emails (filters out internal groups like "Accounting")
         .order('full_name');
 
       if (error) {
@@ -853,11 +854,12 @@ export const technicianService = {
     if (!supabase) return [];
 
     try {
-      // Get all internal technicians
+      // Get all internal technicians (with emails - filters out groups like "Accounting")
       const { data: techs, error: techsError } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
+        .not('email', 'is', null)
         .order('full_name');
 
       if (techsError) {
