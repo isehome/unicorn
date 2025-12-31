@@ -149,15 +149,21 @@ const AdminPage = () => {
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, skipped: 0, errors: [] });
   const [duplicateHandling, setDuplicateHandling] = useState('skip'); // skip, merge, create
 
-  // Available contact fields for mapping
+  // Available contact fields for mapping (matches contacts table schema)
   const CONTACT_FIELDS = [
     { key: 'name', label: 'Name', required: true },
+    { key: 'first_name', label: 'First Name', required: false },
+    { key: 'last_name', label: 'Last Name', required: false },
     { key: 'email', label: 'Email', required: false },
     { key: 'phone', label: 'Phone', required: false },
     { key: 'company', label: 'Company', required: false },
     { key: 'role', label: 'Role/Title', required: false },
-    { key: 'address', label: 'Address', required: false },
-    { key: 'notes', label: 'Notes', required: false }
+    { key: 'address', label: 'Full Address', required: false },
+    { key: 'address1', label: 'Address Line 1', required: false },
+    { key: 'address2', label: 'Address Line 2', required: false },
+    { key: 'city', label: 'City', required: false },
+    { key: 'state', label: 'State', required: false },
+    { key: 'zip', label: 'ZIP Code', required: false }
   ];
 
   /**
@@ -1679,37 +1685,93 @@ const AdminPage = () => {
       return;
     }
 
-    // Parse header
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    // Detect delimiter (comma, semicolon, or tab)
+    const firstLine = lines[0];
+    let delimiter = ',';
+    if (firstLine.includes('\t') && !firstLine.includes(',')) {
+      delimiter = '\t';
+    } else if (firstLine.includes(';') && !firstLine.includes(',')) {
+      delimiter = ';';
+    }
+
+    // Parse header - handle quoted values properly
+    const parseRow = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++; // Skip escaped quote
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === delimiter && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim()); // Don't forget last field
+      return result;
+    };
+
+    const headers = parseRow(lines[0]);
+    console.log('[AdminPage] CSV headers detected:', headers, 'delimiter:', delimiter);
     setCsvHeaders(headers);
 
-    // Parse data rows
+    // Parse data rows using same parser
     const data = [];
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].match(/("([^"]|"")*"|[^,]*)(,|$)/g) || [];
+      const values = parseRow(lines[i]);
       const row = {};
       values.forEach((val, idx) => {
         if (idx < headers.length) {
-          row[headers[idx]] = val.replace(/,$/g, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+          row[headers[idx]] = val;
         }
       });
       if (Object.values(row).some(v => v)) {
         data.push(row);
       }
     }
+    console.log('[AdminPage] CSV parsed:', data.length, 'rows, sample:', data[0]);
 
     setCsvData(data);
 
-    // Auto-map fields by matching header names
+    // Auto-map fields by matching header names with common variations
+    const headerAliases = {
+      name: ['name', 'full name', 'fullname', 'contact name', 'customer name', 'client name', 'display name'],
+      first_name: ['first name', 'firstname', 'first', 'given name'],
+      last_name: ['last name', 'lastname', 'last', 'surname', 'family name'],
+      email: ['email', 'email address', 'e-mail', 'mail'],
+      phone: ['phone', 'phone number', 'telephone', 'tel', 'mobile', 'cell', 'primary phone', 'work phone'],
+      company: ['company', 'company name', 'organization', 'org', 'business', 'business name', 'employer'],
+      role: ['role', 'title', 'job title', 'position', 'job', 'occupation'],
+      address: ['address', 'full address', 'street address', 'mailing address'],
+      address1: ['address 1', 'address1', 'street', 'street 1', 'address line 1'],
+      address2: ['address 2', 'address2', 'street 2', 'apt', 'suite', 'unit', 'address line 2'],
+      city: ['city', 'town'],
+      state: ['state', 'province', 'region', 'st'],
+      zip: ['zip', 'zip code', 'zipcode', 'postal', 'postal code', 'postcode']
+    };
+
     const autoMapping = {};
     headers.forEach(header => {
-      const lowerHeader = header.toLowerCase();
-      CONTACT_FIELDS.forEach(field => {
-        if (lowerHeader.includes(field.key) || lowerHeader.includes(field.label.toLowerCase())) {
-          autoMapping[field.key] = header;
+      const lowerHeader = header.toLowerCase().trim();
+      Object.entries(headerAliases).forEach(([fieldKey, aliases]) => {
+        if (aliases.some(alias => lowerHeader === alias || lowerHeader.includes(alias))) {
+          // Only set if not already mapped (prefer exact matches)
+          if (!autoMapping[fieldKey]) {
+            autoMapping[fieldKey] = header;
+          }
         }
       });
     });
+    console.log('[AdminPage] Auto-mapping:', autoMapping);
     setFieldMapping(autoMapping);
     setImportStep('map');
   };
