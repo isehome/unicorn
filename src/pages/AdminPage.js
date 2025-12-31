@@ -145,9 +145,11 @@ const AdminPage = () => {
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [fieldMapping, setFieldMapping] = useState({});
   const [importPreview, setImportPreview] = useState([]);
-  const [importStep, setImportStep] = useState('upload'); // upload, map, preview, importing, done
+  const [importStep, setImportStep] = useState('upload'); // upload, map, preview, ai-processing, importing, done
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, skipped: 0, errors: [] });
   const [duplicateHandling, setDuplicateHandling] = useState('skip'); // skip, merge, create
+  const [useAIProcessing, setUseAIProcessing] = useState(true); // Enable AI-assisted parsing by default
+  const [aiProcessedData, setAiProcessedData] = useState([]); // Data after AI processing
 
   // Available contact fields for mapping (matches contacts table schema)
   const CONTACT_FIELDS = [
@@ -1819,8 +1821,9 @@ const AdminPage = () => {
     }));
   };
 
-  const generatePreview = () => {
-    const preview = csvData.slice(0, 5).map(row => {
+  const generatePreview = async () => {
+    // Map CSV data to contact fields first
+    const mappedData = csvData.map(row => {
       const mapped = {};
       Object.entries(fieldMapping).forEach(([fieldKey, csvHeader]) => {
         if (csvHeader) {
@@ -1829,7 +1832,43 @@ const AdminPage = () => {
       });
       return mapped;
     });
-    setImportPreview(preview);
+
+    if (useAIProcessing) {
+      // Use AI to parse and clean the data
+      setImportStep('ai-processing');
+      try {
+        console.log('[AdminPage] Sending', mappedData.length, 'contacts to AI for processing');
+        const response = await fetch('/api/ai/parse-contacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contacts: mappedData })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.contacts) {
+          console.log('[AdminPage] AI processed', result.contacts.length, 'contacts');
+          setAiProcessedData(result.contacts);
+          setImportPreview(result.contacts.slice(0, 5));
+        } else {
+          console.error('[AdminPage] AI processing failed:', result.error);
+          setError('AI processing failed: ' + (result.error || 'Unknown error'));
+          // Fall back to non-AI preview
+          setAiProcessedData(mappedData);
+          setImportPreview(mappedData.slice(0, 5));
+        }
+      } catch (err) {
+        console.error('[AdminPage] AI processing error:', err);
+        setError('AI processing failed: ' + err.message);
+        // Fall back to non-AI preview
+        setAiProcessedData(mappedData);
+        setImportPreview(mappedData.slice(0, 5));
+      }
+    } else {
+      setAiProcessedData(mappedData);
+      setImportPreview(mappedData.slice(0, 5));
+    }
+
     setImportStep('preview');
   };
 
@@ -1872,22 +1911,25 @@ const AdminPage = () => {
   };
 
   const runImport = async () => {
+    // Use AI-processed data if available, otherwise map from CSV
+    const dataToImport = aiProcessedData.length > 0 ? aiProcessedData : csvData.map(row => {
+      const mapped = {};
+      Object.entries(fieldMapping).forEach(([fieldKey, csvHeader]) => {
+        if (csvHeader && row[csvHeader]) {
+          mapped[fieldKey] = row[csvHeader];
+        }
+      });
+      return mapped;
+    });
+
     setImportStep('importing');
-    setImportProgress({ current: 0, total: csvData.length, skipped: 0, errors: [] });
+    setImportProgress({ current: 0, total: dataToImport.length, skipped: 0, errors: [] });
 
     const errors = [];
     let skipped = 0;
 
-    for (let i = 0; i < csvData.length; i++) {
-      const row = csvData[i];
-
-      // Map CSV data to contact fields
-      const contact = {};
-      Object.entries(fieldMapping).forEach(([fieldKey, csvHeader]) => {
-        if (csvHeader && row[csvHeader]) {
-          contact[fieldKey] = row[csvHeader];
-        }
-      });
+    for (let i = 0; i < dataToImport.length; i++) {
+      const contact = { ...dataToImport[i] };
 
       // Skip if no name
       if (!contact.name) {
@@ -1946,6 +1988,7 @@ const AdminPage = () => {
     setImportPreview([]);
     setImportStep('upload');
     setImportProgress({ current: 0, total: 0, skipped: 0, errors: [] });
+    setAiProcessedData([]);
   };
 
   /**
@@ -1959,23 +2002,25 @@ const AdminPage = () => {
       </div>
 
       {/* Progress Steps */}
-      <div className="flex items-center gap-2 text-sm">
-        {['upload', 'map', 'preview', 'importing', 'done'].map((step, idx) => (
+      <div className="flex items-center gap-2 text-sm flex-wrap">
+        {['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].map((step, idx) => (
           <React.Fragment key={step}>
             <div className={`flex items-center gap-1 ${
               importStep === step ? 'text-violet-600 font-medium' :
-              ['upload', 'map', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? 'text-green-600' : 'text-zinc-400'
+              ['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? 'text-green-600' : 'text-zinc-400'
             }`}>
-              {['upload', 'map', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? (
+              {['upload', 'map', 'ai-processing', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? (
                 <CheckCircle size={16} />
+              ) : importStep === step && step === 'ai-processing' ? (
+                <Loader2 size={16} className="animate-spin" />
               ) : (
                 <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs">
                   {idx + 1}
                 </span>
               )}
-              <span className="capitalize">{step}</span>
+              <span className="capitalize">{step === 'ai-processing' ? 'AI Parse' : step}</span>
             </div>
-            {idx < 4 && <ArrowRight size={14} className="text-zinc-300" />}
+            {idx < 5 && <ArrowRight size={14} className="text-zinc-300" />}
           </React.Fragment>
         ))}
       </div>
@@ -2057,25 +2102,76 @@ const AdminPage = () => {
             </div>
           </div>
 
+          {/* AI Processing Toggle */}
+          <div className="p-4 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-900/10 dark:to-blue-900/10">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useAIProcessing}
+                onChange={(e) => setUseAIProcessing(e.target.checked)}
+                className="w-5 h-5 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={16} className="text-violet-500" />
+                  <span className="font-medium text-sm">AI-Assisted Import</span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Use Gemini AI to parse names (first/last), extract phone numbers from complex formats,
+                  and identify companies vs. people
+                </p>
+              </div>
+            </label>
+          </div>
+
           <div className="flex gap-3">
             <Button variant="secondary" onClick={resetImport}>
               <X size={16} />
               Cancel
             </Button>
             <Button onClick={generatePreview} disabled={!fieldMapping.name}>
-              <ArrowRight size={16} />
-              Preview Import
+              {useAIProcessing ? <Sparkles size={16} /> : <ArrowRight size={16} />}
+              {useAIProcessing ? 'Process with AI' : 'Preview Import'}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Step: AI Processing */}
+      {importStep === 'ai-processing' && (
+        <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 p-8 text-center">
+          <Loader2 size={48} className="mx-auto mb-4 text-violet-500 animate-spin" />
+          <h3 className="font-medium text-violet-700 dark:text-violet-300 mb-2">AI Processing Contacts</h3>
+          <p className="text-sm text-violet-600 dark:text-violet-400">
+            Gemini is parsing names, phone numbers, and identifying contact types...
+          </p>
+          <p className="text-xs text-zinc-500 mt-4">
+            Processing {csvData.length} contacts in batches
+          </p>
         </div>
       )}
 
       {/* Step 3: Preview */}
       {importStep === 'preview' && (
         <div className="space-y-4">
-          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-            <p className="text-sm text-amber-700 dark:text-amber-300">
-              Preview of first 5 records. Ready to import <strong>{csvData.length}</strong> contacts.
+          <div className={`p-4 rounded-lg border ${
+            useAIProcessing && aiProcessedData.length > 0
+              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+              : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+          }`}>
+            <p className={`text-sm ${
+              useAIProcessing && aiProcessedData.length > 0
+                ? 'text-green-700 dark:text-green-300'
+                : 'text-amber-700 dark:text-amber-300'
+            }`}>
+              {useAIProcessing && aiProcessedData.length > 0 ? (
+                <>
+                  <Sparkles size={14} className="inline mr-1" />
+                  AI processed <strong>{aiProcessedData.length}</strong> contacts. Preview below shows parsed data.
+                </>
+              ) : (
+                <>Preview of first 5 records. Ready to import <strong>{csvData.length}</strong> contacts.</>
+              )}
             </p>
           </div>
 
@@ -2083,21 +2179,33 @@ const AdminPage = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 dark:border-zinc-700">
-                  {CONTACT_FIELDS.filter(f => fieldMapping[f.key]).map(field => (
-                    <th key={field.key} className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">
-                      {field.label}
-                    </th>
-                  ))}
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Name</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">First</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Last</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Email</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Phone</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Company</th>
+                  {useAIProcessing && <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Type</th>}
                 </tr>
               </thead>
               <tbody>
                 {importPreview.map((row, idx) => (
                   <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800">
-                    {CONTACT_FIELDS.filter(f => fieldMapping[f.key]).map(field => (
-                      <td key={field.key} className="p-2 text-zinc-700 dark:text-zinc-300">
-                        {row[field.key] || '-'}
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.first_name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.last_name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.email || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.phone || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.company || '-'}</td>
+                    {useAIProcessing && (
+                      <td className="p-2">
+                        {row.is_company ? (
+                          <span className="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Company</span>
+                        ) : (
+                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">Person</span>
+                        )}
                       </td>
-                    ))}
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -2111,7 +2219,7 @@ const AdminPage = () => {
             </Button>
             <Button onClick={runImport}>
               <Upload size={16} />
-              Import {csvData.length} Contacts
+              Import {aiProcessedData.length || csvData.length} Contacts
             </Button>
           </div>
         </div>
