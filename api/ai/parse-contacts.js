@@ -24,82 +24,98 @@ module.exports = async (req, res) => {
       throw new Error('No contacts provided');
     }
 
-    // Process in batches of 20 to avoid token limits
-    const batchSize = 20;
+    // Process in batches of 15 to avoid token limits
+    const batchSize = 15;
     const results = [];
+    let batchNum = 0;
 
     for (let i = 0; i < contacts.length; i += batchSize) {
+      batchNum++;
       const batch = contacts.slice(i, i + batchSize);
+      console.log(`[AI Parse Contacts] Processing batch ${batchNum}, contacts ${i + 1}-${Math.min(i + batchSize, contacts.length)}`);
 
-      const prompt = `You are a contact data parser. Parse each contact and return clean, structured data.
+      const prompt = `Parse these contacts into clean structured data. For EACH contact in the input array, output a corresponding object.
 
-For each contact, extract:
-- first_name: First name only
-- last_name: Last name only
-- name: Full name (or company name if it's a business)
-- email: Primary email (if multiple, pick first)
-- phone: Primary phone number in format (XXX) XXX-XXXX (extract from formats like "Phone:XXX Mobile:XXX")
-- company: Company/organization name (if the "name" looks like a business, put it here too)
-- is_company: true if this appears to be a business/organization, false if it's a person
+RULES:
+1. Split "name" into first_name and last_name (e.g. "John Smith" -> first_name: "John", last_name: "Smith")
+2. For phone fields containing "Phone:" or "Mobile:", extract JUST the number. Example: "Phone:3179833350 Mobile:(317) 432-2463" -> phone: "(317) 983-3350"
+3. Format all phone numbers as (XXX) XXX-XXXX
+4. If name looks like a company (contains Corp, LLC, Inc, University, etc), set is_company: true and leave first_name/last_name empty
+5. If is_company is true, also put the name in the "company" field
+6. Keep the original email value
 
-Rules:
-- If a name looks like a company (e.g., "Acme Steel Products Corporation", "Ball State University"), set is_company=true
-- Extract first phone number from strings like "Phone:(317) 764-1008" or "Mobile:(513) 668-0485"
-- If there's both Phone and Mobile, use Phone as primary
-- For names like "John Smith", first_name="John", last_name="Smith"
-- For names like "Dr. Jane Doe", first_name="Jane", last_name="Doe"
-- If name is clearly a business, leave first_name and last_name empty
+INPUT (${batch.length} contacts):
+${JSON.stringify(batch)}
 
-Input contacts (JSON):
-${JSON.stringify(batch, null, 2)}
+OUTPUT must be a JSON array with ${batch.length} objects, each having: name, first_name, last_name, email, phone, company, is_company
 
-Return ONLY a JSON array with the parsed contacts. No explanation, just the JSON array.`;
-
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 8192,
-            }
-          })
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[AI Parse Contacts] Gemini error:', errorText);
-        throw new Error(`Gemini API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-      // Extract JSON from response (handle markdown code blocks)
-      let jsonStr = text.trim();
-      if (jsonStr.startsWith('```json')) {
-        jsonStr = jsonStr.slice(7);
-      } else if (jsonStr.startsWith('```')) {
-        jsonStr = jsonStr.slice(3);
-      }
-      if (jsonStr.endsWith('```')) {
-        jsonStr = jsonStr.slice(0, -3);
-      }
-      jsonStr = jsonStr.trim();
+JSON ARRAY:`;
 
       try {
-        const parsed = JSON.parse(jsonStr);
-        results.push(...parsed);
-      } catch (parseErr) {
-        console.error('[AI Parse Contacts] Failed to parse Gemini response:', jsonStr);
-        // Fall back to original data for this batch
-        results.push(...batch);
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0,
+                maxOutputTokens: 8192,
+              }
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[AI Parse Contacts] Gemini API error:', response.status, errorText);
+          // Fall back to basic parsing for this batch
+          results.push(...parseContactsLocally(batch));
+          continue;
+        }
+
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        // Extract JSON from response
+        let jsonStr = text.trim();
+
+        // Remove markdown code blocks if present
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[1].trim();
+        }
+
+        // Try to find JSON array in the response
+        const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          jsonStr = arrayMatch[0];
+        }
+
+        console.log('[AI Parse Contacts] Batch', batchNum, 'response length:', jsonStr.length);
+
+        try {
+          const parsed = JSON.parse(jsonStr);
+          if (Array.isArray(parsed)) {
+            results.push(...parsed);
+          } else {
+            console.error('[AI Parse Contacts] Response is not an array');
+            results.push(...parseContactsLocally(batch));
+          }
+        } catch (parseErr) {
+          console.error('[AI Parse Contacts] JSON parse error:', parseErr.message);
+          console.error('[AI Parse Contacts] Raw response:', jsonStr.substring(0, 500));
+          // Fall back to basic parsing
+          results.push(...parseContactsLocally(batch));
+        }
+      } catch (batchErr) {
+        console.error('[AI Parse Contacts] Batch error:', batchErr.message);
+        results.push(...parseContactsLocally(batch));
       }
     }
+
+    console.log('[AI Parse Contacts] Total processed:', results.length);
 
     return res.status(200).json({
       success: true,
@@ -115,3 +131,58 @@ Return ONLY a JSON array with the parsed contacts. No explanation, just the JSON
     });
   }
 };
+
+/**
+ * Basic local parsing fallback when AI fails
+ */
+function parseContactsLocally(contacts) {
+  return contacts.map(contact => {
+    const result = { ...contact };
+
+    // Parse name into first/last
+    if (contact.name && !contact.first_name && !contact.last_name) {
+      const nameParts = contact.name.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        // Check if it looks like a company
+        const companyKeywords = ['llc', 'inc', 'corp', 'corporation', 'university', 'college', 'company', 'co.', 'ltd', 'group', 'services', 'solutions', 'associates', 'partners'];
+        const lowerName = contact.name.toLowerCase();
+        const isCompany = companyKeywords.some(kw => lowerName.includes(kw));
+
+        if (isCompany) {
+          result.is_company = true;
+          result.company = contact.name;
+          result.first_name = '';
+          result.last_name = '';
+        } else {
+          result.first_name = nameParts[0];
+          result.last_name = nameParts.slice(1).join(' ');
+          result.is_company = false;
+        }
+      } else {
+        result.first_name = contact.name;
+        result.last_name = '';
+        result.is_company = false;
+      }
+    }
+
+    // Extract phone from "Phone:xxx Mobile:xxx" format
+    if (contact.phone) {
+      let phone = contact.phone;
+
+      // Extract first phone number
+      const phoneMatch = phone.match(/(?:Phone:|Tel:)?\s*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
+      if (phoneMatch) {
+        result.phone = `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}`;
+      } else {
+        // Try to extract any 10-digit number
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          const d = digits.slice(0, 10);
+          result.phone = `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6, 10)}`;
+        }
+      }
+    }
+
+    return result;
+  });
+}
