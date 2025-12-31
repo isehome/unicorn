@@ -45,7 +45,7 @@ export default function BugReporter() {
   const [submitStatus, setSubmitStatus] = useState(null); // 'success' | 'error' | null
   const [isRecording, setIsRecording] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const location = useLocation();
   const modalRef = useRef(null);
   const recognitionRef = useRef(null);
@@ -257,9 +257,15 @@ export default function BugReporter() {
     setSubmitStatus(null);
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      // Pass user's access token to send email from their mailbox
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
       const response = await fetch('/api/bug-report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           description: description.trim(),
           screenshot,

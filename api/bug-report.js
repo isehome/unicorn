@@ -1,4 +1,4 @@
-const { sendGraphEmail } = require('./_graphMail');
+const { sendGraphEmail, getDelegatedTokenFromHeader } = require('./_graphMail');
 
 const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
 
@@ -6,6 +6,9 @@ module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  // Get user's delegated token if provided
+  const delegatedToken = getDelegatedTokenFromHeader(req.headers.authorization);
 
   try {
     const {
@@ -77,11 +80,14 @@ module.exports = async function handler(req, res) {
       </div>
     `;
 
-    // Send the email
+    // Send the email from the user's mailbox if they have a delegated token
     await sendGraphEmail({
       to: [BUG_REPORT_EMAIL],
       subject: `[Bug Report] ${description.substring(0, 50)}${description.length > 50 ? '...' : ''} - ${userName || 'User'}`,
       html
+    }, {
+      delegatedToken,
+      sendAsUser: true // Send from user's own mailbox using /me/sendMail
     });
 
     console.log('[BugReport] Bug report sent successfully to', BUG_REPORT_EMAIL);
