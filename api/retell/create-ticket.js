@@ -1,7 +1,6 @@
 /**
  * api/retell/create-ticket.js
- * Create service ticket from Retell AI call
- * Uses service_tickets table
+ * Create service ticket from Retell AI phone call
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -18,28 +17,19 @@ function generateTicketNumber() {
     return 'ST-' + dateStr + '-' + random;
 }
 
-// Map priority values
-const mapPriority = (p) => {
-    const map = {
-        'urgent': 'urgent',
-        'high': 'high',
-        'normal': 'medium',
-        'medium': 'medium',
-        'low': 'low'
-    };
-    return map[p?.toLowerCase()] || 'medium';
+// VALID VALUES FROM DATABASE CONSTRAINTS
+const VALID = {
+    categories: ['network', 'av', 'shades', 'control', 'wiring', 'installation', 'maintenance', 'general'],
+    priorities: ['low', 'medium', 'high', 'urgent'],
+    sources: ['manual', 'phone_ai', 'email', 'portal', 'issue_escalation'],
+    statuses: ['open', 'triaged', 'scheduled', 'in_progress', 'waiting_parts', 'waiting_customer', 'resolved', 'closed']
 };
 
-// Valid categories from database constraint
-const VALID_CATEGORIES = ['network', 'av', 'shades', 'control', 'wiring', 'installation', 'maintenance', 'general'];
-
-// Simple category mapping - if not valid, use 'general'
-const mapCategory = (c) => {
+// Map LLM category to valid category
+function mapCategory(c) {
     if (!c) return 'general';
     const lower = c.toLowerCase().trim();
-    
-    // Direct match
-    if (VALID_CATEGORIES.includes(lower)) return lower;
+    if (VALID.categories.includes(lower)) return lower;
     
     // Common aliases
     if (lower.includes('audio') || lower.includes('video') || lower.includes('tv') || lower.includes('speaker')) return 'av';
@@ -47,9 +37,17 @@ const mapCategory = (c) => {
     if (lower.includes('shade') || lower.includes('blind')) return 'shades';
     if (lower.includes('automat') || lower.includes('control') || lower.includes('light') || lower.includes('security')) return 'control';
     
-    // Default fallback
     return 'general';
-};
+}
+
+// Map LLM priority to valid priority
+function mapPriority(p) {
+    if (!p) return 'medium';
+    const lower = p.toLowerCase().trim();
+    if (VALID.priorities.includes(lower)) return lower;
+    if (lower === 'normal') return 'medium';
+    return 'medium';
+}
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -60,7 +58,7 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
-        console.log('[Retell CreateTicket] Incoming request');
+        console.log('[CreateTicket] Incoming request');
         
         let body = req.body;
         if (req.body?.args) body = req.body.args;
@@ -75,8 +73,7 @@ module.exports = async (req, res) => {
             customer_email,
             customer_address,
             preferred_time,
-            contact_id,
-            call_id
+            troubleshooting_notes
         } = body;
 
         if (!title) {
@@ -89,62 +86,61 @@ module.exports = async (req, res) => {
         }
 
         const ticketNumber = generateTicketNumber();
-        const mappedPriority = mapPriority(priority);
-        const mappedCategory = mapCategory(category);
+        
+        // Build the ticket with ONLY valid constrained values
+        const ticketData = {
+            ticket_number: ticketNumber,
+            title: title,
+            description: description || title,
+            category: mapCategory(category),
+            priority: mapPriority(priority),
+            status: 'open',
+            source: 'phone_ai',
+            customer_name: customer_name || null,
+            customer_phone: customer_phone || null,
+            customer_email: customer_email || null,
+            customer_address: customer_address || null
+        };
 
-        // Build description with scheduling preference
-        let fullDescription = description || title;
+        // Optional fields - only add if provided
         if (preferred_time) {
-            fullDescription += '\n\nScheduling Preference: ' + preferred_time;
+            ticketData.initial_customer_comment = 'Scheduling preference: ' + preferred_time;
+        }
+        if (troubleshooting_notes) {
+            ticketData.triage_notes = troubleshooting_notes;
         }
 
-        console.log('[Retell CreateTicket] Creating:', ticketNumber, '| Cat:', mappedCategory, '| Pri:', mappedPriority);
+        console.log('[CreateTicket] Creating:', ticketNumber, '| Category:', ticketData.category, '| Priority:', ticketData.priority);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')
-            .insert([{
-                ticket_number: ticketNumber,
-                title: title,
-                description: fullDescription,
-                category: mappedCategory,
-                priority: mappedPriority,
-                status: 'open',
-                source: 'ai_phone',
-                source_reference: call_id || null,
-                customer_name: customer_name || null,
-                customer_phone: customer_phone || null,
-                customer_email: customer_email || null,
-                customer_address: customer_address || null,
-                contact_id: contact_id || null,
-                initial_customer_comment: 'Created via AI phone agent (Sarah). ' + (preferred_time ? 'Customer requested: ' + preferred_time : '')
-            }])
+            .insert([ticketData])
             .select('id, ticket_number, title, status')
             .single();
 
         if (error) {
-            console.error('[Retell CreateTicket] DB error:', JSON.stringify(error));
+            console.error('[CreateTicket] DB error:', JSON.stringify(error));
             return res.json({
                 result: {
                     success: false,
-                    error_code: error.code,
-                    message: "I was unable to create the ticket. Let me have someone call you back to help."
+                    message: "I was unable to create the ticket. Let me have someone call you back."
                 }
             });
         }
 
-        console.log('[Retell CreateTicket] SUCCESS:', ticket.ticket_number);
+        console.log('[CreateTicket] SUCCESS:', ticket.ticket_number);
 
         return res.json({
             result: {
                 success: true,
                 ticket_id: ticket.id,
                 ticket_number: ticket.ticket_number,
-                message: 'Service ticket ' + ticket.ticket_number + ' created. Someone from our team will reach out to schedule.'
+                message: 'Ticket ' + ticket.ticket_number + ' created. Someone will reach out to schedule.'
             }
         });
 
     } catch (error) {
-        console.error('[Retell CreateTicket] Exception:', error.message || error);
+        console.error('[CreateTicket] Exception:', error.message || error);
         return res.json({
             result: {
                 success: false,
