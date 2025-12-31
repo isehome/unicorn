@@ -742,11 +742,12 @@ export const technicianService = {
     const EXCLUDED_EMAIL_PATTERNS = ['accounting@', 'orders@', 'info@', 'support@'];
 
     try {
-      // Get internal contacts
+      // Get internal contacts (must also be active)
       const { data, error } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
+        .eq('is_active', true)
         .not('email', 'is', null)
         .order('full_name');
 
@@ -899,11 +900,12 @@ export const technicianService = {
         }
       });
 
-      // Get internal contacts
+      // Get internal contacts (must also be active)
       const { data: techsRaw, error: techsError } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
         .eq('is_internal', true)
+        .eq('is_active', true)
         .not('email', 'is', null)
         .order('full_name');
 
