@@ -776,6 +776,30 @@ export const technicianService = {
         return true;
       });
 
+      // Fetch avatar colors from profiles
+      const emails = filtered.filter(c => c.email).map(c => c.email.toLowerCase());
+      if (emails.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('email, avatar_color')
+          .in('email', emails);
+
+        if (profiles) {
+          const emailToColor = {};
+          profiles.forEach(p => {
+            if (p.email && p.avatar_color) {
+              emailToColor[p.email.toLowerCase()] = p.avatar_color;
+            }
+          });
+          // Attach avatar_color to each technician
+          filtered.forEach(tech => {
+            if (tech.email) {
+              tech.avatar_color = emailToColor[tech.email.toLowerCase()] || null;
+            }
+          });
+        }
+      }
+
       return filtered;
     } catch (error) {
       console.error('[TechnicianService] Failed to fetch technicians:', error);

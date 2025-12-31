@@ -49,6 +49,7 @@ import ServicePartsManager from './ServicePartsManager';
 import ServicePOManager from './ServicePOManager';
 import ServiceTimeTracker from './ServiceTimeTracker';
 import ServicePhotosManager from './ServicePhotosManager';
+import TechnicianAvatar from '../TechnicianAvatar';
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -964,14 +965,19 @@ const ServiceTicketDetail = () => {
                   </option>
                 ))}
               </select>
-              {ticket.assigned_to_name && (
-                <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-700/50 rounded-lg">
-                  <div className="w-5 h-5 rounded-full bg-violet-600 flex items-center justify-center text-xs text-white font-medium">
-                    {(ticket.assigned_to_name || '?')[0].toUpperCase()}
+              {ticket.assigned_to_name && (() => {
+                const assignedTechnician = technicians.find(t => t.id === ticket.assigned_to);
+                return (
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-700/50 rounded-lg">
+                    <TechnicianAvatar
+                      name={ticket.assigned_to_name}
+                      color={assignedTechnician?.avatar_color}
+                      size="sm"
+                    />
+                    <span className="text-sm text-zinc-300">{ticket.assigned_to_name}</span>
                   </div>
-                  <span className="text-sm text-zinc-300">{ticket.assigned_to_name}</span>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
           {/* Edit/Save/Cancel buttons */}

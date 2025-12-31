@@ -4,10 +4,11 @@
  * Card height represents the estimated time the service will take
  */
 
-import React, { memo, useState, useMemo } from 'react';
-import { Clock, User, MapPin, AlertCircle, Search, Filter, ExternalLink, GripVertical } from 'lucide-react';
+import React, { memo, useState, useMemo, useRef, useEffect } from 'react';
+import { Clock, User, MapPin, AlertCircle, Search, Filter, ExternalLink, GripVertical, ChevronDown } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 import { setDragEstimatedHours, resetDragEstimatedHours } from './WeekCalendarGrid';
+import TechnicianAvatar, { UnassignedAvatar, getColorFromName } from '../TechnicianAvatar';
 
 // Constants
 const HOUR_HEIGHT = 60; // pixels per hour - matches WeekCalendarGrid
@@ -49,10 +50,32 @@ const getCardHeight = (estimatedHours) => {
  */
 const TicketCard = memo(({
   ticket,
+  technicians = [],
   onOpenTicket,
+  onAssignTechnician,
   compact = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [showAssignDropdown, setShowAssignDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowAssignDropdown(false);
+      }
+    };
+    if (showAssignDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAssignDropdown]);
+
+  // Find assigned technician details
+  const assignedTech = technicians.find(t => t.id === ticket.assigned_to);
+  const techName = ticket.assigned_to_name || assignedTech?.full_name;
+  const techColor = assignedTech?.avatar_color;
 
   const priority = ticket.priority || 'normal';
   const colors = priorityColors[priority] || priorityColors.normal;
@@ -150,6 +173,65 @@ const TicketCard = memo(({
         {ticket.title || 'Service Request'}
       </div>
 
+      {/* Technician Assignment */}
+      <div className="relative mb-2" ref={dropdownRef}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowAssignDropdown(!showAssignDropdown);
+          }}
+          className="flex items-center gap-1.5 w-full px-1.5 py-1 rounded bg-black/20 hover:bg-black/30 transition-colors"
+        >
+          {techName ? (
+            <TechnicianAvatar name={techName} color={techColor} size="xs" />
+          ) : (
+            <UnassignedAvatar size="xs" />
+          )}
+          <span className="text-xs text-zinc-300 truncate flex-1 text-left">
+            {techName || 'Unassigned'}
+          </span>
+          <ChevronDown size={12} className="text-zinc-400 flex-shrink-0" />
+        </button>
+
+        {/* Assignment Dropdown */}
+        {showAssignDropdown && (
+          <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-900 border border-zinc-600 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+            {/* Unassign option */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAssignTechnician?.(ticket.id, null);
+                setShowAssignDropdown(false);
+              }}
+              className="flex items-center gap-2 w-full px-2 py-1.5 text-left hover:bg-zinc-800 transition-colors"
+            >
+              <UnassignedAvatar size="xs" />
+              <span className="text-xs text-zinc-400">Unassigned</span>
+            </button>
+            {/* Technician options */}
+            {technicians.map(tech => (
+              <button
+                key={tech.id}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAssignTechnician?.(ticket.id, tech.id, tech.full_name);
+                  setShowAssignDropdown(false);
+                }}
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left hover:bg-zinc-800 transition-colors ${
+                  ticket.assigned_to === tech.id ? 'bg-zinc-800' : ''
+                }`}
+              >
+                <TechnicianAvatar name={tech.full_name} color={tech.avatar_color} size="xs" />
+                <span className="text-xs text-white truncate">{tech.full_name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Time estimate - prominent display */}
       <div
         className="flex items-center gap-1 text-sm font-medium mb-2"
@@ -205,7 +287,8 @@ const UnscheduledTicketsPanel = ({
   selectedTechnician,
   onTechnicianChange,
   onOpenTicket,
-  onUnschedule, // New: callback when a scheduled ticket is dropped here
+  onAssignTechnician, // Callback to assign a technician to a ticket: (ticketId, techId, techName) => void
+  onUnschedule, // Callback when a scheduled ticket is dropped here
   isLoading = false,
   compactMode = false
 }) => {
@@ -396,7 +479,9 @@ const UnscheduledTicketsPanel = ({
             <TicketCard
               key={ticket.id}
               ticket={ticket}
+              technicians={technicians}
               onOpenTicket={onOpenTicket}
+              onAssignTechnician={onAssignTechnician}
               compact={compactMode}
             />
           ))

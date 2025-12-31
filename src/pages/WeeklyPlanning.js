@@ -654,6 +654,22 @@ const WeeklyPlanning = () => {
     }
   };
 
+  // Handle assigning a technician to a ticket from the unscheduled panel
+  const handleAssignTechnician = async (ticketId, techId, techName) => {
+    try {
+      await serviceTicketService.update(ticketId, {
+        assigned_to: techId,
+        assigned_to_name: techName || null
+      });
+      console.log('[WeeklyPlanning] Technician assigned:', { ticketId, techId, techName });
+      // Refresh the ticket list
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to assign technician:', err);
+      setError('Failed to assign technician');
+    }
+  };
+
   // Open full ticket page in new tab
   const handleOpenTicketFullPage = (ticketId) => {
     window.open(`/service/tickets/${ticketId}`, '_blank');
@@ -719,6 +735,7 @@ const WeeklyPlanning = () => {
             selectedTechnician={selectedTechnician}
             onTechnicianChange={handleTechnicianChange}
             onOpenTicket={handleOpenTicket}
+            onAssignTechnician={handleAssignTechnician}
             onUnschedule={handleUnschedule}
             isLoading={loadingTickets}
           />

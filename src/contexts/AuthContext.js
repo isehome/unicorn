@@ -216,6 +216,22 @@ export function AuthProvider({ children }) {
             }
           } else {
             console.log('[Auth] Profile synced successfully:', upsertData);
+            // Include avatar_color in the enriched user
+            if (upsertData?.avatar_color) {
+              enrichedUser.avatar_color = upsertData.avatar_color;
+            }
+          }
+
+          // If we don't have avatar_color yet, fetch it from the profile
+          if (!enrichedUser.avatar_color) {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('avatar_color')
+              .eq('id', enrichedUser.id)
+              .single();
+            if (profileData?.avatar_color) {
+              enrichedUser.avatar_color = profileData.avatar_color;
+            }
           }
         } catch (syncError) {
           console.error('[Auth] Error syncing profile:', syncError);

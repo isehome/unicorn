@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
+import { getColorFromName } from './TechnicianAvatar';
 
 const AppHeader = () => {
   const { mode } = useTheme();
@@ -61,13 +62,16 @@ const AppHeader = () => {
     return 'Field Operations';
   }, [location.pathname]);
 
-  const displayName = user?.full_name || user?.name || user?.email || 'User';
+  const displayName = user?.full_name || user?.name || user?.displayName || user?.email || 'User';
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => part[0]?.toUpperCase())
     .join('')
     .slice(0, 2) || 'U';
+
+  // Use user's custom avatar color, or fall back to hash-based color
+  const avatarColor = user?.avatar_color || getColorFromName(displayName);
 
   return (
     <header style={headerStyle} className="sticky top-0 z-50 backdrop-blur">
@@ -108,7 +112,8 @@ const AppHeader = () => {
           <button
             type="button"
             onClick={() => navigate('/settings')}
-            className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 text-white flex items-center justify-center text-sm font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
+            className="w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
+            style={{ backgroundColor: avatarColor }}
             title="Open Settings"
           >
             {initials}
