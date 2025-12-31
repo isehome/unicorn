@@ -17,7 +17,8 @@ import {
   ChevronDown, ChevronRight, Loader2, CheckCircle, AlertCircle,
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, Layers, ToggleLeft, ToggleRight,
-  Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink
+  Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
+  ArrowRight, RefreshCw, AlertTriangle, Check
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -138,6 +139,26 @@ const AdminPage = () => {
   // First-time setup state
   const [showFirstTimeSetup, setShowFirstTimeSetup] = useState(false);
   const [systemInitialized, setSystemInitialized] = useState(true);
+
+  // CSV Import state
+  const [csvData, setCsvData] = useState([]);
+  const [csvHeaders, setCsvHeaders] = useState([]);
+  const [fieldMapping, setFieldMapping] = useState({});
+  const [importPreview, setImportPreview] = useState([]);
+  const [importStep, setImportStep] = useState('upload'); // upload, map, preview, importing, done
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0, skipped: 0, errors: [] });
+  const [duplicateHandling, setDuplicateHandling] = useState('skip'); // skip, merge, create
+
+  // Available contact fields for mapping
+  const CONTACT_FIELDS = [
+    { key: 'name', label: 'Name', required: true },
+    { key: 'email', label: 'Email', required: false },
+    { key: 'phone', label: 'Phone', required: false },
+    { key: 'company', label: 'Company', required: false },
+    { key: 'role', label: 'Role/Title', required: false },
+    { key: 'address', label: 'Address', required: false },
+    { key: 'notes', label: 'Notes', required: false }
+  ];
 
   /**
    * Check current user's authorization
@@ -1637,6 +1658,425 @@ const AdminPage = () => {
   );
 
   /**
+   * CSV Import Handlers
+   */
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      parseCSV(text);
+    };
+    reader.readAsText(file);
+  };
+
+  const parseCSV = (text) => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      setError('CSV must have at least a header row and one data row');
+      return;
+    }
+
+    // Parse header
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+    setCsvHeaders(headers);
+
+    // Parse data rows
+    const data = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].match(/("([^"]|"")*"|[^,]*)(,|$)/g) || [];
+      const row = {};
+      values.forEach((val, idx) => {
+        if (idx < headers.length) {
+          row[headers[idx]] = val.replace(/,$/g, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+        }
+      });
+      if (Object.values(row).some(v => v)) {
+        data.push(row);
+      }
+    }
+
+    setCsvData(data);
+
+    // Auto-map fields by matching header names
+    const autoMapping = {};
+    headers.forEach(header => {
+      const lowerHeader = header.toLowerCase();
+      CONTACT_FIELDS.forEach(field => {
+        if (lowerHeader.includes(field.key) || lowerHeader.includes(field.label.toLowerCase())) {
+          autoMapping[field.key] = header;
+        }
+      });
+    });
+    setFieldMapping(autoMapping);
+    setImportStep('map');
+  };
+
+  const handleMappingChange = (fieldKey, csvHeader) => {
+    setFieldMapping(prev => ({
+      ...prev,
+      [fieldKey]: csvHeader || null
+    }));
+  };
+
+  const generatePreview = () => {
+    const preview = csvData.slice(0, 5).map(row => {
+      const mapped = {};
+      Object.entries(fieldMapping).forEach(([fieldKey, csvHeader]) => {
+        if (csvHeader) {
+          mapped[fieldKey] = row[csvHeader] || '';
+        }
+      });
+      return mapped;
+    });
+    setImportPreview(preview);
+    setImportStep('preview');
+  };
+
+  const checkDuplicate = async (contact) => {
+    // Check by email first (most reliable)
+    if (contact.email) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, name, email, phone')
+        .ilike('email', contact.email)
+        .limit(1);
+      if (data?.length > 0) return data[0];
+    }
+
+    // Then check by phone
+    if (contact.phone) {
+      const normalizedPhone = contact.phone.replace(/\D/g, '');
+      if (normalizedPhone.length >= 7) {
+        const { data } = await supabase
+          .from('contacts')
+          .select('id, name, email, phone')
+          .filter('phone', 'ilike', `%${normalizedPhone.slice(-7)}%`)
+          .limit(1);
+        if (data?.length > 0) return data[0];
+      }
+    }
+
+    // Finally check by exact name + company match
+    if (contact.name && contact.company) {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, name, email, phone')
+        .ilike('name', contact.name)
+        .ilike('company', contact.company)
+        .limit(1);
+      if (data?.length > 0) return data[0];
+    }
+
+    return null;
+  };
+
+  const runImport = async () => {
+    setImportStep('importing');
+    setImportProgress({ current: 0, total: csvData.length, skipped: 0, errors: [] });
+
+    const errors = [];
+    let skipped = 0;
+
+    for (let i = 0; i < csvData.length; i++) {
+      const row = csvData[i];
+
+      // Map CSV data to contact fields
+      const contact = {};
+      Object.entries(fieldMapping).forEach(([fieldKey, csvHeader]) => {
+        if (csvHeader && row[csvHeader]) {
+          contact[fieldKey] = row[csvHeader];
+        }
+      });
+
+      // Skip if no name
+      if (!contact.name) {
+        errors.push({ row: i + 2, error: 'Missing name' });
+        skipped++;
+        setImportProgress(prev => ({ ...prev, current: i + 1, skipped: skipped, errors }));
+        continue;
+      }
+
+      try {
+        // Check for duplicate
+        const existing = await checkDuplicate(contact);
+
+        if (existing) {
+          if (duplicateHandling === 'skip') {
+            skipped++;
+          } else if (duplicateHandling === 'merge') {
+            // Merge: update existing with new non-empty fields
+            const updates = {};
+            Object.entries(contact).forEach(([key, value]) => {
+              if (value && !existing[key]) {
+                updates[key] = value;
+              }
+            });
+            if (Object.keys(updates).length > 0) {
+              await supabase
+                .from('contacts')
+                .update(updates)
+                .eq('id', existing.id);
+            } else {
+              skipped++;
+            }
+          }
+          // 'create' will fall through to create new
+          else if (duplicateHandling === 'create') {
+            await supabase.from('contacts').insert([contact]);
+          }
+        } else {
+          // No duplicate, create new contact
+          await supabase.from('contacts').insert([contact]);
+        }
+      } catch (err) {
+        errors.push({ row: i + 2, error: err.message });
+      }
+
+      setImportProgress(prev => ({ ...prev, current: i + 1, skipped, errors }));
+    }
+
+    setImportStep('done');
+  };
+
+  const resetImport = () => {
+    setCsvData([]);
+    setCsvHeaders([]);
+    setFieldMapping({});
+    setImportPreview([]);
+    setImportStep('upload');
+    setImportProgress({ current: 0, total: 0, skipped: 0, errors: [] });
+  };
+
+  /**
+   * Render Import Tab
+   */
+  const renderImportTab = () => (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Import Contacts</h2>
+        <p className="text-sm text-zinc-500">Import contacts from CSV file with duplicate detection and field mapping.</p>
+      </div>
+
+      {/* Progress Steps */}
+      <div className="flex items-center gap-2 text-sm">
+        {['upload', 'map', 'preview', 'importing', 'done'].map((step, idx) => (
+          <React.Fragment key={step}>
+            <div className={`flex items-center gap-1 ${
+              importStep === step ? 'text-violet-600 font-medium' :
+              ['upload', 'map', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? 'text-green-600' : 'text-zinc-400'
+            }`}>
+              {['upload', 'map', 'preview', 'importing', 'done'].indexOf(importStep) > idx ? (
+                <CheckCircle size={16} />
+              ) : (
+                <span className="w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs">
+                  {idx + 1}
+                </span>
+              )}
+              <span className="capitalize">{step}</span>
+            </div>
+            {idx < 4 && <ArrowRight size={14} className="text-zinc-300" />}
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* Step 1: Upload */}
+      {importStep === 'upload' && (
+        <div className="rounded-lg border-2 border-dashed border-zinc-300 dark:border-zinc-600 p-8 text-center">
+          <FileSpreadsheet size={48} className="mx-auto mb-4 text-zinc-400" />
+          <h3 className="font-medium text-zinc-700 dark:text-zinc-300 mb-2">Upload CSV File</h3>
+          <p className="text-sm text-zinc-500 mb-4">Select a CSV file containing contact information</p>
+          <label className="inline-flex items-center gap-2 px-4 py-2 bg-violet-500 text-white rounded-lg cursor-pointer hover:bg-violet-600 transition-colors">
+            <Upload size={16} />
+            Choose File
+            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+          </label>
+          <p className="text-xs text-zinc-400 mt-4">
+            CSV should have headers in the first row. Supported fields: Name, Email, Phone, Company, Role, Address, Notes
+          </p>
+        </div>
+      )}
+
+      {/* Step 2: Map Fields */}
+      {importStep === 'map' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              <strong>{csvData.length}</strong> records found. Map your CSV columns to contact fields below.
+            </p>
+          </div>
+
+          <div className="grid gap-3">
+            {CONTACT_FIELDS.map(field => (
+              <div key={field.key} className="flex items-center gap-4">
+                <div className="w-32 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {field.label}
+                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                </div>
+                <ArrowRight size={16} className="text-zinc-400" />
+                <select
+                  value={fieldMapping[field.key] || ''}
+                  onChange={(e) => handleMappingChange(field.key, e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm"
+                >
+                  <option value="">-- Don't import --</option>
+                  {csvHeaders.map(header => (
+                    <option key={header} value={header}>{header}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+
+          {/* Duplicate Handling */}
+          <div className="p-4 rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <h4 className="font-medium text-sm mb-3">Duplicate Handling</h4>
+            <div className="flex gap-4">
+              {[
+                { id: 'skip', label: 'Skip duplicates', desc: 'Keep existing, ignore new' },
+                { id: 'merge', label: 'Merge', desc: 'Fill empty fields only' },
+                { id: 'create', label: 'Create new', desc: 'Allow duplicates' }
+              ].map(opt => (
+                <label key={opt.id} className={`flex-1 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  duplicateHandling === opt.id
+                    ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20'
+                    : 'border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                }`}>
+                  <input
+                    type="radio"
+                    name="duplicateHandling"
+                    value={opt.id}
+                    checked={duplicateHandling === opt.id}
+                    onChange={(e) => setDuplicateHandling(e.target.value)}
+                    className="sr-only"
+                  />
+                  <div className="text-sm font-medium">{opt.label}</div>
+                  <div className="text-xs text-zinc-500">{opt.desc}</div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={resetImport}>
+              <X size={16} />
+              Cancel
+            </Button>
+            <Button onClick={generatePreview} disabled={!fieldMapping.name}>
+              <ArrowRight size={16} />
+              Preview Import
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Preview */}
+      {importStep === 'preview' && (
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              Preview of first 5 records. Ready to import <strong>{csvData.length}</strong> contacts.
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-200 dark:border-zinc-700">
+                  {CONTACT_FIELDS.filter(f => fieldMapping[f.key]).map(field => (
+                    <th key={field.key} className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">
+                      {field.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {importPreview.map((row, idx) => (
+                  <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800">
+                    {CONTACT_FIELDS.filter(f => fieldMapping[f.key]).map(field => (
+                      <td key={field.key} className="p-2 text-zinc-700 dark:text-zinc-300">
+                        {row[field.key] || '-'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setImportStep('map')}>
+              <ArrowLeft size={16} />
+              Back
+            </Button>
+            <Button onClick={runImport}>
+              <Upload size={16} />
+              Import {csvData.length} Contacts
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Importing */}
+      {importStep === 'importing' && (
+        <div className="space-y-4 text-center py-8">
+          <Loader2 size={48} className="mx-auto animate-spin text-violet-500" />
+          <h3 className="font-medium text-lg">Importing contacts...</h3>
+          <div className="w-full max-w-md mx-auto">
+            <div className="h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-violet-500 transition-all duration-300"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="text-sm text-zinc-500 mt-2">
+              {importProgress.current} of {importProgress.total} processed
+              {importProgress.skipped > 0 && ` (${importProgress.skipped} skipped)`}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Step 5: Done */}
+      {importStep === 'done' && (
+        <div className="space-y-4 text-center py-8">
+          <CheckCircle size={48} className="mx-auto text-green-500" />
+          <h3 className="font-medium text-lg">Import Complete!</h3>
+          <p className="text-zinc-600 dark:text-zinc-400">
+            Processed {importProgress.total} records.
+            {importProgress.skipped > 0 && ` ${importProgress.skipped} skipped.`}
+            {importProgress.errors.length > 0 && ` ${importProgress.errors.length} errors.`}
+          </p>
+
+          {importProgress.errors.length > 0 && (
+            <div className="text-left max-w-md mx-auto p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+              <h4 className="font-medium text-red-700 dark:text-red-300 mb-2 flex items-center gap-2">
+                <AlertTriangle size={16} />
+                Errors
+              </h4>
+              <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
+                {importProgress.errors.slice(0, 5).map((err, idx) => (
+                  <li key={idx}>Row {err.row}: {err.error}</li>
+                ))}
+                {importProgress.errors.length > 5 && (
+                  <li>...and {importProgress.errors.length - 5} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          <Button onClick={resetImport}>
+            <RefreshCw size={16} />
+            Import More
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
+  /**
    * Render Integrations Tab
    */
   const renderIntegrationsTab = () => (
@@ -1984,6 +2424,17 @@ const AdminPage = () => {
           <Link2 size={16} />
           Integrations
         </button>
+        <button
+          onClick={() => setActiveTab('import')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'import'
+              ? 'bg-violet-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Upload size={16} />
+          Import
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -1993,6 +2444,7 @@ const AdminPage = () => {
       {activeTab === 'employee-skills' && renderEmployeeSkillsTab()}
       {activeTab === 'features' && renderFeaturesTab()}
       {activeTab === 'integrations' && renderIntegrationsTab()}
+      {activeTab === 'import' && renderImportTab()}
 
       {/* Modals */}
       {renderEmployeeSkillsModal()}
