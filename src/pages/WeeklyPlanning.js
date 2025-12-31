@@ -277,9 +277,14 @@ const WeeklyPlanning = () => {
     const scheduleId = ticket._scheduleId;
 
     // Use selected technician from filter bar, or fall back to ticket's assigned technician
-    const techId = selectedTechnician || ticket.assigned_to;
+    // In "All" view mode, require a specific technician selection to avoid confusion
+    let techId = selectedTechnician;
+    if (!techId || techId === 'all') {
+      // Fall back to ticket's assigned technician
+      techId = ticket.assigned_to;
+    }
     if (!techId && !isReschedule) {
-      setError('No technician assigned to this ticket. Please assign a technician in the ticket first.');
+      setError('Please select a specific technician from the filter bar, or assign a technician to the ticket first.');
       return;
     }
 
