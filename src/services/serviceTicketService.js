@@ -730,23 +730,19 @@ export const customerLookupService = {
 export const technicianService = {
   /**
    * Get all internal employees (technicians) who can be assigned to tickets
-   * Uses the contacts table with is_internal = true
-   * Only includes contacts with valid employee roles (excludes groups like Accounting, Orders)
+   * Excludes internal groups like Accounting, Orders
+   * Filters to only contacts with personal email domains (not group emails)
    */
   async getAll() {
     if (!supabase) return [];
 
-    // Valid employee role patterns - only include contacts with these roles
-    const VALID_EMPLOYEE_ROLES = [
-      'technician', 'lead technician', 'senior technician',
-      'manager', 'project manager', 'operations manager', 'general manager',
-      'owner', 'admin', 'administrator',
-      'installer', 'lead installer',
-      'sales', 'salesperson', 'sales rep',
-      'designer', 'programmer', 'engineer'
-    ];
+    // Internal groups to exclude by name (not assignable people)
+    const EXCLUDED_NAMES = ['accounting', 'orders'];
+    // Group email patterns to exclude
+    const EXCLUDED_EMAIL_PATTERNS = ['accounting@', 'orders@', 'info@', 'support@'];
 
     try {
+      // Get internal contacts
       const { data, error } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
@@ -759,25 +755,23 @@ export const technicianService = {
         throw new Error(error.message || 'Failed to fetch technicians');
       }
 
-      // Filter to only valid employees and deduplicate by email
+      // Filter out groups and deduplicate
       const seen = new Set();
       const filtered = (data || []).filter(contact => {
-        // Must have a role that matches our employee patterns
-        if (!contact.role) return false;
-        const roleLower = contact.role.toLowerCase();
-        const isValidEmployee = VALID_EMPLOYEE_ROLES.some(validRole =>
-          roleLower.includes(validRole)
-        );
-        if (!isValidEmployee) return false;
+        if (!contact.email) return false;
+        const emailLower = contact.email.toLowerCase();
+        const nameLower = (contact.full_name || '').toLowerCase();
+
+        // Exclude by name
+        if (EXCLUDED_NAMES.some(excluded => nameLower === excluded)) return false;
+
+        // Exclude group email patterns
+        if (EXCLUDED_EMAIL_PATTERNS.some(pattern => emailLower.startsWith(pattern))) return false;
 
         // Deduplicate by email
-        if (contact.email) {
-          const emailLower = contact.email.toLowerCase();
-          if (seen.has(emailLower)) {
-            return false;
-          }
-          seen.add(emailLower);
-        }
+        if (seen.has(emailLower)) return false;
+        seen.add(emailLower);
+
         return true;
       });
 
@@ -881,23 +875,31 @@ export const technicianService = {
   /**
    * Get all technicians with their skills for a given category
    * Returns technicians sorted by skill match (qualified first, then others)
+   * Excludes internal groups like Accounting, Orders
    * @param {string} category - The ticket category to match skills against
    */
   async getAllWithSkills(category) {
     if (!supabase) return [];
 
-    // Valid employee role patterns - only include contacts with these roles
-    const VALID_EMPLOYEE_ROLES = [
-      'technician', 'lead technician', 'senior technician',
-      'manager', 'project manager', 'operations manager', 'general manager',
-      'owner', 'admin', 'administrator',
-      'installer', 'lead installer',
-      'sales', 'salesperson', 'sales rep',
-      'designer', 'programmer', 'engineer'
-    ];
+    // Internal groups to exclude by name (not assignable people)
+    const EXCLUDED_NAMES = ['accounting', 'orders'];
+    // Group email patterns to exclude
+    const EXCLUDED_EMAIL_PATTERNS = ['accounting@', 'orders@', 'info@', 'support@'];
 
     try {
-      // Get all internal technicians (with emails)
+      // Get profiles for skill lookup (email -> profile_id mapping)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, email');
+
+      const emailToProfileId = {};
+      (profiles || []).forEach(p => {
+        if (p.email) {
+          emailToProfileId[p.email.toLowerCase()] = p.id;
+        }
+      });
+
+      // Get internal contacts
       const { data: techsRaw, error: techsError } = await supabase
         .from('contacts')
         .select('id, full_name, first_name, last_name, email, phone, role')
@@ -910,23 +912,23 @@ export const technicianService = {
         throw new Error(techsError.message || 'Failed to fetch technicians');
       }
 
-      // Filter to only valid employees and deduplicate by email
+      // Filter out groups and deduplicate
       const seen = new Set();
       const techs = (techsRaw || []).filter(contact => {
-        // Must have a role that matches our employee patterns
-        if (!contact.role) return false;
-        const roleLower = contact.role.toLowerCase();
-        const isValidEmployee = VALID_EMPLOYEE_ROLES.some(validRole =>
-          roleLower.includes(validRole)
-        );
-        if (!isValidEmployee) return false;
+        if (!contact.email) return false;
+        const emailLower = contact.email.toLowerCase();
+        const nameLower = (contact.full_name || '').toLowerCase();
+
+        // Exclude by name
+        if (EXCLUDED_NAMES.some(excluded => nameLower === excluded)) return false;
+
+        // Exclude group email patterns
+        if (EXCLUDED_EMAIL_PATTERNS.some(pattern => emailLower.startsWith(pattern))) return false;
 
         // Deduplicate by email
-        if (contact.email) {
-          const emailLower = contact.email.toLowerCase();
-          if (seen.has(emailLower)) return false;
-          seen.add(emailLower);
-        }
+        if (seen.has(emailLower)) return false;
+        seen.add(emailLower);
+
         return true;
       });
 
@@ -948,20 +950,7 @@ export const technicianService = {
         return techs.map(t => ({ ...t, skills: [], qualified: false }));
       }
 
-      // Map skills to employees - need to find matching profile by email
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, email');
-
-      // Create email -> profile_id mapping
-      const emailToProfileId = {};
-      if (profiles) {
-        profiles.forEach(p => {
-          if (p.email) emailToProfileId[p.email.toLowerCase()] = p.id;
-        });
-      }
-
-      // Group skills by employee_id
+      // Group skills by employee_id (emailToProfileId already created above)
       const skillsByEmployee = {};
       if (skillsData) {
         skillsData.forEach(es => {
