@@ -102,7 +102,14 @@ JSON ARRAY:`;
             // Merge AI results with original data to preserve any fields AI didn't return
             const merged = parsed.map((aiResult, idx) => {
               const original = batch[idx] || {};
-              return { ...original, ...aiResult };
+              // Start with original, then only overwrite with non-empty AI values
+              const result = { ...original };
+              Object.entries(aiResult).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                  result[key] = value;
+                }
+              });
+              return result;
             });
             results.push(...merged);
           } else {
