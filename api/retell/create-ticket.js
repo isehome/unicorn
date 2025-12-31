@@ -1,6 +1,7 @@
 /**
  * api/retell/create-ticket.js
  * Create service ticket from Retell AI phone call
+ * Automatically includes network diagnostics if available
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -9,7 +10,6 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Generate ticket number: ST-YYYYMMDD-XXXX
 function generateTicketNumber() {
     const date = new Date();
     const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
@@ -17,36 +17,28 @@ function generateTicketNumber() {
     return 'ST-' + dateStr + '-' + random;
 }
 
-// VALID VALUES FROM DATABASE CONSTRAINTS
 const VALID = {
-    categories: ['network', 'av', 'shades', 'control', 'wiring', 'installation', 'maintenance', 'general'],
-    priorities: ['low', 'medium', 'high', 'urgent'],
-    sources: ['manual', 'phone_ai', 'email', 'portal', 'issue_escalation'],
-    statuses: ['open', 'triaged', 'scheduled', 'in_progress', 'waiting_parts', 'waiting_customer', 'resolved', 'closed']
+    priorities: ['low', 'medium', 'high', 'urgent']
 };
 
-// Map LLM category to valid category
-function mapCategory(c) {
-    if (!c) return 'general';
-    const lower = c.toLowerCase().trim();
-    if (VALID.categories.includes(lower)) return lower;
-    
-    // Common aliases
-    if (lower.includes('audio') || lower.includes('video') || lower.includes('tv') || lower.includes('speaker')) return 'av';
-    if (lower.includes('network') || lower.includes('wifi') || lower.includes('internet')) return 'network';
-    if (lower.includes('shade') || lower.includes('blind')) return 'shades';
-    if (lower.includes('automat') || lower.includes('control') || lower.includes('light') || lower.includes('security')) return 'control';
-    
-    return 'general';
-}
-
-// Map LLM priority to valid priority
 function mapPriority(p) {
     if (!p) return 'medium';
     const lower = p.toLowerCase().trim();
     if (VALID.priorities.includes(lower)) return lower;
     if (lower === 'normal') return 'medium';
     return 'medium';
+}
+
+function mapCategory(c) {
+    if (!c) return 'general';
+    const lower = c.toLowerCase().trim();
+    // Common aliases
+    if (lower.includes('audio') || lower.includes('video') || lower.includes('tv') || lower.includes('speaker')) return 'av';
+    if (lower.includes('network') || lower.includes('wifi') || lower.includes('internet')) return 'network';
+    if (lower.includes('light') || lower.includes('keypad') || lower.includes('switch') || lower.includes('lutron') || lower.includes('dimmer')) return 'lighting';
+    if (lower.includes('shade') || lower.includes('blind')) return 'shades';
+    if (lower.includes('control') || lower.includes('automat') || lower.includes('crestron') || lower.includes('savant')) return 'control';
+    return lower || 'general';
 }
 
 module.exports = async (req, res) => {
@@ -73,26 +65,53 @@ module.exports = async (req, res) => {
             customer_email,
             customer_address,
             preferred_time,
-            troubleshooting_notes
+            troubleshooting_notes,
+            unifi_site_id
         } = body;
 
         if (!title) {
             return res.json({
-                result: {
-                    success: false,
-                    message: "I need a brief description of the issue to create a ticket."
-                }
+                result: { success: false, message: "I need a brief description of the issue." }
             });
         }
 
         const ticketNumber = generateTicketNumber();
+        const mappedCategory = mapCategory(category);
         
-        // Build the ticket with ONLY valid constrained values
+        // Check for cached network diagnostics if this is a network issue
+        let networkDiagnostics = null;
+        if (unifi_site_id && mappedCategory === 'network') {
+            try {
+                const { data } = await supabase
+                    .from('retell_network_cache')
+                    .select('diagnostics')
+                    .eq('site_id', unifi_site_id)
+                    .single();
+                if (data?.diagnostics) {
+                    networkDiagnostics = data.diagnostics;
+                    console.log('[CreateTicket] Found cached network diagnostics');
+                }
+            } catch (e) {
+                // No cache found, that's ok
+            }
+        }
+
+        // Combine troubleshooting notes with network diagnostics
+        let combinedNotes = '';
+        if (troubleshooting_notes) {
+            combinedNotes = troubleshooting_notes;
+        }
+        if (networkDiagnostics) {
+            combinedNotes = combinedNotes 
+                ? combinedNotes + '\n\n' + networkDiagnostics 
+                : networkDiagnostics;
+        }
+
         const ticketData = {
             ticket_number: ticketNumber,
             title: title,
             description: description || title,
-            category: mapCategory(category),
+            category: mappedCategory,
             priority: mapPriority(priority),
             status: 'open',
             source: 'phone_ai',
@@ -102,15 +121,14 @@ module.exports = async (req, res) => {
             customer_address: customer_address || null
         };
 
-        // Optional fields - only add if provided
         if (preferred_time) {
             ticketData.initial_customer_comment = 'Scheduling preference: ' + preferred_time;
         }
-        if (troubleshooting_notes) {
-            ticketData.triage_notes = troubleshooting_notes;
+        if (combinedNotes) {
+            ticketData.triage_notes = combinedNotes;
         }
 
-        console.log('[CreateTicket] Creating:', ticketNumber, '| Category:', ticketData.category, '| Priority:', ticketData.priority);
+        console.log('[CreateTicket] Creating:', ticketNumber, '| Cat:', ticketData.category, '| Has diagnostics:', !!networkDiagnostics);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')
@@ -121,10 +139,7 @@ module.exports = async (req, res) => {
         if (error) {
             console.error('[CreateTicket] DB error:', JSON.stringify(error));
             return res.json({
-                result: {
-                    success: false,
-                    message: "I was unable to create the ticket. Let me have someone call you back."
-                }
+                result: { success: false, message: "Unable to create ticket. Someone will call you back." }
             });
         }
 
@@ -135,17 +150,14 @@ module.exports = async (req, res) => {
                 success: true,
                 ticket_id: ticket.id,
                 ticket_number: ticket.ticket_number,
-                message: 'Ticket ' + ticket.ticket_number + ' created. Someone will reach out to schedule.'
+                message: 'Ticket ' + ticket.ticket_number + ' created.'
             }
         });
 
     } catch (error) {
         console.error('[CreateTicket] Exception:', error.message || error);
         return res.json({
-            result: {
-                success: false,
-                message: "I encountered an error. Let me have someone call you back."
-            }
+            result: { success: false, message: "Error creating ticket. Someone will call you back." }
         });
     }
 };

@@ -1,9 +1,14 @@
 /**
  * api/retell/check-network.js
- * Check UniFi network status for troubleshooting
- * Returns diagnostics formatted for easy inclusion in tickets
+ * Check UniFi network status and store results for ticket creation
  */
+const { createClient } = require('@supabase/supabase-js');
+
 const UNIFI_API_KEY = process.env.UNIFI_API_KEY || process.env.REACT_APP_UNIFI_API_KEY;
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 module.exports = async (req, res) => {
     const startTime = Date.now();
@@ -23,45 +28,30 @@ module.exports = async (req, res) => {
         
         if (!unifiSiteId) {
             return res.json({
-                result: {
-                    checked: false,
-                    message: "No UniFi site configured for this customer."
-                }
+                result: { checked: false, message: "No UniFi site configured for this customer." }
             });
         }
 
         if (!UNIFI_API_KEY) {
             return res.json({
-                result: {
-                    checked: false,
-                    message: "Network monitoring not configured."
-                }
+                result: { checked: false, message: "Network monitoring not configured." }
             });
         }
 
-        console.log('[Check Network] Looking up site:', unifiSiteId);
+        console.log('[Check Network] Site:', unifiSiteId);
 
         const response = await fetch('https://api.ui.com/v1/sites', {
-            headers: {
-                'X-API-KEY': UNIFI_API_KEY,
-                'Accept': 'application/json'
-            }
+            headers: { 'X-API-KEY': UNIFI_API_KEY, 'Accept': 'application/json' }
         });
 
-        if (!response.ok) {
-            throw new Error('UniFi API error: ' + response.status);
-        }
+        if (!response.ok) throw new Error('UniFi API error: ' + response.status);
 
         const data = await response.json();
-        const sites = data.data || [];
-        const site = sites.find(s => s.hostId === unifiSiteId);
+        const site = (data.data || []).find(s => s.hostId === unifiSiteId);
         
         if (!site) {
             return res.json({
-                result: {
-                    checked: false,
-                    message: "Could not find network in monitoring system."
-                }
+                result: { checked: false, message: "Could not find network in monitoring system." }
             });
         }
 
@@ -74,18 +64,13 @@ module.exports = async (req, res) => {
         const wans = stats.wans || {};
         const internetIssues = stats.internetIssues || [];
         
-        // Device counts
         const totalDevices = counts.totalDevice || 0;
         const offlineDevices = counts.offlineDevice || 0;
         const offlineGateway = counts.offlineGatewayDevice || 0;
         const pendingUpdates = counts.pendingUpdateDevice || 0;
-        
-        // Clients
         const wifiClients = counts.wifiClient || 0;
         const wiredClients = counts.wiredClient || 0;
         const totalClients = wifiClients + wiredClients;
-        
-        // WAN
         const wanUptime = percentages.wanUptime;
         const txRetry = percentages.txRetry;
         const criticalAlerts = counts.criticalNotification || 0;
@@ -93,7 +78,6 @@ module.exports = async (req, res) => {
         const externalIp = primaryWan.externalIp || null;
         const isp = primaryWan.ispInfo?.name || ispInfo.name || 'Unknown';
         
-        // Issues
         const latencyIssues = internetIssues.filter(i => i.highLatency);
         const hasHighLatency = latencyIssues.length > 0;
         let avgLatency = null;
@@ -101,7 +85,6 @@ module.exports = async (req, res) => {
             avgLatency = Math.round(latencyIssues.reduce((sum, i) => sum + (i.latencyAvgMs || 0), 0) / latencyIssues.length);
         }
         
-        // Status
         const online = offlineGateway === 0;
         const healthy = online && offlineDevices === 0 && !hasHighLatency && criticalAlerts === 0;
         
@@ -119,55 +102,47 @@ module.exports = async (req, res) => {
             message = 'Network is online but has issues: ' + issues.join(', ');
         }
         
-        // TRIAGE SUMMARY - Single string for LLM to include in ticket
-        const triageParts = [
-            '=== NETWORK DIAGNOSTICS ===',
+        // Build triage summary
+        const triageSummary = [
+            '=== NETWORK DIAGNOSTICS (Remote Check) ===',
             'Status: ' + (online ? 'ONLINE' : 'OFFLINE') + (healthy ? ' (Healthy)' : ''),
             'Gateway: ' + (gateway.shortname || 'Unknown') + ' | ISP: ' + isp,
             'WAN Uptime: ' + (wanUptime !== undefined ? wanUptime + '%' : 'N/A') + (externalIp ? ' | IP: ' + externalIp : ''),
             'Devices: ' + totalDevices + ' total, ' + offlineDevices + ' offline, ' + pendingUpdates + ' pending updates',
             'Clients: ' + totalClients + ' connected (' + wifiClients + ' WiFi, ' + wiredClients + ' wired)',
-            'WiFi Retry Rate: ' + (txRetry ? txRetry.toFixed(1) + '%' : 'N/A')
-        ];
-        
-        if (criticalAlerts > 0) triageParts.push('Critical Alerts: ' + criticalAlerts);
-        if (hasHighLatency) triageParts.push('Latency Issues: avg ' + avgLatency + 'ms');
-        
-        const triageSummary = triageParts.join('\n');
+            'WiFi Retry Rate: ' + (txRetry ? txRetry.toFixed(1) + '%' : 'N/A'),
+            criticalAlerts > 0 ? 'Critical Alerts: ' + criticalAlerts : null,
+            hasHighLatency ? 'Latency: avg ' + avgLatency + 'ms' : null
+        ].filter(Boolean).join('\n');
 
-        const timing = Date.now() - startTime;
+        // Store diagnostics temporarily keyed by site ID
+        // create-ticket will look this up
+        try {
+            await supabase.from('retell_network_cache').upsert({
+                site_id: unifiSiteId,
+                diagnostics: triageSummary,
+                created_at: new Date().toISOString()
+            }, { onConflict: 'site_id' });
+        } catch (e) {
+            // Table might not exist yet, that's ok
+            console.log('[Check Network] Cache write skipped:', e.message);
+        }
 
         return res.json({
             result: {
                 checked: true,
-                online: online,
-                healthy: healthy,
-                message: message,
-                
-                // Single string for LLM to put in troubleshooting_notes
+                online,
+                healthy,
+                message,
                 triage_summary: triageSummary,
-                
-                // Detailed data if needed
-                devices_total: totalDevices,
-                devices_offline: offlineDevices,
-                clients_total: totalClients,
-                clients_wifi: wifiClients,
-                wan_uptime: wanUptime,
-                isp: isp,
-                critical_alerts: criticalAlerts,
-                has_latency_issues: hasHighLatency,
-                
-                timing_ms: timing
+                timing_ms: Date.now() - startTime
             }
         });
 
     } catch (error) {
         console.error('[Check Network] Error:', error);
         return res.json({
-            result: {
-                checked: false,
-                message: "Unable to check network status."
-            }
+            result: { checked: false, message: "Unable to check network status." }
         });
     }
 };
