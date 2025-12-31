@@ -30,32 +30,25 @@ const mapPriority = (p) => {
     return map[p?.toLowerCase()] || 'medium';
 };
 
-// Map category values to valid database values
-// Valid: network, av, shades, control, wiring, installation, maintenance, general
+// Valid categories from database constraint
+const VALID_CATEGORIES = ['network', 'av', 'shades', 'control', 'wiring', 'installation', 'maintenance', 'general'];
+
+// Simple category mapping - if not valid, use 'general'
 const mapCategory = (c) => {
-    const map = {
-        'audio_video': 'av',
-        'audio': 'av',
-        'video': 'av',
-        'av': 'av',
-        'networking': 'network',
-        'network': 'network',
-        'wifi': 'network',
-        'internet': 'network',
-        'shades': 'shades',
-        'blinds': 'shades',
-        'automation': 'control',
-        'control': 'control',
-        'lighting': 'control',
-        'security': 'control',
-        'wiring': 'wiring',
-        'cable': 'wiring',
-        'installation': 'installation',
-        'install': 'installation',
-        'maintenance': 'maintenance',
-        'general': 'general'
-    };
-    return map[c?.toLowerCase()] || 'general';
+    if (!c) return 'general';
+    const lower = c.toLowerCase().trim();
+    
+    // Direct match
+    if (VALID_CATEGORIES.includes(lower)) return lower;
+    
+    // Common aliases
+    if (lower.includes('audio') || lower.includes('video') || lower.includes('tv') || lower.includes('speaker')) return 'av';
+    if (lower.includes('network') || lower.includes('wifi') || lower.includes('internet')) return 'network';
+    if (lower.includes('shade') || lower.includes('blind')) return 'shades';
+    if (lower.includes('automat') || lower.includes('control') || lower.includes('light') || lower.includes('security')) return 'control';
+    
+    // Default fallback
+    return 'general';
 };
 
 module.exports = async (req, res) => {
@@ -105,7 +98,7 @@ module.exports = async (req, res) => {
             fullDescription += '\n\nScheduling Preference: ' + preferred_time;
         }
 
-        console.log('[Retell CreateTicket] Creating ticket:', ticketNumber, '- Category:', mappedCategory, '- Priority:', mappedPriority);
+        console.log('[Retell CreateTicket] Creating:', ticketNumber, '| Cat:', mappedCategory, '| Pri:', mappedPriority);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')
@@ -146,7 +139,7 @@ module.exports = async (req, res) => {
                 success: true,
                 ticket_id: ticket.id,
                 ticket_number: ticket.ticket_number,
-                message: 'Service ticket ' + ticket.ticket_number + ' created. Someone from our team will reach out to schedule your appointment.'
+                message: 'Service ticket ' + ticket.ticket_number + ' created. Someone from our team will reach out to schedule.'
             }
         });
 
