@@ -9,6 +9,18 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Map Retell priority values to valid database values
+const mapPriority = (p) => {
+    const map = {
+        'urgent': 'urgent',
+        'high': 'high',
+        'normal': 'medium',  // Map normal -> medium
+        'medium': 'medium',
+        'low': 'low'
+    };
+    return map[p?.toLowerCase()] || 'medium';
+};
+
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -27,7 +39,7 @@ module.exports = async (req, res) => {
             title,
             description,
             category = 'general',
-            priority = 'normal',
+            priority = 'medium',
             customer_name,
             customer_phone,
             customer_email,
@@ -48,12 +60,13 @@ module.exports = async (req, res) => {
             return res.json({
                 result: {
                     success: false,
-                    message: "I need to link this to your project. Let me get your information and have someone call you back."
+                    message: "I need to link this to your project. Let me have someone call you back."
                 }
             });
         }
 
-        console.log('[Retell CreateTicket] Creating:', title, 'for project:', project_id);
+        const mappedPriority = mapPriority(priority);
+        console.log('[Retell CreateTicket] Creating:', title, 'priority:', mappedPriority, 'project:', project_id);
 
         // Build the full description with customer info
         const fullDescription = [
@@ -65,7 +78,6 @@ module.exports = async (req, res) => {
             customer_email ? 'Email: ' + customer_email : null,
             customer_address ? 'Address: ' + customer_address : null,
             'Category: ' + category,
-            'Priority: ' + priority,
             '',
             'Created via AI Phone Agent (Sarah)'
         ].filter(Boolean).join('\n');
@@ -76,7 +88,7 @@ module.exports = async (req, res) => {
                 title: '[Phone] ' + title,
                 description: fullDescription,
                 status: 'open',
-                priority: priority,
+                priority: mappedPriority,
                 project_id: project_id
             }])
             .select('id, title, status')
@@ -88,29 +100,29 @@ module.exports = async (req, res) => {
                 result: {
                     success: false,
                     error_code: error.code,
-                    message: "I was unable to create the ticket in our system. I will make a note and have someone call you back to confirm the details."
+                    message: "I was unable to create the ticket. I will have someone call you back to confirm."
                 }
             });
         }
 
         if (!issue || !issue.id) {
-            console.error('[Retell CreateTicket] No issue returned after insert');
+            console.error('[Retell CreateTicket] No issue returned');
             return res.json({
                 result: {
                     success: false,
-                    message: "Something went wrong creating the ticket. I will have someone call you back to confirm."
+                    message: "Something went wrong. I will have someone call you back."
                 }
             });
         }
 
-        console.log('[Retell CreateTicket] Successfully created issue:', issue.id, issue.title);
+        console.log('[Retell CreateTicket] SUCCESS - Created issue:', issue.id, issue.title);
 
         return res.json({
             result: {
                 success: true,
                 ticket_id: issue.id,
                 ticket_title: issue.title,
-                message: 'I have created a service ticket for ' + title + '. Someone from our team will reach out to schedule a time that works for you.'
+                message: 'I have created a service ticket for ' + title + '. Someone from our team will reach out to schedule.'
             }
         });
 
@@ -119,7 +131,7 @@ module.exports = async (req, res) => {
         return res.json({
             result: {
                 success: false,
-                message: "I encountered an error. I will make a note and have someone call you back."
+                message: "I encountered an error. I will have someone call you back."
             }
         });
     }
