@@ -177,6 +177,36 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Retell AI** | Voice-based service intake (inbound calls) |
 | **QuickBooks Online** | Invoice creation from service tickets |
 
+#### 7.1 Retell AI Voice Integration
+
+AI-powered phone agent for customer service calls using Retell AI.
+
+| Setting | Value |
+|---------|-------|
+| Agent ID | `agent_569081761d8bbd630c0794095d` |
+| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
+| Agent Name | "Intelligent Systems - Sarah" |
+| Voice | ElevenLabs Hailey (American, young, professional) |
+| Model | GPT-4.1 |
+
+**Custom Tools (webhooks):**
+| Tool | Endpoint | Purpose |
+|------|----------|---------|
+| `identify_customer` | `/api/retell/identify` | Customer lookup by phone number |
+| `create_ticket` | `/api/retell/create-ticket` | Create service ticket from call |
+| `check_schedule` | `/api/retell/check-schedule` | Check technician availability (Premium SLA) |
+
+**Webhook URL:** `https://unicorn-one.vercel.app/api/retell/webhook`
+
+**Test URL:** `/service/ai-test` (browser-based voice testing)
+
+**Database Tables:**
+- `customer_sla_tiers` - Standard, Priority, Premium SLA definitions
+- `customer_sla_assignments` - Links contacts to SLA tiers
+- `retell_call_logs` - Tracks all AI phone calls with transcripts
+
+**Environment Variable:** `RETELL_API_KEY` (set in Vercel)
+
 ---
 
 ### 8. Service CRM Module
