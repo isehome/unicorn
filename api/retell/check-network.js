@@ -1,7 +1,7 @@
 /**
  * api/retell/check-network.js
- * Check UniFi network status for a customer's project
- * Returns detailed network diagnostics for troubleshooting
+ * Check UniFi network status for troubleshooting
+ * Returns diagnostics formatted for easy inclusion in tickets
  */
 const UNIFI_API_KEY = process.env.UNIFI_API_KEY || process.env.REACT_APP_UNIFI_API_KEY;
 
@@ -25,7 +25,7 @@ module.exports = async (req, res) => {
             return res.json({
                 result: {
                     checked: false,
-                    message: "No UniFi site configured for this customer's project."
+                    message: "No UniFi site configured for this customer."
                 }
             });
         }
@@ -34,7 +34,7 @@ module.exports = async (req, res) => {
             return res.json({
                 result: {
                     checked: false,
-                    message: "Network monitoring is not configured."
+                    message: "Network monitoring not configured."
                 }
             });
         }
@@ -60,13 +60,12 @@ module.exports = async (req, res) => {
             return res.json({
                 result: {
                     checked: false,
-                    message: "Could not find this network in our monitoring system."
+                    message: "Could not find network in monitoring system."
                 }
             });
         }
 
-        // Extract all the useful data
-        const meta = site.meta || {};
+        // Extract data
         const stats = site.statistics || {};
         const counts = stats.counts || {};
         const percentages = stats.percentages || {};
@@ -75,106 +74,66 @@ module.exports = async (req, res) => {
         const wans = stats.wans || {};
         const internetIssues = stats.internetIssues || [];
         
-        // Build device summary
+        // Device counts
         const totalDevices = counts.totalDevice || 0;
         const offlineDevices = counts.offlineDevice || 0;
         const offlineGateway = counts.offlineGatewayDevice || 0;
-        const offlineWifi = counts.offlineWifiDevice || 0;
-        const offlineWired = counts.offlineWiredDevice || 0;
         const pendingUpdates = counts.pendingUpdateDevice || 0;
         
-        // Client counts
+        // Clients
         const wifiClients = counts.wifiClient || 0;
         const wiredClients = counts.wiredClient || 0;
-        const guestClients = counts.guestClient || 0;
         const totalClients = wifiClients + wiredClients;
         
-        // WAN info
+        // WAN
         const wanUptime = percentages.wanUptime;
         const txRetry = percentages.txRetry;
         const criticalAlerts = counts.criticalNotification || 0;
-        
-        // Get primary WAN details
         const primaryWan = wans.WAN || {};
         const externalIp = primaryWan.externalIp || null;
-        const primaryWanUptime = primaryWan.wanUptime;
-        const primaryIsp = primaryWan.ispInfo?.name || ispInfo.name || 'Unknown';
+        const isp = primaryWan.ispInfo?.name || ispInfo.name || 'Unknown';
         
-        // Check for WAN issues
-        const wanIssues = primaryWan.wanIssues || [];
-        const hasWanDowntime = wanIssues.some(i => i.wanDowntime);
-        
-        // Check for latency issues
+        // Issues
         const latencyIssues = internetIssues.filter(i => i.highLatency);
         const hasHighLatency = latencyIssues.length > 0;
         let avgLatency = null;
-        let maxLatency = null;
         if (hasHighLatency) {
             avgLatency = Math.round(latencyIssues.reduce((sum, i) => sum + (i.latencyAvgMs || 0), 0) / latencyIssues.length);
-            maxLatency = Math.max(...latencyIssues.map(i => i.latencyMaxMs || 0));
         }
         
-        // Determine overall status
+        // Status
         const online = offlineGateway === 0;
         const healthy = online && offlineDevices === 0 && !hasHighLatency && criticalAlerts === 0;
         
-        // Build human-readable summary for Sarah to speak
-        let spokenSummary = '';
+        // Message for Sarah to speak
+        let message = '';
         if (!online) {
-            spokenSummary = 'The network gateway is OFFLINE. This is causing the connectivity issues.';
+            message = 'The network gateway is offline. This is causing the connectivity issues.';
         } else if (healthy) {
-            spokenSummary = 'The network looks healthy. ' + totalClients + ' devices are connected and everything is online.';
+            message = 'The network looks healthy. ' + totalClients + ' devices connected, everything online.';
         } else {
             let issues = [];
-            if (offlineDevices > 0) issues.push(offlineDevices + ' device' + (offlineDevices > 1 ? 's are' : ' is') + ' offline');
-            if (hasHighLatency) issues.push('high latency detected (avg ' + avgLatency + 'ms)');
-            if (criticalAlerts > 0) issues.push(criticalAlerts + ' critical alert' + (criticalAlerts > 1 ? 's' : ''));
-            spokenSummary = 'The network is online but I see some issues: ' + issues.join(', ') + '.';
+            if (offlineDevices > 0) issues.push(offlineDevices + ' device(s) offline');
+            if (hasHighLatency) issues.push('high latency detected');
+            if (criticalAlerts > 0) issues.push(criticalAlerts + ' alert(s)');
+            message = 'Network is online but has issues: ' + issues.join(', ');
         }
         
-        // Build detailed triage notes (array of separate notes)
-        const triageNotes = [];
+        // TRIAGE SUMMARY - Single string for LLM to include in ticket
+        const triageParts = [
+            '=== NETWORK DIAGNOSTICS ===',
+            'Status: ' + (online ? 'ONLINE' : 'OFFLINE') + (healthy ? ' (Healthy)' : ''),
+            'Gateway: ' + (gateway.shortname || 'Unknown') + ' | ISP: ' + isp,
+            'WAN Uptime: ' + (wanUptime !== undefined ? wanUptime + '%' : 'N/A') + (externalIp ? ' | IP: ' + externalIp : ''),
+            'Devices: ' + totalDevices + ' total, ' + offlineDevices + ' offline, ' + pendingUpdates + ' pending updates',
+            'Clients: ' + totalClients + ' connected (' + wifiClients + ' WiFi, ' + wiredClients + ' wired)',
+            'WiFi Retry Rate: ' + (txRetry ? txRetry.toFixed(1) + '%' : 'N/A')
+        ];
         
-        // Note 1: Overall Status
-        triageNotes.push({
-            category: 'Network Status',
-            content: 'Gateway: ' + (online ? 'ONLINE' : 'OFFLINE') + ' | ISP: ' + primaryIsp + ' | WAN Uptime: ' + (wanUptime !== undefined ? wanUptime + '%' : 'N/A') + (externalIp ? ' | Public IP: ' + externalIp : '')
-        });
+        if (criticalAlerts > 0) triageParts.push('Critical Alerts: ' + criticalAlerts);
+        if (hasHighLatency) triageParts.push('Latency Issues: avg ' + avgLatency + 'ms');
         
-        // Note 2: Device Summary
-        triageNotes.push({
-            category: 'Devices',
-            content: 'Total: ' + totalDevices + ' | Offline: ' + offlineDevices + (offlineWifi > 0 ? ' (WiFi APs: ' + offlineWifi + ')' : '') + (offlineWired > 0 ? ' (Switches: ' + offlineWired + ')' : '') + ' | Pending Updates: ' + pendingUpdates
-        });
-        
-        // Note 3: Connected Clients
-        triageNotes.push({
-            category: 'Connected Clients',
-            content: 'Total: ' + totalClients + ' | WiFi: ' + wifiClients + ' | Wired: ' + wiredClients + (guestClients > 0 ? ' | Guest: ' + guestClients : '')
-        });
-        
-        // Note 4: Issues (only if there are any)
-        if (criticalAlerts > 0 || hasHighLatency || hasWanDowntime || offlineDevices > 0) {
-            let issueDetails = [];
-            if (criticalAlerts > 0) issueDetails.push('Critical Alerts: ' + criticalAlerts);
-            if (hasHighLatency) issueDetails.push('High Latency: avg ' + avgLatency + 'ms, max ' + maxLatency + 'ms');
-            if (hasWanDowntime) issueDetails.push('WAN Downtime Detected');
-            if (offlineDevices > 0) issueDetails.push('Offline Devices: ' + offlineDevices);
-            if (txRetry > 15) issueDetails.push('High WiFi Retry Rate: ' + txRetry.toFixed(1) + '%');
-            
-            triageNotes.push({
-                category: 'Issues Detected',
-                content: issueDetails.join(' | ')
-            });
-        }
-        
-        // Note 5: Gateway Details
-        if (gateway.shortname) {
-            triageNotes.push({
-                category: 'Gateway',
-                content: 'Model: ' + gateway.shortname + ' | IPS: ' + (gateway.ipsMode || 'N/A')
-            });
-        }
+        const triageSummary = triageParts.join('\n');
 
         const timing = Date.now() - startTime;
 
@@ -183,40 +142,20 @@ module.exports = async (req, res) => {
                 checked: true,
                 online: online,
                 healthy: healthy,
+                message: message,
                 
-                // Summary for Sarah to speak
-                message: spokenSummary,
+                // Single string for LLM to put in troubleshooting_notes
+                triage_summary: triageSummary,
                 
-                // Detailed data
-                devices: {
-                    total: totalDevices,
-                    offline: offlineDevices,
-                    offline_wifi: offlineWifi,
-                    offline_wired: offlineWired,
-                    pending_updates: pendingUpdates
-                },
-                clients: {
-                    total: totalClients,
-                    wifi: wifiClients,
-                    wired: wiredClients,
-                    guest: guestClients
-                },
-                wan: {
-                    uptime_percent: wanUptime,
-                    external_ip: externalIp,
-                    isp: primaryIsp,
-                    has_downtime: hasWanDowntime
-                },
-                issues: {
-                    critical_alerts: criticalAlerts,
-                    high_latency: hasHighLatency,
-                    latency_avg_ms: avgLatency,
-                    latency_max_ms: maxLatency,
-                    wifi_retry_percent: txRetry
-                },
-                
-                // Triage notes for ticket
-                triage_notes: triageNotes,
+                // Detailed data if needed
+                devices_total: totalDevices,
+                devices_offline: offlineDevices,
+                clients_total: totalClients,
+                clients_wifi: wifiClients,
+                wan_uptime: wanUptime,
+                isp: isp,
+                critical_alerts: criticalAlerts,
+                has_latency_issues: hasHighLatency,
                 
                 timing_ms: timing
             }
@@ -227,7 +166,7 @@ module.exports = async (req, res) => {
         return res.json({
             result: {
                 checked: false,
-                message: "Unable to check network status right now."
+                message: "Unable to check network status."
             }
         });
     }
