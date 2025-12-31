@@ -276,13 +276,23 @@ export const weeklyPlanningService = {
   async checkBufferConflicts(technicianId, date, startTime, endTime, excludeScheduleId = null) {
     if (!supabase || !technicianId) return [];
 
+    const formattedDate = formatDate(date);
+    console.log('[WeeklyPlanningService] checkBufferConflicts called:', {
+      technicianId,
+      date,
+      formattedDate,
+      startTime,
+      endTime,
+      excludeScheduleId
+    });
+
     try {
       // Get all schedules for technician on date - use basic columns only
       let query = supabase
         .from('service_schedules')
-        .select('id, scheduled_time_start, scheduled_time_end, status, ticket_id')
+        .select('id, scheduled_time_start, scheduled_time_end, status, ticket_id, technician_id')
         .eq('technician_id', technicianId)
-        .eq('scheduled_date', formatDate(date))
+        .eq('scheduled_date', formattedDate)
         .neq('status', 'cancelled');
 
       if (excludeScheduleId) {
@@ -290,6 +300,7 @@ export const weeklyPlanningService = {
       }
 
       const { data: schedules, error } = await query;
+      console.log('[WeeklyPlanningService] Schedules found for technician:', schedules);
 
       if (error) {
         console.error('[WeeklyPlanningService] Failed to check conflicts:', error);

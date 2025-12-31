@@ -333,13 +333,25 @@ const WeeklyPlanning = () => {
 
     try {
       // Check for conflicts (exclude current schedule if rescheduling)
+      const conflictCheckTechId = techId || freshTicket.assigned_to;
+      console.log('[WeeklyPlanning] Checking conflicts for:', {
+        techId,
+        'freshTicket.assigned_to': freshTicket.assigned_to,
+        conflictCheckTechId,
+        date,
+        startTime,
+        endTime,
+        isReschedule,
+        scheduleId
+      });
       const conflicts = await weeklyPlanningService.checkBufferConflicts(
-        techId || freshTicket.assigned_to,
+        conflictCheckTechId,
         date,
         startTime,
         endTime,
         isReschedule ? scheduleId : null // Exclude self when rescheduling
       );
+      console.log('[WeeklyPlanning] Database conflicts found:', conflicts);
 
       // Also check M365 calendar if available
       let calendarConflicts = [];
