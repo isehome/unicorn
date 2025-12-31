@@ -73,6 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_retell_calls_from ON public.retell_call_logs(from
 CREATE INDEX IF NOT EXISTS idx_retell_calls_time ON public.retell_call_logs(start_time);
 
 -- 4. Enhanced Customer Lookup Function
+-- This function finds customers by phone and returns their projects WITH team members
+-- Matches by: contact name = projects.client, contact company = projects.client,
+--             or contact has "Client" stakeholder role on project
 -- Drop existing function first (return type changed)
 DROP FUNCTION IF EXISTS find_customer_by_phone(text);
 
@@ -92,104 +95,95 @@ RETURNS TABLE (
     equipment_summary JSONB,
     total_projects INTEGER,
     open_tickets INTEGER
-) AS $$
+) AS $func$
 DECLARE
     normalized_phone TEXT;
+    matched_contact_id UUID;
+    matched_contact_name TEXT;
+    matched_contact_company TEXT;
 BEGIN
-    -- Normalize phone (remove formatting, handle country code)
     normalized_phone := regexp_replace(phone_input, '[^0-9]', '', 'g');
     IF length(normalized_phone) = 11 AND normalized_phone LIKE '1%' THEN
         normalized_phone := substring(normalized_phone from 2);
     END IF;
 
+    -- Find contact (exclude internal staff)
+    SELECT c.id, c.name, c.company INTO matched_contact_id, matched_contact_name, matched_contact_company
+    FROM contacts c
+    WHERE (regexp_replace(c.phone, '[^0-9]', '', 'g') LIKE '%' || normalized_phone
+       OR regexp_replace(c.phone, '[^0-9]', '', 'g') = '1' || normalized_phone)
+      AND (c.is_internal = false OR c.is_internal IS NULL)
+    LIMIT 1;
+
+    IF matched_contact_id IS NULL THEN
+        RETURN;
+    END IF;
+
     RETURN QUERY
-    WITH matched_contact AS (
-        SELECT c.*
-        FROM contacts c
-        WHERE regexp_replace(c.phone, '[^0-9]', '', 'g') LIKE '%' || normalized_phone
-           OR regexp_replace(c.phone, '[^0-9]', '', 'g') = '1' || normalized_phone
-        LIMIT 1
-    ),
-    contact_sla AS (
-        SELECT
-            csa.contact_id,
-            cst.name as tier_name,
-            cst.available_24_7,
-            cst.response_time_hours
+    WITH contact_sla AS (
+        SELECT csa.contact_id, cst.name as tier_name, cst.available_24_7, cst.response_time_hours
         FROM customer_sla_assignments csa
         JOIN customer_sla_tiers cst ON csa.sla_tier_id = cst.id
-        WHERE csa.contact_id = (SELECT id FROM matched_contact)
+        WHERE csa.contact_id = matched_contact_id
           AND (csa.end_date IS NULL OR csa.end_date > CURRENT_DATE)
-        ORDER BY cst.response_time_hours ASC
         LIMIT 1
     ),
-    contact_projects AS (
-        SELECT
-            jsonb_agg(jsonb_build_object(
-                'id', p.id,
-                'name', p.name,
-                'address', p.address,
-                'phase', p.phase
-            ) ORDER BY p.created_at DESC) as projects,
-            COUNT(*)::INTEGER as total
+    -- Find projects where contact is the client (by name, company, or stakeholder role)
+    client_projects AS (
+        SELECT p.id, p.name, p.address, p.phase, p.status, p.created_at, p.unifi_site_id,
+               CASE WHEN p.status IN ('active', 'in_progress') THEN 0 ELSE 1 END as status_order
         FROM projects p
-        WHERE p.client = (SELECT name FROM matched_contact)
-           OR p.id IN (
-               SELECT DISTINCT c2.project_id
-               FROM contacts c2
-               WHERE c2.id = (SELECT id FROM matched_contact)
-           )
+        WHERE p.client = matched_contact_name OR p.client = matched_contact_company
+        UNION
+        SELECT p.id, p.name, p.address, p.phase, p.status, p.created_at, p.unifi_site_id,
+               CASE WHEN p.status IN ('active', 'in_progress') THEN 0 ELSE 1 END as status_order
+        FROM projects p
+        JOIN project_stakeholders ps ON ps.project_id = p.id
+        JOIN stakeholder_roles sr ON ps.stakeholder_role_id = sr.id
+        WHERE ps.contact_id = matched_contact_id AND sr.name = 'Client'
+    ),
+    -- Get team members (PM, Lead Tech) for each project
+    projects_with_team AS (
+        SELECT
+            cp.id, cp.name, cp.address, cp.phase, cp.status, cp.unifi_site_id,
+            jsonb_agg(jsonb_build_object('name', c.name, 'role', sr.name, 'phone', c.phone) ORDER BY sr.sort_order)
+            FILTER (WHERE sr.category = 'internal' AND sr.name IN ('Project Manager', 'Lead Technician')) as team
+        FROM client_projects cp
+        LEFT JOIN project_stakeholders ps ON ps.project_id = cp.id
+        LEFT JOIN contacts c ON ps.contact_id = c.id
+        LEFT JOIN stakeholder_roles sr ON ps.stakeholder_role_id = sr.id
+        GROUP BY cp.id, cp.name, cp.address, cp.phase, cp.status, cp.unifi_site_id, cp.status_order, cp.created_at
+        ORDER BY cp.status_order, cp.created_at DESC
     ),
     contact_tickets AS (
-        SELECT
-            jsonb_agg(jsonb_build_object(
-                'id', st.id,
-                'ticket_number', st.ticket_number,
-                'title', st.title,
-                'status', st.status,
-                'created_at', st.created_at
-            ) ORDER BY st.created_at DESC) as tickets,
-            COUNT(*) FILTER (WHERE st.status NOT IN ('closed', 'resolved', 'cancelled'))::INTEGER as open_count
+        SELECT jsonb_agg(jsonb_build_object('id', st.id, 'ticket_number', st.ticket_number, 'title', st.title, 'status', st.status)) as tickets,
+               COUNT(*) FILTER (WHERE st.status NOT IN ('closed', 'resolved', 'cancelled'))::INTEGER as open_count
         FROM service_tickets st
-        WHERE st.contact_id = (SELECT id FROM matched_contact)
-           OR st.customer_phone LIKE '%' || normalized_phone || '%'
-        LIMIT 5
+        WHERE st.contact_id = matched_contact_id
     ),
     contact_equipment AS (
-        SELECT jsonb_agg(DISTINCT jsonb_build_object(
-            'category', COALESCE(pe.category, 'general'),
-            'manufacturer', COALESCE(gp.manufacturer, pe.manufacturer, 'Unknown'),
-            'model', COALESCE(gp.model, pe.model)
-        )) as equipment
+        SELECT jsonb_agg(DISTINCT jsonb_build_object('category', COALESCE(gp.category, pe.equipment_type, 'general'), 'manufacturer', COALESCE(gp.manufacturer, pe.manufacturer, 'Unknown'))) as equipment
         FROM project_equipment pe
         LEFT JOIN global_parts gp ON pe.global_part_id = gp.id
-        JOIN projects p ON pe.project_id = p.id
-        WHERE p.client = (SELECT name FROM matched_contact)
-           OR p.id IN (SELECT project_id FROM contacts WHERE id = (SELECT id FROM matched_contact))
+        JOIN client_projects cp ON pe.project_id = cp.id
         LIMIT 20
     )
     SELECT
-        mc.id as contact_id,
-        mc.name as contact_name,
-        mc.email as contact_email,
-        mc.phone as contact_phone,
-        mc.company as contact_company,
-        COALESCE(mc.address, (SELECT address FROM projects WHERE client = mc.name LIMIT 1)) as contact_address,
-        COALESCE(cs.tier_name, 'standard') as sla_tier,
-        COALESCE(cs.available_24_7, FALSE) as sla_24_7,
-        COALESCE(cs.response_time_hours, 24) as sla_response_hours,
-        COALESCE(cp.projects, '[]'::jsonb) as projects,
-        COALESCE(ct.tickets, '[]'::jsonb) as recent_tickets,
-        COALESCE(ce.equipment, '[]'::jsonb) as equipment_summary,
-        COALESCE(cp.total, 0) as total_projects,
-        COALESCE(ct.open_count, 0) as open_tickets
-    FROM matched_contact mc
+        mc.id, mc.name, mc.email, mc.phone, mc.company,
+        COALESCE(mc.address, (SELECT address FROM client_projects LIMIT 1)),
+        COALESCE(cs.tier_name, 'standard'), COALESCE(cs.available_24_7, FALSE), COALESCE(cs.response_time_hours, 24),
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('id', pt.id, 'name', pt.name, 'address', pt.address, 'phase', pt.phase, 'status', pt.status, 'team', pt.team, 'unifi_site_id', pt.unifi_site_id)) FROM projects_with_team pt), '[]'::jsonb),
+        COALESCE(ct.tickets, '[]'::jsonb),
+        COALESCE(ce.equipment, '[]'::jsonb),
+        (SELECT COUNT(*)::INTEGER FROM client_projects),
+        COALESCE(ct.open_count, 0)
+    FROM contacts mc
     LEFT JOIN contact_sla cs ON cs.contact_id = mc.id
-    CROSS JOIN contact_projects cp
     CROSS JOIN contact_tickets ct
-    CROSS JOIN contact_equipment ce;
+    CROSS JOIN contact_equipment ce
+    WHERE mc.id = matched_contact_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$func$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 5. Add AI columns to service_tickets
 DO $$
