@@ -68,74 +68,40 @@ CREATE POLICY feature_flags_delete ON public.feature_flags
   FOR DELETE TO authenticated USING (true);
 
 -- ============================================================
--- PART 2: Add secure_data entries types for gate/house codes
+-- PART 2: Auto-create secure data entries for contacts
+-- Uses contact_secure_data table (contact-scoped, not project-scoped)
 -- ============================================================
 
--- Add entry_type column to secure_data if it doesn't exist
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'secure_data' AND column_name = 'entry_type') THEN
-        ALTER TABLE public.secure_data ADD COLUMN entry_type TEXT DEFAULT 'general';
-    END IF;
-END $$;
-
--- Add index for entry_type
-CREATE INDEX IF NOT EXISTS idx_secure_data_entry_type ON public.secure_data(entry_type);
-
--- ============================================================
--- PART 3: Function to auto-create secure data entries for contact
--- ============================================================
-
+-- Function to auto-create gate code and house code entries for a contact
 CREATE OR REPLACE FUNCTION create_default_secure_entries(p_contact_id UUID)
 RETURNS void AS $$
-DECLARE
-    v_project_id UUID;
 BEGIN
-    -- Get a project for this contact (use their associated project or any project they're linked to)
-    SELECT COALESCE(c.project_id, p.id) INTO v_project_id
-    FROM contacts c
-    LEFT JOIN projects p ON p.client = c.name OR p.client = c.company
-    WHERE c.id = p_contact_id
-    LIMIT 1;
-
-    -- If no project found, skip
-    IF v_project_id IS NULL THEN
-        RETURN;
-    END IF;
-
     -- Create gate code entry if doesn't exist
-    INSERT INTO public.secure_data (project_id, key, value, entry_type, notes)
-    SELECT v_project_id, 'Gate Code', '', 'gate_code', 'Auto-created for ' || c.name
-    FROM contacts c
-    WHERE c.id = p_contact_id
-    AND NOT EXISTS (
-        SELECT 1 FROM secure_data sd
-        WHERE sd.project_id = v_project_id AND sd.entry_type = 'gate_code'
+    INSERT INTO public.contact_secure_data (contact_id, data_type, name, password, notes)
+    SELECT p_contact_id, 'credentials', 'Gate Code', '', 'Auto-created'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM contact_secure_data csd
+        WHERE csd.contact_id = p_contact_id AND csd.name = 'Gate Code'
     );
 
     -- Create house code entry if doesn't exist
-    INSERT INTO public.secure_data (project_id, key, value, entry_type, notes)
-    SELECT v_project_id, 'House Code', '', 'house_code', 'Auto-created for ' || c.name
-    FROM contacts c
-    WHERE c.id = p_contact_id
-    AND NOT EXISTS (
-        SELECT 1 FROM secure_data sd
-        WHERE sd.project_id = v_project_id AND sd.entry_type = 'house_code'
+    INSERT INTO public.contact_secure_data (contact_id, data_type, name, password, notes)
+    SELECT p_contact_id, 'credentials', 'House Code', '', 'Auto-created'
+    WHERE NOT EXISTS (
+        SELECT 1 FROM contact_secure_data csd
+        WHERE csd.contact_id = p_contact_id AND csd.name = 'House Code'
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- ============================================================
--- PART 4: Trigger to auto-create secure entries on contact creation
+-- PART 3: Trigger to auto-create secure entries on contact creation
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION trigger_create_secure_entries()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Only create if contact has a project
-    IF NEW.project_id IS NOT NULL THEN
-        PERFORM create_default_secure_entries(NEW.id);
-    END IF;
+    PERFORM create_default_secure_entries(NEW.id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
