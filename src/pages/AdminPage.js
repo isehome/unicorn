@@ -82,6 +82,61 @@ const canManageUser = (currentUserRole, targetUserRole) => {
 };
 
 /**
+ * Local fallback for parsing contacts when AI API fails
+ */
+const parseContactsLocally = (contacts) => {
+  return contacts.map(contact => {
+    const result = { ...contact };
+
+    // Parse name into first/last
+    if (contact.name && !contact.first_name && !contact.last_name) {
+      const nameParts = contact.name.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        // Check if it looks like a company
+        const companyKeywords = ['llc', 'inc', 'corp', 'corporation', 'university', 'college', 'company', 'co.', 'ltd', 'group', 'services', 'solutions', 'associates', 'partners'];
+        const lowerName = contact.name.toLowerCase();
+        const isCompany = companyKeywords.some(kw => lowerName.includes(kw));
+
+        if (isCompany) {
+          result.is_company = true;
+          result.company = contact.name;
+          result.first_name = '';
+          result.last_name = '';
+        } else {
+          result.first_name = nameParts[0];
+          result.last_name = nameParts.slice(1).join(' ');
+          result.is_company = false;
+        }
+      } else {
+        result.first_name = contact.name;
+        result.last_name = '';
+        result.is_company = false;
+      }
+    }
+
+    // Extract phone from "Phone:xxx Mobile:xxx" format
+    if (contact.phone) {
+      let phone = contact.phone;
+
+      // Extract first phone number
+      const phoneMatch = phone.match(/(?:Phone:|Tel:)?\s*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
+      if (phoneMatch) {
+        result.phone = `(${phoneMatch[1]}) ${phoneMatch[2]}-${phoneMatch[3]}`;
+      } else {
+        // Try to extract any 10-digit number
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          const d = digits.slice(0, 10);
+          result.phone = `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6, 10)}`;
+        }
+      }
+    }
+
+    return result;
+  });
+};
+
+/**
  * AdminPage Component
  */
 const AdminPage = () => {
@@ -1844,6 +1899,13 @@ const AdminPage = () => {
           body: JSON.stringify({ contacts: mappedData })
         });
 
+        // Check if response is OK before trying to parse JSON
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[AdminPage] AI API error:', response.status, errorText);
+          throw new Error(`API returned ${response.status}`);
+        }
+
         const result = await response.json();
 
         if (result.success && result.contacts) {
@@ -1852,17 +1914,19 @@ const AdminPage = () => {
           setImportPreview(result.contacts.slice(0, 5));
         } else {
           console.error('[AdminPage] AI processing failed:', result.error);
-          setError('AI processing failed: ' + (result.error || 'Unknown error'));
-          // Fall back to non-AI preview
-          setAiProcessedData(mappedData);
-          setImportPreview(mappedData.slice(0, 5));
+          // Fall back to local parsing instead of showing error
+          console.log('[AdminPage] Falling back to local parsing');
+          const localParsed = parseContactsLocally(mappedData);
+          setAiProcessedData(localParsed);
+          setImportPreview(localParsed.slice(0, 5));
         }
       } catch (err) {
         console.error('[AdminPage] AI processing error:', err);
-        setError('AI processing failed: ' + err.message);
-        // Fall back to non-AI preview
-        setAiProcessedData(mappedData);
-        setImportPreview(mappedData.slice(0, 5));
+        // Fall back to local parsing instead of showing error
+        console.log('[AdminPage] Falling back to local parsing due to error');
+        const localParsed = parseContactsLocally(mappedData);
+        setAiProcessedData(localParsed);
+        setImportPreview(localParsed.slice(0, 5));
       }
     } else {
       setAiProcessedData(mappedData);
