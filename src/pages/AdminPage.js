@@ -2239,30 +2239,36 @@ const AdminPage = () => {
             </p>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto border border-zinc-200 dark:border-zinc-700 rounded-lg">
+            <table className="min-w-max w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 dark:border-zinc-700">
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Name</th>
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">First</th>
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Last</th>
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Email</th>
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Phone</th>
-                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Company</th>
-                  {useAIProcessing && <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400">Type</th>}
+                <tr className="border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Name</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">First</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Last</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Email</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Phone</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Company</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Address</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Role</th>
+                  <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Notes</th>
+                  {useAIProcessing && <th className="text-left p-2 font-medium text-zinc-600 dark:text-zinc-400 whitespace-nowrap">Type</th>}
                 </tr>
               </thead>
               <tbody>
                 {importPreview.map((row, idx) => (
                   <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800">
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.name || '-'}</td>
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.first_name || '-'}</td>
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.last_name || '-'}</td>
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.email || '-'}</td>
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.phone || '-'}</td>
-                    <td className="p-2 text-zinc-700 dark:text-zinc-300">{row.company || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.first_name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.last_name || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.email || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.phone || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.company || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap max-w-xs truncate" title={row.address || row.address1 || ''}>{row.address || row.address1 || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap">{row.role || '-'}</td>
+                    <td className="p-2 text-zinc-700 dark:text-zinc-300 whitespace-nowrap max-w-xs truncate" title={row.notes || ''}>{row.notes || '-'}</td>
                     {useAIProcessing && (
-                      <td className="p-2">
+                      <td className="p-2 whitespace-nowrap">
                         {row.is_company ? (
                           <span className="px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">Company</span>
                         ) : (
@@ -2283,7 +2289,7 @@ const AdminPage = () => {
             </Button>
             <Button onClick={runImport}>
               <Upload size={16} />
-              Import {aiProcessedData.length || csvData.length} Contacts
+              Import Contacts
             </Button>
           </div>
         </div>

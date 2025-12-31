@@ -43,12 +43,12 @@ RULES:
 4. If name looks like a company (contains Corp, LLC, Inc, University, etc), set is_company: true and leave first_name/last_name empty
 5. If is_company is true, also put the name in the "company" field
 6. Keep the original email value
-7. PRESERVE any address, address1, address2 fields exactly as provided - do not modify them
+7. PRESERVE any address fields exactly as provided - do not modify them: address, address1, address2, city, state, zip
 
 INPUT (${batch.length} contacts):
 ${JSON.stringify(batch)}
 
-OUTPUT must be a JSON array with ${batch.length} objects, each having: name, first_name, last_name, email, phone, company, is_company, address, address1, address2, notes, role (preserve any fields from input)
+OUTPUT must be a JSON array with ${batch.length} objects, each having: name, first_name, last_name, email, phone, company, is_company, address, address1, address2, city, state, zip, notes, role (preserve any fields from input)
 
 JSON ARRAY:`;
 

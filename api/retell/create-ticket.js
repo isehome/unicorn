@@ -1,6 +1,6 @@
 /**
  * api/retell/create-ticket.js
- * Create service ticket from Retell AI call
+ * Create service ticket (issue) from Retell AI call
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -13,13 +13,13 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
+    
     if (req.method === 'OPTIONS') return res.status(200).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
     try {
         console.log('[Retell CreateTicket] Body:', JSON.stringify(req.body));
-
+        
         let body = req.body;
         if (req.body?.args) body = req.body.args;
 
@@ -28,13 +28,10 @@ module.exports = async (req, res) => {
             description,
             category = 'general',
             priority = 'normal',
-            customer_id,
             customer_name,
             customer_phone,
-            customer_email,
             customer_address,
-            troubleshooting_steps,
-            call_id
+            project_id
         } = body;
 
         if (!title) {
@@ -48,23 +45,35 @@ module.exports = async (req, res) => {
 
         console.log('[Retell CreateTicket] Creating:', title);
 
-        const { data: ticket, error } = await supabase
-            .from('service_tickets')
+        // Build the full description with customer info
+        const fullDescription = [
+            description || title,
+            '',
+            '--- Customer Info ---',
+            customer_name ? `Name: ${customer_name}` : null,
+            customer_phone ? `Phone: ${customer_phone}` : null,
+            customer_address ? `Address: ${customer_address}` : null,
+            `Category: ${category}`,
+            '',
+            'Created via AI Phone Agent (Sarah)'
+        ].filter(Boolean).join('\n');
+
+        // Map priority to your system (open, in_progress, resolved, blocked)
+        const statusMap = {
+            'urgent': 'open',
+            'high': 'open', 
+            'normal': 'open',
+            'low': 'open'
+        };
+
+        const { data: issue, error } = await supabase
+            .from('issues')
             .insert([{
-                title,
-                description: description || title,
-                category,
-                priority,
-                contact_id: customer_id || null,
-                customer_name,
-                customer_phone,
-                customer_email,
-                service_address: customer_address,
-                source: 'phone_ai',
-                source_reference: call_id,
-                ai_triage_notes: description,
-                troubleshooting_attempted: !!troubleshooting_steps,
-                troubleshooting_steps
+                title: `[Phone] ${title}`,
+                description: fullDescription,
+                status: statusMap[priority] || 'open',
+                priority: priority,
+                project_id: project_id || null
             }])
             .select()
             .single();
@@ -74,33 +83,15 @@ module.exports = async (req, res) => {
             throw error;
         }
 
-        // Add note to ticket
-        await supabase.from('service_ticket_notes').insert([{
-            ticket_id: ticket.id,
-            note_type: 'note',
-            content: `Ticket created via AI Phone Agent.\n\nTroubleshooting attempted: ${troubleshooting_steps || 'None documented'}`,
-            author_name: 'AI Phone Agent',
-            is_internal: true
-        }]).catch(e => console.error('[Retell CreateTicket] Note error:', e));
-
-        // Update call log if we have call_id
-        if (call_id) {
-            await supabase
-                .from('retell_call_logs')
-                .update({ ticket_id: ticket.id })
-                .eq('call_id', call_id)
-                .catch(e => console.error('[Retell CreateTicket] Call log update error:', e));
-        }
-
-        console.log('[Retell CreateTicket] Created:', ticket.ticket_number);
+        console.log('[Retell CreateTicket] Created issue:', issue.id);
 
         const responseTime = priority === 'urgent' ? '2' : priority === 'high' ? '4' : '24';
 
         return res.json({
             result: {
                 success: true,
-                ticket_number: ticket.ticket_number,
-                message: `I've created ticket ${ticket.ticket_number}. Our team will contact you within ${responseTime} hours.`
+                ticket_id: issue.id,
+                message: `I have created a service ticket. Our team will contact you within ${responseTime} hours.`
             }
         });
 
