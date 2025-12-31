@@ -22,7 +22,7 @@ import {
 import { serviceTicketService } from '../../services/serviceTicketService';
 import { useAppState } from '../../contexts/AppStateContext';
 import { brandColors } from '../../styles/styleSystem';
-import { supabase } from '../../services/supabase';
+import { supabase } from '../../lib/supabase';
 
 // Category icons mapping
 const categoryIcons = {

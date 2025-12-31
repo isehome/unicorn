@@ -53,7 +53,7 @@ import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
 import { createCalendarEvent, checkUserAvailability } from '../../services/microsoftCalendarService';
-import { supabase } from '../../services/supabase';
+import { supabase } from '../../lib/supabase';
 
 // Category icons
 const categoryIcons = {

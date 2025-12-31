@@ -21,7 +21,7 @@ import { serviceTicketService, customerLookupService } from '../../services/serv
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
-import { supabase } from '../../services/supabase';
+import { supabase } from '../../lib/supabase';
 
 // Default categories (fallback if DB not available)
 const DEFAULT_CATEGORIES = [
