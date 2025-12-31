@@ -15,12 +15,12 @@ const ServiceAITest = () => {
   const [sdkReady, setSdkReady] = useState(false);
   
   const retellClientRef = useRef(null);
+  const lastTranscriptRef = useRef({ agent: '', user: '' });
 
   // Load Retell SDK via npm package dynamically
   useEffect(() => {
     const loadSDK = async () => {
       try {
-        // Dynamic import of the retell-client-js-sdk package
         const RetellModule = await import('retell-client-js-sdk');
         window.RetellWebClient = RetellModule.RetellWebClient;
         console.log('[ServiceAITest] Retell SDK loaded via npm');
@@ -44,23 +44,47 @@ const ServiceAITest = () => {
     };
   }, []);
 
-  const addTranscript = useCallback((role, content) => {
+  // Update or add transcript entry - handles incremental updates
+  const updateTranscript = useCallback((role, content) => {
+    const key = role === 'agent' ? 'agent' : 'user';
+    const lastContent = lastTranscriptRef.current[key];
+    
+    // Skip if content is exactly the same
+    if (content === lastContent) return;
+    
+    // Check if this is a continuation (new content starts with old content)
+    const isContinuation = lastContent && content.startsWith(lastContent);
+    
+    lastTranscriptRef.current[key] = content;
+    
     setTranscript(prev => {
-      const last = prev[prev.length - 1];
-      if (last && last.role === role && last.content === content) {
-        return prev;
+      // Find the last entry for this role
+      const lastIndex = prev.map((e, i) => e.role === role ? i : -1).filter(i => i >= 0).pop();
+      
+      if (lastIndex !== undefined && isContinuation) {
+        // Update existing entry
+        const updated = [...prev];
+        updated[lastIndex] = { ...updated[lastIndex], content, timestamp: new Date() };
+        return updated;
       }
+      
+      // Add new entry
       return [...prev, { role, content, timestamp: new Date() }];
     });
+  }, []);
+
+  // Finalize transcript when speaker changes
+  const finalizeTranscript = useCallback((role) => {
+    lastTranscriptRef.current[role === 'agent' ? 'agent' : 'user'] = '';
   }, []);
 
   const startCall = async () => {
     setError(null);
     setStatus('connecting');
     setTranscript([]);
+    lastTranscriptRef.current = { agent: '', user: '' };
 
     try {
-      // Get access token from our API
       const response = await fetch('/api/retell/web-call', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,21 +103,17 @@ const ServiceAITest = () => {
         throw new Error('Retell SDK not loaded. Please refresh and try again.');
       }
 
-      // Initialize Retell client
       const retellClient = new window.RetellWebClient();
       retellClientRef.current = retellClient;
 
-      // Set up event listeners
       retellClient.on('call_started', () => {
         console.log('[ServiceAITest] Call started');
         setStatus('connected');
-        addTranscript('system', 'Call connected. You can speak now.');
       });
 
       retellClient.on('call_ended', () => {
         console.log('[ServiceAITest] Call ended');
         setStatus('ended');
-        addTranscript('system', 'Call ended.');
       });
 
       retellClient.on('error', (err) => {
@@ -106,15 +126,31 @@ const ServiceAITest = () => {
         if (update.transcript) {
           const entries = update.transcript;
           if (entries && entries.length > 0) {
-            const lastEntry = entries[entries.length - 1];
-            if (lastEntry && lastEntry.content) {
-              addTranscript(lastEntry.role === 'agent' ? 'agent' : 'user', lastEntry.content);
+            // Get the last entry for each role
+            let lastAgentEntry = null;
+            let lastUserEntry = null;
+            
+            for (const entry of entries) {
+              if (entry.role === 'agent') lastAgentEntry = entry;
+              else lastUserEntry = entry;
+            }
+            
+            // Update transcripts
+            if (lastAgentEntry?.content) {
+              updateTranscript('agent', lastAgentEntry.content);
+            }
+            if (lastUserEntry?.content) {
+              updateTranscript('user', lastUserEntry.content);
             }
           }
         }
       });
 
-      // Start the call
+      // When agent stops talking, finalize their transcript
+      retellClient.on('agent_stop_talking', () => {
+        finalizeTranscript('agent');
+      });
+
       await retellClient.startCall({
         accessToken: data.access_token,
         sampleRate: 24000
@@ -262,6 +298,7 @@ const ServiceAITest = () => {
                 >
                   {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                 </button>
+
                 <button
                   onClick={endCall}
                   className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-full font-medium shadow-lg transition-all hover:scale-105"
@@ -269,6 +306,7 @@ const ServiceAITest = () => {
                   <PhoneOff className="w-5 h-5" />
                   End Call
                 </button>
+
                 <div className="p-4 bg-zinc-100 dark:bg-zinc-700 rounded-full">
                   <Volume2 className="w-6 h-6 text-zinc-600 dark:text-zinc-300" />
                 </div>
@@ -292,24 +330,20 @@ const ServiceAITest = () => {
               transcript.map((entry, idx) => (
                 <div
                   key={idx}
-                  className={`flex ${entry.role === 'agent' ? 'justify-start' : entry.role === 'user' ? 'justify-end' : 'justify-center'}`}
+                  className={`flex ${entry.role === 'agent' ? 'justify-start' : 'justify-end'}`}
                 >
-                  {entry.role === 'system' ? (
-                    <span className="text-xs text-zinc-400 italic">{entry.content}</span>
-                  ) : (
-                    <div
-                      className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
-                        entry.role === 'agent'
-                          ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
-                          : 'bg-violet-600 text-white'
-                      }`}
-                    >
-                      <p>{entry.content}</p>
-                      <p className={`text-xs mt-1 ${entry.role === 'agent' ? 'text-zinc-400' : 'text-violet-200'}`}>
-                        {entry.role === 'agent' ? 'Sarah' : 'You'} - {entry.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
-                  )}
+                  <div
+                    className={`max-w-[80%] px-4 py-2 rounded-2xl text-sm ${
+                      entry.role === 'agent'
+                        ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100'
+                        : 'bg-violet-600 text-white'
+                    }`}
+                  >
+                    <p>{entry.content}</p>
+                    <p className={`text-xs mt-1 ${entry.role === 'agent' ? 'text-zinc-400' : 'text-violet-200'}`}>
+                      {entry.role === 'agent' ? 'Sarah' : 'You'} - {entry.timestamp.toLocaleTimeString()}
+                    </p>
+                  </div>
                 </div>
               ))
             )}
