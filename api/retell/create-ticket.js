@@ -30,6 +30,7 @@ module.exports = async (req, res) => {
             priority = 'normal',
             customer_name,
             customer_phone,
+            customer_email,
             customer_address,
             project_id
         } = body;
@@ -43,7 +44,16 @@ module.exports = async (req, res) => {
             });
         }
 
-        console.log('[Retell CreateTicket] Creating:', title);
+        if (!project_id) {
+            return res.json({
+                result: {
+                    success: false,
+                    message: "I need to link this to your project. Let me get your information and have someone call you back."
+                }
+            });
+        }
+
+        console.log('[Retell CreateTicket] Creating:', title, 'for project:', project_id);
 
         // Build the full description with customer info
         const fullDescription = [
@@ -52,66 +62,64 @@ module.exports = async (req, res) => {
             '--- Customer Info ---',
             customer_name ? 'Name: ' + customer_name : null,
             customer_phone ? 'Phone: ' + customer_phone : null,
+            customer_email ? 'Email: ' + customer_email : null,
             customer_address ? 'Address: ' + customer_address : null,
             'Category: ' + category,
+            'Priority: ' + priority,
             '',
             'Created via AI Phone Agent (Sarah)'
         ].filter(Boolean).join('\n');
 
-        // Build insert object - only include fields that exist
-        const insertData = {
-            title: '[Phone] ' + title,
-            description: fullDescription,
-            status: 'open',
-            priority: priority
-        };
-
-        // Only add project_id if provided
-        if (project_id) {
-            insertData.project_id = project_id;
-        }
-
-        console.log('[Retell CreateTicket] Insert data:', JSON.stringify(insertData));
-
         const { data: issue, error } = await supabase
             .from('issues')
-            .insert([insertData])
-            .select()
+            .insert([{
+                title: '[Phone] ' + title,
+                description: fullDescription,
+                status: 'open',
+                priority: priority,
+                project_id: project_id
+            }])
+            .select('id, title, status')
             .single();
 
         if (error) {
             console.error('[Retell CreateTicket] DB error:', JSON.stringify(error));
-            
-            // If project_id is required, return a helpful message
-            if (error.message && error.message.includes('project_id')) {
-                return res.json({
-                    result: {
-                        success: false,
-                        message: "I need to link this to a project. Let me have someone call you back to create the ticket properly."
-                    }
-                });
-            }
-            throw error;
+            return res.json({
+                result: {
+                    success: false,
+                    error_code: error.code,
+                    message: "I was unable to create the ticket in our system. I will make a note and have someone call you back to confirm the details."
+                }
+            });
         }
 
-        console.log('[Retell CreateTicket] Created issue:', issue.id);
+        if (!issue || !issue.id) {
+            console.error('[Retell CreateTicket] No issue returned after insert');
+            return res.json({
+                result: {
+                    success: false,
+                    message: "Something went wrong creating the ticket. I will have someone call you back to confirm."
+                }
+            });
+        }
 
-        const responseTime = priority === 'urgent' ? '2' : priority === 'high' ? '4' : '24';
+        console.log('[Retell CreateTicket] Successfully created issue:', issue.id, issue.title);
 
         return res.json({
             result: {
                 success: true,
                 ticket_id: issue.id,
-                message: 'I have created a service ticket. Our team will contact you within ' + responseTime + ' hours.'
+                ticket_title: issue.title,
+                message: 'I have created a service ticket for ' + title + '. Someone from our team will reach out to schedule a time that works for you.'
             }
         });
 
     } catch (error) {
-        console.error('[Retell CreateTicket] Error:', error.message || error);
-        return res.status(500).json({
+        console.error('[Retell CreateTicket] Exception:', error.message || error);
+        return res.json({
             result: {
                 success: false,
-                message: "I had trouble creating the ticket. Let me note your information and have someone call you back."
+                message: "I encountered an error. I will make a note and have someone call you back."
             }
         });
     }
