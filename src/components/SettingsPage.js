@@ -44,7 +44,7 @@ const SettingsPage = () => {
   const [showAvatarModal, setShowAvatarModal] = useState(false);
 
   const displayName = user?.displayName || user?.full_name || user?.name || user?.email || 'User';
-  const email = user?.email || 'demo@example.com';
+  const email = user?.email || '';
   const initials = useMemo(() => (displayName?.[0] || 'U').toUpperCase(), [displayName]);
 
   // Load user's current avatar color from profiles table (keyed by user.id)

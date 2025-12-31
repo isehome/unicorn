@@ -1,9 +1,9 @@
 /**
  * api/retell/web-call.js
- * Create web call for browser testing
+ * Create web call for browser testing with simulated caller ID
  */
 const RETELL_API_KEY = process.env.RETELL_API_KEY;
-const AGENT_ID = 'agent_569081761d8bbd630c0794095d'; // Intelligent Systems - Sarah
+const AGENT_ID = 'agent_569081761d8bbd630c0794095d';
 
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,6 +19,8 @@ module.exports = async (req, res) => {
         }
 
         const { test_phone } = req.body || {};
+        
+        console.log('[Retell WebCall] Creating call with caller_phone:', test_phone);
 
         const response = await fetch('https://api.retellai.com/v2/create-web-call', {
             method: 'POST',
@@ -28,9 +30,9 @@ module.exports = async (req, res) => {
             },
             body: JSON.stringify({
                 agent_id: AGENT_ID,
-                metadata: { source: 'web_test' },
+                metadata: { source: 'web_test', test_phone: test_phone },
                 retell_llm_dynamic_variables: {
-                    test_phone: test_phone || '+15125551234'
+                    caller_phone: test_phone || ''
                 }
             })
         });

@@ -1685,16 +1685,28 @@ const AdminPage = () => {
       return;
     }
 
-    // Detect delimiter (comma, semicolon, or tab)
-    const firstLine = lines[0];
+    // Detect delimiter (comma, semicolon, or tab) - check first few lines
     let delimiter = ',';
-    if (firstLine.includes('\t') && !firstLine.includes(',')) {
-      delimiter = '\t';
-    } else if (firstLine.includes(';') && !firstLine.includes(',')) {
-      delimiter = ';';
+    for (let i = 0; i < Math.min(5, lines.length); i++) {
+      const line = lines[i];
+      // Count potential delimiters
+      const commas = (line.match(/,/g) || []).length;
+      const tabs = (line.match(/\t/g) || []).length;
+      const semis = (line.match(/;/g) || []).length;
+
+      if (tabs > commas && tabs > semis && tabs >= 2) {
+        delimiter = '\t';
+        break;
+      } else if (semis > commas && semis > tabs && semis >= 2) {
+        delimiter = ';';
+        break;
+      } else if (commas >= 2) {
+        delimiter = ',';
+        break;
+      }
     }
 
-    // Parse header - handle quoted values properly
+    // Parse a single row - handle quoted values properly
     const parseRow = (line) => {
       const result = [];
       let current = '';
@@ -1720,35 +1732,59 @@ const AdminPage = () => {
       return result;
     };
 
-    const headers = parseRow(lines[0]);
-    console.log('[AdminPage] CSV headers detected:', headers, 'delimiter:', delimiter);
+    // Find the actual header row by looking for rows with multiple columns
+    // that look like headers (contain words like name, email, phone, etc.)
+    const headerKeywords = ['name', 'email', 'phone', 'company', 'address', 'mobile', 'customer', 'contact', 'first', 'last'];
+    let headerRowIndex = 0;
+
+    for (let i = 0; i < Math.min(10, lines.length); i++) {
+      const parsed = parseRow(lines[i]);
+      const nonEmptyCols = parsed.filter(col => col.trim()).length;
+
+      // Check if this row has multiple columns with header-like text
+      if (nonEmptyCols >= 2) {
+        const lowerRow = parsed.join(' ').toLowerCase();
+        const matchCount = headerKeywords.filter(kw => lowerRow.includes(kw)).length;
+
+        // If we find a row with 2+ columns and contains header keywords, use it
+        if (matchCount >= 2) {
+          headerRowIndex = i;
+          console.log('[AdminPage] Found header row at index:', i, 'row:', parsed);
+          break;
+        }
+      }
+    }
+
+    const headers = parseRow(lines[headerRowIndex]);
+    console.log('[AdminPage] CSV headers detected:', headers, 'delimiter:', delimiter, 'headerRow:', headerRowIndex);
     setCsvHeaders(headers);
 
-    // Parse data rows using same parser
+    // Parse data rows starting after the header row
     const data = [];
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerRowIndex + 1; i < lines.length; i++) {
       const values = parseRow(lines[i]);
       const row = {};
       values.forEach((val, idx) => {
-        if (idx < headers.length) {
+        if (idx < headers.length && headers[idx]) {
           row[headers[idx]] = val;
         }
       });
-      if (Object.values(row).some(v => v)) {
+      // Only add rows that have at least one non-empty value
+      if (Object.values(row).some(v => v && v.trim())) {
         data.push(row);
       }
     }
-    console.log('[AdminPage] CSV parsed:', data.length, 'rows, sample:', data[0]);
+    console.log('[AdminPage] CSV parsed:', data.length, 'rows starting from line', headerRowIndex + 2, ', sample:', data[0]);
 
     setCsvData(data);
 
     // Auto-map fields by matching header names with common variations
     const headerAliases = {
-      name: ['name', 'full name', 'fullname', 'contact name', 'customer name', 'client name', 'display name'],
+      name: ['name', 'full name', 'fullname', 'contact name', 'customer name', 'customer full name', 'client name', 'display name'],
       first_name: ['first name', 'firstname', 'first', 'given name'],
       last_name: ['last name', 'lastname', 'last', 'surname', 'family name'],
       email: ['email', 'email address', 'e-mail', 'mail'],
-      phone: ['phone', 'phone number', 'telephone', 'tel', 'mobile', 'cell', 'primary phone', 'work phone'],
+      phone: ['phone', 'phone number', 'phone numbers', 'telephone', 'tel', 'mobile', 'cell', 'primary phone', 'work phone'],
       company: ['company', 'company name', 'organization', 'org', 'business', 'business name', 'employer'],
       role: ['role', 'title', 'job title', 'position', 'job', 'occupation'],
       address: ['address', 'full address', 'street address', 'mailing address'],

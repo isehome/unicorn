@@ -7,10 +7,11 @@ const ProtectedRoute = ({ children }) => {
   const { user, loading, authState } = useAuth();
   const location = useLocation();
 
-  console.log('[ProtectedRoute] Checking auth:', { 
-    loading, 
-    authState, 
-    hasUser: !!user 
+  console.log('[ProtectedRoute] Checking auth:', {
+    loading,
+    authState,
+    hasUser: !!user,
+    userEmail: user?.email
   });
 
   // Only show loading during initial authentication check
@@ -27,13 +28,21 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // If not authenticated after loading completes, redirect to login
-  if (!user && authState === AUTH_STATES.UNAUTHENTICATED) {
-    console.log('[ProtectedRoute] Not authenticated, redirecting to login');
+  // CRITICAL: Require BOTH authenticated state AND valid user object with email
+  // This prevents edge cases where authState is AUTHENTICATED but user failed to load
+  const isValidUser = user && user.id && user.email;
+
+  if (!isValidUser || authState === AUTH_STATES.UNAUTHENTICATED || authState === AUTH_STATES.ERROR) {
+    console.log('[ProtectedRoute] Not properly authenticated, redirecting to login', {
+      hasUser: !!user,
+      hasUserId: !!user?.id,
+      hasUserEmail: !!user?.email,
+      authState
+    });
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // User is authenticated, render children
+  // User is properly authenticated with valid profile, render children
   console.log('[ProtectedRoute] User authenticated, rendering protected content');
   return children;
 };

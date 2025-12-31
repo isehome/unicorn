@@ -285,13 +285,18 @@ export function AuthProvider({ children }) {
           console.log('[Auth] Login successful via redirect/popup');
           setAccount(response.account);
           setAccessToken(response.accessToken);
-          
+
           if (response.expiresOn) {
             scheduleTokenRefresh(response.expiresOn);
           }
-          
-          await loadUserProfile(response.accessToken);
-          setAuthState(AUTH_STATES.AUTHENTICATED);
+
+          const userProfile = await loadUserProfile(response.accessToken);
+          if (userProfile) {
+            setAuthState(AUTH_STATES.AUTHENTICATED);
+          } else {
+            console.error('[Auth] Failed to load user profile after redirect login');
+            setAuthState(AUTH_STATES.UNAUTHENTICATED);
+          }
         } else {
           // Check for existing accounts
           const accounts = msalInstance.getAllAccounts();
@@ -305,10 +310,15 @@ export function AuthProvider({ children }) {
             
             // Acquire token silently
             const token = await acquireToken(false);
-            
+
             if (token) {
-              await loadUserProfile(token);
-              setAuthState(AUTH_STATES.AUTHENTICATED);
+              const userProfile = await loadUserProfile(token);
+              if (userProfile) {
+                setAuthState(AUTH_STATES.AUTHENTICATED);
+              } else {
+                console.error('[Auth] Failed to load user profile for existing account');
+                setAuthState(AUTH_STATES.UNAUTHENTICATED);
+              }
             } else {
               console.warn('[Auth] Failed to acquire token for existing account');
               setAuthState(AUTH_STATES.UNAUTHENTICATED);
@@ -386,8 +396,14 @@ export function AuthProvider({ children }) {
         scheduleTokenRefresh(response.expiresOn);
       }
 
-      await loadUserProfile(response.accessToken);
-      setAuthState(AUTH_STATES.AUTHENTICATED);
+      const userProfile = await loadUserProfile(response.accessToken);
+      if (userProfile) {
+        setAuthState(AUTH_STATES.AUTHENTICATED);
+      } else {
+        console.error('[Auth] Failed to load user profile after popup login');
+        setAuthState(AUTH_STATES.UNAUTHENTICATED);
+        throw new Error('Failed to load user profile. Please try again.');
+      }
 
       return response;
     } catch (error) {
