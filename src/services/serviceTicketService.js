@@ -731,10 +731,20 @@ export const technicianService = {
   /**
    * Get all internal employees (technicians) who can be assigned to tickets
    * Uses the contacts table with is_internal = true
-   * Excludes internal groups (like Accounting, Orders) that have roles with bullet separators
+   * Only includes contacts with valid employee roles (excludes groups like Accounting, Orders)
    */
   async getAll() {
     if (!supabase) return [];
+
+    // Valid employee role patterns - only include contacts with these roles
+    const VALID_EMPLOYEE_ROLES = [
+      'technician', 'lead technician', 'senior technician',
+      'manager', 'project manager', 'operations manager', 'general manager',
+      'owner', 'admin', 'administrator',
+      'installer', 'lead installer',
+      'sales', 'salesperson', 'sales rep',
+      'designer', 'programmer', 'engineer'
+    ];
 
     try {
       const { data, error } = await supabase
@@ -749,14 +759,17 @@ export const technicianService = {
         throw new Error(error.message || 'Failed to fetch technicians');
       }
 
-      // Filter out internal groups (identified by roles containing "•" like "Accounting • Finance")
-      // and deduplicate by email to prevent duplicates
+      // Filter to only valid employees and deduplicate by email
       const seen = new Set();
       const filtered = (data || []).filter(contact => {
-        // Exclude roles with bullet separator (internal groups)
-        if (contact.role && contact.role.includes('•')) {
-          return false;
-        }
+        // Must have a role that matches our employee patterns
+        if (!contact.role) return false;
+        const roleLower = contact.role.toLowerCase();
+        const isValidEmployee = VALID_EMPLOYEE_ROLES.some(validRole =>
+          roleLower.includes(validRole)
+        );
+        if (!isValidEmployee) return false;
+
         // Deduplicate by email
         if (contact.email) {
           const emailLower = contact.email.toLowerCase();
@@ -873,6 +886,16 @@ export const technicianService = {
   async getAllWithSkills(category) {
     if (!supabase) return [];
 
+    // Valid employee role patterns - only include contacts with these roles
+    const VALID_EMPLOYEE_ROLES = [
+      'technician', 'lead technician', 'senior technician',
+      'manager', 'project manager', 'operations manager', 'general manager',
+      'owner', 'admin', 'administrator',
+      'installer', 'lead installer',
+      'sales', 'salesperson', 'sales rep',
+      'designer', 'programmer', 'engineer'
+    ];
+
     try {
       // Get all internal technicians (with emails)
       const { data: techsRaw, error: techsError } = await supabase
@@ -887,10 +910,18 @@ export const technicianService = {
         throw new Error(techsError.message || 'Failed to fetch technicians');
       }
 
-      // Filter out internal groups and deduplicate
+      // Filter to only valid employees and deduplicate by email
       const seen = new Set();
       const techs = (techsRaw || []).filter(contact => {
-        if (contact.role && contact.role.includes('•')) return false;
+        // Must have a role that matches our employee patterns
+        if (!contact.role) return false;
+        const roleLower = contact.role.toLowerCase();
+        const isValidEmployee = VALID_EMPLOYEE_ROLES.some(validRole =>
+          roleLower.includes(validRole)
+        );
+        if (!isValidEmployee) return false;
+
+        // Deduplicate by email
         if (contact.email) {
           const emailLower = contact.email.toLowerCase();
           if (seen.has(emailLower)) return false;
