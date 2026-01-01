@@ -2,6 +2,13 @@
 
 **⚠️ AI ASSISTANT: Read this ENTIRE file before writing any code.**
 
+**📁 FILE MANAGEMENT RULES:**
+- **NEVER create duplicate agent files** (no AGENT 2.md, AGENT 3.md, agent-copy.md, etc.)
+- **ALWAYS update THIS file** (AGENT.md) directly when documentation changes are needed
+- **APPEND new sections** to the appropriate part of this file
+- If this file gets too long, discuss with the user before restructuring
+- The only documentation files should be: `AGENT.md` (primary) and topic-specific files in `/docs/`
+
 ---
 
 # PART 1: WHAT THIS APP IS

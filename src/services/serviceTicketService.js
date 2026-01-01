@@ -912,15 +912,20 @@ export const technicianService = {
     const EXCLUDED_EMAIL_PATTERNS = ['accounting@', 'orders@', 'info@', 'support@'];
 
     try {
-      // Get profiles for skill lookup (email -> profile_id mapping)
+      // Get profiles for skill lookup (email -> profile_id mapping) and avatar colors
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, email');
+        .select('id, email, avatar_color');
 
       const emailToProfileId = {};
+      const emailToAvatarColor = {};
       (profiles || []).forEach(p => {
         if (p.email) {
-          emailToProfileId[p.email.toLowerCase()] = p.id;
+          const emailLower = p.email.toLowerCase();
+          emailToProfileId[emailLower] = p.id;
+          if (p.avatar_color) {
+            emailToAvatarColor[emailLower] = p.avatar_color;
+          }
         }
       });
 
@@ -992,11 +997,13 @@ export const technicianService = {
         });
       }
 
-      // Attach skills to technicians
+      // Attach skills and avatar colors to technicians
       const techsWithSkills = techs.map(tech => {
         // Try to find profile by email
-        const profileId = tech.email ? emailToProfileId[tech.email.toLowerCase()] : null;
+        const emailLower = tech.email ? tech.email.toLowerCase() : null;
+        const profileId = emailLower ? emailToProfileId[emailLower] : null;
         const skills = profileId ? (skillsByEmployee[profileId] || []) : [];
+        const avatarColor = emailLower ? emailToAvatarColor[emailLower] : null;
 
         // Determine highest proficiency
         const levels = ['training', 'proficient', 'expert'];
@@ -1011,7 +1018,8 @@ export const technicianService = {
           skills,
           qualified: skills.length > 0,
           highestProficiency: highestLevel,
-          skillCount: skills.length
+          skillCount: skills.length,
+          avatar_color: avatarColor
         };
       });
 
