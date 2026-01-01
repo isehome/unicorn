@@ -52,6 +52,9 @@ module.exports = async (req, res) => {
         console.log('[CreateTicket] Incoming request');
         
         let body = req.body;
+        // Retell sends call_id at the top level
+        const callId = req.body?.call_id || body?.call_id || null;
+        
         if (req.body?.args) body = req.body.args;
 
         const {
@@ -106,7 +109,6 @@ module.exports = async (req, res) => {
                     });
                     
                     // Add UniFi Site Manager link as second triage comment
-                    // Extract the host ID (first part before the colon)
                     const hostId = unifi_site_id.split(':')[0];
                     const siteManagerUrl = 'https://unifi.ui.com/consoles/' + hostId;
                     
@@ -130,6 +132,7 @@ module.exports = async (req, res) => {
             priority: mapPriority(priority),
             status: 'open',
             source: 'phone_ai',
+            source_reference: callId, // Store call_id for webhook matching
             customer_name: customer_name || null,
             customer_phone: customer_phone || null,
             customer_email: customer_email || null,
@@ -145,7 +148,7 @@ module.exports = async (req, res) => {
             ticketData.triage_comments = triageComments;
         }
 
-        console.log('[CreateTicket] Creating:', ticketNumber, '| Cat:', ticketData.category, '| Triage comments:', triageComments.length);
+        console.log('[CreateTicket] Creating:', ticketNumber, '| Call:', callId, '| Cat:', ticketData.category, '| Triage comments:', triageComments.length);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')
