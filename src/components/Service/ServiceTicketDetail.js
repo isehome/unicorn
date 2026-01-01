@@ -125,6 +125,7 @@ const ServiceTicketDetail = () => {
   // Collapsible section states
   const [expandedSections, setExpandedSections] = useState({
     customer: true,
+    callRecording: false,
     actions: true,
     triage: true,
     parts: false,
@@ -1374,6 +1375,54 @@ const ServiceTicketDetail = () => {
                 </div>
               )}
             </div>
+
+            
+            {/* Call Recording Section - Only show for phone_ai tickets */}
+            {ticket.source === 'phone_ai' && (ticket.call_transcript || ticket.call_summary) && (
+              <div className="bg-zinc-800 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleSection('callRecording')}
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Phone size={18} className="text-purple-400" />
+                    <h2 className="font-semibold text-white">Call Recording</h2>
+                    {ticket.call_duration_seconds && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400">
+                        {Math.floor(ticket.call_duration_seconds / 60)}:{(ticket.call_duration_seconds % 60).toString().padStart(2, '0')}
+                      </span>
+                    )}
+                  </div>
+                  {expandedSections.callRecording ? (
+                    <ChevronDown size={18} className="text-zinc-400" />
+                  ) : (
+                    <ChevronRight size={18} className="text-zinc-400" />
+                  )}
+                </button>
+                {expandedSections.callRecording && (
+                  <div className="p-4 pt-0 border-t border-zinc-700 space-y-4">
+                    {/* AI Summary */}
+                    {ticket.call_summary && (
+                      <div>
+                        <h3 className="text-sm font-medium text-zinc-400 mb-2">AI Summary</h3>
+                        <p className="text-sm text-zinc-300 bg-zinc-700/50 rounded-lg p-3">
+                          {ticket.call_summary}
+                        </p>
+                      </div>
+                    )}
+                    {/* Full Transcript */}
+                    {ticket.call_transcript && (
+                      <div>
+                        <h3 className="text-sm font-medium text-zinc-400 mb-2">Full Transcript</h3>
+                        <div className="text-sm text-zinc-300 bg-zinc-700/50 rounded-lg p-3 max-h-96 overflow-y-auto whitespace-pre-wrap font-mono">
+                          {ticket.call_transcript}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Purchase Orders Section - Collapsible */}
             <div className="bg-zinc-800 rounded-lg overflow-hidden">
