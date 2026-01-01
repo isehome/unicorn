@@ -177,42 +177,6 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Retell AI** | Voice-based service intake (inbound calls) |
 | **QuickBooks Online** | Invoice creation from service tickets |
 
-#### 7.1 Retell AI Voice Integration
-
-AI-powered phone agent for handling inbound customer service calls.
-
-| Setting | Value |
-|---------|-------|
-| Agent ID | `agent_569081761d8bbd630c0794095d` |
-| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
-| Agent Name | Intelligent Systems - Sarah |
-| Voice | ElevenLabs Hailey (American, young, professional) |
-| Model | GPT-4.1 |
-
-**Custom Tools (webhooks):**
-| Tool | Endpoint | Purpose |
-|------|----------|---------|
-| `identify_customer` | `/api/retell/identify` | Customer lookup by phone - returns name, address, SLA tier, equipment, open tickets, project team, and UniFi network status |
-| `search_knowledge` | `/api/service/knowledge` | Search knowledge base for troubleshooting info |
-| `create_ticket` | `/api/retell/create-ticket` | Create service ticket from AI call |
-| `check_schedule` | `/api/retell/check-schedule` | Check technician availability (Premium SLA only) |
-
-**Webhook Events:** `https://unicorn-one.vercel.app/api/retell/webhook`
-- `call_started`: Creates call log entry
-- `call_ended`: Updates duration, transcript
-- `call_analyzed`: Adds sentiment, summary, issue category
-
-**Database Tables:**
-- `customer_sla_tiers`: Standard, Priority, Premium SLA definitions
-- `customer_sla_assignments`: Links contacts to SLA tiers
-- `retell_call_logs`: Call history, transcripts, sentiment analysis
-
-**Test Interface:** `/service/ai-test` - Browser-based testing via microphone
-
-**Environment Variables:**
-- `RETELL_API_KEY`: Get from Retell Dashboard > Settings > API Keys
-- `UNIFI_API_KEY`: For real-time network status checks during calls
-
 ---
 
 ### 8. Service CRM Module

@@ -12,7 +12,7 @@ import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
 import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
-import { checkUserAvailability, fetchEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent } from '../services/microsoftCalendarService';
+import { checkUserAvailability, fetchEventsForDate, fetchUserEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
 import { brandColors } from '../styles/styleSystem';
 
@@ -123,42 +123,80 @@ const WeeklyPlanning = () => {
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 6);
 
+      // If 'all' is selected, pass null to get all technicians' schedules
+      const effectiveTechId = (techId === 'all' || !techId) ? null : techId;
+
       // Get schedules from database
       const schedules = await weeklyPlanningService.getSchedulesForDateRange(
         startDate,
         endDate,
-        techId
+        effectiveTechId
       );
+      console.log(`[WeeklyPlanning] Loaded ${schedules?.length || 0} service schedules from database:`, schedules);
 
       // Get M365 calendar events for blocking (fetch each day in the range)
+      // Only fetch calendar events for a specific technician (not 'all' - privacy)
       let blockedEvents = [];
-      if (techId && authContext) {
+      if (effectiveTechId && authContext) {
         try {
-          const techEmail = technicians.find(t => t.id === techId)?.email;
+          const tech = technicians.find(t => t.id === effectiveTechId);
+          const techEmail = tech?.email;
+          console.log(`[WeeklyPlanning] Looking up technician ${effectiveTechId}:`, tech ? `Found: ${tech.full_name} (${techEmail})` : 'NOT FOUND');
+          console.log(`[WeeklyPlanning] Available technicians:`, technicians.map(t => ({ id: t.id, name: t.full_name })));
           if (techEmail) {
-            // Fetch events for each day in the week
+            console.log(`[WeeklyPlanning] Fetching calendar for ${techEmail}`);
+            // Fetch events for each day in the week using the technician's calendar
             const dayPromises = [];
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
               const dateStr = formatDateLocal(new Date(d));
               dayPromises.push(
-                fetchEventsForDate(authContext, dateStr)
-                  .then(events => (events || []).map(e => ({ ...e, fetchedDate: dateStr })))
+                fetchUserEventsForDate(authContext, techEmail, dateStr)
+                  .then(result => {
+                    if (result.error && result.error !== 'No calendar access') {
+                      console.warn(`[WeeklyPlanning] Calendar fetch issue for ${dateStr}:`, result.error);
+                    }
+                    return (result.events || []).map(e => ({ ...e, fetchedDate: dateStr }));
+                  })
                   .catch(() => [])
               );
             }
             const dayResults = await Promise.all(dayPromises);
             const allEvents = dayResults.flat();
+            console.log(`[WeeklyPlanning] Raw calendar events:`, allEvents);
 
             blockedEvents = allEvents.map(event => {
-              const startHour = new Date(event.start).getHours() + new Date(event.start).getMinutes() / 60;
-              const endHour = new Date(event.end).getHours() + new Date(event.end).getMinutes() / 60;
+              // Graph API returns datetime without timezone suffix - parse as local time
+              // Format: "2024-01-15T09:00:00.0000000"
+              let startHour = 0;
+              let endHour = 0;
+
+              if (event.start) {
+                // Parse the time portion directly to avoid timezone issues
+                const startMatch = event.start.match(/T(\d{2}):(\d{2})/);
+                if (startMatch) {
+                  startHour = parseInt(startMatch[1], 10) + parseInt(startMatch[2], 10) / 60;
+                }
+              }
+              if (event.end) {
+                const endMatch = event.end.match(/T(\d{2}):(\d{2})/);
+                if (endMatch) {
+                  endHour = parseInt(endMatch[1], 10) + parseInt(endMatch[2], 10) / 60;
+                }
+              }
+
+              // Get date from the fetchedDate we stored, or parse from start
+              const eventDate = event.fetchedDate || formatDateLocal(new Date(event.start));
+
+              console.log(`[WeeklyPlanning] Event: "${event.subject}" on ${eventDate} from ${startHour} to ${endHour}`);
+
               return {
                 ...event,
-                date: formatDateLocal(new Date(event.start)),
+                date: eventDate,
                 startHour,
                 endHour
               };
             });
+            console.log(`[WeeklyPlanning] Processed ${blockedEvents.length} calendar events for ${techEmail}:`, blockedEvents);
           }
         } catch (calendarErr) {
           console.warn('[WeeklyPlanning] Failed to load calendar events:', calendarErr);
@@ -176,18 +214,24 @@ const WeeklyPlanning = () => {
     }
   }, [authContext, technicians]);
 
-  // Load initial data
+  // Load initial data - wait for technicians to be loaded first
   useEffect(() => {
+    // Don't load schedules until technicians are loaded (needed for calendar email lookup)
+    if (loadingTechnicians) return;
+
     const loadData = async () => {
       try {
         setLoading(true);
         setError('');
 
         // Load current week and next week
+        console.log('[WeeklyPlanning] Loading week data for:', { currentWeekStart, selectedTechnician, techniciansCount: technicians.length });
         const weekData = await loadWeekSchedules(currentWeekStart, selectedTechnician);
+        console.log('[WeeklyPlanning] Week 1 data:', weekData);
         const nextWeekStart = new Date(currentWeekStart);
         nextWeekStart.setDate(nextWeekStart.getDate() + 7);
         const nextWeekData = await loadWeekSchedules(nextWeekStart, selectedTechnician);
+        console.log('[WeeklyPlanning] Week 2 data:', nextWeekData);
 
         setWeeks([weekData, nextWeekData]);
 
@@ -209,7 +253,7 @@ const WeeklyPlanning = () => {
     };
 
     loadData();
-  }, [currentWeekStart, selectedTechnician, loadWeekSchedules]);
+  }, [currentWeekStart, selectedTechnician, loadWeekSchedules, loadingTechnicians]);
 
   // Refresh data
   const handleRefresh = async () => {
@@ -268,6 +312,14 @@ const WeeklyPlanning = () => {
   // Handle technician change
   const handleTechnicianChange = (techId) => {
     setSelectedTechnician(techId);
+    // Automatically switch view mode based on selection
+    // 'all' or null -> show all technicians overlapping
+    // specific tech -> show single technician
+    if (!techId || techId === 'all') {
+      setViewMode('all');
+    } else {
+      setViewMode('single');
+    }
   };
 
   // Handle drop ticket onto calendar (both new schedules and reschedules)
@@ -790,10 +842,30 @@ const WeeklyPlanning = () => {
 
             <div className="bg-zinc-700/50 rounded-lg p-3 mb-4">
               <p className="text-sm text-zinc-400 mb-2">Conflicts:</p>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {conflictModal.conflicts.map((conflict, idx) => (
-                  <li key={idx} className="text-sm text-amber-400">
-                    {conflict.title || conflict.subject || 'Busy'}: {conflict.start} - {conflict.end}
+                  <li key={idx} className="text-sm">
+                    <div className="text-amber-400">
+                      {conflict.title || conflict.subject || 'Busy'}: {conflict.start} - {conflict.end}
+                    </div>
+                    {conflict.id && (
+                      <button
+                        onClick={async () => {
+                          if (window.confirm('Delete this conflicting schedule?')) {
+                            try {
+                              await weeklyPlanningService.deleteSchedule(conflict.id);
+                              conflictModal.onCancel();
+                              handleRefresh();
+                            } catch (err) {
+                              console.error('Failed to delete schedule:', err);
+                            }
+                          }
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300 underline mt-1"
+                      >
+                        Delete this schedule
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

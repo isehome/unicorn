@@ -486,6 +486,9 @@ const DayColumn = memo(({
 
   // Position schedules
   const positionedSchedules = useMemo(() => {
+    if (schedules.length > 0) {
+      console.log('[DayColumn] Positioning', schedules.length, 'schedules for date:', formatDateLocal(date));
+    }
     return schedules.map(schedule => {
       const startHour = timeToHour(schedule.scheduled_time_start);
       const ticket = schedule.ticket || {};
@@ -517,13 +520,24 @@ const DayColumn = memo(({
       const clampedStart = Math.max(startHour, START_HOUR);
       const clampedEnd = Math.min(endHour, END_HOUR);
 
-      return {
+      const positioned = {
         ...schedule,
         top: (clampedStart - START_HOUR) * HOUR_HEIGHT,
         height: (clampedEnd - clampedStart) * HOUR_HEIGHT
       };
+
+      console.log('[DayColumn] Schedule positioned:', {
+        id: schedule.id,
+        time: `${schedule.scheduled_time_start}-${schedule.scheduled_time_end}`,
+        startHour,
+        endHour,
+        top: positioned.top,
+        height: positioned.height
+      });
+
+      return positioned;
     });
-  }, [schedules]);
+  }, [schedules, date]);
 
   // Position blocked events
   const positionedBlockedEvents = useMemo(() => {
@@ -696,7 +710,8 @@ const WeekCalendarGrid = ({
   // Generate days for all loaded weeks
   const allDays = useMemo(() => {
     const days = [];
-    weeks.forEach(week => {
+    console.log('[WeekCalendarGrid] Processing weeks data:', weeks);
+    weeks.forEach((week, weekIdx) => {
       // Parse date string as local date (not UTC) to avoid timezone shift
       // YYYY-MM-DD format when passed to new Date() is treated as UTC
       // We need to parse it manually to get local midnight
@@ -705,19 +720,37 @@ const WeekCalendarGrid = ({
       const numDays = showWorkWeekOnly ? 5 : 7;
       const startOffset = showWorkWeekOnly ? 0 : 0; // Mon or Sun
 
+      console.log(`[WeekCalendarGrid] Week ${weekIdx}: startDate=${week.startDate}, schedules=${week.schedules?.length || 0}, blockedEvents=${week.blockedEvents?.length || 0}`);
+
       for (let i = startOffset; i < startOffset + numDays; i++) {
         const date = new Date(startDate);
         date.setDate(date.getDate() + i);
         const dateStr = formatDateLocal(date);
 
+        const daySchedules = (week.schedules || []).filter(s => s.scheduled_date === dateStr);
+        const dayBlockedEvents = (week.blockedEvents || []).filter(e => e.date === dateStr);
+
+        if (daySchedules.length > 0 || dayBlockedEvents.length > 0) {
+          console.log(`[WeekCalendarGrid] Day ${dateStr}: ${daySchedules.length} schedules, ${dayBlockedEvents.length} blocked events`);
+          if (daySchedules.length > 0) {
+            console.log('[WeekCalendarGrid] Schedules for day:', daySchedules.map(s => ({
+              id: s.id,
+              date: s.scheduled_date,
+              time: `${s.scheduled_time_start}-${s.scheduled_time_end}`,
+              customer: s.ticket?.customer_name || s.customer_name || 'unknown'
+            })));
+          }
+        }
+
         days.push({
           date,
           dateStr,
-          schedules: (week.schedules || []).filter(s => s.scheduled_date === dateStr),
-          blockedEvents: (week.blockedEvents || []).filter(e => e.date === dateStr)
+          schedules: daySchedules,
+          blockedEvents: dayBlockedEvents
         });
       }
     });
+    console.log('[WeekCalendarGrid] Total days generated:', days.length, 'with schedules on days:', days.filter(d => d.schedules.length > 0).length);
     return days;
   }, [weeks, showWorkWeekOnly]);
 

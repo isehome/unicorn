@@ -141,13 +141,23 @@ export const weeklyPlanningService = {
       let ticketMap = {};
 
       if (ticketIds.length > 0) {
-        const { data: tickets } = await supabase
-          .from('service_tickets')
-          .select('id, ticket_number, title, status, priority, category, estimated_hours, customer_name, customer_phone, customer_email, service_address')
-          .in('id', ticketIds);
+        console.log('[WeeklyPlanningService] Fetching ticket details for IDs:', ticketIds);
+        try {
+          const { data: tickets, error: ticketError } = await supabase
+            .from('service_tickets')
+            .select('id, ticket_number, title, status, priority, category, estimated_hours, customer_name, customer_phone, customer_email, service_address')
+            .in('id', ticketIds);
 
-        if (tickets) {
-          ticketMap = tickets.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+          if (ticketError) {
+            console.error('[WeeklyPlanningService] Failed to fetch ticket details:', ticketError);
+            // Continue without ticket details - schedule data is still valid
+          } else if (tickets) {
+            console.log('[WeeklyPlanningService] Fetched', tickets.length, 'ticket details');
+            ticketMap = tickets.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+          }
+        } catch (ticketFetchError) {
+          console.error('[WeeklyPlanningService] Exception fetching ticket details:', ticketFetchError);
+          // Continue without ticket details
         }
       }
 
@@ -287,10 +297,10 @@ export const weeklyPlanningService = {
     });
 
     try {
-      // Get all schedules for technician on date - use basic columns only
+      // Get all schedules for technician on date - use simple query first to avoid join issues
       let query = supabase
         .from('service_schedules')
-        .select('id, scheduled_time_start, scheduled_time_end, status, ticket_id, technician_id')
+        .select('id, scheduled_time_start, scheduled_time_end, status, ticket_id, technician_id, technician_name')
         .eq('technician_id', technicianId)
         .eq('scheduled_date', formattedDate)
         .neq('status', 'cancelled');
@@ -305,6 +315,25 @@ export const weeklyPlanningService = {
       if (error) {
         console.error('[WeeklyPlanningService] Failed to check conflicts:', error);
         return []; // Return empty to allow scheduling
+      }
+
+      // Fetch ticket details separately for conflict display
+      let ticketMap = {};
+      if (schedules && schedules.length > 0) {
+        const ticketIds = [...new Set(schedules.map(s => s.ticket_id).filter(Boolean))];
+        if (ticketIds.length > 0) {
+          try {
+            const { data: tickets } = await supabase
+              .from('service_tickets')
+              .select('id, customer_name, category, status')
+              .in('id', ticketIds);
+            if (tickets) {
+              ticketMap = tickets.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+            }
+          } catch (e) {
+            console.warn('[WeeklyPlanningService] Could not fetch ticket details for conflicts:', e);
+          }
+        }
       }
 
       if (!schedules || schedules.length === 0) return [];
@@ -324,12 +353,19 @@ export const weeklyPlanningService = {
         return !(requestedEnd <= schedStart || requestedStart >= schedEnd);
       });
 
-      return conflicts.map(c => ({
-        id: c.id,
-        start: c.scheduled_time_start,
-        end: c.scheduled_time_end || minutesToTime(timeToMinutes(c.scheduled_time_start) + DEFAULT_DURATION_MINUTES),
-        title: 'Scheduled service'
-      }));
+      return conflicts.map(c => {
+        const ticket = ticketMap[c.ticket_id];
+        return {
+          id: c.id,
+          start: c.scheduled_time_start,
+          end: c.scheduled_time_end || minutesToTime(timeToMinutes(c.scheduled_time_start) + DEFAULT_DURATION_MINUTES),
+          title: ticket?.customer_name
+            ? `${ticket.customer_name} (${ticket.category || 'Service'})`
+            : 'Scheduled service',
+          ticketId: c.ticket_id,
+          ticketStatus: ticket?.status
+        };
+      });
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to check conflicts:', error);
       return []; // Return empty to allow scheduling on error
@@ -343,6 +379,8 @@ export const weeklyPlanningService = {
     if (!supabase) throw new Error('Supabase not configured');
     if (!ticketId) throw new Error('Ticket ID is required');
 
+    console.log('[WeeklyPlanningService] createTentativeSchedule called with ticketId:', ticketId);
+
     try {
       // Get ticket info for duration
       const { data: ticket, error: ticketError } = await supabase
@@ -352,7 +390,7 @@ export const weeklyPlanningService = {
         .single();
 
       if (ticketError) {
-        console.warn('[WeeklyPlanningService] Could not fetch ticket details:', ticketError);
+        console.warn('[WeeklyPlanningService] Could not fetch ticket details for ticketId:', ticketId, ticketError);
       }
 
       // Parse estimated_hours as number (database NUMERIC may return string)
@@ -397,7 +435,13 @@ export const weeklyPlanningService = {
 
       if (error) {
         console.error('[WeeklyPlanningService] Failed to create schedule:', error);
-        throw error;
+        console.error('[WeeklyPlanningService] Error details:', {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint
+        });
+        throw new Error(`Failed to create schedule: ${error.message || error.code || 'Unknown error'}`);
       }
 
       console.log('[WeeklyPlanningService] Schedule created:', data);
@@ -564,6 +608,53 @@ export const weeklyPlanningService = {
       return data;
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to cancel schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete a schedule (hard delete from database)
+   */
+  async deleteSchedule(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!scheduleId) throw new Error('Schedule ID is required');
+
+    try {
+      // Get the schedule first to get the ticket_id
+      const { data: schedule } = await supabase
+        .from('service_schedules')
+        .select('ticket_id')
+        .eq('id', scheduleId)
+        .single();
+
+      // Delete the schedule
+      const { error } = await supabase
+        .from('service_schedules')
+        .delete()
+        .eq('id', scheduleId);
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to delete schedule:', error);
+        throw error;
+      }
+
+      // Update ticket status back to triaged if it was scheduled
+      if (schedule?.ticket_id) {
+        const { error: ticketError } = await supabase
+          .from('service_tickets')
+          .update({ status: 'triaged' })
+          .eq('id', schedule.ticket_id)
+          .eq('status', 'scheduled'); // Only update if currently scheduled
+
+        if (ticketError) {
+          console.warn('[WeeklyPlanningService] Could not update ticket status:', ticketError);
+        }
+      }
+
+      console.log('[WeeklyPlanningService] Schedule deleted:', scheduleId);
+      return { success: true };
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to delete schedule:', error);
       throw error;
     }
   },

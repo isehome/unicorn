@@ -101,6 +101,85 @@ export const fetchEventsForDate = async (authContext, date) => {
   }
 };
 
+/**
+ * Fetch calendar events for a specific user (not the logged-in user)
+ * Requires Calendars.Read or Calendars.Read.All permission
+ * @param {Object} authContext - Auth context with accessToken
+ * @param {string} userEmail - Email of the user whose calendar to fetch
+ * @param {string} date - Date string (YYYY-MM-DD)
+ * @returns {Object} { connected, events, error }
+ */
+export const fetchUserEventsForDate = async (authContext, userEmail, date) => {
+  try {
+    let token = authContext?.accessToken;
+
+    if (!token) {
+      if (authContext?.acquireToken) {
+        token = await authContext.acquireToken(false);
+      }
+      if (!token) return { connected: false, events: [], error: 'Not authenticated' };
+    }
+
+    if (!userEmail) {
+      return { connected: false, events: [], error: 'No user email provided' };
+    }
+
+    const { start, end } = getDateRange(date);
+    const timezone = getTimeZone();
+
+    // Use /users/{email}/calendarView to get another user's calendar
+    const url = new URL(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userEmail)}/calendarView`);
+    url.searchParams.set('startDateTime', start);
+    url.searchParams.set('endDateTime', end);
+    url.searchParams.set('$orderby', 'start/dateTime');
+    url.searchParams.set('$top', '50');
+    url.searchParams.set('$select', 'id,subject,start,end,location,isAllDay,showAs');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Prefer': `outlook.timezone="${timezone}"`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        return { connected: false, events: [], error: 'Session expired' };
+      }
+      if (response.status === 403) {
+        // Permission denied - user doesn't have access to this calendar
+        console.warn(`[Calendar] No access to ${userEmail}'s calendar (403)`);
+        return { connected: true, events: [], error: 'No calendar access' };
+      }
+      if (response.status === 404) {
+        console.warn(`[Calendar] User ${userEmail} not found or no calendar`);
+        return { connected: true, events: [], error: 'User not found' };
+      }
+      return { connected: true, events: [], error: 'Failed to fetch events' };
+    }
+
+    const data = await response.json();
+    // Map events but mark them as "busy" to protect privacy
+    // Only show subject for non-private events, otherwise just "Busy"
+    const events = Array.isArray(data.value) ? data.value.map(event => ({
+      id: event.id,
+      subject: event.showAs === 'free' ? null : (event.subject || 'Busy'), // Show subject or 'Busy'
+      start: event.start?.dateTime || null,
+      end: event.end?.dateTime || null,
+      location: '', // Don't expose location for privacy
+      isAllDay: event.isAllDay || false,
+      showAs: event.showAs || 'busy',
+      isExternal: true, // Mark as external calendar event
+    })).filter(e => e.showAs !== 'free') : []; // Filter out "free" time
+
+    return { connected: true, events, error: null };
+  } catch (error) {
+    console.error('[Calendar] Fetch user events error:', error);
+    return { connected: false, events: [], error: error.message };
+  }
+};
+
 export const fetchTodayEvents = async (authContext) => {
   try {
     let token = authContext?.accessToken;
@@ -1218,6 +1297,8 @@ export const updateServiceAppointmentEvent = async (authContext, eventId, update
 
 export default {
   fetchTodayEvents,
+  fetchEventsForDate,
+  fetchUserEventsForDate,
   hasCalendarConnection,
   getCalendarStatus,
   fetchUserProfile,
