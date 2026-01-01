@@ -32,6 +32,34 @@ const formatTimestamp = (dateString) => {
 /**
  * TriageComment Component - displays a single triage comment
  */
+/**
+ * Linkify URLs in text
+ */
+const linkifyContent = (text) => {
+  if (!text) return null;
+  
+  // URL regex pattern
+  const urlPattern = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlPattern);
+  
+  return parts.map((part, index) => {
+    if (part.match(urlPattern)) {
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-400 hover:text-blue-300 underline break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+};
+
 const TriageComment = ({ comment }) => {
   return (
     <div className="p-3 bg-zinc-700/50 rounded-lg mb-2">
@@ -42,7 +70,7 @@ const TriageComment = ({ comment }) => {
         </div>
         <span className="text-xs text-zinc-500">{formatTimestamp(comment.created_at)}</span>
       </div>
-      <p className="text-zinc-300 text-sm whitespace-pre-wrap">{comment.content}</p>
+      <p className="text-zinc-300 text-sm whitespace-pre-wrap">{linkifyContent(comment.content)}</p>
     </div>
   );
 };
