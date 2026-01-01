@@ -39,7 +39,7 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "sync-docs": "cp -r docs/*.md public/docs/ && cp AGENT.md public/docs/ && cp AGENT.md public/",
+    "sync-docs": "cp -r docs/*.md public/docs/ && cp agent.md public/docs/ && cp agent.md public/",
     "start": "PORT=3001 react-scripts start",
     "build": "npm run sync-docs && GENERATE_SOURCEMAP=false CI=false react-scripts build",
     "test": "react-scripts test",
