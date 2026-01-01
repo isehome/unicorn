@@ -143,9 +143,10 @@ export const weeklyPlanningService = {
       if (ticketIds.length > 0) {
         console.log('[WeeklyPlanningService] Fetching ticket details for IDs:', ticketIds);
         try {
+          // Use * to get all available columns - safer than explicit list
           const { data: tickets, error: ticketError } = await supabase
             .from('service_tickets')
-            .select('id, ticket_number, title, status, priority, category, estimated_hours, customer_name, customer_phone, customer_email, service_address')
+            .select('*')
             .in('id', ticketIds);
 
           if (ticketError) {
@@ -382,10 +383,10 @@ export const weeklyPlanningService = {
     console.log('[WeeklyPlanningService] createTentativeSchedule called with ticketId:', ticketId);
 
     try {
-      // Get ticket info for duration
+      // Get ticket info for duration - use * for safety
       const { data: ticket, error: ticketError } = await supabase
         .from('service_tickets')
-        .select('estimated_hours, service_address, customer_name')
+        .select('*')
         .eq('id', ticketId)
         .single();
 
@@ -408,8 +409,9 @@ export const weeklyPlanningService = {
       const startMinutes = timeToMinutes(scheduleData.scheduled_time_start);
       const endTime = scheduleData.scheduled_time_end || minutesToTime(startMinutes + estimatedMinutes);
 
-      // Build insert object - use only basic columns that definitely exist
-      // Start with 'pending_tech' status for 3-step approval workflow
+      // Build insert object - use only the most basic columns that definitely exist
+      // NOTE: technician_email and service_address columns do NOT exist in the schema
+      // Create as 'draft' status - user must commit to lock and send invites
       const insertData = {
         ticket_id: ticketId,
         scheduled_date: scheduleData.scheduled_date,
@@ -417,11 +419,8 @@ export const weeklyPlanningService = {
         scheduled_time_end: endTime,
         technician_id: scheduleData.technician_id,
         technician_name: scheduleData.technician_name,
-        technician_email: scheduleData.technician_email || null,
-        service_address: scheduleData.service_address || ticket?.service_address || '',
-        pre_visit_notes: scheduleData.pre_visit_notes || '',
         status: 'scheduled',
-        schedule_status: 'pending_tech' // Step 1: Waiting for technician to accept calendar invite
+        schedule_status: 'draft' // Draft until user commits
       };
 
       console.log('[WeeklyPlanningService] Creating schedule with data:', insertData);
@@ -573,6 +572,83 @@ export const weeklyPlanningService = {
       return data;
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to confirm schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Commit a draft schedule - locks it and transitions to pending_tech
+   * This is called when user clicks "Commit & Send Invite" on a draft schedule
+   * After this, the schedule can no longer be dragged/moved
+   * The calendar invite will be sent to the technician
+   */
+  async commitSchedule(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!scheduleId) throw new Error('Schedule ID is required');
+
+    try {
+      // Update schedule status from draft to pending_tech
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .update({
+          schedule_status: 'pending_tech',
+          committed_at: new Date().toISOString()
+        })
+        .eq('id', scheduleId)
+        .eq('schedule_status', 'draft') // Only commit if currently draft
+        .select(`
+          *,
+          ticket:service_tickets(id, customer_name, customer_email, customer_phone, title, category)
+        `)
+        .single();
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to commit schedule:', error);
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error('Schedule not found or already committed');
+      }
+
+      console.log('[WeeklyPlanningService] Schedule committed:', data);
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to commit schedule:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Reset a committed schedule back to draft status
+   * This allows the schedule to be moved/adjusted again
+   * Also clears the calendar_event_id since the invite should be cancelled
+   */
+  async resetToDraft(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!scheduleId) throw new Error('Schedule ID is required');
+
+    try {
+      const { data, error } = await supabase
+        .from('service_schedules')
+        .update({
+          schedule_status: 'draft',
+          committed_at: null,
+          calendar_event_id: null // Clear calendar event since we're resetting
+        })
+        .eq('id', scheduleId)
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to reset schedule to draft:', error);
+        throw error;
+      }
+
+      console.log('[WeeklyPlanningService] Schedule reset to draft:', data);
+      return data;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to reset schedule to draft:', error);
       throw error;
     }
   },

@@ -263,8 +263,16 @@ const TechnicianFilterBar = ({
         <div className="flex items-center gap-4 text-xs">
           <span className="text-zinc-400">Status:</span>
           <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(139, 92, 246, 0.3)', border: '1px solid #8B5CF6' }} />
+            <span className="text-violet-400">Draft</span>
+          </div>
+          <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(245, 158, 11, 0.4)', border: '1px solid #F59E0B' }} />
-            <span className="text-amber-400">Tentative</span>
+            <span className="text-amber-400">Awaiting Tech</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(59, 130, 246, 0.3)', border: '1px solid #3B82F6' }} />
+            <span className="text-blue-400">Awaiting Customer</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(148, 175, 50, 0.4)', border: `1px solid ${brandColors.success}` }} />
@@ -272,7 +280,7 @@ const TechnicianFilterBar = ({
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(113, 113, 122, 0.4)', border: '1px solid #71717A' }} />
-            <span className="text-zinc-400">Blocked (Calendar)</span>
+            <span className="text-zinc-400">Calendar Block</span>
           </div>
         </div>
 
@@ -281,7 +289,7 @@ const TechnicianFilterBar = ({
 
         {/* Time info */}
         <div className="text-xs text-zinc-500">
-          30-min buffer between appointments required
+          Drag to schedule • Commit to send invite
         </div>
       </div>
 

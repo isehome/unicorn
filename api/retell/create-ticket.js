@@ -1,7 +1,7 @@
 /**
  * api/retell/create-ticket.js
  * Create service ticket from Retell AI phone call
- * Automatically includes network diagnostics if available
+ * Automatically includes network diagnostics as triage comments
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -32,7 +32,6 @@ function mapPriority(p) {
 function mapCategory(c) {
     if (!c) return 'general';
     const lower = c.toLowerCase().trim();
-    // Common aliases
     if (lower.includes('audio') || lower.includes('video') || lower.includes('tv') || lower.includes('speaker')) return 'av';
     if (lower.includes('network') || lower.includes('wifi') || lower.includes('internet')) return 'network';
     if (lower.includes('light') || lower.includes('keypad') || lower.includes('switch') || lower.includes('lutron') || lower.includes('dimmer')) return 'lighting';
@@ -65,7 +64,6 @@ module.exports = async (req, res) => {
             customer_email,
             customer_address,
             preferred_time,
-            troubleshooting_notes,
             unifi_site_id
         } = body;
 
@@ -77,34 +75,51 @@ module.exports = async (req, res) => {
 
         const ticketNumber = generateTicketNumber();
         const mappedCategory = mapCategory(category);
+        const isNetworkIssue = mappedCategory === 'network' || 
+                              (description && (description.toLowerCase().includes('wifi') || 
+                               description.toLowerCase().includes('internet') || 
+                               description.toLowerCase().includes('network')));
         
-        // Check for cached network diagnostics if this is a network issue
+        // Build triage comments array for network issues
+        const triageComments = [];
         let networkDiagnostics = null;
-        if (unifi_site_id && mappedCategory === 'network') {
+        
+        if (unifi_site_id && isNetworkIssue) {
+            // Try to get cached network diagnostics
             try {
                 const { data } = await supabase
                     .from('retell_network_cache')
                     .select('diagnostics')
                     .eq('site_id', unifi_site_id)
                     .single();
+                    
                 if (data?.diagnostics) {
                     networkDiagnostics = data.diagnostics;
                     console.log('[CreateTicket] Found cached network diagnostics');
+                    
+                    // Add diagnostics as first triage comment
+                    triageComments.push({
+                        content: networkDiagnostics,
+                        author_name: 'Sarah (AI Phone Agent)',
+                        author_id: null,
+                        created_at: new Date().toISOString()
+                    });
+                    
+                    // Add UniFi Site Manager link as second triage comment
+                    // Extract the host ID (first part before the colon)
+                    const hostId = unifi_site_id.split(':')[0];
+                    const siteManagerUrl = 'https://unifi.ui.com/consoles/' + hostId;
+                    
+                    triageComments.push({
+                        content: 'UniFi Site Manager: ' + siteManagerUrl,
+                        author_name: 'Sarah (AI Phone Agent)',
+                        author_id: null,
+                        created_at: new Date().toISOString()
+                    });
                 }
             } catch (e) {
-                // No cache found, that's ok
+                console.log('[CreateTicket] No cached diagnostics found');
             }
-        }
-
-        // Combine troubleshooting notes with network diagnostics
-        let combinedNotes = '';
-        if (troubleshooting_notes) {
-            combinedNotes = troubleshooting_notes;
-        }
-        if (networkDiagnostics) {
-            combinedNotes = combinedNotes 
-                ? combinedNotes + '\n\n' + networkDiagnostics 
-                : networkDiagnostics;
         }
 
         const ticketData = {
@@ -124,11 +139,13 @@ module.exports = async (req, res) => {
         if (preferred_time) {
             ticketData.initial_customer_comment = 'Scheduling preference: ' + preferred_time;
         }
-        if (combinedNotes) {
-            ticketData.triage_notes = combinedNotes;
+        
+        // Add triage comments if we have any
+        if (triageComments.length > 0) {
+            ticketData.triage_comments = triageComments;
         }
 
-        console.log('[CreateTicket] Creating:', ticketNumber, '| Cat:', ticketData.category, '| Has diagnostics:', !!networkDiagnostics);
+        console.log('[CreateTicket] Creating:', ticketNumber, '| Cat:', ticketData.category, '| Triage comments:', triageComments.length);
 
         const { data: ticket, error } = await supabase
             .from('service_tickets')

@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calendar, ExternalLink } from 'lucide-react';
+import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calendar, ExternalLink, Edit3, Trash2 } from 'lucide-react';
 import TechnicianFilterBar from '../components/Service/TechnicianFilterBar';
 import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
@@ -64,7 +64,10 @@ const getCurrentWeekStart = () => {
 const WeeklyPlanning = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { authContext, user } = useAuth();
+  // useAuth() returns the full context object with accessToken, acquireToken, user, etc.
+  // We assign the whole thing to authContext for use with calendar services
+  const authContext = useAuth();
+  const { user } = authContext;
 
   // Check if embedded via URL param or iframe detection
   const isEmbedded = useMemo(() => {
@@ -561,51 +564,22 @@ const WeeklyPlanning = () => {
           appointmentNumber++;
         }
 
-        console.log('[WeeklyPlanning] Creating multi-day appointments:', appointments);
+        console.log('[WeeklyPlanning] Creating multi-day draft appointments:', appointments);
 
-        // Create each appointment
+        // Create each appointment as DRAFT - no calendar invites yet
         for (const appt of appointments) {
           const scheduleNotes = `Part ${appt.appointmentNumber} of ${appt.totalAppointments} (${appt.hours}h of ${estimatedHours}h total)`;
 
-          const schedule = await weeklyPlanningService.createTentativeSchedule(ticket.id, {
+          await weeklyPlanningService.createTentativeSchedule(ticket.id, {
             scheduled_date: appt.date,
             scheduled_time_start: appt.startTime,
             scheduled_time_end: appt.endTime,
             technician_id: technician.id,
-            technician_name: technician.full_name,
-            service_address: ticket.service_address,
-            pre_visit_notes: scheduleNotes
+            technician_name: technician.full_name
           });
-
-          // Create calendar event for each appointment
-          if (authContext) {
-            try {
-              const calendarResult = await createServiceAppointmentEvent(authContext, {
-                scheduled_date: appt.date,
-                scheduled_time_start: appt.startTime,
-                scheduled_time_end: appt.endTime,
-                ticket: {
-                  ...ticket,
-                  title: `${ticket.title || 'Service'} (${scheduleNotes})`
-                },
-                customer_name: ticket.customer_name,
-                customer_email: ticket.customer_email,
-                service_address: ticket.service_address,
-                technician_name: technician.full_name,
-                is_tentative: true
-              });
-
-              if (calendarResult.success && calendarResult.eventId) {
-                await weeklyPlanningService.updateCalendarEventId(schedule.id, calendarResult.eventId);
-                console.log(`[WeeklyPlanning] Calendar event ${appt.appointmentNumber}/${appt.totalAppointments} created:`, calendarResult.eventId);
-              }
-            } catch (calendarErr) {
-              console.warn('[WeeklyPlanning] Failed to create calendar event:', calendarErr);
-            }
-          }
         }
 
-        console.log(`[WeeklyPlanning] Created ${appointments.length} appointments for ${estimatedHours}h ticket`);
+        console.log(`[WeeklyPlanning] Created ${appointments.length} draft appointments for ${estimatedHours}h ticket - commit each to send invites`);
       } else {
         // Single appointment (8 hours or less)
         const [startH, startM] = startTime.split(':').map(Number);
@@ -613,43 +587,17 @@ const WeeklyPlanning = () => {
         const endMinutes = startMinutes + (estimatedHours * 60);
         const endTime = `${Math.floor(endMinutes / 60).toString().padStart(2, '0')}:${(endMinutes % 60).toString().padStart(2, '0')}`;
 
-        // Create the schedule in the database
-        const schedule = await weeklyPlanningService.createTentativeSchedule(ticket.id, {
+        // Create the schedule in the database as DRAFT
+        // Calendar invite is NOT sent yet - user must click "Commit" to lock and send invite
+        await weeklyPlanningService.createTentativeSchedule(ticket.id, {
           scheduled_date: date,
           scheduled_time_start: startTime,
           scheduled_time_end: endTime,
           technician_id: technician.id,
-          technician_name: technician.full_name,
-          service_address: ticket.service_address
+          technician_name: technician.full_name
         });
 
-        // Create calendar event with customer as attendee (if authContext available)
-        if (authContext) {
-          try {
-            const calendarResult = await createServiceAppointmentEvent(authContext, {
-              scheduled_date: date,
-              scheduled_time_start: startTime,
-              scheduled_time_end: endTime,
-              ticket: ticket,
-              customer_name: ticket.customer_name,
-              customer_email: ticket.customer_email,
-              service_address: ticket.service_address,
-              technician_name: technician.full_name,
-              is_tentative: true
-            });
-
-            if (calendarResult.success && calendarResult.eventId) {
-              // Update schedule with calendar event ID
-              await weeklyPlanningService.updateCalendarEventId(schedule.id, calendarResult.eventId);
-              console.log('[WeeklyPlanning] Calendar event created:', calendarResult.eventId);
-            } else {
-              console.warn('[WeeklyPlanning] Calendar event creation skipped or failed:', calendarResult.error);
-            }
-          } catch (calendarErr) {
-            console.warn('[WeeklyPlanning] Failed to create calendar event:', calendarErr);
-            // Don't fail the schedule creation if calendar fails
-          }
-        }
+        console.log('[WeeklyPlanning] Draft schedule created - user must commit to send calendar invite');
       }
 
       // Refresh data
@@ -696,6 +644,140 @@ const WeeklyPlanning = () => {
     } catch (err) {
       console.error('[WeeklyPlanning] Failed to delete schedule:', err);
       setError('Failed to delete schedule');
+    }
+  };
+
+  // Handle committing a draft schedule (locks it and sends tech invite)
+  const handleCommitSchedule = async (schedule) => {
+    try {
+      console.log('[WeeklyPlanning] Committing schedule:', schedule.id);
+      console.log('[WeeklyPlanning] Schedule technician_id:', schedule.technician_id);
+      console.log('[WeeklyPlanning] Available technicians:', technicians.map(t => ({ id: t.id, name: t.full_name, email: t.email })));
+
+      // Get technician email for the calendar invite
+      const technician = technicians.find(t => t.id === schedule.technician_id);
+      console.log('[WeeklyPlanning] Found technician:', technician);
+      if (!technician?.email) {
+        setError('Cannot commit: Technician email not found. Please assign a technician with a valid email.');
+        return;
+      }
+
+      // Check if the technician is the same as the currently logged-in user
+      const currentUserEmail = user?.email?.toLowerCase();
+      const technicianEmail = technician.email.toLowerCase();
+      const isSelfAssigned = currentUserEmail && technicianEmail && currentUserEmail === technicianEmail;
+      console.log('[WeeklyPlanning] Self-assigned check:', { currentUserEmail, technicianEmail, isSelfAssigned });
+
+      // 1. Update schedule status to pending_tech
+      const committedSchedule = await weeklyPlanningService.commitSchedule(schedule.id);
+      console.log('[WeeklyPlanning] Schedule committed:', committedSchedule);
+
+      // 2. Create calendar event and send invite to technician only
+      if (authContext) {
+        try {
+          const ticket = committedSchedule.ticket || schedule.ticket || {};
+          console.log('[WeeklyPlanning] Creating calendar event with technician_email:', technician.email);
+
+          // If self-assigned, don't add technician as attendee (you're the organizer)
+          // The event will still be created on your calendar
+          const calendarResult = await createServiceAppointmentEvent(authContext, {
+            scheduled_date: committedSchedule.scheduled_date,
+            scheduled_time_start: committedSchedule.scheduled_time_start,
+            scheduled_time_end: committedSchedule.scheduled_time_end,
+            ticket: ticket,
+            customer_name: ticket.customer_name,
+            customer_email: null, // Don't include customer yet - tech-only invite
+            technician_name: committedSchedule.technician_name,
+            technician_email: isSelfAssigned ? null : technician.email, // Don't add self as attendee
+            is_tentative: true
+          }, {
+            techOnly: true // Only invite technician, not customer
+          });
+
+          console.log('[WeeklyPlanning] Calendar API result:', calendarResult);
+          if (calendarResult.success && calendarResult.eventId) {
+            // Save the calendar event ID for later (when we add customer)
+            await weeklyPlanningService.updateCalendarEventId(committedSchedule.id, calendarResult.eventId);
+            if (isSelfAssigned) {
+              console.log('[WeeklyPlanning] Calendar event created on your calendar (self-assigned). Event ID:', calendarResult.eventId);
+              // When self-assigned, you're both organizer and tech - event is directly on your calendar
+              // No invite email is sent because you can't invite yourself
+              // Note: The schedule stays in pending_tech status until manually progressed
+            } else {
+              console.log('[WeeklyPlanning] Calendar invite sent to technician:', technician.email, 'Event ID:', calendarResult.eventId);
+            }
+          } else {
+            console.warn('[WeeklyPlanning] Calendar event creation failed:', calendarResult);
+            setError(`Schedule committed but calendar invite failed: ${calendarResult.error || 'Unknown error'}`);
+          }
+        } catch (calendarErr) {
+          console.error('[WeeklyPlanning] Failed to create calendar invite:', calendarErr);
+          setError('Schedule committed but failed to send calendar invite to technician.');
+        }
+      } else {
+        console.warn('[WeeklyPlanning] No auth context - calendar invite not sent');
+        setError('Schedule committed but calendar invite not sent (not authenticated).');
+      }
+
+      // 3. Refresh the view
+      await handleRefresh();
+
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to commit schedule:', err);
+      setError(`Failed to commit schedule: ${err.message}`);
+    }
+  };
+
+  // Handle resetting a committed schedule back to draft (unlocks it)
+  const handleResetToDraft = async (schedule) => {
+    if (!window.confirm('Reset this schedule to draft? This will unlock it for editing and cancel any pending calendar invites.')) {
+      return;
+    }
+
+    try {
+      console.log('[WeeklyPlanning] Resetting schedule to draft:', schedule.id);
+
+      // TODO: If there's a calendar_event_id, we should cancel/delete the calendar event
+      // For now, we just reset the database status
+
+      await weeklyPlanningService.resetToDraft(schedule.id);
+      console.log('[WeeklyPlanning] Schedule reset to draft successfully');
+
+      // Close the modal and refresh
+      setTicketDetailModal(null);
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to reset schedule to draft:', err);
+      setError(`Failed to reset schedule: ${err.message}`);
+    }
+  };
+
+  // Handle completely removing a schedule (returns ticket to unscheduled)
+  const handleRemoveSchedule = async (schedule) => {
+    const ticketName = schedule.ticket?.customer_name || schedule.ticket?.title || 'this ticket';
+    if (!window.confirm(`Remove "${ticketName}" from the schedule entirely? The ticket will return to the unscheduled panel.`)) {
+      return;
+    }
+
+    try {
+      console.log('[WeeklyPlanning] Removing schedule:', schedule.id);
+
+      // Delete the schedule
+      await serviceScheduleService.remove(schedule.id);
+
+      // Update ticket status back to triaged
+      if (schedule.ticket_id) {
+        await serviceTicketService.update(schedule.ticket_id, { status: 'triaged' });
+      }
+
+      console.log('[WeeklyPlanning] Schedule removed successfully');
+
+      // Close the modal and refresh
+      setTicketDetailModal(null);
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to remove schedule:', err);
+      setError(`Failed to remove schedule: ${err.message}`);
     }
   };
 
@@ -819,6 +901,7 @@ const WeeklyPlanning = () => {
             onScheduleClick={handleScheduleClick}
             onScheduleEdit={handleOpenTicket}
             onScheduleDelete={handleScheduleDelete}
+            onScheduleCommit={handleCommitSchedule}
             onDropTicket={handleDropTicket}
             onLoadMoreWeeks={handleLoadMoreWeeks}
             isLoading={refreshing}
@@ -1111,6 +1194,51 @@ const WeeklyPlanning = () => {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    {/* Schedule Status */}
+                    <div className="md:col-span-2">
+                      <label className="text-xs text-zinc-400 block mb-1">Status</label>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          ticketDetailModal.schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
+                          ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
+                          ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'bg-blue-500/20 text-blue-400' :
+                          ticketDetailModal.schedule.schedule_status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
+                          'bg-zinc-500/20 text-zinc-400'
+                        }`}>
+                          {ticketDetailModal.schedule.schedule_status === 'draft' ? 'Draft' :
+                           ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'Awaiting Tech' :
+                           ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'Awaiting Customer' :
+                           ticketDetailModal.schedule.schedule_status === 'confirmed' ? 'Confirmed' :
+                           ticketDetailModal.schedule.schedule_status || 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Schedule Actions */}
+                    <div className="md:col-span-2 pt-2 border-t border-zinc-600 mt-2">
+                      <label className="text-xs text-zinc-400 block mb-2">Actions</label>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Reset to Draft - only for non-draft schedules */}
+                        {ticketDetailModal.schedule.schedule_status !== 'draft' && (
+                          <button
+                            onClick={() => handleResetToDraft(ticketDetailModal.schedule)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 transition-colors text-white text-sm"
+                          >
+                            <Edit3 size={14} />
+                            Reset to Draft
+                          </button>
+                        )}
+                        {/* Remove from Schedule */}
+                        <button
+                          onClick={() => handleRemoveSchedule(ticketDetailModal.schedule)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/80 hover:bg-red-600 transition-colors text-white text-sm"
+                        >
+                          <Trash2 size={14} />
+                          Remove from Schedule
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>

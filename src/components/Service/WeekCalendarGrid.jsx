@@ -5,7 +5,7 @@
  */
 
 import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, ExternalLink, User, AlertCircle, Trash2, Check, X } from 'lucide-react';
+import { Clock, ExternalLink, User, AlertCircle, Trash2, Check, X, Send, Edit3, Lock } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 
 // Constants
@@ -38,21 +38,32 @@ export const resetDragEstimatedHours = () => {
 
 // Schedule status colors - 3-step approval workflow
 const scheduleStatusColors = {
+  // Draft: Not yet committed - can still be moved/adjusted
+  draft: {
+    bg: 'rgba(139, 92, 246, 0.15)',  // Violet (light)
+    border: '#8B5CF6',
+    text: '#A78BFA',
+    label: 'Draft',
+    icon: 'edit',
+    isDraggable: true
+  },
   // Step 1: Waiting for technician to accept calendar invite
   pending_tech: {
     bg: 'rgba(245, 158, 11, 0.2)',   // Amber
     border: '#F59E0B',
     text: '#F59E0B',
-    label: 'Waiting: Tech',
-    icon: 'clock'
+    label: 'Awaiting Tech',
+    icon: 'clock',
+    isDraggable: false
   },
   // Step 2: Tech accepted, waiting for customer to accept
   pending_customer: {
     bg: 'rgba(59, 130, 246, 0.2)',   // Blue
     border: '#3B82F6',
     text: '#3B82F6',
-    label: 'Waiting: Customer',
-    icon: 'clock'
+    label: 'Awaiting Customer',
+    icon: 'clock',
+    isDraggable: false
   },
   // Step 3: All confirmed
   confirmed: {
@@ -60,7 +71,8 @@ const scheduleStatusColors = {
     border: '#94AF32',
     text: '#94AF32',
     label: 'Confirmed',
-    icon: 'check'
+    icon: 'check',
+    isDraggable: false
   },
   // Cancelled
   cancelled: {
@@ -68,15 +80,17 @@ const scheduleStatusColors = {
     border: '#71717A',
     text: '#71717A',
     label: 'Cancelled',
-    icon: 'x'
+    icon: 'x',
+    isDraggable: false
   },
-  // Legacy support for 'tentative' status (maps to pending_tech)
+  // Legacy support for 'tentative' status (maps to draft)
   tentative: {
-    bg: 'rgba(245, 158, 11, 0.2)',
-    border: '#F59E0B',
-    text: '#F59E0B',
-    label: 'Tentative',
-    icon: 'clock'
+    bg: 'rgba(139, 92, 246, 0.15)',
+    border: '#8B5CF6',
+    text: '#A78BFA',
+    label: 'Draft',
+    icon: 'edit',
+    isDraggable: true
   }
 };
 
@@ -215,12 +229,18 @@ const ScheduleBlock = memo(({
   onEdit,
   onClick,
   onDelete,
+  onCommit,
   showTechnician = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const status = schedule.schedule_status || 'pending_tech';
-  const colors = scheduleStatusColors[status] || scheduleStatusColors.pending_tech;
+  // Use 'draft' as default for new schedules (not committed yet)
+  const status = schedule.schedule_status || 'draft';
+  const colors = scheduleStatusColors[status] || scheduleStatusColors.draft;
   const ticket = schedule.ticket || {};
+
+  // Check if this schedule is draggable (only draft/tentative can be moved)
+  const isDraggable = colors.isDraggable !== false;
+  const isDraft = status === 'draft' || status === 'tentative';
 
   // Get status icon component
   const StatusIcon = status === 'confirmed' ? Check : (status === 'cancelled' ? X : Clock);
@@ -248,8 +268,13 @@ const ScheduleBlock = memo(({
     return ticket.estimated_hours || 2;
   };
 
-  // Handle drag start for rescheduling
+  // Handle drag start for rescheduling (only for draft schedules)
   const handleDragStart = (e) => {
+    if (!isDraggable) {
+      e.preventDefault();
+      return;
+    }
+
     setIsDragging(true);
 
     const estimatedHours = getEstimatedHours();
@@ -286,12 +311,12 @@ const ScheduleBlock = memo(({
 
   return (
     <div
-      draggable
+      draggable={isDraggable}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      className={`absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 cursor-grab active:cursor-grabbing hover:shadow-lg transition-all overflow-hidden group ${
-        isDragging ? 'opacity-50 scale-95' : ''
-      }`}
+      className={`absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 hover:shadow-lg transition-all overflow-hidden group ${
+        isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+      } ${isDragging ? 'opacity-50 scale-95' : ''}`}
       style={{
         top: `${top}px`,
         height: `${Math.max(height, 30)}px`,
@@ -336,6 +361,19 @@ const ScheduleBlock = memo(({
         </div>
         {/* Action buttons - visible on hover */}
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* Commit button - only for draft schedules */}
+          {isDraft && onCommit && (
+            <button
+              className="p-0.5 rounded hover:bg-green-500/20"
+              onClick={(e) => {
+                e.stopPropagation();
+                onCommit?.(schedule);
+              }}
+              title="Commit & send invite to technician"
+            >
+              <Send size={12} className="text-green-400 hover:text-green-300" />
+            </button>
+          )}
           <button
             className="p-0.5 rounded hover:bg-black/10"
             onClick={(e) => {
@@ -385,8 +423,27 @@ const ScheduleBlock = memo(({
         </div>
       )}
 
-      {/* Status badge - shows workflow state */}
-      {height >= 50 && colors.label && (
+      {/* Commit button - prominent for draft schedules with enough height */}
+      {isDraft && height >= 70 && onCommit && (
+        <button
+          className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors"
+          style={{
+            backgroundColor: 'rgba(34, 197, 94, 0.2)',
+            color: '#22C55E',
+            border: '1px solid rgba(34, 197, 94, 0.4)'
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCommit?.(schedule);
+          }}
+        >
+          <Send size={10} />
+          <span>Commit & Send Invite</span>
+        </button>
+      )}
+
+      {/* Status badge - shows workflow state (only for non-draft) */}
+      {!isDraft && height >= 50 && colors.label && (
         <div
           className="flex items-center gap-1 text-[10px] mt-0.5 px-1.5 py-0.5 rounded-full w-fit"
           style={{
@@ -395,7 +452,7 @@ const ScheduleBlock = memo(({
             border: `1px solid ${colors.border}`
           }}
         >
-          <StatusIcon size={10} />
+          {status === 'confirmed' ? <Check size={10} /> : <Lock size={10} />}
           <span>{colors.label}</span>
         </div>
       )}
@@ -479,6 +536,7 @@ const DayColumn = memo(({
   onScheduleClick,
   onScheduleEdit,
   onScheduleDelete,
+  onScheduleCommit,
   showTechnician
 }) => {
   const dateInfo = formatDayHeader(date);
@@ -635,6 +693,7 @@ const DayColumn = memo(({
             onClick={onScheduleClick}
             onEdit={onScheduleEdit}
             onDelete={onScheduleDelete}
+            onCommit={onScheduleCommit}
             showTechnician={showTechnician}
           />
         ))}
@@ -700,6 +759,7 @@ const WeekCalendarGrid = ({
   onScheduleClick,
   onScheduleEdit,
   onScheduleDelete,
+  onScheduleCommit,
   onDropTicket,
   onLoadMoreWeeks,
   isLoading = false
@@ -839,6 +899,7 @@ const WeekCalendarGrid = ({
             onScheduleClick={onScheduleClick}
             onScheduleEdit={onScheduleEdit}
             onScheduleDelete={onScheduleDelete}
+            onScheduleCommit={onScheduleCommit}
             showTechnician={showTechnician}
           />
         ))}

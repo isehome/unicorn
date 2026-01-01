@@ -906,7 +906,14 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData, o
       eventBody.attendees = attendees;
     }
 
-    console.log('[Calendar] Creating service appointment event:', { subject, techOnly, attendees: attendees.length });
+    console.log('[Calendar] Creating service appointment event:', {
+      subject,
+      techOnly,
+      attendeesCount: attendees.length,
+      attendees: attendees.map(a => a.emailAddress?.address),
+      technician_email_received: technician_email
+    });
+    console.log('[Calendar] Full event body:', JSON.stringify(eventBody, null, 2));
 
     const response = await fetch(graphConfig.graphEventsEndpoint, {
       method: 'POST',
