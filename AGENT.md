@@ -177,6 +177,42 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Retell AI** | Voice-based service intake (inbound calls) |
 | **QuickBooks Online** | Invoice creation from service tickets |
 
+#### 7.1 Retell AI Voice Integration
+
+AI-powered phone agent for handling inbound customer service calls.
+
+| Setting | Value |
+|---------|-------|
+| Agent ID | `agent_569081761d8bbd630c0794095d` |
+| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
+| Agent Name | Intelligent Systems - Sarah |
+| Voice | ElevenLabs Hailey (American, young, professional) |
+| Model | GPT-4.1 |
+
+**Custom Tools (webhooks):**
+| Tool | Endpoint | Purpose |
+|------|----------|---------|
+| `identify_customer` | `/api/retell/identify` | Customer lookup by phone - returns name, address, SLA tier, equipment, open tickets, project team, and UniFi network status |
+| `search_knowledge` | `/api/service/knowledge` | Search knowledge base for troubleshooting info |
+| `create_ticket` | `/api/retell/create-ticket` | Create service ticket from AI call |
+| `check_schedule` | `/api/retell/check-schedule` | Check technician availability (Premium SLA only) |
+
+**Webhook Events:** `https://unicorn-one.vercel.app/api/retell/webhook`
+- `call_started`: Creates call log entry
+- `call_ended`: Updates duration, transcript
+- `call_analyzed`: Adds sentiment, summary, issue category
+
+**Database Tables:**
+- `customer_sla_tiers`: Standard, Priority, Premium SLA definitions
+- `customer_sla_assignments`: Links contacts to SLA tiers
+- `retell_call_logs`: Call history, transcripts, sentiment analysis
+
+**Test Interface:** `/service/ai-test` - Browser-based testing via microphone
+
+**Environment Variables:**
+- `RETELL_API_KEY`: Get from Retell Dashboard > Settings > API Keys
+- `UNIFI_API_KEY`: For real-time network status checks during calls
+
 ---
 
 ### 8. Service CRM Module
@@ -514,6 +550,401 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
 | **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
 | **QuickBooks service** | `src/services/quickbooksService.js` |
+
+#### 8.11 Retell AI Phone System (Sarah)
+
+A 24/7 AI-powered phone assistant named "Sarah" that handles inbound customer service calls, identifies customers, runs network diagnostics, and creates service tickets automatically.
+
+**Important:** This is separate from the in-app Gemini Voice AI Agent. Sarah handles external phone calls via Retell AI platform.
+
+##### Architecture Overview
+
+```
+┌─────────────┐     ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
+│   Phone     │────▶│  Retell AI  │────▶│  Sarah (LLM)     │────▶│ Custom Tools│
+│   Call      │     │  Platform   │     │  Claude-based    │     │ (Vercel API)│
+└─────────────┘     └─────────────┘     └──────────────────┘     └──────┬──────┘
+                                                                       │
+                          ┌────────────────────────────────────────────┘
+                          ▼
+        ┌─────────────────────────────────────────────────────────┐
+        │                    Backend Services                      │
+        ├─────────────────┬─────────────────┬─────────────────────┤
+        │    Supabase     │  UniFi Site     │    Retell           │
+        │    Database     │  Manager API    │    Webhook          │
+        ├─────────────────┼─────────────────┼─────────────────────┤
+        │ • Contacts      │ • Gateway status│ • Call transcript   │
+        │ • Projects      │ • Device counts │ • AI summary        │
+        │ • Tickets       │ • Client counts │ • Call duration     │
+        │ • Network cache │ • WAN uptime    │ • Sentiment         │
+        └─────────────────┴─────────────────┴─────────────────────┘
+```
+
+##### Retell AI Configuration
+
+| Item | Value |
+|------|-------|
+| Agent ID | `agent_569081761d8bbd630c0794095d` |
+| LLM ID | `llm_a897cdd41f9c7de05c5528a895b9` |
+| Voice | ElevenLabs "Hailey" (friendly, professional) |
+| Model | Claude (via Retell) |
+| Webhook URL | `https://unicorn-one.vercel.app/api/retell/webhook` |
+
+##### Call Flow Sequence
+
+```
+1. CALL RECEIVED
+   │
+   ▼
+2. Sarah says: "Thank you for calling Intelligent Systems, one moment please."
+   │
+   ▼
+3. TOOL: identify_customer({{caller_phone}})
+   │  └─▶ Returns: name, email, projects, UniFi site ID, recent tickets
+   │
+   ▼
+4. Sarah greets by name: "Hi Stacey, how can I help you today?"
+   │
+   ▼
+5. CUSTOMER DESCRIBES ISSUE
+   │
+   ├─▶ If network/WiFi issue:
+   │      │
+   │      ▼
+   │   TOOL: check_network(unifi_site_id)
+   │      │  └─▶ Returns: gateway status, device counts, WAN uptime
+   │      │  └─▶ CACHES diagnostics in retell_network_cache table
+   │      │
+   │      ▼
+   │   Sarah reports findings: "I checked your network remotely..."
+   │
+   ▼
+6. Sarah confirms email and scheduling preference
+   │
+   ▼
+7. TOOL: create_ticket(title, description, category, unifi_site_id, ...)
+   │  └─▶ Auto-includes cached network diagnostics as triage comments
+   │  └─▶ Auto-includes UniFi Site Manager URL as clickable link
+   │
+   ▼
+8. Sarah confirms: "Your ticket number is ST-20260101-1234"
+   │
+   ▼
+9. Sarah asks: "Is there anything else I can help with?"
+   │
+   ▼
+10. TOOL: end_call() - Properly disconnects
+    │
+    ▼
+11. WEBHOOK: call_analyzed event
+    └─▶ Stores transcript, AI summary, duration in service_tickets
+```
+
+##### Custom Tools (Vercel API Endpoints)
+
+**1. identify_customer**
+- **Endpoint:** `POST /api/retell/identify`
+- **Purpose:** Look up customer by phone number
+- **Database Function:** `find_customer_by_phone()`
+
+**Input:**
+```json
+{"phone_number": "+13175551234"}
+```
+
+**Output:**
+```json
+{
+  "found": true,
+  "customer": {
+    "name": "Stacey Blansette",
+    "email": "stacey@email.com",
+    "phone": "3173136608",
+    "address": "123 Main St, Carmel IN"
+  },
+  "projects": [{
+    "name": "Blansette Residence",
+    "unifi_site_id": "74ACB93B...",
+    "team": {"pm": "Steve", "lead_tech": "John"}
+  }],
+  "sla": {"tier": "Premium", "response_hours": 4},
+  "recent_tickets": [...]
+}
+```
+
+**Matching Logic:**
+1. Normalize phone (strip non-digits, remove leading 1)
+2. Find contact with matching phone
+3. Find projects where `projects.client` matches contact name or company
+4. Only matches projects where `client` field is non-empty (prevents false matches)
+
+**2. check_network**
+- **Endpoint:** `POST /api/retell/check-network`
+- **Purpose:** Real-time UniFi network diagnostics
+
+**Input:**
+```json
+{"unifi_site_id": "74ACB93B59570000000004ACC6540000000004E1D1DD000000005EB714C1:1557506879"}
+```
+
+**Output:**
+```json
+{
+  "checked": true,
+  "online": true,
+  "healthy": true,
+  "message": "The network looks healthy. 5 devices connected, everything online.",
+  "triage_summary": "=== NETWORK DIAGNOSTICS ===\nStatus: ONLINE (Healthy)\nGateway: UDMPRO..."
+}
+```
+
+**Data from UniFi Site Manager API:**
+- Gateway status (online/offline, model)
+- Device counts (total, offline, pending updates)
+- Client counts (WiFi, wired, guest)
+- WAN uptime percentage
+- External IP address and ISP name
+- WiFi retry rate
+- Critical alerts
+
+**Caching:** Results stored in `retell_network_cache` table (15-min TTL) for auto-inclusion in tickets.
+
+**3. create_ticket**
+- **Endpoint:** `POST /api/retell/create-ticket`
+- **Purpose:** Create service ticket with auto-enrichment
+
+**Input:**
+```json
+{
+  "title": "WiFi dropping intermittently",
+  "description": "Customer reports WiFi disconnects...",
+  "category": "network",
+  "priority": "medium",
+  "customer_name": "Stacey Blansette",
+  "customer_phone": "3173136608",
+  "customer_email": "stacey@email.com",
+  "preferred_time": "Monday morning",
+  "unifi_site_id": "74ACB93B..."
+}
+```
+
+**Auto-Enrichment (for network issues):**
+When `unifi_site_id` is provided, the endpoint automatically:
+1. Fetches cached diagnostics from `retell_network_cache`
+2. Adds diagnostics as triage comment (author: "Sarah (AI Phone Agent)")
+3. Adds UniFi Site Manager URL as clickable triage comment
+
+**Category Mapping:**
+| LLM Says | Maps To |
+|----------|---------|
+| audio, video, tv, speaker | av |
+| wifi, internet, router | network |
+| keypad, switch, dimmer, lutron | lighting |
+| shade, blind | shades |
+| control4, crestron, automation | control |
+| (anything else) | general |
+
+**Ticket Number Format:** `ST-YYYYMMDD-XXXX` (e.g., ST-20260101-1234)
+
+**4. end_call**
+- **Type:** Built-in Retell tool
+- **Purpose:** Properly disconnect when conversation complete
+
+##### Webhook Integration
+
+**Endpoint:** `POST /api/retell/webhook`
+**Events Processed:** `call_analyzed` only (ignores `call_ended` to prevent duplicates)
+
+**What the webhook captures:**
+| Field | Storage Location |
+|-------|------------------|
+| Full transcript | `service_tickets.call_transcript` |
+| AI-generated summary | `service_tickets.call_summary` |
+| Call duration | `service_tickets.call_duration_seconds` |
+| Call ID | `service_tickets.source_reference` |
+
+**Transcript Format:**
+```
+Sarah: Thank you for calling Intelligent Systems, one moment please.
+
+Sarah: Hi Stacey, how can I help you today?
+
+Customer: I'm having a problem with my WiFi.
+
+Sarah: I checked your network remotely, and everything looks healthy...
+```
+
+##### UI: Call Recording Section
+
+Service tickets with `source = 'phone_ai'` display a collapsible "Call Recording" section:
+
+- **Badge:** Shows call duration (e.g., "1:10")
+- **AI Summary:** Condensed version of the call
+- **Full Transcript:** Scrollable, monospace, max 384px height
+- **Collapsed by default** to keep ticket view clean
+
+##### Database Tables for Retell
+
+**retell_network_cache** - Temporary diagnostics storage
+```sql
+CREATE TABLE retell_network_cache (
+    site_id TEXT PRIMARY KEY,
+    diagnostics TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+-- Auto-cleanup trigger removes entries older than 15 minutes
+```
+
+**service_tickets** - Additional columns for phone calls
+| Column | Type | Purpose |
+|--------|------|---------|
+| source | text | 'phone_ai' for Retell calls |
+| source_reference | text | Retell call_id |
+| call_transcript | text | Full conversation |
+| call_summary | text | AI-generated summary |
+| call_duration_seconds | integer | Call length |
+
+**retell_call_logs** - Full call history
+| Column | Purpose |
+|--------|---------|
+| call_id | Retell's unique ID |
+| from_number, to_number | Phone numbers |
+| direction | inbound/outbound |
+| duration_seconds | Call length |
+| transcript | Full conversation |
+| call_summary | AI summary |
+| user_sentiment | positive/neutral/frustrated/angry |
+| call_successful | boolean |
+
+##### LLM Prompt (Current)
+
+```
+# Sarah - Intelligent Systems Phone Assistant
+
+## CALL START SEQUENCE (FOLLOW EXACTLY)
+1. FIRST say: "Thank you for calling Intelligent Systems, one moment please."
+2. THEN call identify_customer with {{caller_phone}}
+3. AFTER you get the result, greet them by name: "Hi [name], how can I help you today?"
+
+## HANDLING ISSUES
+Listen carefully. Ask ONE clarifying question if needed.
+For network/WiFi issues: Call check_network with unifi_site_id. Tell customer what you found.
+
+## CATEGORIES
+- network: WiFi, internet, connectivity
+- av: TV, speakers, display, audio
+- lighting: Keypads, switches, dimmers, buttons
+- control: Control4, Crestron, automation
+- shades: Motorized blinds
+- wiring: Cables, ethernet
+- general: Other
+
+Keypads/switches = lighting (not control)
+
+## CREATING TICKET
+Confirm email and preferred timing.
+Pass unifi_site_id for network issues (auto-includes diagnostics).
+Confirm ticket number on success.
+
+## ENDING
+Ask if anything else. If no, thank them and use end_call.
+
+## STYLE
+Warm, natural, brief. No specific times or pricing.
+```
+
+##### Tool Configuration
+
+**speak_during_execution vs speak_after_execution:**
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `speak_during_execution` | `false` | Sarah stays silent while tool runs |
+| `speak_after_execution` | `true` | Sarah speaks after receiving result |
+
+Set `speak_during_execution: false` for identify_customer so Sarah waits for results before greeting.
+
+##### Testing
+
+**Web Test Interface:** `https://unicorn-one.vercel.app/service/ai-test`
+- Enter phone number for caller ID simulation
+- Uses browser microphone
+- Shows real-time transcript
+
+**API Testing:**
+```bash
+# Test customer lookup
+curl -X POST 'https://unicorn-one.vercel.app/api/retell/identify' \
+  -H 'Content-Type: application/json' \
+  -d '{"phone_number": "+13173136608"}'
+
+# Test network diagnostics
+curl -X POST 'https://unicorn-one.vercel.app/api/retell/check-network' \
+  -H 'Content-Type: application/json' \
+  -d '{"unifi_site_id": "74ACB93B..."}'
+```
+
+##### Updating Sarah (MCP vs Direct API)
+
+**Use MCP Server (retellai-mcp-server) when:**
+- Listing agents, calls, phone numbers
+- Getting call details and transcripts
+- Quick lookups and queries
+- Working interactively in Claude
+
+**Use Direct API when:**
+- Updating LLM prompts (complex JSON)
+- Configuring tool schemas
+- Setting tool execution options
+- Batch operations
+
+**Update Prompt:**
+```bash
+curl -X PATCH 'https://api.retellai.com/update-retell-llm/llm_a897cdd41f9c7de05c5528a895b9' \
+  -H 'Authorization: Bearer {RETELL_API_KEY}' \
+  -H 'Content-Type: application/json' \
+  -d '{"general_prompt": "..."}'
+```
+
+**Update Agent Settings:**
+```bash
+curl -X PATCH 'https://api.retellai.com/update-agent/agent_569081761d8bbd630c0794095d' \
+  -H 'Authorization: Bearer {RETELL_API_KEY}' \
+  -H 'Content-Type: application/json' \
+  -d '{"voice_id": "...", "webhook_url": "..."}'
+```
+
+##### Files Reference
+
+| File | Purpose |
+|------|---------|
+| `api/retell/identify.js` | Customer lookup endpoint |
+| `api/retell/create-ticket.js` | Ticket creation with auto-enrichment |
+| `api/retell/check-network.js` | UniFi diagnostics + caching |
+| `api/retell/webhook.js` | Transcript capture from Retell |
+| `src/pages/service/AITestPage.js` | Web-based call testing |
+| `src/components/Service/ServiceTicketDetail.js` | Call Recording UI section |
+| `src/components/Service/ServiceTriageForm.js` | Triage comments with clickable URLs |
+
+##### Common Issues and Solutions
+
+| Issue | Solution |
+|-------|----------|
+| Tool not being called | Make tool description clear: "Call FIRST before speaking" |
+| LLM not including data in ticket | Use backend caching + auto-include (don't rely on LLM to copy) |
+| Greeting sounds awkward | Set `speak_during_execution: false` |
+| Wrong category assigned | Add explicit examples in prompt: "Keypads = lighting, NOT control" |
+| Database constraint error | Map LLM values to valid constraint values in API |
+| Duplicate transcripts | Only process `call_analyzed` event, ignore `call_ended` |
+| URLs not clickable | Use `linkifyContent()` helper in triage comment display |
+
+##### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `RETELL_API_KEY` | Retell API authentication |
+| `UNIFI_API_KEY` | UniFi Site Manager API |
+| `SUPABASE_URL` | Database connection |
+| `SUPABASE_SERVICE_ROLE_KEY` | Database auth for API routes |
 
 ---
 

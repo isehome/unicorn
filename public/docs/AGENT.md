@@ -201,7 +201,7 @@ Service tickets represent customer service requests. Each ticket has:
 
 #### 8.2 Weekly Planning ("Air Traffic Control")
 
-A drag-and-drop scheduling interface for dispatching service technicians.
+A drag-and-drop scheduling interface for dispatching service technicians with a **3-step approval workflow**.
 
 **Access:** `/service/weekly-planning` or `/service/weekly-planning?embed=true` (iframe)
 
@@ -211,13 +211,16 @@ A drag-and-drop scheduling interface for dispatching service technicians.
 | **Week Calendar Grid** | 7-day view with hour rows (6 AM - 10 PM) |
 | **Drag-and-Drop** | Drag unscheduled tickets onto calendar slots |
 | **Block Sizing** | Block height = `estimated_hours` field from ticket |
-| **Rescheduling** | Drag existing blocks to move appointments |
+| **Draft Mode** | New schedules start as drafts (movable until committed) |
+| **Commit & Send** | Click button to lock schedule and send calendar invite |
 | **30-min Buffer** | Automatic buffer enforcement between appointments |
 | **M365 Calendar Overlay** | Shows blocked time from technician's Outlook calendar |
-| **Status Colors** | AMBER = tentative, GREEN = confirmed |
+| **Status Colors** | VIOLET=Draft, AMBER=Awaiting Tech, BLUE=Awaiting Customer, GREEN=Confirmed |
 | **Technician Filter** | View one technician or all overlapping |
 | **Week Mode Toggle** | Mon-Fri (work week) or Sun-Sat (full week) |
-| **Ticket Detail Modal** | Quick view of ticket without leaving planning screen |
+| **Ticket Detail Modal** | Quick view with status controls and schedule actions |
+| **Reset to Draft** | Unlock a committed schedule for re-editing |
+| **Remove from Schedule** | Delete schedule and return ticket to unscheduled panel |
 
 **Iframe Embedding (for Alleo):**
 ```html
@@ -226,31 +229,89 @@ A drag-and-drop scheduling interface for dispatching service technicians.
         style="border-radius: 8px;"></iframe>
 ```
 
-**Calendar Integration:**
-When a ticket is scheduled:
-1. Creates calendar event on technician's M365 calendar
-2. Event subject: `[TENTATIVE] Service: Customer Name (#ticket_number)`
-3. Customer email added as attendee (sends invite)
-4. Event body includes: title, address, phone, email, notes
+#### 8.3 Three-Step Approval Workflow
+
+The scheduling system uses a 3-step workflow to ensure both technician and customer confirm appointments:
+
+```
+┌─────────────┐    Drag-Drop    ┌─────────────┐    Commit    ┌─────────────────┐
+│ Unscheduled │ ─────────────▶  │    DRAFT    │ ──────────▶  │  AWAITING TECH  │
+│   Tickets   │                 │  (Movable)  │   + Send     │  (Tech Invite)  │
+└─────────────┘                 └─────────────┘   Invite     └────────┬────────┘
+                                       │                              │
+                                       │ Reset                 Tech Accepts
+                                       ▼                              │
+                                ┌─────────────┐                       ▼
+                                │  Can Move   │◀──────────┐  ┌────────────────────┐
+                                │  or Delete  │           │  │ AWAITING CUSTOMER  │
+                                └─────────────┘           │  │  (Customer Invite) │
+                                                          │  └─────────┬──────────┘
+                                                          │            │
+                                                   Reset to           Customer
+                                                    Draft            Accepts
+                                                          │            │
+                                                          │            ▼
+                                                          │   ┌─────────────────┐
+                                                          └───│    CONFIRMED    │
+                                                              │   (All Good!)   │
+                                                              └─────────────────┘
+```
+
+**Step 1: Draft (Violet)**
+- Drag-drop creates schedule in `draft` status
+- Block is movable/draggable on calendar
+- No calendar invite sent yet
+- User can adjust time/date before committing
+
+**Step 2: Awaiting Tech (Amber)**
+- User clicks "Commit & Send Invite" button
+- Schedule locked (no longer draggable)
+- Calendar event created on organizer's calendar
+- **Technician receives email invite** (if different from organizer)
+- Status transitions to `pending_tech`
+- Subject: `[PENDING] Service: Customer Name (#ticket_number)`
+
+**Step 3: Awaiting Customer (Blue)**
+- When technician accepts calendar invite
+- Customer receives their invite
+- Status transitions to `pending_customer`
+
+**Step 4: Confirmed (Green)**
+- When customer confirms
+- All parties aligned
+- Status transitions to `confirmed`
+
+**Schedule Status Values:**
+| `schedule_status` | Color | Draggable | Description |
+|-------------------|-------|-----------|-------------|
+| `draft` | Violet | ✅ Yes | Not yet committed, can be moved |
+| `pending_tech` | Amber | ❌ No | Waiting for technician to accept invite |
+| `pending_customer` | Blue | ❌ No | Tech accepted, waiting for customer |
+| `confirmed` | Green | ❌ No | All parties confirmed |
+| `cancelled` | Gray | ❌ No | Appointment cancelled |
+
+**Self-Assignment Behavior:**
+When the organizer (logged-in user) assigns themselves as the technician:
+- Calendar event is created on their calendar directly
+- No email invite is sent (you can't invite yourself)
+- Event appears on calendar immediately
+- Schedule still transitions to `pending_tech` status
+
+**Schedule Actions (in Ticket Detail Modal):**
+| Action | Available When | What It Does |
+|--------|----------------|--------------|
+| **Reset to Draft** | Any non-draft status | Unlocks schedule for editing, clears calendar event ID |
+| **Remove from Schedule** | Any status | Deletes schedule, returns ticket to unscheduled panel |
+
+**Calendar Integration Details:**
+When committing a schedule:
+1. Creates event via Microsoft Graph API (`/me/events`)
+2. Technician added as required attendee (if not self)
+3. Event subject: `[PENDING] Service: Customer Name (#ticket_number)`
+4. Event body includes: title, address, phone, notes
 5. Location set to service address
-6. When confirmed, `[TENTATIVE]` prefix is removed
-
-#### 8.3 Schedule Status Flow
-
-```
-Ticket Created → Triaged → Scheduled (TENTATIVE) → Confirmed → In Progress → Completed
-                              ↓                        ↑
-                    Customer receives                Customer clicks
-                    confirmation link               confirm button
-```
-
-**Status Values:**
-| Status | Color | Description |
-|--------|-------|-------------|
-| `tentative` | Amber | Scheduled but not confirmed by customer |
-| `confirmed` | Green | Customer confirmed the appointment |
-| `cancelled` | Gray | Appointment cancelled |
-| `completed` | Green | Service visit completed |
+6. Event marked as tentative (`showAs: 'tentative'`)
+7. `calendar_event_id` stored on schedule for future updates
 
 #### 8.4 Customer Confirmation (Planned)
 
