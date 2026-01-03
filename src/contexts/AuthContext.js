@@ -435,10 +435,34 @@ export function AuthProvider({ children }) {
         errorMessage = AUTH_ERRORS.USER_CANCELLED;
       } else if (error.message?.includes('network') || error.message?.includes('Network')) {
         errorMessage = AUTH_ERRORS.NETWORK_ERROR;
+      } else if (error.errorCode === 'hash_empty_error' || error.errorMessage?.includes('Hash value cannot be processed')) {
+        // Handle hash_empty_error silently - clear MSAL state and don't throw
+        console.warn('[Auth] Hash empty error in login, clearing MSAL state');
+        try {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('msal.') || key.includes('login.windows') || key.includes('msal'))) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (key && (key.startsWith('msal.') || key.includes('msal'))) {
+              sessionStorage.removeItem(key);
+            }
+          }
+          console.log('[Auth] MSAL state cleared, please try again');
+        } catch (storageError) {
+          console.warn('[Auth] Unable to clear MSAL state:', storageError);
+        }
+        // Don't set error or throw - just return so user can try again
+        return;
       } else if (error.errorCode) {
         errorMessage = `Authentication failed: ${error.errorCode}`;
       }
-      
+
       const formattedError = new Error(errorMessage);
       setError(formattedError);
       throw formattedError;
@@ -465,10 +489,32 @@ export function AuthProvider({ children }) {
         errorMessage = 'Authentication already in progress. Please wait or reload the page.';
       } else if (error.message?.includes('network') || error.message?.includes('Network')) {
         errorMessage = AUTH_ERRORS.NETWORK_ERROR;
+      } else if (error.errorCode === 'hash_empty_error' || error.errorMessage?.includes('Hash value cannot be processed')) {
+        // Handle hash_empty_error silently - clear MSAL state
+        console.warn('[Auth] Hash empty error in redirect, clearing MSAL state');
+        try {
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('msal.') || key.includes('login.windows') || key.includes('msal'))) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (key && (key.startsWith('msal.') || key.includes('msal'))) {
+              sessionStorage.removeItem(key);
+            }
+          }
+        } catch (storageError) {
+          console.warn('[Auth] Unable to clear MSAL state:', storageError);
+        }
+        return;
       } else if (error.errorCode) {
         errorMessage = `Authentication failed: ${error.errorCode}`;
       }
-      
+
       const formattedError = new Error(errorMessage);
       setError(formattedError);
       throw formattedError;
