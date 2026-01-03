@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -7,6 +7,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
 import ColorPicker from './ui/ColorPicker';
+import TechnicianAvatar from './TechnicianAvatar';
 import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, ChevronRight, Loader2, X, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -15,7 +16,7 @@ import AISettings from './UserSettings/AISettings';
 
 const SettingsPage = () => {
   const { mode } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, updateAvatarColor } = useAuth();
   const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
   const {
@@ -45,7 +46,6 @@ const SettingsPage = () => {
 
   const displayName = user?.displayName || user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || '';
-  const initials = useMemo(() => (displayName?.[0] || 'U').toUpperCase(), [displayName]);
 
   // Load user's current avatar color from profiles table (keyed by user.id)
   const loadUserAvatarColor = useCallback(async () => {
@@ -103,6 +103,9 @@ const SettingsPage = () => {
 
       if (error) throw error;
 
+      // Update the color in AuthContext so AppHeader and other components refresh immediately
+      updateAvatarColor(newColor);
+
       setAvatarColorMessage('Avatar color saved!');
       setTimeout(() => setAvatarColorMessage(''), 2000);
     } catch (err) {
@@ -142,21 +145,19 @@ const SettingsPage = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 pb-24 space-y-4">
       <section className="rounded-2xl border p-4 flex items-center gap-4" style={sectionStyles.card}>
-        <button
-          onClick={() => setShowAvatarModal(true)}
-          className="relative group"
-          title="Click to change avatar color"
-        >
-          <div
-            className="w-12 h-12 rounded-full text-white flex items-center justify-center text-lg font-semibold shadow-lg transition-transform group-hover:scale-105"
-            style={{ backgroundColor: avatarColor }}
-          >
-            {initials}
-          </div>
-          <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className="relative group">
+          <TechnicianAvatar
+            name={displayName}
+            color={avatarColor}
+            size="xl"
+            onClick={() => setShowAvatarModal(true)}
+            title="Click to change avatar color"
+            className="shadow-lg"
+          />
+          <div className="absolute inset-0 rounded-full bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
             <span className="text-white text-xs font-medium">Edit</span>
           </div>
-        </button>
+        </div>
         <div className="min-w-0 flex-1">
           <p className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{displayName}</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{email}</p>

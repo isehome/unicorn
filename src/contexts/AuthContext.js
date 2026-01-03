@@ -507,6 +507,13 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Function to update user's avatar color in context (called after saving in Settings)
+  const updateAvatarColor = useCallback((newColor) => {
+    if (user) {
+      setUser(prev => ({ ...prev, avatar_color: newColor }));
+    }
+  }, [user]);
+
   const value = {
     user,
     account,
@@ -519,6 +526,7 @@ export function AuthProvider({ children }) {
     logout,
     acquireToken,
     msalInstance,
+    updateAvatarColor,
   };
 
   return (

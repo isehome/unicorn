@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
-import { getColorFromName } from './TechnicianAvatar';
+import TechnicianAvatar from './TechnicianAvatar';
 
 const AppHeader = () => {
   const { mode } = useTheme();
@@ -63,15 +63,6 @@ const AppHeader = () => {
   }, [location.pathname]);
 
   const displayName = user?.full_name || user?.name || user?.displayName || user?.email || 'User';
-  const initials = displayName
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase())
-    .join('')
-    .slice(0, 2) || 'U';
-
-  // Use user's custom avatar color, or fall back to hash-based color
-  const avatarColor = user?.avatar_color || getColorFromName(displayName);
 
   return (
     <header style={headerStyle} className="sticky top-0 z-50 backdrop-blur">
@@ -109,15 +100,14 @@ const AppHeader = () => {
               </span>
             )}
           </div>
-          <button
-            type="button"
+          <TechnicianAvatar
+            name={displayName}
+            color={user?.avatar_color}
+            size="lg"
             onClick={() => navigate('/settings')}
-            className="w-10 h-10 rounded-full text-white flex items-center justify-center text-sm font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all cursor-pointer"
-            style={{ backgroundColor: avatarColor }}
             title="Open Settings"
-          >
-            {initials}
-          </button>
+            className="shadow-lg hover:shadow-xl"
+          />
         </div>
       </div>
     </header>
