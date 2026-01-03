@@ -63,8 +63,26 @@ export async function sendTestEmail(to = null) {
   return await response.json();
 }
 
+/**
+ * Test all Azure AD permissions
+ */
+export async function testPermissions() {
+  const response = await fetch(`${API_BASE}/test-permissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Permission test failed');
+  }
+
+  return await response.json();
+}
+
 export default {
   getSystemAccountStatus,
   configureSystemAccount,
   sendTestEmail,
+  testPermissions,
 };

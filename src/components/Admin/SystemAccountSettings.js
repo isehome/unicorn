@@ -15,12 +15,15 @@ import {
   Shield,
   Send,
   Save,
+  FlaskConical,
 } from 'lucide-react';
 import {
   getSystemAccountStatus,
   configureSystemAccount,
   sendTestEmail,
+  testPermissions,
 } from '../../services/systemAccountService';
+import AzureSetupGuide from './AzureSetupGuide';
 
 const SystemAccountSettings = ({ mode = 'light' }) => {
   const [status, setStatus] = useState(null);
@@ -28,6 +31,8 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingPermissions, setTestingPermissions] = useState(false);
+  const [permissionResults, setPermissionResults] = useState(null);
   const [message, setMessage] = useState(null);
 
   const isDark = mode === 'dark';
@@ -98,6 +103,26 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
       setMessage({ type: 'error', text: `Test failed: ${err.message}` });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleTestPermissions = async () => {
+    setTestingPermissions(true);
+    setMessage(null);
+    setPermissionResults(null);
+
+    try {
+      const result = await testPermissions();
+      setPermissionResults(result);
+      if (result.summary.failed === 0) {
+        setMessage({ type: 'success', text: `All ${result.summary.passed} permission tests passed!` });
+      } else {
+        setMessage({ type: 'error', text: `${result.summary.failed} of ${result.summary.passed + result.summary.failed} tests failed` });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: `Permission test failed: ${err.message}` });
+    } finally {
+      setTestingPermissions(false);
     }
   };
 
@@ -229,21 +254,77 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
           </div>
         )}
 
-        {/* Test Email Button */}
-        {status?.healthy && (
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-2">
+          {/* Test Email Button */}
+          {status?.healthy && (
+            <button
+              onClick={handleTestEmail}
+              disabled={testing}
+              className="flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50"
+              style={{ borderColor: styles.card.borderColor }}
+            >
+              {testing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" style={styles.text.secondary} />
+              ) : (
+                <Send className="w-4 h-4" style={styles.text.secondary} />
+              )}
+              <span style={styles.text.primary}>Send Test Email</span>
+            </button>
+          )}
+
+          {/* Test All Permissions Button */}
           <button
-            onClick={handleTestEmail}
-            disabled={testing}
+            onClick={handleTestPermissions}
+            disabled={testingPermissions}
             className="flex items-center gap-2 px-4 py-2 border rounded-lg transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50"
             style={{ borderColor: styles.card.borderColor }}
           >
-            {testing ? (
+            {testingPermissions ? (
               <RefreshCw className="w-4 h-4 animate-spin" style={styles.text.secondary} />
             ) : (
-              <Send className="w-4 h-4" style={styles.text.secondary} />
+              <FlaskConical className="w-4 h-4" style={styles.text.secondary} />
             )}
-            <span style={styles.text.primary}>Send Test Email</span>
+            <span style={styles.text.primary}>Test All Permissions</span>
           </button>
+        </div>
+
+        {/* Permission Test Results */}
+        {permissionResults && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium" style={styles.text.primary}>
+              Permission Test Results
+            </p>
+            <div className="space-y-1">
+              {permissionResults.tests.map((test, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2 p-2 rounded-lg text-sm"
+                  style={{ backgroundColor: isDark ? '#27272a' : '#f4f4f5' }}
+                >
+                  {test.passed ? (
+                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                  ) : (
+                    <XCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span style={styles.text.primary}>{test.name}</span>
+                      <code className="text-xs px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700" style={styles.text.secondary}>
+                        {test.permission}
+                      </code>
+                    </div>
+                    {test.error && (
+                      <p className="text-xs text-red-500 mt-1">{test.error}</p>
+                    )}
+                    {test.hint && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{test.hint}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
 
@@ -264,6 +345,9 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
           </div>
         </div>
       </div>
+
+      {/* Azure Setup Guide */}
+      <AzureSetupGuide mode={mode} />
     </div>
   );
 };
