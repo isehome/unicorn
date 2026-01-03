@@ -104,27 +104,34 @@ const AzureSetupGuide = ({ mode = 'light' }) => {
   );
 
   return (
-    <div className="mt-4">
+    <div className="rounded-xl border overflow-hidden" style={styles.card}>
+      {/* Collapsible Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 text-sm font-medium text-violet-600 dark:text-violet-400 hover:text-violet-700 dark:hover:text-violet-300 transition-colors"
+        className="w-full flex items-center justify-between p-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
       >
-        <HelpCircle className="w-4 h-4" />
-        Azure AD Setup Guide
-        {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+            <HelpCircle className="w-4 h-4 text-violet-500" />
+          </div>
+          <div className="text-left">
+            <p className="font-medium text-sm" style={styles.text.primary}>
+              Azure AD Setup Guide
+            </p>
+            <p className="text-xs" style={styles.text.secondary}>
+              Step-by-step instructions for configuring permissions
+            </p>
+          </div>
+        </div>
+        {isOpen ? (
+          <ChevronDown className="w-5 h-5" style={styles.text.secondary} />
+        ) : (
+          <ChevronRight className="w-5 h-5" style={styles.text.secondary} />
+        )}
       </button>
 
       {isOpen && (
-        <div className="mt-4 rounded-xl border p-6 space-y-6" style={styles.card}>
-          {/* Header */}
-          <div>
-            <h3 className="text-lg font-semibold mb-2" style={styles.text.primary}>
-              Azure AD App Registration Setup
-            </h3>
-            <p className="text-sm" style={styles.text.secondary}>
-              Follow these steps to configure the Azure AD app with all required permissions for Unicorn.
-            </p>
-          </div>
+        <div className="border-t p-6 space-y-6" style={{ borderColor: styles.card.borderColor }}>
 
           {/* Quick Links */}
           <div className="flex flex-wrap gap-2">
