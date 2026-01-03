@@ -422,25 +422,47 @@ async function systemGetCalendarEvents(startDateTime, endDateTime, timeZone = 'A
 
 /**
  * Get system account status
- * Verifies the app can send email (doesn't require User.Read.All permission)
+ * Verifies the app can access the system account
+ * Requires User.Read.All Application permission
  */
 async function getSystemAccountStatus() {
   try {
     const token = await getAppToken();
     const senderEmail = await getSystemAccountEmail();
 
-    // Just verify we got a token - don't try to read user profile
-    // (that requires User.Read.All which may not be granted)
-    // The real test is whether we can send email
+    // Verify we can access the user (requires User.Read.All Application permission)
+    const resp = await fetch(`${GRAPH_BASE}/users/${senderEmail}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      return {
+        connected: false,
+        healthy: false,
+        accountEmail: senderEmail,
+        error: `Cannot access account: ${resp.status}`,
+        details: text,
+        hint: 'Ensure User.Read.All APPLICATION permission is added and admin consent granted',
+      };
+    }
+
+    const user = await resp.json();
+
+    // Also check if we can access their mailbox (requires Mail.Send or Mail.Read)
+    const mailResp = await fetch(`${GRAPH_BASE}/users/${senderEmail}/mailFolders/inbox`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const hasMailAccess = mailResp.ok;
 
     return {
       connected: true,
-      healthy: true,
-      accountEmail: senderEmail,
-      accountName: senderEmail.split('@')[0],
-      hasMailAccess: true, // We'll find out when we try to send
+      healthy: hasMailAccess,
+      accountEmail: user.userPrincipalName || user.mail,
+      accountName: user.displayName,
+      hasMailAccess,
       method: 'application_permissions',
-      note: 'Click "Send Test Email" to verify Mail.Send permission',
     };
   } catch (err) {
     console.error('[SystemGraph] Status check failed:', err);
