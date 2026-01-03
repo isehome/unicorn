@@ -26,6 +26,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from '../components/ui/Button';
 import { quickbooksService } from '../services/quickbooksService';
+import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2464,6 +2465,9 @@ const AdminPage = () => {
           </div>
         )}
       </div>
+
+      {/* System Account Integration */}
+      <SystemAccountSettings mode={mode} />
     </div>
   );
 

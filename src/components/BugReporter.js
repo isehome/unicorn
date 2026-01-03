@@ -193,11 +193,15 @@ export default function BugReporter() {
   };
 
   // Voice dictation
-  const toggleRecording = useCallback(() => {
+  const toggleRecording = useCallback(async () => {
     if (isRecording) {
       // Stop recording
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.warn('[BugReporter] Error stopping recognition:', e);
+        }
       }
       setIsRecording(false);
       return;
@@ -208,6 +212,19 @@ export default function BugReporter() {
     if (!SpeechRecognition) {
       console.warn('[BugReporter] Speech recognition not supported');
       return;
+    }
+
+    // Check for microphone permission first
+    try {
+      const permissionStatus = await navigator.permissions?.query({ name: 'microphone' });
+      if (permissionStatus?.state === 'denied') {
+        console.warn('[BugReporter] Microphone permission denied');
+        alert('Microphone access is denied. Please enable it in your browser settings to use voice dictation.');
+        return;
+      }
+    } catch (e) {
+      // permissions API not supported, continue anyway
+      console.log('[BugReporter] Permissions API not available, continuing...');
     }
 
     const recognition = new SpeechRecognition();
@@ -233,15 +250,35 @@ export default function BugReporter() {
     recognition.onerror = (event) => {
       console.error('[BugReporter] Speech recognition error:', event.error);
       setIsRecording(false);
+      recognitionRef.current = null;
+
+      // Provide user feedback for common errors
+      if (event.error === 'not-allowed') {
+        alert('Microphone access was denied. Please allow microphone access to use voice dictation.');
+      } else if (event.error === 'no-speech') {
+        // This is normal, user just didn't speak - no alert needed
+      } else if (event.error === 'audio-capture') {
+        alert('No microphone found. Please connect a microphone to use voice dictation.');
+      }
     };
 
     recognition.onend = () => {
       setIsRecording(false);
+      recognitionRef.current = null;
     };
 
     recognitionRef.current = recognition;
-    recognition.start();
-    setIsRecording(true);
+
+    // Wrap start() in try-catch to handle immediate failures
+    try {
+      recognition.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error('[BugReporter] Failed to start speech recognition:', e);
+      setIsRecording(false);
+      recognitionRef.current = null;
+      alert('Failed to start voice dictation. Please check your microphone permissions.');
+    }
   }, [isRecording, description]);
 
   const handleSubmit = async () => {
