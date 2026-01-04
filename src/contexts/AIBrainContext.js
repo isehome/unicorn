@@ -943,7 +943,11 @@ ${buildContextString(state)}`;
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
                                 }
-                            }
+                            },
+                            // Enable transcription of audio (for capturing voice training transcripts)
+                            // This gives us text versions of what user says and what AI says
+                            outputAudioTranscription: {},
+                            inputAudioTranscription: {}
                         },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
                         // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
