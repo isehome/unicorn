@@ -193,7 +193,7 @@ ${settings.customInstructions ? `## Custom Instructions\n${settings.customInstru
 
 ## Current Context
 ${buildContextString(state)}`;
-    }, [getSettings, getState, buildContextString]);
+    }, [getSettings, getState, buildContextString, isTrainingMode, buildTrainingSystemInstruction]);
 
     // Tool declarations - memoized to prevent unnecessary re-renders
     const tools = React.useMemo(() => [
