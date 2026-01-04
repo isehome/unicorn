@@ -946,8 +946,8 @@ ${buildContextString(state)}`;
                             },
                             // Enable transcription of audio (for capturing voice training transcripts)
                             // This gives us text versions of what user says and what AI says
-                            outputAudioTranscription: {},
-                            inputAudioTranscription: {}
+                            output_audio_transcription: {},
+                            input_audio_transcription: {}
                         },
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
                         // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
