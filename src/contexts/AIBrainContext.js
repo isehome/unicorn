@@ -18,8 +18,8 @@ const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
-// The native audio model works best for voice
-const DEFAULT_MODEL = 'gemini-2.0-flash-exp';
+// The native audio model with transcription support works best for voice training
+const DEFAULT_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
 
 const AIBrainContext = createContext(null);
 
@@ -926,6 +926,9 @@ ${buildContextString(state)}`;
                 const VALID_LIVE_MODELS = [
                     'gemini-2.0-flash-exp',
                     'gemini-2.5-flash-native-audio-preview-09-2025',
+                    'gemini-2.5-flash-native-audio-preview-12-2025',
+                    'gemini-2.5-flash-preview-native-audio-dialog',
+                    'gemini-2.5-flash-exp-native-audio-thinking-dialog',
                 ];
                 let selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
                 // If stored model isn't valid for Live API, use default
