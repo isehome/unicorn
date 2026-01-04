@@ -648,14 +648,29 @@ ${buildContextString(state)}`;
                 setStatus('listening');
             }
 
-            // Capture user input transcription (if Gemini provides it)
+            // Capture user input transcription (enabled via inputAudioTranscription config)
             if (data.serverContent?.inputTranscription) {
                 const userText = data.serverContent.inputTranscription.text;
                 if (userText) {
                     addDebugLog(`User said: "${userText.substring(0, 50)}..."`, 'transcript');
+                    setLastTranscript(`You: ${userText}`);
                     // Send user transcript to training if callback registered
                     if (transcriptCallbackRef.current) {
                         transcriptCallbackRef.current('user', userText);
+                    }
+                }
+            }
+
+            // Capture AI output transcription (enabled via outputAudioTranscript config)
+            // This gives us text of what the AI is saying in audio-only mode
+            if (data.serverContent?.outputTranscription) {
+                const aiText = data.serverContent.outputTranscription.text;
+                if (aiText) {
+                    addDebugLog(`AI said: "${aiText.substring(0, 50)}..."`, 'transcript');
+                    setLastTranscript(`AI: ${aiText}`);
+                    // Send AI transcript to training if callback registered
+                    if (transcriptCallbackRef.current) {
+                        transcriptCallbackRef.current('ai', aiText);
                     }
                 }
             }
@@ -876,14 +891,18 @@ ${buildContextString(state)}`;
                     setup: {
                         model: `models/${selectedModel}`,
                         generationConfig: {
-                            // Request both AUDIO and TEXT so we get transcripts for training
-                            responseModalities: ['AUDIO', 'TEXT'],
+                            // AUDIO only for Live API
+                            responseModalities: ['AUDIO'],
                             speechConfig: {
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
                                 }
                             }
                         },
+                        // Enable transcription so we get text transcripts of the conversation
+                        // This is critical for training mode to capture what was said
+                        outputAudioTranscript: {},
+                        inputAudioTranscription: {},
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
                         // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
                         // NOT multiple objects each with their own functionDeclarations array!
@@ -907,17 +926,7 @@ ${buildContextString(state)}`;
                                 // How long to wait after silence before ending turn
                                 // Base 1000ms + 500ms if patient mode = 1000-1500ms
                                 silenceDurationMs: 1000 + (voiceSettings.vadEndSensitivity === 2 ? 500 : 0)
-                            },
-                            // Enable input transcription so we can capture what user says
-                            speechConfig: {
-                                inputTranscriptStoreConfig: {
-                                    enableTranscript: true
-                                }
                             }
-                        },
-                        // Also request output transcription in response
-                        outputConfig: {
-                            includeTranscript: true
                         }
                     }
                 };

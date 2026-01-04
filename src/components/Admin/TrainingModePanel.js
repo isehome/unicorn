@@ -290,8 +290,7 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
       }
 
       // Extract training data from transcript
-      // In production, this would call an AI endpoint to analyze the transcript
-      const extractedData = analyzeTranscript(transcript);
+      const extractedData = await analyzeTranscript(transcript);
 
       // Save the training
       await endTrainingSession(extractedData);
