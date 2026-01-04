@@ -49,6 +49,9 @@ export const AIBrainProvider = ({ children }) => {
     const isPlaying = useRef(false); // Track if audio is currently playing
     const navigateRef = useRef(navigate);
 
+    // Web Speech API for transcription (runs in parallel with Gemini audio)
+    const speechRecognition = useRef(null);
+
     // Debug counters
     const [audioChunksSent, setAudioChunksSent] = useState(0);
     const [audioChunksReceived, setAudioChunksReceived] = useState(0);
@@ -133,11 +136,16 @@ You are a friendly interviewer helping capture knowledge about this page. Your g
 - Summarize key points back to confirm understanding
 - If they say something vague, ask for a concrete example
 - Keep responses SHORT - don't lecture, just guide the conversation
+- IMPORTANT: After each response from the admin, briefly summarize what you learned from that response
 
 ## Session Type: ${sessionType}
 ${sessionType === 'initial' ? 'This is the FIRST training for this page. Start by asking what the page is for.' :
 sessionType === 'append' ? 'This page already has some training. Ask what additional info they want to add.' :
 'This is a RETRAIN - they want to start fresh. Ask them to describe the page from scratch.'}
+
+## When the Admin Says "Done" or "That's All"
+When the admin indicates they're finished training, provide a COMPLETE summary of everything you learned. Say something like:
+"Great! Here's what I learned about this page: [full summary of functional description, business context, workflow, best practices, common mistakes, and any FAQs discussed]"
 
 ## Start the Conversation
 Begin by greeting them and asking your first question based on the session type. Keep it natural and conversational.`;
@@ -699,6 +707,79 @@ ${buildContextString(state)}`;
     // Recording state ref (to avoid stale closures)
     const recordingActive = useRef(false);
 
+    // Start Web Speech API recognition for transcription
+    const startSpeechRecognition = useCallback(() => {
+        // Check if Web Speech API is available
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            addDebugLog('Web Speech API not available - transcripts will not be captured', 'warn');
+            return;
+        }
+
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = (event) => {
+                // Get the latest final result
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const result = event.results[i];
+                    if (result.isFinal) {
+                        const transcript = result[0].transcript.trim();
+                        if (transcript) {
+                            addDebugLog(`User said: "${transcript.substring(0, 50)}..."`, 'transcript');
+                            setLastTranscript(`You: ${transcript}`);
+                            // Send to training callback if registered
+                            if (transcriptCallbackRef.current) {
+                                transcriptCallbackRef.current('user', transcript);
+                            }
+                        }
+                    }
+                }
+            };
+
+            recognition.onerror = (event) => {
+                // Don't log 'no-speech' errors - they're normal during pauses
+                if (event.error !== 'no-speech') {
+                    addDebugLog(`Speech recognition error: ${event.error}`, 'warn');
+                }
+            };
+
+            recognition.onend = () => {
+                // Restart if still recording (continuous mode can stop unexpectedly)
+                if (recordingActive.current) {
+                    addDebugLog('Speech recognition restarting...', 'info');
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        // Ignore - might already be started
+                    }
+                }
+            };
+
+            recognition.start();
+            speechRecognition.current = recognition;
+            addDebugLog('Speech recognition started for transcription');
+        } catch (e) {
+            addDebugLog(`Failed to start speech recognition: ${e.message}`, 'error');
+        }
+    }, [addDebugLog]);
+
+    // Stop Web Speech API recognition
+    const stopSpeechRecognition = useCallback(() => {
+        if (speechRecognition.current) {
+            try {
+                speechRecognition.current.stop();
+            } catch (e) {
+                // Ignore
+            }
+            speechRecognition.current = null;
+            addDebugLog('Speech recognition stopped');
+        }
+    }, [addDebugLog]);
+
     const startAudioCapture = useCallback(() => {
         if (!mediaStream.current || !audioContext.current) {
             addDebugLog('Cannot start audio capture - missing stream or context', 'error');
@@ -777,7 +858,10 @@ ${buildContextString(state)}`;
         sourceNode.current.connect(processor);
         processor.connect(audioContext.current.destination);
         addDebugLog('Audio processing started');
-    }, [addDebugLog]);
+
+        // Start speech recognition for transcription (in parallel)
+        startSpeechRecognition();
+    }, [addDebugLog, startSpeechRecognition]);
 
     const stopAudioCapture = useCallback(() => {
         recordingActive.current = false;
@@ -800,7 +884,10 @@ ${buildContextString(state)}`;
 
         setAudioLevel(0);
         addDebugLog('Audio capture stopped');
-    }, [addDebugLog]);
+
+        // Stop speech recognition
+        stopSpeechRecognition();
+    }, [addDebugLog, stopSpeechRecognition]);
 
     const startSession = useCallback(async () => {
         addDebugLog('startSession called');
@@ -899,10 +986,6 @@ ${buildContextString(state)}`;
                                 }
                             }
                         },
-                        // Enable transcription so we get text transcripts of the conversation
-                        // This is critical for training mode to capture what was said
-                        outputAudioTranscript: {},
-                        inputAudioTranscription: {},
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
                         // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
                         // NOT multiple objects each with their own functionDeclarations array!
