@@ -27,6 +27,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import Button from '../components/ui/Button';
 import { quickbooksService } from '../services/quickbooksService';
 import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
+import AITrainingTab from '../components/Admin/AITrainingTab';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2716,6 +2717,17 @@ const AdminPage = () => {
           <Upload size={16} />
           Import
         </button>
+        <button
+          onClick={() => setActiveTab('ai-training')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'ai-training'
+              ? 'bg-purple-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Bot size={16} />
+          AI Training
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -2726,6 +2738,7 @@ const AdminPage = () => {
       {activeTab === 'features' && renderFeaturesTab()}
       {activeTab === 'integrations' && renderIntegrationsTab()}
       {activeTab === 'import' && renderImportTab()}
+      {activeTab === 'ai-training' && <AITrainingTab />}
 
       {/* Modals */}
       {renderEmployeeSkillsModal()}

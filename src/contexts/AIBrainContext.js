@@ -7,6 +7,8 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { useNavigate } from 'react-router-dom';
 import { useAppState } from './AppStateContext';
 import { supabase } from '../lib/supabase';
+import { pageContextService } from '../services/pageContextService';
+import { getPatternRoute } from '../config/pageRegistry';
 
 // Audio settings - Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
@@ -31,6 +33,12 @@ export const AIBrainProvider = ({ children }) => {
     const [audioLevel, setAudioLevel] = useState(0);
     const [inputSilenceWarning, setInputSilenceWarning] = useState(false);
     const [lastTranscript, setLastTranscript] = useState('');
+
+    // Training mode integration - callback to send transcripts to training context
+    const transcriptCallbackRef = useRef(null);
+    // Training mode state - different prompts when in training mode
+    const [isTrainingMode, setIsTrainingModeInternal] = useState(false);
+    const trainingContextRef = useRef(null); // { pageRoute, pageTitle, sessionType }
 
     const ws = useRef(null);
     const audioContext = useRef(null);
@@ -98,7 +106,49 @@ export const AIBrainProvider = ({ children }) => {
         return context;
     }, []);
 
+    const buildTrainingSystemInstruction = useCallback(() => {
+        const ctx = trainingContextRef.current;
+        const sessionType = ctx?.sessionType || 'initial';
+        const pageTitle = ctx?.pageTitle || 'this page';
+        const pageRoute = ctx?.pageRoute || window.location.pathname;
+
+        return `# UNICORN Page Training Mode
+
+You are helping an admin train the AI on how to assist users with "${pageTitle}" (${pageRoute}).
+
+## Your Role
+You are a friendly interviewer helping capture knowledge about this page. Your goal is to have a natural conversation that extracts:
+
+1. **What This Page Does** - The functional purpose
+2. **Business Context** - Why this page matters to the business
+3. **Workflow Position** - Where this fits in the user's workflow
+4. **Real-World Use Cases** - Concrete examples of when/how it's used
+5. **Common Mistakes** - What users often get wrong
+6. **Best Practices** - Tips for using it effectively
+7. **FAQs** - Questions users commonly ask
+
+## Conversation Style
+- Be conversational and encouraging
+- Ask follow-up questions to get specifics
+- Summarize key points back to confirm understanding
+- If they say something vague, ask for a concrete example
+- Keep responses SHORT - don't lecture, just guide the conversation
+
+## Session Type: ${sessionType}
+${sessionType === 'initial' ? 'This is the FIRST training for this page. Start by asking what the page is for.' :
+sessionType === 'append' ? 'This page already has some training. Ask what additional info they want to add.' :
+'This is a RETRAIN - they want to start fresh. Ask them to describe the page from scratch.'}
+
+## Start the Conversation
+Begin by greeting them and asking your first question based on the session type. Keep it natural and conversational.`;
+    }, []);
+
     const buildSystemInstruction = useCallback(() => {
+        // If in training mode, use training-specific instruction
+        if (isTrainingMode && trainingContextRef.current) {
+            return buildTrainingSystemInstruction();
+        }
+
         const settings = getSettings();
         const state = getState();
         const persona = settings.persona === 'brief'
@@ -144,6 +194,9 @@ ${buildContextString(state)}`;
         { name: 'search_knowledge', description: 'Search knowledge base for product info (Lutron, Ubiquiti, etc). USE FIRST for product questions.', parameters: { type: 'object', properties: { query: { type: 'string' }, manufacturer: { type: 'string' } }, required: ['query'] } },
         { name: 'navigate', description: 'Go to: dashboard, prewire, settings, or project name with optional section.', parameters: { type: 'object', properties: { destination: { type: 'string' }, section: { type: 'string' } }, required: ['destination'] } },
         { name: 'web_search', description: 'Search web for general info not in knowledge base.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
+        { name: 'get_page_training', description: 'Get training context for current page - returns business context, workflow info, common mistakes, best practices.', parameters: { type: 'object', properties: { pageRoute: { type: 'string', description: 'Optional: specific page route. If omitted, uses current page.' } } } },
+        { name: 'teach_page', description: 'Start teaching the user about the current page using trained context.', parameters: { type: 'object', properties: { style: { type: 'string', enum: ['overview', 'walkthrough', 'tips'], description: 'Teaching style: overview (quick intro), walkthrough (step by step), tips (best practices)' } } } },
+        { name: 'answer_page_question', description: 'Answer a question about the current page using trained FAQ and context.', parameters: { type: 'object', properties: { question: { type: 'string', description: 'The user question' } }, required: ['question'] } },
     ], []);
 
     const getContextHint = (view) => {
@@ -208,6 +261,70 @@ ${buildContextString(state)}`;
             case 'search_knowledge': return await searchKnowledgeBase(args.query, args.manufacturer);
             case 'navigate': return await handleNavigation(args.destination, args.section);
             case 'web_search': return { message: `Searching for "${args.query}"...`, useGrounding: true };
+            case 'get_page_training': {
+                const route = args.pageRoute || getPatternRoute(window.location.pathname);
+                const context = await pageContextService.getPageContext(route);
+                if (!context || !context.is_trained) {
+                    return { found: false, message: `No training found for ${route}`, route };
+                }
+                return {
+                    found: true,
+                    route,
+                    pageTitle: context.page_title,
+                    functional: context.functional_description,
+                    businessContext: context.business_context,
+                    workflow: context.workflow_position,
+                    realWorldExample: context.real_world_use_case,
+                    commonMistakes: context.common_mistakes || [],
+                    bestPractices: context.best_practices || [],
+                    faq: context.faq || [],
+                };
+            }
+            case 'teach_page': {
+                const route = getPatternRoute(window.location.pathname);
+                const context = await pageContextService.getPageContext(route);
+                if (!context?.is_trained) {
+                    return { success: false, message: "This page hasn't been trained yet. I can only provide basic help." };
+                }
+                const style = args.style || 'overview';
+                const script = pageContextService.buildTeachingScript(context);
+                return {
+                    success: true,
+                    teachingStyle: style,
+                    content: style === 'overview'
+                        ? context.functional_description
+                        : style === 'tips'
+                            ? { bestPractices: context.best_practices, mistakes: context.common_mistakes }
+                            : script,
+                };
+            }
+            case 'answer_page_question': {
+                const route = getPatternRoute(window.location.pathname);
+                const context = await pageContextService.getPageContext(route);
+                if (!context?.is_trained) {
+                    return { answered: false, message: "I don't have specific training for this page." };
+                }
+                // Check FAQ first
+                const faq = context.faq || [];
+                const matchingFaq = faq.find(qa =>
+                    args.question.toLowerCase().includes(qa.question?.toLowerCase()?.slice(0, 20))
+                );
+                if (matchingFaq) {
+                    return { answered: true, source: 'faq', answer: matchingFaq.answer };
+                }
+                // Return full context for AI to synthesize answer
+                return {
+                    answered: false,
+                    context: {
+                        functional: context.functional_description,
+                        business: context.business_context,
+                        workflow: context.workflow_position,
+                        tips: context.best_practices,
+                        mistakes: context.common_mistakes,
+                    },
+                    message: "Use this context to answer the question"
+                };
+            }
             default: return { error: `Unknown: ${name}` };
         }
     }, [getState, getAvailableActions, executeAction]);
@@ -508,6 +625,10 @@ ${buildContextString(state)}`;
                     if (part.text) {
                         setLastTranscript(part.text);
                         addDebugLog(`Response: "${part.text.substring(0, 50)}..."`, 'response');
+                        // Send AI response to training transcript if callback registered
+                        if (transcriptCallbackRef.current) {
+                            transcriptCallbackRef.current('ai', part.text);
+                        }
                     }
                     // Handle function calls - Gemini sends { name, args }
                     if (part.functionCall) {
@@ -525,6 +646,18 @@ ${buildContextString(state)}`;
             if (data.serverContent?.turnComplete) {
                 addDebugLog('Turn complete - listening');
                 setStatus('listening');
+            }
+
+            // Capture user input transcription (if Gemini provides it)
+            if (data.serverContent?.inputTranscription) {
+                const userText = data.serverContent.inputTranscription.text;
+                if (userText) {
+                    addDebugLog(`User said: "${userText.substring(0, 50)}..."`, 'transcript');
+                    // Send user transcript to training if callback registered
+                    if (transcriptCallbackRef.current) {
+                        transcriptCallbackRef.current('user', userText);
+                    }
+                }
             }
 
             // Handle toolCall at root level - Gemini Live sends { toolCall: { functionCalls: [...] } }
@@ -743,7 +876,8 @@ ${buildContextString(state)}`;
                     setup: {
                         model: `models/${selectedModel}`,
                         generationConfig: {
-                            responseModalities: ['AUDIO'],
+                            // Request both AUDIO and TEXT so we get transcripts for training
+                            responseModalities: ['AUDIO', 'TEXT'],
                             speechConfig: {
                                 voiceConfig: {
                                     prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
@@ -773,7 +907,17 @@ ${buildContextString(state)}`;
                                 // How long to wait after silence before ending turn
                                 // Base 1000ms + 500ms if patient mode = 1000-1500ms
                                 silenceDurationMs: 1000 + (voiceSettings.vadEndSensitivity === 2 ? 500 : 0)
+                            },
+                            // Enable input transcription so we can capture what user says
+                            speechConfig: {
+                                inputTranscriptStoreConfig: {
+                                    enableTranscript: true
+                                }
                             }
+                        },
+                        // Also request output transcription in response
+                        outputConfig: {
+                            includeTranscript: true
                         }
                     }
                 };
@@ -838,6 +982,21 @@ ${buildContextString(state)}`;
             // Platform info
             platformInfo: { isIOS: /iPhone|iPad|iPod/.test(navigator.userAgent), isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent) },
             registerTools: () => { }, unregisterTools: () => { },
+            // Training mode integration
+            setTranscriptCallback: (callback) => { transcriptCallbackRef.current = callback; },
+            clearTranscriptCallback: () => { transcriptCallbackRef.current = null; },
+            // Set training mode context for specialized prompts
+            enterTrainingMode: (trainingContext) => {
+                console.log('[AIBrain] Entering training mode:', trainingContext);
+                trainingContextRef.current = trainingContext;
+                setIsTrainingModeInternal(true);
+            },
+            exitTrainingMode: () => {
+                console.log('[AIBrain] Exiting training mode');
+                trainingContextRef.current = null;
+                setIsTrainingModeInternal(false);
+            },
+            isTrainingMode,
         }}>
             {children}
         </AIBrainContext.Provider>

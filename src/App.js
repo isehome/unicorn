@@ -7,6 +7,8 @@ import { AuthProvider } from './contexts/AuthContext';
 import { PrinterProvider } from './contexts/PrinterContext';
 import { AppStateProvider } from './contexts/AppStateContext';
 import { AIBrainProvider } from './contexts/AIBrainContext';
+import { TrainingModeProvider } from './contexts/TrainingModeContext';
+import TrainingModePanel from './components/Admin/TrainingModePanel';
 import UnifiDebug from './components/UnifiDebug';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -524,7 +526,10 @@ function App() {
               <Router>
                 <AppStateProvider>
                   <AIBrainProvider>
-                    <AppRoutes />
+                    <TrainingModeProvider>
+                      <AppRoutes />
+                      <TrainingModePanel />
+                    </TrainingModeProvider>
                   </AIBrainProvider>
                 </AppStateProvider>
               </Router>
