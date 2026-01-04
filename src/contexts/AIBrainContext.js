@@ -708,63 +708,22 @@ ${buildContextString(state)}`;
     const recordingActive = useRef(false);
 
     // Start Web Speech API recognition for transcription
+    // NOTE: This is DISABLED for now as it conflicts with Gemini audio capture
+    // Both try to use the microphone simultaneously which causes issues
     const startSpeechRecognition = useCallback(() => {
-        // Check if Web Speech API is available
+        // DISABLED - Web Speech API conflicts with Gemini audio stream
+        // The browser can't share the microphone between both systems reliably
+        addDebugLog('Speech recognition disabled (conflicts with Gemini audio)', 'info');
+        return;
+
+        /* Original implementation preserved for reference:
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
-            addDebugLog('Web Speech API not available - transcripts will not be captured', 'warn');
+            addDebugLog('Web Speech API not available', 'warn');
             return;
         }
-
-        try {
-            const recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                // Get the latest final result
-                for (let i = event.resultIndex; i < event.results.length; i++) {
-                    const result = event.results[i];
-                    if (result.isFinal) {
-                        const transcript = result[0].transcript.trim();
-                        if (transcript) {
-                            addDebugLog(`User said: "${transcript.substring(0, 50)}..."`, 'transcript');
-                            setLastTranscript(`You: ${transcript}`);
-                            // Send to training callback if registered
-                            if (transcriptCallbackRef.current) {
-                                transcriptCallbackRef.current('user', transcript);
-                            }
-                        }
-                    }
-                }
-            };
-
-            recognition.onerror = (event) => {
-                // Don't log 'no-speech' errors - they're normal during pauses
-                if (event.error !== 'no-speech') {
-                    addDebugLog(`Speech recognition error: ${event.error}`, 'warn');
-                }
-            };
-
-            recognition.onend = () => {
-                // Restart if still recording (continuous mode can stop unexpectedly)
-                if (recordingActive.current) {
-                    addDebugLog('Speech recognition restarting...', 'info');
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        // Ignore - might already be started
-                    }
-                }
-            };
-
-            recognition.start();
-            speechRecognition.current = recognition;
-            addDebugLog('Speech recognition started for transcription');
-        } catch (e) {
-            addDebugLog(`Failed to start speech recognition: ${e.message}`, 'error');
-        }
+        // ... rest of implementation
+        */
     }, [addDebugLog]);
 
     // Stop Web Speech API recognition
