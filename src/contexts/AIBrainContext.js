@@ -18,8 +18,8 @@ const GEMINI_OUTPUT_SAMPLE_RATE = 24000;
 const VERBOSE_LOGGING = true;
 
 // Default model - user can override in settings
-// The native audio model with transcription support works best for voice training
-const DEFAULT_MODEL = 'gemini-2.5-flash-preview-native-audio-dialog';
+// Using gemini 2.5 native audio for better transcription support
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 const AIBrainContext = createContext(null);
 
@@ -39,6 +39,10 @@ export const AIBrainProvider = ({ children }) => {
     // Training mode state - different prompts when in training mode
     const [isTrainingMode, setIsTrainingModeInternal] = useState(false);
     const trainingContextRef = useRef(null); // { pageRoute, pageTitle, sessionType }
+
+    // Buffer for accumulating transcription (Gemini sends word-by-word)
+    const userTranscriptBuffer = useRef('');
+    const aiTranscriptBuffer = useRef('');
 
     const ws = useRef(null);
     const audioContext = useRef(null);
@@ -611,6 +615,16 @@ ${buildContextString(state)}`;
             addDebugLog(`WS msg keys: ${Object.keys(data).join(', ')}`);
 
             if (data.serverContent?.modelTurn?.parts) {
+                // AI is starting to respond - flush user transcript buffer first
+                if (userTranscriptBuffer.current.trim()) {
+                    const fullUserText = userTranscriptBuffer.current.trim();
+                    addDebugLog(`User said: "${fullUserText.substring(0, 100)}..."`, 'transcript');
+                    if (transcriptCallbackRef.current) {
+                        transcriptCallbackRef.current('user', fullUserText);
+                    }
+                    userTranscriptBuffer.current = ''; // Clear buffer
+                }
+
                 for (const part of data.serverContent.modelTurn.parts) {
                     // Log what type of part we received
                     const partKeys = Object.keys(part).join(', ');
@@ -654,32 +668,40 @@ ${buildContextString(state)}`;
             if (data.serverContent?.turnComplete) {
                 addDebugLog('Turn complete - listening');
                 setStatus('listening');
-            }
 
-            // Capture user input transcription (enabled via inputAudioTranscription config)
-            if (data.serverContent?.inputTranscription) {
-                const userText = data.serverContent.inputTranscription.text;
-                if (userText) {
-                    addDebugLog(`User said: "${userText.substring(0, 50)}..."`, 'transcript');
-                    setLastTranscript(`You: ${userText}`);
-                    // Send user transcript to training if callback registered
+                // Flush AI transcript buffer when turn completes
+                if (aiTranscriptBuffer.current.trim()) {
+                    const fullAIText = aiTranscriptBuffer.current.trim();
+                    addDebugLog(`AI said: "${fullAIText.substring(0, 100)}..."`, 'transcript');
+                    // Send complete AI transcript to training if callback registered
                     if (transcriptCallbackRef.current) {
-                        transcriptCallbackRef.current('user', userText);
+                        transcriptCallbackRef.current('ai', fullAIText);
                     }
+                    aiTranscriptBuffer.current = ''; // Clear buffer for next turn
                 }
             }
 
-            // Capture AI output transcription (enabled via outputAudioTranscript config)
-            // This gives us text of what the AI is saying in audio-only mode
+            // Capture user input transcription (enabled via inputAudioTranscription config)
+            // Buffer the transcription until turn completes (Gemini sends word-by-word)
+            if (data.serverContent?.inputTranscription) {
+                const userText = data.serverContent.inputTranscription.text;
+                if (userText) {
+                    // Accumulate user speech in buffer
+                    userTranscriptBuffer.current += (userTranscriptBuffer.current ? ' ' : '') + userText;
+                    addDebugLog(`User (buffering): "${userText}"`, 'transcript');
+                    setLastTranscript(`You: ${userTranscriptBuffer.current}`);
+                }
+            }
+
+            // Capture AI output transcription (enabled via outputAudioTranscription config)
+            // Buffer AI transcription until turn completes (may come in chunks)
             if (data.serverContent?.outputTranscription) {
                 const aiText = data.serverContent.outputTranscription.text;
                 if (aiText) {
-                    addDebugLog(`AI said: "${aiText.substring(0, 50)}..."`, 'transcript');
-                    setLastTranscript(`AI: ${aiText}`);
-                    // Send AI transcript to training if callback registered
-                    if (transcriptCallbackRef.current) {
-                        transcriptCallbackRef.current('ai', aiText);
-                    }
+                    // Accumulate AI speech in buffer
+                    aiTranscriptBuffer.current += (aiTranscriptBuffer.current ? ' ' : '') + aiText;
+                    addDebugLog(`AI (buffering): "${aiText}"`, 'transcript');
+                    setLastTranscript(`AI: ${aiTranscriptBuffer.current}`);
                 }
             }
 
@@ -925,10 +947,7 @@ ${buildContextString(state)}`;
                 // Only native-audio models work with the Live API
                 const VALID_LIVE_MODELS = [
                     'gemini-2.0-flash-exp',
-                    'gemini-2.5-flash-native-audio-preview-09-2025',
                     'gemini-2.5-flash-native-audio-preview-12-2025',
-                    'gemini-2.5-flash-preview-native-audio-dialog',
-                    'gemini-2.5-flash-exp-native-audio-thinking-dialog',
                 ];
                 let selectedModel = localStorage.getItem('ai_model') || DEFAULT_MODEL;
                 // If stored model isn't valid for Live API, use default
@@ -940,7 +959,8 @@ ${buildContextString(state)}`;
                     setup: {
                         model: `models/${selectedModel}`,
                         generationConfig: {
-                            // AUDIO only for Live API
+                            // Use AUDIO only - gemini-2.5 native audio model doesn't support TEXT modality
+                            // Transcription is handled via outputAudioTranscription/inputAudioTranscription
                             responseModalities: ['AUDIO'],
                             speechConfig: {
                                 voiceConfig: {
@@ -948,10 +968,11 @@ ${buildContextString(state)}`;
                                 }
                             }
                         },
-                        // Enable transcription of audio (for capturing voice training transcripts)
-                        // These go at setup level, NOT inside generationConfig
-                        outputAudioTranscription: {},
-                        inputAudioTranscription: {},
+                        // NOTE: Transcription configs are OMITTED for gemini-2.5-flash-native-audio
+                        // Per GitHub issue googleapis/js-genai#1212, these cause connection issues
+                        // and don't actually return transcriptions anyway (known bug).
+                        // Transcripts will come from the TEXT parts when using gemini-2.0-flash-exp,
+                        // or we capture from outputTranscription when/if Google fixes it.
                         systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
                         // CRITICAL: Tools must be a single array with ONE functionDeclarations containing ALL functions
                         // NOT multiple objects each with their own functionDeclarations array!

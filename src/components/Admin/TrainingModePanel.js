@@ -46,7 +46,8 @@ const TrainingModePanel = () => {
 
   // Panel state - ALL hooks must be before any conditional returns
   const [isMinimized, setIsMinimized] = useState(false);
-  const [position, setPosition] = useState({ x: window.innerWidth - 340, y: window.innerHeight - 500 });
+  // Position panel in top-right corner with some padding, ensuring it's fully visible
+  const [position, setPosition] = useState({ x: window.innerWidth - 340, y: 80 });
   const [isDragging, setIsDragging] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -207,8 +208,9 @@ Extract ALL useful information from this conversation and return a JSON object w
 
 Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
 
+      // Use gemini-2.0-flash-exp for text extraction (NOT the native-audio model)
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -282,27 +284,46 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
   // Handle end training
   const handleEndTraining = async () => {
     setIsSaving(true);
+    console.log('[TrainingPanel] Starting end training process...');
+    console.log('[TrainingPanel] Transcript entries:', transcript.length);
+    console.log('[TrainingPanel] Transcript:', JSON.stringify(transcript, null, 2));
 
     try {
       // End voice session if active
       if (voiceStatus !== 'idle') {
+        console.log('[TrainingPanel] Ending voice session...');
         endVoiceSession();
       }
 
+      // Check if we have transcript data
+      if (!transcript || transcript.length === 0) {
+        console.warn('[TrainingPanel] No transcript data to save!');
+        addToTranscript('ai', 'No conversation recorded. Please have a conversation before saving.');
+        return;
+      }
+
       // Extract training data from transcript
+      console.log('[TrainingPanel] Extracting training data from transcript...');
       const extractedData = await analyzeTranscript(transcript);
+      console.log('[TrainingPanel] Extracted data:', JSON.stringify(extractedData, null, 2));
 
       // Save the training
-      await endTrainingSession(extractedData);
+      console.log('[TrainingPanel] Saving training to database...');
+      const savedResult = await endTrainingSession(extractedData);
+      console.log('[TrainingPanel] Save result:', savedResult);
 
-      addToTranscript('ai', 'Training saved! This page is now in my knowledge base.');
+      if (savedResult) {
+        addToTranscript('ai', 'Training saved! This page is now in my knowledge base.');
+      } else {
+        addToTranscript('ai', 'Training processed, but may not have saved to database. Check console for details.');
+      }
 
       // Exit AI training mode
       exitAITrainingMode();
 
     } catch (error) {
-      console.error('Error ending training:', error);
-      addToTranscript('ai', 'Sorry, there was an error saving the training. Please try again.');
+      console.error('[TrainingPanel] Error ending training:', error);
+      addToTranscript('ai', `Sorry, there was an error saving: ${error.message}`);
     } finally {
       setIsSaving(false);
     }

@@ -3,17 +3,29 @@
  * Global state for AI training mode
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useLocation } from 'react-router-dom';
 import { pageContextService } from '../services/pageContextService';
 import { getPageInfo, getPatternRoute } from '../config/pageRegistry';
 import { supabase } from '../lib/supabase';
 
+// Simple UUID generator (avoids adding uuid dependency)
+const generateSessionId = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 const TrainingModeContext = createContext(null);
 
 // Hardcoded owner email for first-time setup
 const OWNER_EMAIL = 'stephe@isehome.com';
+
+// Auto-save debounce delay (ms) - save after 2 seconds of no new entries
+const AUTO_SAVE_DELAY = 2000;
 
 export const TrainingModeProvider = ({ children }) => {
   const { user } = useAuth();
@@ -29,6 +41,13 @@ export const TrainingModeProvider = ({ children }) => {
   // Training session transcript
   const [transcript, setTranscript] = useState([]);
   const [sessionType, setSessionType] = useState('initial'); // 'initial', 'append', 'retrain'
+
+  // Session ID for auto-save (generated when session starts)
+  const [sessionId, setSessionId] = useState(null);
+
+  // Refs for auto-save debouncing
+  const autoSaveTimeoutRef = useRef(null);
+  const lastSavedTranscriptRef = useRef([]);
 
   // Fetch user role from profiles table
   useEffect(() => {
@@ -129,6 +148,11 @@ export const TrainingModeProvider = ({ children }) => {
       const patternRoute = getPatternRoute(location.pathname);
       const pageInfo = getPageInfo(location.pathname);
 
+      // Generate a unique session ID for auto-save
+      const newSessionId = generateSessionId();
+      console.log('[TrainingMode] Starting session with ID:', newSessionId);
+      setSessionId(newSessionId);
+
       // Initialize page context if doesn't exist
       let context = await pageContextService.getPageContext(patternRoute);
       if (!context) {
@@ -141,6 +165,7 @@ export const TrainingModeProvider = ({ children }) => {
 
       setSessionType(type);
       setCurrentTrainingSession({
+        id: newSessionId, // Include session ID
         pageRoute: patternRoute,
         componentName: context?.component_name || pageInfo?.componentName,
         pageTitle: context?.page_title || pageInfo?.pageTitle,
@@ -148,6 +173,7 @@ export const TrainingModeProvider = ({ children }) => {
         type,
       });
       setTranscript([]);
+      lastSavedTranscriptRef.current = []; // Reset saved transcript tracker
       setIsSessionActive(true);
       setCurrentPageContext(context);
 
@@ -171,6 +197,47 @@ export const TrainingModeProvider = ({ children }) => {
   }, []);
 
   /**
+   * Auto-save transcript when it changes (debounced)
+   */
+  useEffect(() => {
+    // Only auto-save if we have an active session and transcript has changed
+    if (!isSessionActive || !sessionId || !currentTrainingSession) {
+      return;
+    }
+
+    // Skip if transcript hasn't actually changed
+    if (transcript.length === lastSavedTranscriptRef.current.length) {
+      return;
+    }
+
+    // Clear any pending save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Debounce the save
+    autoSaveTimeoutRef.current = setTimeout(async () => {
+      console.log('[TrainingMode] Auto-saving transcript, entries:', transcript.length);
+      await pageContextService.autoSaveTranscript(
+        sessionId,
+        currentTrainingSession.pageRoute,
+        transcript,
+        sessionType,
+        user?.id,
+        user?.name || user?.email
+      );
+      lastSavedTranscriptRef.current = transcript;
+    }, AUTO_SAVE_DELAY);
+
+    // Cleanup on unmount
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [transcript, isSessionActive, sessionId, currentTrainingSession, sessionType, user]);
+
+  /**
    * End training session and save
    */
   const endTrainingSession = useCallback(async (extractedData) => {
@@ -179,17 +246,33 @@ export const TrainingModeProvider = ({ children }) => {
       return null;
     }
 
+    // Clear any pending auto-save
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
     try {
-      // Save the transcript
-      await pageContextService.saveTrainingTranscript(
+      // Mark the transcript as complete (if one was auto-saved)
+      console.log('[TrainingMode] Marking transcript complete for route:', currentTrainingSession.pageRoute);
+      const markedComplete = await pageContextService.markTranscriptComplete(
         currentTrainingSession.pageRoute,
-        transcript,
-        sessionType,
         user?.id,
-        user?.name || user?.email
+        extractedData
       );
 
-      // Save the extracted training data
+      // If no transcript was found to mark complete, save as new
+      if (!markedComplete) {
+        console.log('[TrainingMode] No auto-saved transcript found, saving new one');
+        await pageContextService.saveTrainingTranscript(
+          currentTrainingSession.pageRoute,
+          transcript,
+          sessionType,
+          user?.id,
+          user?.name || user?.email
+        );
+      }
+
+      // Save the extracted training data to page_ai_context
       const savedContext = await pageContextService.saveTrainingResults(
         currentTrainingSession.pageRoute,
         extractedData,
@@ -200,6 +283,8 @@ export const TrainingModeProvider = ({ children }) => {
       // Reset session state
       setCurrentTrainingSession(null);
       setTranscript([]);
+      setSessionId(null);
+      lastSavedTranscriptRef.current = [];
       setIsSessionActive(false);
       setCurrentPageContext(savedContext);
 
@@ -208,7 +293,7 @@ export const TrainingModeProvider = ({ children }) => {
       console.error('[TrainingMode] Error saving training session:', error);
       throw error;
     }
-  }, [currentTrainingSession, transcript, sessionType, user]);
+  }, [currentTrainingSession, transcript, sessionType, user, sessionId]);
 
   /**
    * Cancel training session without saving

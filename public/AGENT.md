@@ -2188,13 +2188,67 @@ The Gemini API uses **camelCase** for all field names:
 }
 ```
 
-### Available Models
+### Available Models (Updated 2026-01-04)
 | Model ID | Description | Status |
 |----------|-------------|--------|
-| `gemini-2.5-flash-native-audio-preview-09-2025` | Latest, best audio quality | **Recommended** |
-| `gemini-2.0-flash-live-001` | Stable fallback | Deprecated Dec 2025 |
+| `gemini-2.5-flash-native-audio-preview-12-2025` | Native audio, best quality | **CURRENT DEFAULT** |
+| `gemini-2.0-flash-exp` | Text + audio, supports transcription | Fallback option |
 
 Users can select their model in Settings > AI Copilot Settings.
+
+### Working Voice Configuration (2026-01-04)
+
+The voice module is working with bidirectional audio (input from mic, output to speaker).
+
+**Key Configuration:**
+```javascript
+const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
+
+const setupConfig = {
+    setup: {
+        model: `models/${selectedModel}`,
+        generationConfig: {
+            responseModalities: ['AUDIO'],  // AUDIO only - not TEXT
+            speechConfig: {
+                voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Puck' }  // or Charon, Kore, etc.
+                }
+            }
+        },
+        // NOTE: Transcription configs OMITTED for gemini-2.5-flash-native-audio
+        // Per GitHub issue googleapis/js-genai#1212, these cause connection issues
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        tools: [{ functionDeclarations: [...] }],
+        realtimeInputConfig: {
+            automaticActivityDetection: {
+                disabled: false,
+                startOfSpeechSensitivity: "START_SENSITIVITY_LOW",
+                endOfSpeechSensitivity: "END_SENSITIVITY_HIGH"
+            }
+        }
+    }
+};
+```
+
+**Audio Settings:**
+- Input to Gemini: 16kHz PCM16 mono
+- Output from Gemini: 24kHz PCM16 mono
+- Device sample rate: 48kHz (resampled)
+
+**Known Issues with gemini-2.5 Native Audio:**
+1. **Transcription configs break connections** - Do NOT include `outputAudioTranscription` or `inputAudioTranscription` in setup config. This is a known Google bug (GitHub googleapis/js-genai#1212).
+2. **TEXT modality not supported** - Use `responseModalities: ['AUDIO']` only, not `['AUDIO', 'TEXT']`.
+3. **Transcripts come from text parts** - When using gemini-2.0-flash-exp, transcripts come via `part.text`. For gemini-2.5, rely on AI's spoken summaries.
+
+**What Works:**
+- ✅ Microphone capture and streaming to Gemini
+- ✅ Audio playback from Gemini responses
+- ✅ Tool/function calling (5 meta-tools)
+- ✅ VAD (voice activity detection)
+- ✅ Training mode with specialized prompts
+
+**What Doesn't Work (Google bug):**
+- ❌ Native transcription with gemini-2.5 (outputAudioTranscription/inputAudioTranscription)
 
 ### VAD (Voice Activity Detection) Settings
 ```javascript

@@ -99,28 +99,44 @@ export const pageContextService = {
    * Initialize a new page context (before training)
    */
   async initializePageContext(pageRoute, componentName, staticContext = {}) {
+    console.log('[PageContext] initializePageContext called:', { pageRoute, componentName, staticContext });
     try {
+      // First try to get existing context
+      const existing = await this.getPageContext(pageRoute);
+      if (existing) {
+        console.log('[PageContext] Found existing context:', existing.id);
+        return existing;
+      }
+
+      // Create new context
+      const insertData = {
+        page_route: pageRoute,
+        component_name: componentName,
+        page_title: staticContext.pageTitle || componentName,
+        target_users: staticContext.targetUsers || ['technician', 'project-manager'],
+        is_trained: false,
+        is_published: false,
+        training_version: 0,
+      };
+      console.log('[PageContext] Inserting new context:', insertData);
+
       const { data, error } = await supabase
         .from('page_ai_context')
-        .upsert({
-          page_route: pageRoute,
-          component_name: componentName,
-          page_title: staticContext.pageTitle || componentName,
-          target_users: staticContext.targetUsers || ['technician', 'project-manager'],
-          is_trained: false,
-          is_published: false,
-          training_version: 0,
-        }, {
-          onConflict: 'page_route',
-          ignoreDuplicates: true
-        })
+        .insert(insertData)
         .select()
         .single();
+
+      console.log('[PageContext] initializePageContext result:', { data, error });
 
       if (error) {
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
           console.warn('[PageContext] Table page_ai_context does not exist. Run the migration first.');
           return null;
+        }
+        // Handle unique constraint violation - row exists, so fetch it
+        if (error.code === '23505') {
+          console.log('[PageContext] Row already exists, fetching...');
+          return await this.getPageContext(pageRoute);
         }
         console.error('[PageContext] Error initializing context:', error);
         return null;
@@ -136,12 +152,13 @@ export const pageContextService = {
    * Save training results (after a training session)
    */
   async saveTrainingResults(pageRoute, trainingData, userId, append = false) {
+    console.log('[PageContext] saveTrainingResults called:', { pageRoute, userId, append });
+    console.log('[PageContext] Training data to save:', trainingData);
+
     try {
-      // Get existing context if appending
-      let existingContext = null;
-      if (append) {
-        existingContext = await this.getPageContext(pageRoute);
-      }
+      // Get existing context (for merge logic and to check if row exists)
+      let existingContext = await this.getPageContext(pageRoute);
+      console.log('[PageContext] Existing context:', existingContext?.id || 'none');
 
       // Merge or replace data
       const mergedData = append && existingContext ? {
@@ -172,18 +189,27 @@ export const pageContextService = {
         training_script: trainingData.training_script || existingContext.training_script,
       } : trainingData;
 
+      const savePayload = {
+        page_route: pageRoute,
+        component_name: existingContext?.component_name || pageRoute.split('/').pop() || 'UnknownPage',
+        ...mergedData,
+        is_trained: true,
+        last_trained_at: new Date().toISOString(),
+        last_trained_by: userId,
+        training_version: (existingContext?.training_version || 0) + 1,
+      };
+      console.log('[PageContext] Save payload:', savePayload);
+
+      // Use upsert to handle both insert and update
       const { data, error } = await supabase
         .from('page_ai_context')
-        .update({
-          ...mergedData,
-          is_trained: true,
-          last_trained_at: new Date().toISOString(),
-          last_trained_by: userId,
-          training_version: (existingContext?.training_version || 0) + 1,
+        .upsert(savePayload, {
+          onConflict: 'page_route'
         })
-        .eq('page_route', pageRoute)
         .select()
         .single();
+
+      console.log('[PageContext] Supabase response:', { data, error });
 
       if (error) {
         if (error.code === '42P01' || error.message?.includes('does not exist')) {
@@ -193,6 +219,7 @@ export const pageContextService = {
         console.error('[PageContext] Error saving training results:', error);
         return null;
       }
+      console.log('[PageContext] Training saved successfully:', data);
       return data;
     } catch (error) {
       console.error('[PageContext] Error saving training results:', error);
@@ -201,7 +228,7 @@ export const pageContextService = {
   },
 
   /**
-   * Save training transcript
+   * Save training transcript (final save)
    */
   async saveTrainingTranscript(pageRoute, transcript, sessionType, userId, userName) {
     try {
@@ -218,6 +245,7 @@ export const pageContextService = {
           trainer_name: userName,
           transcript: transcript,
           duration_seconds: transcript.reduce((sum, t) => sum + (t.duration || 0), 0),
+          is_complete: true,
         })
         .select()
         .single();
@@ -233,6 +261,134 @@ export const pageContextService = {
       return data;
     } catch (error) {
       console.error('[PageContext] Error saving transcript:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Auto-save transcript during live conversation (upsert - create or update)
+   * This saves incrementally so we don't lose data if the final save fails
+   */
+  async autoSaveTranscript(sessionId, pageRoute, transcript, sessionType, userId, userName) {
+    console.log('[PageContext] autoSaveTranscript:', { sessionId, pageRoute, transcriptLength: transcript.length, userId });
+    try {
+      // Note: Using insert instead of upsert with custom ID since Supabase
+      // generates UUIDs server-side. We'll use page_route + session tracking differently.
+      const insertData = {
+        page_route: pageRoute,
+        session_type: sessionType,
+        trained_by: userId,
+        trainer_name: userName,
+        transcript: transcript,
+        is_complete: false,
+      };
+
+      // First try to find existing transcript for this session
+      const { data: existing } = await supabase
+        .from('ai_training_transcripts')
+        .select('id')
+        .eq('page_route', pageRoute)
+        .eq('is_complete', false)
+        .eq('trained_by', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      let result;
+      if (existing) {
+        // Update existing incomplete transcript
+        console.log('[PageContext] Updating existing transcript:', existing.id);
+        const { data, error } = await supabase
+          .from('ai_training_transcripts')
+          .update({
+            transcript: transcript,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[PageContext] Auto-save update error:', error.code, error.message, error.details);
+          return null;
+        }
+        result = data;
+      } else {
+        // Insert new transcript
+        console.log('[PageContext] Inserting new transcript for session');
+        const { data, error } = await supabase
+          .from('ai_training_transcripts')
+          .insert(insertData)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('[PageContext] Auto-save insert error:', error.code, error.message, error.details);
+          // Check for RLS error
+          if (error.code === '42501' || error.message?.includes('policy')) {
+            console.error('[PageContext] RLS POLICY ERROR - User may not have permission. userId:', userId);
+          }
+          return null;
+        }
+        result = data;
+      }
+
+      console.log('[PageContext] Auto-saved transcript, entries:', transcript.length, 'id:', result?.id);
+      return result;
+    } catch (error) {
+      console.error('[PageContext] Auto-save exception:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Mark a transcript as complete (called at end of session)
+   * Now finds by page_route + is_complete=false + user instead of session ID
+   */
+  async markTranscriptComplete(pageRoute, userId, extractedData = null) {
+    console.log('[PageContext] markTranscriptComplete:', { pageRoute, userId });
+    try {
+      const updateData = {
+        is_complete: true,
+        completed_at: new Date().toISOString(),
+      };
+
+      // Optionally store the extracted/processed data
+      if (extractedData) {
+        updateData.extracted_data = extractedData;
+      }
+
+      // Find the most recent incomplete transcript for this page/user
+      const { data: existing } = await supabase
+        .from('ai_training_transcripts')
+        .select('id')
+        .eq('page_route', pageRoute)
+        .eq('is_complete', false)
+        .eq('trained_by', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!existing) {
+        console.warn('[PageContext] No incomplete transcript found to mark complete');
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('ai_training_transcripts')
+        .update(updateData)
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[PageContext] Error marking transcript complete:', error);
+        return null;
+      }
+      console.log('[PageContext] Transcript marked complete:', existing.id);
+      return data;
+    } catch (error) {
+      console.error('[PageContext] Error marking transcript complete:', error);
       return null;
     }
   },
