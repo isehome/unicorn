@@ -66,6 +66,25 @@ module.exports = function (app) {
         }
     });
 
+    // Public schedule response endpoint - allows customers to accept/decline via email links
+    app.use('/api/public/schedule-response', async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../api/public/schedule-response');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] schedule-response error:', error);
+            res.status(500).send('<html><body><h1>Error</h1><p>An error occurred processing your request.</p></body></html>');
+        }
+    });
+
     // We hijack the Vercel API path for local development
     // This allows 'npm start' to handle the proxying directly without 'vercel dev'
     app.use('/api/unifi-proxy', bodyParser, async (req, res) => {

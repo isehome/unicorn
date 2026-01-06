@@ -10,6 +10,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 const { getAppToken, getSystemAccountEmail } = require('./_systemGraph');
 
 const supabase = createClient(
@@ -18,6 +19,18 @@ const supabase = createClient(
 );
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+
+// Secret for generating response tokens
+const RESPONSE_SECRET = process.env.SCHEDULE_RESPONSE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Generate secure token for accept/decline links
+function generateResponseToken(scheduleId, action) {
+  const data = `${scheduleId}:${action}`;
+  return crypto.createHmac('sha256', RESPONSE_SECRET)
+    .update(data)
+    .digest('hex')
+    .substring(0, 32);
+}
 
 // Get calendar event details including attendee responses
 async function getEventDetails(token, userEmail, eventId) {
@@ -125,6 +138,142 @@ async function finalizeEvent(token, userEmail, eventId) {
   }
 
   return response.json();
+}
+
+// Send customer confirmation email with accept/decline links
+// This works around Apple Calendar/iCloud interoperability issues
+async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket) {
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : (process.env.APP_URL || 'https://unicorn-one.vercel.app');
+
+  const acceptToken = generateResponseToken(schedule.id, 'accept');
+  const declineToken = generateResponseToken(schedule.id, 'decline');
+
+  const acceptUrl = `${baseUrl}/api/public/schedule-response?action=accept&scheduleId=${schedule.id}&token=${acceptToken}`;
+  const declineUrl = `${baseUrl}/api/public/schedule-response?action=decline&scheduleId=${schedule.id}&token=${declineToken}`;
+
+  // Format date/time for display
+  const dateStr = new Date(schedule.scheduled_date).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  const startTime = schedule.scheduled_time_start?.slice(0, 5) || '00:00';
+  const endTime = schedule.scheduled_time_end?.slice(0, 5) || '00:00';
+
+  const emailBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); padding: 24px; text-align: center;">
+        <h1 style="color: white; margin: 0; font-size: 24px;">Service Appointment Confirmation</h1>
+      </div>
+
+      <div style="padding: 24px; background: #ffffff;">
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Hello ${ticket.customer_name || 'Valued Customer'},
+        </p>
+
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+          Your service technician has confirmed their availability for your appointment. Please confirm this time works for you.
+        </p>
+
+        <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 24px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Date:</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${dateStr}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Time:</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${startTime} - ${endTime}</td>
+            </tr>
+            ${schedule.technician_name ? `
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Technician:</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${schedule.technician_name}</td>
+            </tr>
+            ` : ''}
+            ${ticket.service_address ? `
+            <tr>
+              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Location:</td>
+              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${ticket.service_address}</td>
+            </tr>
+            ` : ''}
+          </table>
+        </div>
+
+        <p style="color: #374151; font-size: 16px; line-height: 1.6; text-align: center; margin-bottom: 24px;">
+          <strong>Please confirm your appointment:</strong>
+        </p>
+
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${acceptUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 0 8px;">
+            ✓ Accept Appointment
+          </a>
+          <a href="${declineUrl}" style="display: inline-block; background: #ef4444; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 0 8px;">
+            ✗ Decline
+          </a>
+        </div>
+
+        <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 24px;">
+          If the buttons above don't work, you can copy and paste this link into your browser:<br>
+          <span style="color: #4f46e5; word-break: break-all;">${acceptUrl}</span>
+        </p>
+
+        <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
+          <em>Note: You may have also received a calendar invite. Accepting either the calendar invite or clicking the button above will confirm your appointment.</em>
+        </p>
+      </div>
+
+      <div style="background: #f9fafb; padding: 16px 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+        <p style="color: #6b7280; font-size: 12px; margin: 0;">
+          <strong style="color: #4f46e5;">INTELLIGENT SYSTEMS</strong> | Field Operations<br>
+          Questions? Reply to this email or call our office.
+        </p>
+      </div>
+    </div>
+  `;
+
+  const emailPayload = {
+    message: {
+      subject: `Please Confirm: Service Appointment on ${dateStr}`,
+      body: {
+        contentType: 'HTML',
+        content: emailBody
+      },
+      toRecipients: [
+        {
+          emailAddress: {
+            address: ticket.customer_email,
+            name: ticket.customer_name || ticket.customer_email
+          }
+        }
+      ]
+    },
+    saveToSentItems: true
+  };
+
+  const response = await fetch(
+    `${GRAPH_BASE}/users/${systemEmail}/sendMail`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(emailPayload)
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[CalendarProcessor] Failed to send customer email:', errorText);
+    throw new Error(`Failed to send confirmation email: ${response.status}`);
+  }
+
+  console.log(`[CalendarProcessor] Sent confirmation email to ${ticket.customer_email}`);
+  return true;
 }
 
 // Cancel a calendar event
@@ -240,11 +389,20 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
     updates.technician_accepted_at = new Date().toISOString();
 
     if (ticket.customer_email) {
+      // Add customer to calendar event
       try {
         await addCustomerToEvent(token, systemEmail, eventId, ticket.customer_email, ticket.customer_name);
         console.log(`[CalendarProcessor] Added customer ${ticket.customer_email} to event ${eventId}`);
       } catch (err) {
         console.error(`[CalendarProcessor] Failed to add customer to event:`, err);
+      }
+
+      // Also send email with accept/decline links (for Apple Calendar/iCloud users)
+      try {
+        await sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket);
+      } catch (err) {
+        console.error(`[CalendarProcessor] Failed to send customer confirmation email:`, err);
+        // Don't fail the whole operation - calendar invite was still sent
       }
     } else {
       console.log(`[CalendarProcessor] No customer email, auto-confirming schedule ${schedule.id}`);
