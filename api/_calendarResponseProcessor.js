@@ -233,8 +233,7 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
   const updates = {
     schedule_status: newStatus,
     tech_calendar_response: result.techResponse,
-    customer_calendar_response: result.customerResponse,
-    last_response_check_at: new Date().toISOString()
+    customer_calendar_response: result.customerResponse
   };
 
   if (action === 'tech_accepted') {
@@ -312,8 +311,7 @@ async function processCalendarResponses(scheduleIds = null) {
       technician_id,
       technician_name,
       tech_calendar_response,
-      customer_calendar_response,
-      last_response_check_at
+      customer_calendar_response
     `)
     .not('calendar_event_id', 'is', null);
 
@@ -333,13 +331,13 @@ async function processCalendarResponses(scheduleIds = null) {
 
   console.log(`[CalendarProcessor] Found ${pendingSchedules?.length || 0} schedules to check`);
 
-  // Get technician emails
+  // Get technician emails from contacts table (technicians are stored as contacts)
   const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
   let technicianEmails = {};
 
   if (technicianIds.length > 0) {
     const { data: technicians } = await supabase
-      .from('team_members')
+      .from('contacts')
       .select('id, email')
       .in('id', technicianIds);
 
