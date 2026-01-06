@@ -37,12 +37,14 @@ export const resetDragEstimatedHours = () => {
 };
 
 // Schedule status colors - 3-step approval workflow
+// Text is always white/light for readability; border/badge colors indicate status
 const scheduleStatusColors = {
   // Draft: Not yet committed - can still be moved/adjusted
   draft: {
     bg: 'rgba(139, 92, 246, 0.15)',  // Violet (light)
     border: '#8B5CF6',
-    text: '#A78BFA',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#A78BFA',             // Violet for status badge
     label: 'Draft',
     icon: 'edit',
     isDraggable: true
@@ -51,7 +53,8 @@ const scheduleStatusColors = {
   pending_tech: {
     bg: 'rgba(245, 158, 11, 0.2)',   // Amber
     border: '#F59E0B',
-    text: '#F59E0B',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#F59E0B',             // Amber for status badge
     label: 'Awaiting Tech',
     icon: 'clock',
     isDraggable: false
@@ -60,7 +63,8 @@ const scheduleStatusColors = {
   pending_customer: {
     bg: 'rgba(59, 130, 246, 0.2)',   // Blue
     border: '#3B82F6',
-    text: '#3B82F6',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#3B82F6',             // Blue for status badge
     label: 'Awaiting Customer',
     icon: 'clock',
     isDraggable: false
@@ -69,7 +73,8 @@ const scheduleStatusColors = {
   confirmed: {
     bg: 'rgba(148, 175, 50, 0.2)',   // Green (brand)
     border: '#94AF32',
-    text: '#94AF32',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#94AF32',             // Green for status badge
     label: 'Confirmed',
     icon: 'check',
     isDraggable: false
@@ -78,7 +83,8 @@ const scheduleStatusColors = {
   cancelled: {
     bg: 'rgba(113, 113, 122, 0.2)',  // Gray
     border: '#71717A',
-    text: '#71717A',
+    text: '#A1A1AA',                  // Slightly dimmer for cancelled
+    badgeText: '#71717A',             // Gray for status badge
     label: 'Cancelled',
     icon: 'x',
     isDraggable: false
@@ -87,7 +93,8 @@ const scheduleStatusColors = {
   tentative: {
     bg: 'rgba(139, 92, 246, 0.15)',
     border: '#8B5CF6',
-    text: '#A78BFA',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#A78BFA',             // Violet for status badge
     label: 'Draft',
     icon: 'edit',
     isDraggable: true
@@ -326,8 +333,8 @@ const ScheduleBlock = memo(({
       }}
       onClick={() => onClick?.(schedule)}
     >
-      {/* Technician Avatar - positioned at top for visibility */}
-      {showTechnician && technicianName && (
+      {/* Technician Avatar - always show when technician is assigned */}
+      {technicianName && (
         <div
           className="absolute -top-2 -left-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border border-zinc-800 z-10"
           style={{ backgroundColor: technicianColor, color: '#fff' }}
@@ -338,7 +345,7 @@ const ScheduleBlock = memo(({
       )}
 
       {/* Header row - customer name and category */}
-      <div className={`flex items-center justify-between gap-1 ${showTechnician && technicianName ? 'ml-4' : ''}`}>
+      <div className={`flex items-center justify-between gap-1 ${technicianName ? 'ml-4' : ''}`}>
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
@@ -415,9 +422,9 @@ const ScheduleBlock = memo(({
         </div>
       )}
 
-      {/* Show technician name text on taller blocks if NOT already showing avatar, or if extra space */}
+      {/* Show technician name text on very tall blocks (avatar is always shown, this adds full name) */}
       {height >= 100 && technicianName && (
-        <div className="flex items-center gap-1 text-xs opacity-60 mt-0.5" style={{ color: colors.text }}>
+        <div className="flex items-center gap-1 text-xs opacity-70 mt-0.5" style={{ color: colors.text }}>
           <User size={10} />
           <span className="truncate">{technicianName}</span>
         </div>
@@ -448,7 +455,7 @@ const ScheduleBlock = memo(({
           className="flex items-center gap-1 text-[10px] mt-0.5 px-1.5 py-0.5 rounded-full w-fit"
           style={{
             backgroundColor: colors.bg,
-            color: colors.text,
+            color: colors.badgeText || colors.text,
             border: `1px solid ${colors.border}`
           }}
         >
