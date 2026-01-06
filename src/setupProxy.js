@@ -1,8 +1,51 @@
 const https = require('https');
 const { URL } = require('url');
+const path = require('path');
+
+// Load environment variables for API routes in development
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env.local') });
 
 module.exports = function (app) {
     const bodyParser = require('express').json();
+
+    // System Account API endpoints for local development
+    // These replicate the Vercel API routes
+    app.use('/api/system-account/send-meeting-invite', bodyParser, async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../../api/system-account/send-meeting-invite');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] send-meeting-invite error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
+
+    app.use('/api/system-account/send-cancellation', bodyParser, async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../../api/system-account/send-cancellation');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] send-cancellation error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
 
     // We hijack the Vercel API path for local development
     // This allows 'npm start' to handle the proxying directly without 'vercel dev'

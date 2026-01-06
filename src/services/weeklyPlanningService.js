@@ -587,6 +587,40 @@ export const weeklyPlanningService = {
     if (!scheduleId) throw new Error('Schedule ID is required');
 
     try {
+      // First check current status to avoid double-commit issues
+      const { data: current, error: fetchError } = await supabase
+        .from('service_schedules')
+        .select('id, schedule_status')
+        .eq('id', scheduleId)
+        .single();
+
+      if (fetchError) {
+        console.error('[WeeklyPlanningService] Failed to fetch schedule:', fetchError);
+        throw fetchError;
+      }
+
+      // If already committed, just fetch and return the current data
+      if (current.schedule_status !== 'draft' && current.schedule_status !== 'tentative') {
+        console.log('[WeeklyPlanningService] Schedule already committed, fetching current data');
+        const { data: existingData } = await supabase
+          .from('service_schedules')
+          .select('*')
+          .eq('id', scheduleId)
+          .single();
+
+        // Fetch ticket separately to avoid join issues
+        if (existingData?.ticket_id) {
+          const { data: ticket } = await supabase
+            .from('service_tickets')
+            .select('id, customer_name, customer_email, customer_phone, title, category')
+            .eq('id', existingData.ticket_id)
+            .single();
+          existingData.ticket = ticket;
+        }
+
+        return existingData;
+      }
+
       // Update schedule status from draft to pending_tech
       const { data, error } = await supabase
         .from('service_schedules')
@@ -595,11 +629,7 @@ export const weeklyPlanningService = {
           committed_at: new Date().toISOString()
         })
         .eq('id', scheduleId)
-        .eq('schedule_status', 'draft') // Only commit if currently draft
-        .select(`
-          *,
-          ticket:service_tickets(id, customer_name, customer_email, customer_phone, title, category)
-        `)
+        .select('*')
         .single();
 
       if (error) {
@@ -608,7 +638,17 @@ export const weeklyPlanningService = {
       }
 
       if (!data) {
-        throw new Error('Schedule not found or already committed');
+        throw new Error('Schedule not found');
+      }
+
+      // Fetch ticket separately to avoid join issues
+      if (data.ticket_id) {
+        const { data: ticket } = await supabase
+          .from('service_tickets')
+          .select('id, customer_name, customer_email, customer_phone, title, category')
+          .eq('id', data.ticket_id)
+          .single();
+        data.ticket = ticket;
       }
 
       console.log('[WeeklyPlanningService] Schedule committed:', data);

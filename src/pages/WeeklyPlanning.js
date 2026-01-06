@@ -12,7 +12,7 @@ import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
 import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
-import { checkUserAvailability, fetchEventsForDate, fetchUserEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent } from '../services/microsoftCalendarService';
+import { checkUserAvailability, fetchEventsForDate, fetchUserEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent, deleteCalendarEvent, sendMeetingInviteEmail, sendMeetingCancellationEmail } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
 import { brandColors } from '../styles/styleSystem';
 
@@ -637,6 +637,29 @@ const WeeklyPlanning = () => {
   // Handle schedule delete
   const handleScheduleDelete = async (schedule) => {
     try {
+      // Send cancellation email if schedule was committed (has a calendar_event_id)
+      if (schedule.calendar_event_id && schedule.technician_id && authContext) {
+        const technician = technicians.find(t => t.id === schedule.technician_id);
+        if (technician?.email) {
+          try {
+            console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
+            const ticket = schedule.ticket || {};
+            await sendMeetingCancellationEmail(authContext, {
+              technicianEmail: technician.email,
+              technicianName: schedule.technician_name || technician.full_name,
+              customerName: ticket.customer_name,
+              scheduledDate: schedule.scheduled_date,
+              startTime: schedule.scheduled_time_start,
+              scheduleId: schedule.id
+            });
+            console.log('[WeeklyPlanning] Cancellation email sent');
+          } catch (emailErr) {
+            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            // Continue anyway
+          }
+        }
+      }
+
       await serviceScheduleService.remove(schedule.id);
       console.log('[WeeklyPlanning] Schedule deleted:', schedule.id);
       // Refresh to update the view
@@ -647,8 +670,20 @@ const WeeklyPlanning = () => {
     }
   };
 
+  // Track which schedules are currently being committed to prevent double-clicks
+  const [committingSchedules, setCommittingSchedules] = useState(new Set());
+
   // Handle committing a draft schedule (locks it and sends tech invite)
   const handleCommitSchedule = async (schedule) => {
+    // Prevent double-clicks
+    if (committingSchedules.has(schedule.id)) {
+      console.log('[WeeklyPlanning] Already committing schedule:', schedule.id);
+      return;
+    }
+
+    // Mark as committing
+    setCommittingSchedules(prev => new Set(prev).add(schedule.id));
+
     try {
       console.log('[WeeklyPlanning] Committing schedule:', schedule.id);
       console.log('[WeeklyPlanning] Schedule technician_id:', schedule.technician_id);
@@ -672,51 +707,49 @@ const WeeklyPlanning = () => {
       const committedSchedule = await weeklyPlanningService.commitSchedule(schedule.id);
       console.log('[WeeklyPlanning] Schedule committed:', committedSchedule);
 
-      // 2. Create calendar event and send invite to technician only
+      // 2. Send meeting invite email to technician
       if (authContext) {
         try {
           const ticket = committedSchedule.ticket || schedule.ticket || {};
-          console.log('[WeeklyPlanning] Creating calendar event with technician_email:', technician.email);
+          console.log('[WeeklyPlanning] Sending meeting invite email to:', technician.email);
 
-          // If self-assigned, don't add technician as attendee (you're the organizer)
-          // The event will still be created on your calendar
-          const calendarResult = await createServiceAppointmentEvent(authContext, {
-            scheduled_date: committedSchedule.scheduled_date,
-            scheduled_time_start: committedSchedule.scheduled_time_start,
-            scheduled_time_end: committedSchedule.scheduled_time_end,
-            ticket: ticket,
-            customer_name: ticket.customer_name,
-            customer_email: null, // Don't include customer yet - tech-only invite
-            technician_name: committedSchedule.technician_name,
-            technician_email: isSelfAssigned ? null : technician.email, // Don't add self as attendee
-            is_tentative: true
-          }, {
-            techOnly: true // Only invite technician, not customer
+          // Send email with ICS calendar attachment - technician can accept/decline
+          const inviteResult = await sendMeetingInviteEmail(authContext, {
+            technicianEmail: technician.email,
+            technicianName: committedSchedule.technician_name || technician.full_name,
+            customerName: ticket.customer_name,
+            customerPhone: ticket.customer_phone,
+            customerEmail: ticket.customer_email,
+            serviceAddress: ticket.service_address,
+            scheduledDate: committedSchedule.scheduled_date,
+            startTime: committedSchedule.scheduled_time_start,
+            endTime: committedSchedule.scheduled_time_end,
+            category: ticket.category,
+            description: ticket.description || ticket.title,
+            ticketNumber: ticket.id?.substring(0, 8),
+            organizerEmail: user?.email || 'scheduling@isehome.com',
+            organizerName: user?.name || 'ISE Scheduling',
+            scheduleId: committedSchedule.id
           });
 
-          console.log('[WeeklyPlanning] Calendar API result:', calendarResult);
-          if (calendarResult.success && calendarResult.eventId) {
-            // Save the calendar event ID for later (when we add customer)
-            await weeklyPlanningService.updateCalendarEventId(committedSchedule.id, calendarResult.eventId);
-            if (isSelfAssigned) {
-              console.log('[WeeklyPlanning] Calendar event created on your calendar (self-assigned). Event ID:', calendarResult.eventId);
-              // When self-assigned, you're both organizer and tech - event is directly on your calendar
-              // No invite email is sent because you can't invite yourself
-              // Note: The schedule stays in pending_tech status until manually progressed
-            } else {
-              console.log('[WeeklyPlanning] Calendar invite sent to technician:', technician.email, 'Event ID:', calendarResult.eventId);
+          console.log('[WeeklyPlanning] Meeting invite result:', inviteResult);
+          if (inviteResult.success) {
+            // Save the UID for tracking (can be used to send cancellation later)
+            if (inviteResult.uid) {
+              await weeklyPlanningService.updateCalendarEventId(committedSchedule.id, inviteResult.uid);
             }
+            console.log('[WeeklyPlanning] Meeting invite email sent successfully to:', technician.email);
           } else {
-            console.warn('[WeeklyPlanning] Calendar event creation failed:', calendarResult);
-            setError(`Schedule committed but calendar invite failed: ${calendarResult.error || 'Unknown error'}`);
+            console.warn('[WeeklyPlanning] Meeting invite email failed:', inviteResult);
+            setError(`Schedule committed but invite email failed: ${inviteResult.error || 'Unknown error'}`);
           }
-        } catch (calendarErr) {
-          console.error('[WeeklyPlanning] Failed to create calendar invite:', calendarErr);
-          setError('Schedule committed but failed to send calendar invite to technician.');
+        } catch (emailErr) {
+          console.error('[WeeklyPlanning] Failed to send meeting invite email:', emailErr);
+          setError('Schedule committed but failed to send invite email to technician.');
         }
       } else {
-        console.warn('[WeeklyPlanning] No auth context - calendar invite not sent');
-        setError('Schedule committed but calendar invite not sent (not authenticated).');
+        console.warn('[WeeklyPlanning] No auth context - invite email not sent');
+        setError('Schedule committed but invite email not sent (not authenticated).');
       }
 
       // 3. Refresh the view
@@ -725,6 +758,13 @@ const WeeklyPlanning = () => {
     } catch (err) {
       console.error('[WeeklyPlanning] Failed to commit schedule:', err);
       setError(`Failed to commit schedule: ${err.message}`);
+    } finally {
+      // Remove from committing set
+      setCommittingSchedules(prev => {
+        const next = new Set(prev);
+        next.delete(schedule.id);
+        return next;
+      });
     }
   };
 
@@ -737,8 +777,28 @@ const WeeklyPlanning = () => {
     try {
       console.log('[WeeklyPlanning] Resetting schedule to draft:', schedule.id);
 
-      // TODO: If there's a calendar_event_id, we should cancel/delete the calendar event
-      // For now, we just reset the database status
+      // Send cancellation email if schedule was committed (has a calendar_event_id)
+      if (schedule.calendar_event_id && schedule.technician_id && authContext) {
+        const technician = technicians.find(t => t.id === schedule.technician_id);
+        if (technician?.email) {
+          try {
+            console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
+            const ticket = schedule.ticket || {};
+            await sendMeetingCancellationEmail(authContext, {
+              technicianEmail: technician.email,
+              technicianName: schedule.technician_name || technician.full_name,
+              customerName: ticket.customer_name,
+              scheduledDate: schedule.scheduled_date,
+              startTime: schedule.scheduled_time_start,
+              scheduleId: schedule.id
+            });
+            console.log('[WeeklyPlanning] Cancellation email sent');
+          } catch (emailErr) {
+            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            // Continue anyway - don't block the reset
+          }
+        }
+      }
 
       await weeklyPlanningService.resetToDraft(schedule.id);
       console.log('[WeeklyPlanning] Schedule reset to draft successfully');
@@ -761,6 +821,29 @@ const WeeklyPlanning = () => {
 
     try {
       console.log('[WeeklyPlanning] Removing schedule:', schedule.id);
+
+      // Send cancellation email if schedule was committed (has a calendar_event_id)
+      if (schedule.calendar_event_id && schedule.technician_id && authContext) {
+        const technician = technicians.find(t => t.id === schedule.technician_id);
+        if (technician?.email) {
+          try {
+            console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
+            const ticket = schedule.ticket || {};
+            await sendMeetingCancellationEmail(authContext, {
+              technicianEmail: technician.email,
+              technicianName: schedule.technician_name || technician.full_name,
+              customerName: ticket.customer_name,
+              scheduledDate: schedule.scheduled_date,
+              startTime: schedule.scheduled_time_start,
+              scheduleId: schedule.id
+            });
+            console.log('[WeeklyPlanning] Cancellation email sent');
+          } catch (emailErr) {
+            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            // Continue anyway - don't block the removal
+          }
+        }
+      }
 
       // Delete the schedule
       await serviceScheduleService.remove(schedule.id);
@@ -788,6 +871,31 @@ const WeeklyPlanning = () => {
     }
 
     try {
+      // First, fetch the schedule to get the calendar_event_id and technician info
+      const schedule = await serviceScheduleService.getById(scheduleId);
+
+      // Send cancellation email if schedule was committed (has a calendar_event_id)
+      if (schedule?.calendar_event_id && schedule?.technician_id && authContext) {
+        const technician = technicians.find(t => t.id === schedule.technician_id);
+        if (technician?.email) {
+          try {
+            console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
+            await sendMeetingCancellationEmail(authContext, {
+              technicianEmail: technician.email,
+              technicianName: schedule.technician_name || technician.full_name,
+              customerName: ticketData.customer_name,
+              scheduledDate: schedule.scheduled_date,
+              startTime: schedule.scheduled_time_start,
+              scheduleId: schedule.id
+            });
+            console.log('[WeeklyPlanning] Cancellation email sent');
+          } catch (emailErr) {
+            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            // Continue anyway
+          }
+        }
+      }
+
       // Delete the schedule (this returns the ticket to unscheduled status)
       await serviceScheduleService.remove(scheduleId);
       console.log('[WeeklyPlanning] Ticket unscheduled:', scheduleId);

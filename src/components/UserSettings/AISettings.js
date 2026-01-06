@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Mic, MessageSquare, Sparkles, UserCog, Copy, Check, ScrollText, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
+import { Mic, MessageSquare, Sparkles, UserCog, Copy, Check, ScrollText, Sliders, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/AIBrainContext';
+import VoiceTestPanel from '../Admin/VoiceTestPanel';
 
 const AISettings = () => {
     const { mode } = useTheme();
@@ -29,19 +30,26 @@ const AISettings = () => {
     const [copied, setCopied] = useState(false);
     const transcriptEndRef = useRef(null);
 
+    // Voice Tuning Modal state
+    const [showVoiceTuning, setShowVoiceTuning] = useState(false);
+
     // State - Initialize from localStorage
     const [persona, setPersona] = useState(() => localStorage.getItem('ai_persona') || 'brief');
     const [voice, setVoice] = useState(() => localStorage.getItem('ai_voice') || 'Puck');
     const [instructions, setInstructions] = useState(() => localStorage.getItem('ai_custom_instructions') || '');
 
-    // VAD Sensitivity settings (1-2 scale only - Gemini API only supports HIGH/LOW)
-    // 1 = HIGH sensitivity (triggers easily / cuts off quickly)
-    // 2 = LOW sensitivity (needs clear speech / waits patiently)
+    // VAD Sensitivity settings (0-2 scale: LOW, MEDIUM, HIGH)
+    // 0 = LOW sensitivity (needs clear speech / waits longer)
+    // 1 = MEDIUM
+    // 2 = HIGH sensitivity (triggers easily / responds fast)
     const [vadStartSensitivity, setVadStartSensitivity] = useState(() =>
-        parseInt(localStorage.getItem('ai_vad_start') || '1', 10)
+        parseInt(localStorage.getItem('ai_vad_start') || '0', 10)
     );
     const [vadEndSensitivity, setVadEndSensitivity] = useState(() =>
         parseInt(localStorage.getItem('ai_vad_end') || '2', 10)
+    );
+    const [silenceDurationMs, setSilenceDurationMs] = useState(() =>
+        parseInt(localStorage.getItem('ai_silence_duration') || '500', 10)
     );
 
     // Collapsible sections state - all collapsed by default to save space
@@ -67,7 +75,8 @@ const AISettings = () => {
         localStorage.setItem('ai_custom_instructions', instructions);
         localStorage.setItem('ai_vad_start', vadStartSensitivity.toString());
         localStorage.setItem('ai_vad_end', vadEndSensitivity.toString());
-    }, [persona, voice, instructions, vadStartSensitivity, vadEndSensitivity]);
+        localStorage.setItem('ai_silence_duration', silenceDurationMs.toString());
+    }, [persona, voice, instructions, vadStartSensitivity, vadEndSensitivity, silenceDurationMs]);
 
     // Capture AI responses to transcript
     useEffect(() => {
@@ -229,111 +238,21 @@ const AISettings = () => {
                     )}
                 </div>
 
-                {/* VAD Sensitivity Controls - Collapsible */}
+                {/* Voice Tuning - Opens Modal */}
                 <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
                     <button
-                        onClick={() => toggleSection('vad')}
+                        onClick={() => setShowVoiceTuning(true)}
                         className="w-full flex items-center justify-between gap-2 p-3 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                     >
                         <div className="flex items-center gap-2">
                             <Sliders size={14} className="text-zinc-500" />
-                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Voice Detection</span>
+                            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Voice Tuning</span>
                             <span className="text-xs text-zinc-500">
-                                {vadStartSensitivity === 1 ? 'Sensitive' : 'Standard'} / {vadEndSensitivity === 1 ? 'Quick' : 'Patient'}
+                                {silenceDurationMs}ms delay
                             </span>
                         </div>
-                        {expandedSections.vad ? <ChevronDown size={16} className="text-zinc-400" /> : <ChevronRight size={16} className="text-zinc-400" />}
+                        <span className="text-xs text-violet-500 font-medium">Open Tuner</span>
                     </button>
-                    {expandedSections.vad && (
-                        <div className="px-3 pb-3 border-t border-zinc-100 dark:border-zinc-800">
-                            <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-xl p-4 space-y-4 mt-3">
-                                {/* Start of Speech - Toggle between HIGH/LOW */}
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                                            Start Detection
-                                        </label>
-                                        <span className={`text-xs px-2 py-0.5 rounded ${
-                                            vadStartSensitivity === 1
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400'
-                                        }`}>
-                                            {vadStartSensitivity === 1 ? 'Sensitive (picks up easily)' : 'Standard (needs clear speech)'}
-                                        </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setVadStartSensitivity(1)}
-                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                                vadStartSensitivity === 1
-                                                    ? 'bg-violet-500 text-white'
-                                                    : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                            }`}
-                                        >
-                                            Sensitive
-                                        </button>
-                                        <button
-                                            onClick={() => setVadStartSensitivity(2)}
-                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                                vadStartSensitivity === 2
-                                                    ? 'bg-violet-500 text-white'
-                                                    : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                            }`}
-                                        >
-                                            Standard
-                                        </button>
-                                    </div>
-                                    <p className="text-[10px] text-zinc-400">
-                                        Sensitive picks up speech quickly; Standard waits for clear voice input
-                                    </p>
-                                </div>
-
-                                {/* End of Speech - Toggle between QUICK/PATIENT */}
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                                            End Detection (Patience)
-                                        </label>
-                                        <span className={`text-xs px-2 py-0.5 rounded ${
-                                            vadEndSensitivity === 2
-                                                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-400'
-                                        }`}>
-                                            {vadEndSensitivity === 1 ? 'Quick (responds fast)' : 'Patient (waits for pauses)'}
-                                        </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setVadEndSensitivity(1)}
-                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                                vadEndSensitivity === 1
-                                                    ? 'bg-violet-500 text-white'
-                                                    : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                            }`}
-                                        >
-                                            Quick
-                                        </button>
-                                        <button
-                                            onClick={() => setVadEndSensitivity(2)}
-                                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                                                vadEndSensitivity === 2
-                                                    ? 'bg-violet-500 text-white'
-                                                    : 'bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-700'
-                                            }`}
-                                        >
-                                            Patient
-                                        </button>
-                                    </div>
-                                    <p className="text-[10px] text-zinc-400">
-                                        Quick responds after brief pause; Patient waits longer before responding
-                                    </p>
-                                </div>
-                            </div>
-                            <p className="text-xs text-zinc-400 italic mt-2">
-                                Adjust if the AI interrupts you or doesn't hear you. Restart session after changing.
-                            </p>
-                        </div>
-                    )}
                 </div>
 
                 {/* Custom Instructions - Collapsible */}
@@ -460,6 +379,24 @@ const AISettings = () => {
                     )}
                 </div>
             </div>
+
+            {/* Voice Tuning Modal */}
+            {showVoiceTuning && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="w-full max-w-2xl max-h-[90vh] overflow-auto">
+                        <VoiceTestPanel
+                            isModal={true}
+                            onClose={() => {
+                                setShowVoiceTuning(false);
+                                // Refresh local state from localStorage after modal closes
+                                setVadStartSensitivity(parseInt(localStorage.getItem('ai_vad_start') || '0', 10));
+                                setVadEndSensitivity(parseInt(localStorage.getItem('ai_vad_end') || '2', 10));
+                                setSilenceDurationMs(parseInt(localStorage.getItem('ai_silence_duration') || '500', 10));
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
         </section>
     );
 };

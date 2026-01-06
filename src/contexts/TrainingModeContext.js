@@ -217,7 +217,6 @@ export const TrainingModeProvider = ({ children }) => {
 
     // Debounce the save
     autoSaveTimeoutRef.current = setTimeout(async () => {
-      console.log('[TrainingMode] Auto-saving transcript, entries:', transcript.length);
       await pageContextService.autoSaveTranscript(
         sessionId,
         currentTrainingSession.pageRoute,

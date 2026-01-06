@@ -884,7 +884,10 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData, o
           address: technician_email,
           name: technician_name || technician_email
         },
-        type: 'required'
+        type: 'required',
+        status: {
+          response: 'notResponded'
+        }
       });
     }
 
@@ -897,13 +900,19 @@ export const createServiceAppointmentEvent = async (authContext, scheduleData, o
             address: customerEmailAddress,
             name: customerDisplayName
           },
-          type: 'required'
+          type: 'required',
+          status: {
+            response: 'notResponded'
+          }
         });
       }
     }
 
     if (attendees.length > 0) {
       eventBody.attendees = attendees;
+      // Request responses from attendees - this sends the meeting invite email
+      eventBody.isOnlineMeeting = false;
+      eventBody.responseRequested = true;
     }
 
     console.log('[Calendar] Creating service appointment event:', {
@@ -1302,6 +1311,221 @@ export const updateServiceAppointmentEvent = async (authContext, eventId, update
   }
 };
 
+/**
+ * Generate an ICS calendar file content for a meeting invite
+ */
+const generateICSContent = (eventDetails) => {
+  const {
+    uid,
+    subject,
+    description,
+    location,
+    startDateTime,
+    endDateTime,
+    organizerEmail,
+    organizerName,
+    attendeeEmail,
+    attendeeName,
+    timezone = 'America/Indianapolis'
+  } = eventDetails;
+
+  // Format date for ICS (YYYYMMDDTHHMMSS)
+  const formatICSDate = (dateStr, timeStr) => {
+    const [year, month, day] = dateStr.split('-');
+    const [hour, minute] = timeStr.split(':');
+    return `${year}${month}${day}T${hour}${minute}00`;
+  };
+
+  // Parse the ISO datetime or date + time strings
+  let dtStart, dtEnd;
+  if (startDateTime.includes('T')) {
+    // ISO format
+    const start = new Date(startDateTime);
+    const end = new Date(endDateTime);
+    dtStart = start.toISOString().replace(/[-:]/g, '').split('.')[0];
+    dtEnd = end.toISOString().replace(/[-:]/g, '').split('.')[0];
+  } else {
+    // Separate date and time - assume startDateTime is date, we need time separately
+    dtStart = formatICSDate(eventDetails.scheduledDate, eventDetails.startTime);
+    dtEnd = formatICSDate(eventDetails.scheduledDate, eventDetails.endTime);
+  }
+
+  const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+  // Escape special characters in text
+  const escapeICS = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\n/g, '\\n');
+  };
+
+  const icsContent = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Unicorn CRM//Service Scheduling//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:REQUEST',
+    'BEGIN:VTIMEZONE',
+    `TZID:${timezone}`,
+    'BEGIN:STANDARD',
+    'DTSTART:19701101T020000',
+    'RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11',
+    'TZOFFSETFROM:-0400',
+    'TZOFFSETTO:-0500',
+    'END:STANDARD',
+    'BEGIN:DAYLIGHT',
+    'DTSTART:19700308T020000',
+    'RRULE:FREQ=YEARLY;BYDAY=2SU;BYMONTH=3',
+    'TZOFFSETFROM:-0500',
+    'TZOFFSETTO:-0400',
+    'END:DAYLIGHT',
+    'END:VTIMEZONE',
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${now}`,
+    `DTSTART;TZID=${timezone}:${dtStart}`,
+    `DTEND;TZID=${timezone}:${dtEnd}`,
+    `SUMMARY:${escapeICS(subject)}`,
+    `DESCRIPTION:${escapeICS(description)}`,
+    location ? `LOCATION:${escapeICS(location)}` : '',
+    `ORGANIZER;CN=${escapeICS(organizerName)}:mailto:${organizerEmail}`,
+    `ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${escapeICS(attendeeName)}:mailto:${attendeeEmail}`,
+    'STATUS:TENTATIVE',
+    'TRANSP:OPAQUE',
+    'SEQUENCE:0',
+    'END:VEVENT',
+    'END:VCALENDAR'
+  ].filter(Boolean).join('\r\n');
+
+  return icsContent;
+};
+
+/**
+ * Send a meeting invite email to a technician
+ * Uses the system account API to send from unicorn@isehome.com
+ * The technician can accept/decline the invite directly from their email client
+ *
+ * @param {Object} authContext - Auth context (not used, kept for API compatibility)
+ * @param {Object} scheduleDetails - Schedule details
+ * @returns {Object} { success: boolean, error?: string, uid?: string }
+ */
+export const sendMeetingInviteEmail = async (authContext, scheduleDetails) => {
+  try {
+    const {
+      technicianEmail,
+      technicianName,
+      customerName,
+      customerPhone,
+      customerEmail,
+      serviceAddress,
+      scheduledDate,
+      startTime,
+      endTime,
+      category,
+      description,
+      ticketNumber,
+      scheduleId
+    } = scheduleDetails;
+
+    if (!technicianEmail) {
+      return { success: false, error: 'Technician email is required.' };
+    }
+
+    console.log('[Calendar] Sending meeting invite via system account to:', technicianEmail);
+
+    const response = await fetch('/api/system-account/send-meeting-invite', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        technicianEmail,
+        technicianName,
+        customerName,
+        customerPhone,
+        customerEmail,
+        serviceAddress,
+        scheduledDate,
+        startTime,
+        endTime,
+        category,
+        description,
+        ticketNumber,
+        scheduleId
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('[Calendar] Failed to send meeting invite:', result);
+      return { success: false, error: result.error || 'Failed to send invite email' };
+    }
+
+    console.log('[Calendar] Meeting invite sent successfully from', result.sentFrom, 'to:', technicianEmail);
+    return { success: true, uid: result.uid };
+
+  } catch (error) {
+    console.error('[Calendar] Send meeting invite error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send a meeting cancellation email
+ * Uses the system account API to send from unicorn@isehome.com
+ */
+export const sendMeetingCancellationEmail = async (authContext, scheduleDetails) => {
+  try {
+    const {
+      technicianEmail,
+      technicianName,
+      customerName,
+      scheduledDate,
+      startTime,
+      scheduleId
+    } = scheduleDetails;
+
+    if (!technicianEmail) {
+      return { success: false, error: 'Technician email is required.' };
+    }
+
+    console.log('[Calendar] Sending cancellation via system account to:', technicianEmail);
+
+    const response = await fetch('/api/system-account/send-cancellation', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        technicianEmail,
+        technicianName,
+        customerName,
+        scheduledDate,
+        startTime,
+        scheduleId
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error('[Calendar] Failed to send cancellation email:', result);
+      return { success: false, error: result.error || 'Failed to send cancellation email' };
+    }
+
+    console.log('[Calendar] Cancellation sent successfully from', result.sentFrom, 'to:', technicianEmail);
+    return { success: true };
+
+  } catch (error) {
+    console.error('[Calendar] Send cancellation email error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
 export default {
   fetchTodayEvents,
   fetchEventsForDate,
@@ -1319,4 +1543,7 @@ export default {
   addCustomerToServiceEvent,
   finalizeServiceEvent,
   getEventAttendeeResponses,
+  // Email-based meeting invites
+  sendMeetingInviteEmail,
+  sendMeetingCancellationEmail,
 };

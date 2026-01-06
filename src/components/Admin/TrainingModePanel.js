@@ -96,8 +96,6 @@ const TrainingModePanel = () => {
     }
   }, [isSessionActive, setTranscriptCallback, clearTranscriptCallback, addToTranscript]);
 
-  // Log training mode state for debugging
-  console.log('[TrainingModePanel] isTrainingMode:', isTrainingMode);
 
   // Don't render if not in training mode - AFTER all hooks
   if (!isTrainingMode) {
@@ -284,14 +282,10 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
   // Handle end training
   const handleEndTraining = async () => {
     setIsSaving(true);
-    console.log('[TrainingPanel] Starting end training process...');
-    console.log('[TrainingPanel] Transcript entries:', transcript.length);
-    console.log('[TrainingPanel] Transcript:', JSON.stringify(transcript, null, 2));
 
     try {
       // End voice session if active
       if (voiceStatus !== 'idle') {
-        console.log('[TrainingPanel] Ending voice session...');
         endVoiceSession();
       }
 
@@ -303,14 +297,10 @@ Only include fields with actual content. Return ONLY valid JSON, no markdown.`;
       }
 
       // Extract training data from transcript
-      console.log('[TrainingPanel] Extracting training data from transcript...');
       const extractedData = await analyzeTranscript(transcript);
-      console.log('[TrainingPanel] Extracted data:', JSON.stringify(extractedData, null, 2));
 
       // Save the training
-      console.log('[TrainingPanel] Saving training to database...');
       const savedResult = await endTrainingSession(extractedData);
-      console.log('[TrainingPanel] Save result:', savedResult);
 
       if (savedResult) {
         addToTranscript('ai', 'Training saved! This page is now in my knowledge base.');

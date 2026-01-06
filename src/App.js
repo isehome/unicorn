@@ -9,6 +9,7 @@ import { AppStateProvider } from './contexts/AppStateContext';
 import { AIBrainProvider } from './contexts/AIBrainContext';
 import { TrainingModeProvider } from './contexts/TrainingModeContext';
 import TrainingModePanel from './components/Admin/TrainingModePanel';
+import VoiceTestPanel from './components/Admin/VoiceTestPanel';
 import UnifiDebug from './components/UnifiDebug';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -474,6 +475,16 @@ const AppRoutes = () => {
                 }
               />
               <Route path="/debug-unifi" element={<UnifiDebug />} />
+              <Route
+                path="/voice-test"
+                element={
+                  <ProtectedRoute>
+                    <div className="p-4">
+                      <VoiceTestPanel />
+                    </div>
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/admin"
                 element={
