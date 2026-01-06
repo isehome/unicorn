@@ -378,7 +378,6 @@ module.exports = async (req, res) => {
         calendar_event_id,
         schedule_status,
         technician_id,
-        technician_email,
         technician_name,
         tech_calendar_response,
         customer_calendar_response,
@@ -395,6 +394,23 @@ module.exports = async (req, res) => {
 
     console.log(`[ProcessCalendar] Found ${pendingSchedules?.length || 0} pending schedules to check`);
 
+    // Get all unique technician IDs to fetch their emails
+    const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
+    let technicianEmails = {};
+
+    if (technicianIds.length > 0) {
+      const { data: technicians } = await supabase
+        .from('team_members')
+        .select('id, email')
+        .in('id', technicianIds);
+
+      if (technicians) {
+        technicianEmails = Object.fromEntries(technicians.map(t => [t.id, t.email]));
+      }
+    }
+
+    console.log(`[ProcessCalendar] Loaded emails for ${Object.keys(technicianEmails).length} technicians`);
+
     const results = {
       checked: 0,
       techAccepted: 0,
@@ -406,6 +422,9 @@ module.exports = async (req, res) => {
 
     for (const schedule of pendingSchedules || []) {
       try {
+        // Add technician email from lookup
+        schedule.technician_email = technicianEmails[schedule.technician_id] || null;
+
         // Get ticket details
         const { data: ticket } = await supabase
           .from('service_tickets')
