@@ -1,9 +1,10 @@
 /**
- * API Endpoint: Send Meeting Cancellation from System Account
+ * API Endpoint: Cancel Meeting from System Account
  *
  * POST /api/system-account/send-cancellation
  *
- * Sends a cancellation email to a technician from the system account
+ * Cancels a calendar event, which automatically sends cancellation notices to attendees.
+ * If no eventId is provided, sends a cancellation email instead.
  */
 
 const { getAppToken, getSystemAccountEmail } = require('../_systemGraph');
@@ -16,6 +17,7 @@ module.exports = async (req, res) => {
 
   try {
     const {
+      eventId,
       technicianEmail,
       technicianName,
       customerName,
@@ -24,13 +26,49 @@ module.exports = async (req, res) => {
       scheduleId
     } = req.body;
 
-    if (!technicianEmail) {
-      return res.status(400).json({ error: 'technicianEmail is required' });
+    const organizerEmail = await getSystemAccountEmail();
+    const token = await getAppToken();
+
+    // If we have an eventId, cancel the calendar event (this sends cancellation to attendees)
+    if (eventId) {
+      // Cancel the event - this sends cancellation notices to all attendees
+      const cancelResp = await fetch(
+        `https://graph.microsoft.com/v1.0/users/${organizerEmail}/events/${eventId}/cancel`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            comment: 'This service appointment has been cancelled.'
+          }),
+        }
+      );
+
+      // 404 is OK - event might already be deleted
+      if (!cancelResp.ok && cancelResp.status !== 404) {
+        const errorText = await cancelResp.text();
+        console.error('[send-cancellation] Failed to cancel event:', cancelResp.status, errorText);
+        return res.status(500).json({
+          error: 'Failed to cancel meeting',
+          details: errorText
+        });
+      }
+
+      console.log(`[send-cancellation] Event ${eventId} cancelled, notification sent to attendees`);
+
+      return res.status(200).json({
+        success: true,
+        eventId,
+        cancelled: true
+      });
     }
 
-    // Get system account email for sender
-    const senderEmail = await getSystemAccountEmail();
-    const token = await getAppToken();
+    // Fallback: If no eventId, send a cancellation email
+    if (!technicianEmail) {
+      return res.status(400).json({ error: 'Either eventId or technicianEmail is required' });
+    }
 
     const subject = `[CANCELLED] Service Appointment - ${customerName || 'Customer'} on ${scheduledDate}`;
 
@@ -45,7 +83,7 @@ module.exports = async (req, res) => {
           <p style="margin: 4px 0;"><strong>Time:</strong> ${startTime}</p>
         </div>
 
-        <p>Please remove this appointment from your calendar if you have already accepted it.</p>
+        <p>Please remove this appointment from your calendar.</p>
 
         <p style="color: #718096; font-size: 14px; margin-top: 24px;">
           This is an automated message from Unicorn CRM.
@@ -72,7 +110,7 @@ module.exports = async (req, res) => {
       saveToSentItems: true
     };
 
-    const graphResp = await fetch(`https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`, {
+    const graphResp = await fetch(`https://graph.microsoft.com/v1.0/users/${organizerEmail}/sendMail`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -90,18 +128,18 @@ module.exports = async (req, res) => {
       });
     }
 
-    console.log(`[send-cancellation] Cancellation sent from ${senderEmail} to ${technicianEmail}`);
+    console.log(`[send-cancellation] Cancellation email sent from ${organizerEmail} to ${technicianEmail}`);
 
     return res.status(200).json({
       success: true,
-      sentFrom: senderEmail,
+      sentFrom: organizerEmail,
       sentTo: technicianEmail
     });
 
   } catch (error) {
     console.error('[send-cancellation] Error:', error);
     return res.status(500).json({
-      error: 'Failed to send cancellation email',
+      error: 'Failed to send cancellation',
       message: error.message
     });
   }

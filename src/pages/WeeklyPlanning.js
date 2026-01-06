@@ -645,6 +645,7 @@ const WeeklyPlanning = () => {
             console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
             const ticket = schedule.ticket || {};
             await sendMeetingCancellationEmail(authContext, {
+              eventId: schedule.calendar_event_id,
               technicianEmail: technician.email,
               technicianName: schedule.technician_name || technician.full_name,
               customerName: ticket.customer_name,
@@ -652,9 +653,9 @@ const WeeklyPlanning = () => {
               startTime: schedule.scheduled_time_start,
               scheduleId: schedule.id
             });
-            console.log('[WeeklyPlanning] Cancellation email sent');
+            console.log('[WeeklyPlanning] Calendar event cancelled');
           } catch (emailErr) {
-            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
             // Continue anyway
           }
         }
@@ -734,11 +735,12 @@ const WeeklyPlanning = () => {
 
           console.log('[WeeklyPlanning] Meeting invite result:', inviteResult);
           if (inviteResult.success) {
-            // Save the UID for tracking (can be used to send cancellation later)
-            if (inviteResult.uid) {
-              await weeklyPlanningService.updateCalendarEventId(committedSchedule.id, inviteResult.uid);
+            // Save the eventId for tracking (used to cancel the calendar event later)
+            if (inviteResult.eventId) {
+              await weeklyPlanningService.updateCalendarEventId(committedSchedule.id, inviteResult.eventId);
+              console.log('[WeeklyPlanning] Saved calendar eventId:', inviteResult.eventId);
             }
-            console.log('[WeeklyPlanning] Meeting invite email sent successfully to:', technician.email);
+            console.log('[WeeklyPlanning] Calendar invite created and sent to:', technician.email);
           } else {
             console.warn('[WeeklyPlanning] Meeting invite email failed:', inviteResult);
             setError(`Schedule committed but invite email failed: ${inviteResult.error || 'Unknown error'}`);
@@ -785,6 +787,7 @@ const WeeklyPlanning = () => {
             console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
             const ticket = schedule.ticket || {};
             await sendMeetingCancellationEmail(authContext, {
+              eventId: schedule.calendar_event_id,
               technicianEmail: technician.email,
               technicianName: schedule.technician_name || technician.full_name,
               customerName: ticket.customer_name,
@@ -792,9 +795,9 @@ const WeeklyPlanning = () => {
               startTime: schedule.scheduled_time_start,
               scheduleId: schedule.id
             });
-            console.log('[WeeklyPlanning] Cancellation email sent');
+            console.log('[WeeklyPlanning] Calendar event cancelled');
           } catch (emailErr) {
-            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
             // Continue anyway - don't block the reset
           }
         }
@@ -830,6 +833,7 @@ const WeeklyPlanning = () => {
             console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
             const ticket = schedule.ticket || {};
             await sendMeetingCancellationEmail(authContext, {
+              eventId: schedule.calendar_event_id,
               technicianEmail: technician.email,
               technicianName: schedule.technician_name || technician.full_name,
               customerName: ticket.customer_name,
@@ -837,9 +841,9 @@ const WeeklyPlanning = () => {
               startTime: schedule.scheduled_time_start,
               scheduleId: schedule.id
             });
-            console.log('[WeeklyPlanning] Cancellation email sent');
+            console.log('[WeeklyPlanning] Calendar event cancelled');
           } catch (emailErr) {
-            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
             // Continue anyway - don't block the removal
           }
         }
@@ -881,6 +885,7 @@ const WeeklyPlanning = () => {
           try {
             console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
             await sendMeetingCancellationEmail(authContext, {
+              eventId: schedule.calendar_event_id,
               technicianEmail: technician.email,
               technicianName: schedule.technician_name || technician.full_name,
               customerName: ticketData.customer_name,
@@ -888,9 +893,9 @@ const WeeklyPlanning = () => {
               startTime: schedule.scheduled_time_start,
               scheduleId: schedule.id
             });
-            console.log('[WeeklyPlanning] Cancellation email sent');
+            console.log('[WeeklyPlanning] Calendar event cancelled');
           } catch (emailErr) {
-            console.warn('[WeeklyPlanning] Failed to send cancellation email:', emailErr);
+            console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
             // Continue anyway
           }
         }

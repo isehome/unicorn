@@ -1465,8 +1465,8 @@ export const sendMeetingInviteEmail = async (authContext, scheduleDetails) => {
       return { success: false, error: result.error || 'Failed to send invite email' };
     }
 
-    console.log('[Calendar] Meeting invite sent successfully from', result.sentFrom, 'to:', technicianEmail);
-    return { success: true, uid: result.uid };
+    console.log('[Calendar] Meeting invite sent successfully from', result.organizer, 'to:', technicianEmail, 'eventId:', result.eventId);
+    return { success: true, eventId: result.eventId, webLink: result.webLink };
 
   } catch (error) {
     console.error('[Calendar] Send meeting invite error:', error);
@@ -1475,12 +1475,14 @@ export const sendMeetingInviteEmail = async (authContext, scheduleDetails) => {
 };
 
 /**
- * Send a meeting cancellation email
- * Uses the system account API to send from unicorn@isehome.com
+ * Send a meeting cancellation / cancel the calendar event
+ * Uses the system account API - if eventId is provided, cancels the event (sends native cancellation)
+ * Otherwise falls back to sending an email notification
  */
 export const sendMeetingCancellationEmail = async (authContext, scheduleDetails) => {
   try {
     const {
+      eventId,
       technicianEmail,
       technicianName,
       customerName,
@@ -1489,11 +1491,13 @@ export const sendMeetingCancellationEmail = async (authContext, scheduleDetails)
       scheduleId
     } = scheduleDetails;
 
-    if (!technicianEmail) {
-      return { success: false, error: 'Technician email is required.' };
+    // If we have an eventId, we can cancel the actual calendar event
+    // Otherwise we need at least a technician email to send a notification
+    if (!eventId && !technicianEmail) {
+      return { success: false, error: 'Either eventId or technician email is required.' };
     }
 
-    console.log('[Calendar] Sending cancellation via system account to:', technicianEmail);
+    console.log('[Calendar] Sending cancellation via system account', eventId ? `for event ${eventId}` : `to ${technicianEmail}`);
 
     const response = await fetch('/api/system-account/send-cancellation', {
       method: 'POST',
@@ -1501,6 +1505,7 @@ export const sendMeetingCancellationEmail = async (authContext, scheduleDetails)
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
+        eventId,
         technicianEmail,
         technicianName,
         customerName,
@@ -1513,15 +1518,15 @@ export const sendMeetingCancellationEmail = async (authContext, scheduleDetails)
     const result = await response.json();
 
     if (!response.ok) {
-      console.error('[Calendar] Failed to send cancellation email:', result);
-      return { success: false, error: result.error || 'Failed to send cancellation email' };
+      console.error('[Calendar] Failed to send cancellation:', result);
+      return { success: false, error: result.error || 'Failed to send cancellation' };
     }
 
-    console.log('[Calendar] Cancellation sent successfully from', result.sentFrom, 'to:', technicianEmail);
+    console.log('[Calendar] Cancellation sent successfully', eventId ? `(event ${eventId} cancelled)` : `to ${technicianEmail}`);
     return { success: true };
 
   } catch (error) {
-    console.error('[Calendar] Send cancellation email error:', error);
+    console.error('[Calendar] Send cancellation error:', error);
     return { success: false, error: error.message };
   }
 };
