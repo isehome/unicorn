@@ -333,10 +333,10 @@ const ScheduleBlock = memo(({
       }}
       onClick={() => onClick?.(schedule)}
     >
-      {/* Technician Avatar - always show when technician is assigned */}
+      {/* Technician Avatar - top right corner */}
       {technicianName && (
         <div
-          className="absolute -top-2 -left-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border border-zinc-800 z-10"
+          className="absolute -top-2 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border border-zinc-800 z-10"
           style={{ backgroundColor: technicianColor, color: '#fff' }}
           title={technicianName}
         >
@@ -345,7 +345,7 @@ const ScheduleBlock = memo(({
       )}
 
       {/* Header row - customer name and category */}
-      <div className={`flex items-center justify-between gap-1 ${technicianName ? 'ml-4' : ''}`}>
+      <div className="flex items-center justify-between gap-1">
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span
             className="w-2 h-2 rounded-full flex-shrink-0"
@@ -422,13 +422,6 @@ const ScheduleBlock = memo(({
         </div>
       )}
 
-      {/* Show technician name text on very tall blocks (avatar is always shown, this adds full name) */}
-      {height >= 100 && technicianName && (
-        <div className="flex items-center gap-1 text-xs opacity-70 mt-0.5" style={{ color: colors.text }}>
-          <User size={10} />
-          <span className="truncate">{technicianName}</span>
-        </div>
-      )}
 
       {/* Commit button - prominent for draft schedules with enough height */}
       {isDraft && height >= 70 && onCommit && (
@@ -449,20 +442,6 @@ const ScheduleBlock = memo(({
         </button>
       )}
 
-      {/* Status badge - shows workflow state (only for non-draft) */}
-      {!isDraft && height >= 50 && colors.label && (
-        <div
-          className="flex items-center gap-1 text-[10px] mt-0.5 px-1.5 py-0.5 rounded-full w-fit"
-          style={{
-            backgroundColor: colors.bg,
-            color: colors.badgeText || colors.text,
-            border: `1px solid ${colors.border}`
-          }}
-        >
-          {status === 'confirmed' ? <Check size={10} /> : <Lock size={10} />}
-          <span>{colors.label}</span>
-        </div>
-      )}
 
       {/* Reschedule indicator */}
       {schedule.reschedule_requested_at && (

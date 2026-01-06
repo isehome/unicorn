@@ -258,10 +258,33 @@ const WeeklyPlanning = () => {
     loadData();
   }, [currentWeekStart, selectedTechnician, loadWeekSchedules, loadingTechnicians]);
 
-  // Refresh data
-  const handleRefresh = async () => {
+  // Refresh data and check for calendar response updates
+  const handleRefresh = async (checkResponses = true) => {
     try {
       setRefreshing(true);
+
+      // First, trigger a check for calendar responses (tech/customer accepts/declines)
+      // This updates schedule statuses in the database before we fetch
+      if (checkResponses) {
+        try {
+          const checkResult = await fetch('/api/system-account/check-responses', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          });
+          if (checkResult.ok) {
+            const data = await checkResult.json();
+            console.log('[WeeklyPlanning] Calendar response check:', data);
+            if (data.techAccepted > 0 || data.customerAccepted > 0 || data.declined > 0) {
+              console.log('[WeeklyPlanning] Schedule status changes detected!');
+            }
+          }
+        } catch (checkErr) {
+          console.warn('[WeeklyPlanning] Calendar response check failed:', checkErr);
+          // Continue with refresh even if check fails
+        }
+      }
+
       const weekData = await loadWeekSchedules(currentWeekStart, selectedTechnician);
       const nextWeekStart = new Date(currentWeekStart);
       nextWeekStart.setDate(nextWeekStart.getDate() + 7);

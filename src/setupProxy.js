@@ -47,6 +47,25 @@ module.exports = function (app) {
         }
     });
 
+    // Check calendar responses - immediate check for schedule status updates
+    app.use('/api/system-account/check-responses', bodyParser, async (req, res) => {
+        res.header('Access-Control-Allow-Origin', '*');
+        res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (req.method === 'OPTIONS') {
+            return res.status(200).end();
+        }
+
+        try {
+            const handler = require('../../api/system-account/check-responses');
+            await handler(req, res);
+        } catch (error) {
+            console.error('[setupProxy] check-responses error:', error);
+            res.status(500).json({ error: 'Internal server error', message: error.message });
+        }
+    });
+
     // We hijack the Vercel API path for local development
     // This allows 'npm start' to handle the proxying directly without 'vercel dev'
     app.use('/api/unifi-proxy', bodyParser, async (req, res) => {

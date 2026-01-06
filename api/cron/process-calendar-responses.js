@@ -17,60 +17,19 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const { getAppToken, getSystemAccountEmail } = require('../_systemGraph');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// Get system account email from config or fallback
-async function getSystemAccountEmail() {
-  try {
-    const { data } = await supabase
-      .from('app_configuration')
-      .select('value')
-      .eq('key', 'system_account_email')
-      .single();
-
-    if (data?.value) {
-      return data.value;
-    }
-  } catch (e) {
-    console.warn('[ProcessCalendar] Could not fetch system email from config:', e.message);
-  }
-
-  return process.env.SYSTEM_ACCOUNT_EMAIL || 'unicorn@isehome.com';
-}
-
-// Get app-only access token for Graph API
-async function getAppToken() {
-  const tokenUrl = `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/oauth2/v2.0/token`;
-
-  const params = new URLSearchParams({
-    client_id: process.env.AZURE_CLIENT_ID,
-    client_secret: process.env.AZURE_CLIENT_SECRET,
-    scope: 'https://graph.microsoft.com/.default',
-    grant_type: 'client_credentials'
-  });
-
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString()
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to get app token: ${await response.text()}`);
-  }
-
-  const data = await response.json();
-  return data.access_token;
-}
+const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
 // Get calendar event details including attendee responses
 async function getEventDetails(token, userEmail, eventId) {
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}?$select=id,subject,attendees,organizer`,
+    `${GRAPH_BASE}/users/${userEmail}/events/${eventId}?$select=id,subject,attendees,organizer`,
     {
       headers: { 'Authorization': `Bearer ${token}` }
     }
@@ -80,7 +39,9 @@ async function getEventDetails(token, userEmail, eventId) {
     if (response.status === 404) {
       return null; // Event was deleted
     }
-    throw new Error(`Failed to get event: ${await response.text()}`);
+    const errorText = await response.text();
+    console.error(`[ProcessCalendar] Failed to get event ${eventId}:`, response.status, errorText);
+    throw new Error(`Failed to get event: ${response.status}`);
   }
 
   return response.json();
@@ -120,7 +81,7 @@ async function addCustomerToEvent(token, userEmail, eventId, customerEmail, cust
   }
 
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}`,
+    `${GRAPH_BASE}/users/${userEmail}/events/${eventId}`,
     {
       method: 'PATCH',
       headers: {
@@ -154,7 +115,7 @@ async function finalizeEvent(token, userEmail, eventId) {
     .trim();
 
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}`,
+    `${GRAPH_BASE}/users/${userEmail}/events/${eventId}`,
     {
       method: 'PATCH',
       headers: {
@@ -178,7 +139,7 @@ async function finalizeEvent(token, userEmail, eventId) {
 // Cancel/delete a calendar event
 async function cancelEvent(token, userEmail, eventId) {
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}/cancel`,
+    `${GRAPH_BASE}/users/${userEmail}/events/${eventId}/cancel`,
     {
       method: 'POST',
       headers: {
@@ -351,6 +312,128 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
   return { applied: true, action };
 }
 
+// Main processing function - exported for reuse
+async function processCalendarResponses(scheduleIds = null) {
+  const token = await getAppToken();
+  const systemEmail = await getSystemAccountEmail();
+
+  console.log(`[ProcessCalendar] Using system account: ${systemEmail}`);
+
+  // Build query for pending schedules
+  let query = supabase
+    .from('service_schedules')
+    .select(`
+      id,
+      ticket_id,
+      calendar_event_id,
+      schedule_status,
+      technician_id,
+      technician_name,
+      tech_calendar_response,
+      customer_calendar_response,
+      last_response_check_at
+    `)
+    .not('calendar_event_id', 'is', null);
+
+  // If specific schedule IDs provided, filter to those
+  if (scheduleIds && scheduleIds.length > 0) {
+    query = query.in('id', scheduleIds);
+  } else {
+    // Otherwise get all pending schedules
+    query = query.in('schedule_status', ['pending_tech', 'pending_customer']);
+  }
+
+  const { data: pendingSchedules, error: fetchError } = await query
+    .order('created_at', { ascending: true })
+    .limit(20);
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  console.log(`[ProcessCalendar] Found ${pendingSchedules?.length || 0} schedules to check`);
+
+  // Get all unique technician IDs to fetch their emails
+  const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
+  let technicianEmails = {};
+
+  if (technicianIds.length > 0) {
+    const { data: technicians } = await supabase
+      .from('team_members')
+      .select('id, email')
+      .in('id', technicianIds);
+
+    if (technicians) {
+      technicianEmails = Object.fromEntries(technicians.map(t => [t.id, t.email]));
+    }
+  }
+
+  console.log(`[ProcessCalendar] Loaded emails for ${Object.keys(technicianEmails).length} technicians`);
+
+  const results = {
+    checked: 0,
+    techAccepted: 0,
+    customerAccepted: 0,
+    declined: 0,
+    noChange: 0,
+    errors: 0,
+    schedules: []
+  };
+
+  for (const schedule of pendingSchedules || []) {
+    try {
+      // Add technician email from lookup
+      schedule.technician_email = technicianEmails[schedule.technician_id] || null;
+
+      // Get ticket details
+      const { data: ticket } = await supabase
+        .from('service_tickets')
+        .select('id, customer_email, customer_name, customer_phone, title')
+        .eq('id', schedule.ticket_id)
+        .single();
+
+      if (!ticket) {
+        console.log(`[ProcessCalendar] No ticket found for schedule ${schedule.id}`);
+        continue;
+      }
+
+      // Process the schedule
+      const result = await processSchedule(token, systemEmail, schedule, ticket);
+
+      // Apply the result
+      const applied = await applyResult(token, systemEmail, result, schedule, ticket);
+
+      // Update counters
+      results.checked++;
+      if (result.action === 'tech_accepted') results.techAccepted++;
+      else if (result.action === 'customer_accepted') results.customerAccepted++;
+      else if (result.action.includes('declined') || result.action === 'event_deleted') results.declined++;
+      else results.noChange++;
+
+      // Track individual schedule results
+      results.schedules.push({
+        id: schedule.id,
+        action: result.action,
+        newStatus: result.newStatus,
+        techResponse: result.techResponse,
+        customerResponse: result.customerResponse
+      });
+
+    } catch (error) {
+      console.error(`[ProcessCalendar] Error processing schedule ${schedule.id}:`, error);
+      results.errors++;
+      results.schedules.push({
+        id: schedule.id,
+        action: 'error',
+        error: error.message
+      });
+    }
+  }
+
+  return results;
+}
+
+// Export the processing function for reuse
 module.exports = async (req, res) => {
   // Verify cron secret for Vercel cron jobs
   const authHeader = req.headers.authorization;
@@ -361,106 +444,14 @@ module.exports = async (req, res) => {
     }
   }
 
-  console.log('[ProcessCalendar] Starting calendar response processing (polling mode)');
+  console.log('[ProcessCalendar] Starting calendar response processing');
 
   try {
-    const token = await getAppToken();
-    const systemEmail = await getSystemAccountEmail();
-
-    console.log(`[ProcessCalendar] Using system account: ${systemEmail}`);
-
-    // Find schedules that are pending responses
-    const { data: pendingSchedules, error: fetchError } = await supabase
-      .from('service_schedules')
-      .select(`
-        id,
-        ticket_id,
-        calendar_event_id,
-        schedule_status,
-        technician_id,
-        technician_name,
-        tech_calendar_response,
-        customer_calendar_response,
-        last_response_check_at
-      `)
-      .in('schedule_status', ['pending_tech', 'pending_customer'])
-      .not('calendar_event_id', 'is', null)
-      .order('created_at', { ascending: true })
-      .limit(20);
-
-    if (fetchError) {
-      throw fetchError;
-    }
-
-    console.log(`[ProcessCalendar] Found ${pendingSchedules?.length || 0} pending schedules to check`);
-
-    // Get all unique technician IDs to fetch their emails
-    const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
-    let technicianEmails = {};
-
-    if (technicianIds.length > 0) {
-      const { data: technicians } = await supabase
-        .from('team_members')
-        .select('id, email')
-        .in('id', technicianIds);
-
-      if (technicians) {
-        technicianEmails = Object.fromEntries(technicians.map(t => [t.id, t.email]));
-      }
-    }
-
-    console.log(`[ProcessCalendar] Loaded emails for ${Object.keys(technicianEmails).length} technicians`);
-
-    const results = {
-      checked: 0,
-      techAccepted: 0,
-      customerAccepted: 0,
-      declined: 0,
-      noChange: 0,
-      errors: 0
-    };
-
-    for (const schedule of pendingSchedules || []) {
-      try {
-        // Add technician email from lookup
-        schedule.technician_email = technicianEmails[schedule.technician_id] || null;
-
-        // Get ticket details
-        const { data: ticket } = await supabase
-          .from('service_tickets')
-          .select('id, customer_email, customer_name, customer_phone, title')
-          .eq('id', schedule.ticket_id)
-          .single();
-
-        if (!ticket) {
-          console.log(`[ProcessCalendar] No ticket found for schedule ${schedule.id}`);
-          continue;
-        }
-
-        // Process the schedule
-        const result = await processSchedule(token, systemEmail, schedule, ticket);
-
-        // Apply the result
-        const applied = await applyResult(token, systemEmail, result, schedule, ticket);
-
-        // Update counters
-        results.checked++;
-        if (result.action === 'tech_accepted') results.techAccepted++;
-        else if (result.action === 'customer_accepted') results.customerAccepted++;
-        else if (result.action.includes('declined') || result.action === 'event_deleted') results.declined++;
-        else results.noChange++;
-
-      } catch (error) {
-        console.error(`[ProcessCalendar] Error processing schedule ${schedule.id}:`, error);
-        results.errors++;
-      }
-    }
-
+    const results = await processCalendarResponses();
     console.log('[ProcessCalendar] Processing complete:', results);
 
     return res.status(200).json({
       success: true,
-      systemEmail,
       ...results
     });
 
@@ -472,3 +463,6 @@ module.exports = async (req, res) => {
     });
   }
 };
+
+// Export the processing function for direct use
+module.exports.processCalendarResponses = processCalendarResponses;
