@@ -965,7 +965,7 @@ const WeeklyPlanning = () => {
   // Loading state
   if (loading) {
     return (
-      <div className={`min-h-screen bg-zinc-900 ${isEmbedded ? '' : 'pt-16'}`}>
+      <div className="min-h-screen bg-zinc-900">
         <div className="flex items-center justify-center h-[80vh]">
           <div className="text-center">
             <Loader2 size={48} className="animate-spin mx-auto mb-4 text-violet-500" />
@@ -977,7 +977,7 @@ const WeeklyPlanning = () => {
   }
 
   return (
-    <div className={`min-h-screen bg-zinc-900 flex flex-col ${isEmbedded ? 'h-screen' : 'pt-16'}`}>
+    <div className={`min-h-screen bg-zinc-900 flex flex-col ${isEmbedded ? 'h-screen' : ''}`}>
 
       {/* Header / Filter Bar */}
       <TechnicianFilterBar

@@ -21,7 +21,7 @@ module.exports = function (app) {
         }
 
         try {
-            const handler = require('../../api/system-account/send-meeting-invite');
+            const handler = require('../api/system-account/send-meeting-invite');
             await handler(req, res);
         } catch (error) {
             console.error('[setupProxy] send-meeting-invite error:', error);
@@ -39,7 +39,7 @@ module.exports = function (app) {
         }
 
         try {
-            const handler = require('../../api/system-account/send-cancellation');
+            const handler = require('../api/system-account/send-cancellation');
             await handler(req, res);
         } catch (error) {
             console.error('[setupProxy] send-cancellation error:', error);
@@ -58,7 +58,7 @@ module.exports = function (app) {
         }
 
         try {
-            const handler = require('../../api/system-account/check-responses');
+            const handler = require('../api/system-account/check-responses');
             await handler(req, res);
         } catch (error) {
             console.error('[setupProxy] check-responses error:', error);
