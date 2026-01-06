@@ -11,7 +11,7 @@
  *   - scheduleIds: Array of schedule IDs to check (if omitted, checks all pending)
  */
 
-const { processCalendarResponses } = require('../cron/process-calendar-responses');
+const { processCalendarResponses } = require('../_calendarResponseProcessor');
 
 module.exports = async (req, res) => {
   // Only allow POST
@@ -24,7 +24,7 @@ module.exports = async (req, res) => {
   try {
     const { scheduleIds } = req.body || {};
 
-    // Use the same processing function as the cron job
+    // Use the shared processing function
     const results = await processCalendarResponses(scheduleIds);
 
     console.log('[CheckResponses] Check complete:', results);
