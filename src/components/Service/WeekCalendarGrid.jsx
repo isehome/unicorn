@@ -5,7 +5,7 @@
  */
 
 import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { Clock, ExternalLink, User, AlertCircle, Trash2, Check, X, Send, Edit3, Lock } from 'lucide-react';
+import { Clock, AlertCircle, Send } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 
 // Constants
@@ -333,18 +333,7 @@ const ScheduleBlock = memo(({
       }}
       onClick={() => onClick?.(schedule)}
     >
-      {/* Technician Avatar - top right corner */}
-      {technicianName && (
-        <div
-          className="absolute -top-2 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shadow-md border border-zinc-800 z-10"
-          style={{ backgroundColor: technicianColor, color: '#fff' }}
-          title={technicianName}
-        >
-          {technicianInitials}
-        </div>
-      )}
-
-      {/* Header row - customer name and category */}
+      {/* Header row - customer name, category, and technician avatar */}
       <div className="flex items-center justify-between gap-1">
         <div className="flex items-center gap-1 min-w-0 flex-1">
           <span
@@ -366,44 +355,16 @@ const ScheduleBlock = memo(({
             </span>
           )}
         </div>
-        {/* Action buttons - visible on hover */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* Commit button - only for draft schedules */}
-          {isDraft && onCommit && (
-            <button
-              className="p-0.5 rounded hover:bg-green-500/20"
-              onClick={(e) => {
-                e.stopPropagation();
-                onCommit?.(schedule);
-              }}
-              title="Commit & send invite to technician"
-            >
-              <Send size={12} className="text-green-400 hover:text-green-300" />
-            </button>
-          )}
-          <button
-            className="p-0.5 rounded hover:bg-black/10"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit?.(schedule);
-            }}
-            title="Open ticket details"
+        {/* Technician Avatar - inside card, top right */}
+        {technicianName && (
+          <div
+            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+            style={{ backgroundColor: technicianColor, color: '#fff' }}
+            title={technicianName}
           >
-            <ExternalLink size={12} style={{ color: colors.text }} />
-          </button>
-          <button
-            className="p-0.5 rounded hover:bg-red-500/20"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (window.confirm('Delete this scheduled appointment? The ticket will return to the unscheduled list.')) {
-                onDelete?.(schedule);
-              }
-            }}
-            title="Delete schedule"
-          >
-            <Trash2 size={12} className="text-red-400 hover:text-red-300" />
-          </button>
-        </div>
+            {technicianInitials}
+          </div>
+        )}
       </div>
 
       {/* Time range and duration */}
