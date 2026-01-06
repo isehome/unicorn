@@ -1,19 +1,19 @@
 /**
  * Cron Job: Process Calendar Responses
  *
- * Processes queued Graph webhook notifications to detect when
- * technicians and customers accept/decline calendar invites.
+ * Polls pending service schedules and checks their calendar event
+ * attendee responses to advance the 3-step workflow.
  *
  * Workflow:
- * 1. Fetch unprocessed notifications from graph_change_notifications
- * 2. For each notification, get the calendar event details from Graph
+ * 1. Find schedules in 'pending_tech' or 'pending_customer' status
+ * 2. For each, fetch the calendar event from Graph API
  * 3. Check attendee response statuses
  * 4. Update service_schedules based on responses:
  *    - Tech accepts: status → pending_customer, add customer to invite
  *    - Customer accepts: status → confirmed
  *    - Anyone declines: status → cancelled, ticket → unscheduled
  *
- * Schedule: Every 2-3 minutes
+ * Schedule: Every 3 minutes (*/3 * * * *)
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -22,6 +22,25 @@ const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// Get system account email from config or fallback
+async function getSystemAccountEmail() {
+  try {
+    const { data } = await supabase
+      .from('app_configuration')
+      .select('value')
+      .eq('key', 'system_account_email')
+      .single();
+
+    if (data?.value) {
+      return data.value;
+    }
+  } catch (e) {
+    console.warn('[ProcessCalendar] Could not fetch system email from config:', e.message);
+  }
+
+  return process.env.SYSTEM_ACCOUNT_EMAIL || 'unicorn@isehome.com';
+}
 
 // Get app-only access token for Graph API
 async function getAppToken() {
@@ -49,9 +68,9 @@ async function getAppToken() {
 }
 
 // Get calendar event details including attendee responses
-async function getEventDetails(token, userId, eventId) {
+async function getEventDetails(token, userEmail, eventId) {
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userId}/events/${eventId}?$select=id,subject,attendees,organizer`,
+    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}?$select=id,subject,attendees,organizer`,
     {
       headers: { 'Authorization': `Bearer ${token}` }
     }
@@ -68,10 +87,19 @@ async function getEventDetails(token, userId, eventId) {
 }
 
 // Add customer as attendee to an existing event
-async function addCustomerToEvent(token, userId, eventId, customerEmail, customerName) {
+async function addCustomerToEvent(token, userEmail, eventId, customerEmail, customerName) {
   // First get current attendees
-  const event = await getEventDetails(token, userId, eventId);
+  const event = await getEventDetails(token, userEmail, eventId);
   if (!event) return null;
+
+  // Check if customer is already an attendee
+  const alreadyAdded = event.attendees?.some(
+    a => a.emailAddress?.address?.toLowerCase() === customerEmail.toLowerCase()
+  );
+  if (alreadyAdded) {
+    console.log(`[ProcessCalendar] Customer ${customerEmail} already an attendee`);
+    return event;
+  }
 
   // Add customer to attendees
   const updatedAttendees = [
@@ -87,12 +115,12 @@ async function addCustomerToEvent(token, userId, eventId, customerEmail, custome
 
   // Update subject to indicate waiting for customer
   let newSubject = event.subject;
-  if (newSubject.startsWith('[PENDING]')) {
-    newSubject = newSubject.replace('[PENDING]', '[AWAITING CUSTOMER]');
+  if (newSubject.startsWith('[Service]')) {
+    newSubject = newSubject.replace('[Service]', '[AWAITING CUSTOMER]');
   }
 
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userId}/events/${eventId}`,
+    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}`,
     {
       method: 'PATCH',
       headers: {
@@ -114,24 +142,19 @@ async function addCustomerToEvent(token, userId, eventId, customerEmail, custome
 }
 
 // Finalize event when customer confirms
-async function finalizeEvent(token, userId, eventId) {
-  const event = await getEventDetails(token, userId, eventId);
+async function finalizeEvent(token, userEmail, eventId) {
+  const event = await getEventDetails(token, userEmail, eventId);
   if (!event) return null;
 
   // Remove status prefix from subject
-  let newSubject = event.subject
-    .replace('[PENDING]', '')
-    .replace('[AWAITING CUSTOMER]', '')
-    .replace('[TENTATIVE]', '')
+  let newSubject = (event.subject || '')
+    .replace('[AWAITING CUSTOMER]', '[Service]')
+    .replace('[PENDING]', '[Service]')
+    .replace('[TENTATIVE]', '[Service]')
     .trim();
 
-  // Ensure it starts with "Service:"
-  if (!newSubject.startsWith('Service:')) {
-    newSubject = `Service: ${newSubject}`;
-  }
-
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userId}/events/${eventId}`,
+    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}`,
     {
       method: 'PATCH',
       headers: {
@@ -152,13 +175,19 @@ async function finalizeEvent(token, userId, eventId) {
   return response.json();
 }
 
-// Delete a calendar event
-async function deleteEvent(token, userId, eventId) {
+// Cancel/delete a calendar event
+async function cancelEvent(token, userEmail, eventId) {
   const response = await fetch(
-    `https://graph.microsoft.com/v1.0/users/${userId}/events/${eventId}`,
+    `https://graph.microsoft.com/v1.0/users/${userEmail}/events/${eventId}/cancel`,
     {
-      method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        comment: 'This service appointment has been cancelled.'
+      })
     }
   );
 
@@ -166,37 +195,23 @@ async function deleteEvent(token, userId, eventId) {
   return response.ok || response.status === 404;
 }
 
-// Process a single notification
-async function processNotification(token, notification, schedule, ticket) {
-  const { resource_id: eventId, change_type: changeType } = notification;
+// Process a single schedule
+async function processSchedule(token, systemEmail, schedule, ticket) {
+  const { calendar_event_id: eventId, schedule_status: currentStatus } = schedule;
 
-  console.log(`[ProcessCalendar] Processing notification for event ${eventId}, type: ${changeType}`);
-
-  // If event was deleted, handle accordingly
-  if (changeType === 'deleted') {
-    console.log(`[ProcessCalendar] Event ${eventId} was deleted externally`);
-    return {
-      action: 'cancelled',
-      reason: 'Event deleted externally'
-    };
+  if (!eventId) {
+    console.log(`[ProcessCalendar] Schedule ${schedule.id} has no calendar_event_id, skipping`);
+    return { action: 'skipped', reason: 'No calendar event' };
   }
 
-  // Get the subscription to find the user ID
-  const { data: subscription } = await supabase
-    .from('graph_subscriptions')
-    .select('user_id')
-    .eq('subscription_id', notification.subscription_id)
-    .single();
-
-  if (!subscription) {
-    return { action: 'skipped', reason: 'Subscription not found' };
-  }
+  console.log(`[ProcessCalendar] Processing schedule ${schedule.id}, status: ${currentStatus}, event: ${eventId}`);
 
   // Get event details including attendee responses
-  const event = await getEventDetails(token, subscription.user_id, eventId);
+  const event = await getEventDetails(token, systemEmail, eventId);
 
   if (!event) {
-    return { action: 'skipped', reason: 'Event not found' };
+    console.log(`[ProcessCalendar] Event ${eventId} not found (deleted externally?)`);
+    return { action: 'event_deleted', newStatus: 'cancelled' };
   }
 
   // Analyze attendee responses
@@ -218,14 +233,13 @@ async function processNotification(token, notification, schedule, ticket) {
     }
   }
 
-  console.log(`[ProcessCalendar] Responses - Tech: ${techResponse}, Customer: ${customerResponse}`);
+  console.log(`[ProcessCalendar] Schedule ${schedule.id} - Tech (${technicianEmail}): ${techResponse}, Customer (${customerEmail || 'N/A'}): ${customerResponse}`);
 
   // Determine action based on current status and responses
-  const currentStatus = schedule.schedule_status;
   let action = 'no_change';
   let newStatus = currentStatus;
 
-  // Check for declines first
+  // Check for declines first (from either party)
   if (techResponse === 'declined') {
     action = 'tech_declined';
     newStatus = 'cancelled';
@@ -233,11 +247,13 @@ async function processNotification(token, notification, schedule, ticket) {
     action = 'customer_declined';
     newStatus = 'cancelled';
   }
-  // Then check for acceptances
-  else if (currentStatus === 'pending_tech' && techResponse === 'accepted') {
+  // Check for tech acceptance (Step 1 → Step 2)
+  else if (currentStatus === 'pending_tech' && (techResponse === 'accepted' || techResponse === 'tentativelyaccepted')) {
     action = 'tech_accepted';
     newStatus = 'pending_customer';
-  } else if (currentStatus === 'pending_customer' && customerResponse === 'accepted') {
+  }
+  // Check for customer acceptance (Step 2 → Step 3)
+  else if (currentStatus === 'pending_customer' && (customerResponse === 'accepted' || customerResponse === 'tentativelyaccepted')) {
     action = 'customer_accepted';
     newStatus = 'confirmed';
   }
@@ -247,61 +263,68 @@ async function processNotification(token, notification, schedule, ticket) {
     newStatus,
     techResponse,
     customerResponse,
-    eventId,
-    userId: subscription.user_id
+    eventId
   };
 }
 
 // Apply the result of processing
-async function applyResult(token, result, schedule, ticket) {
-  const { action, newStatus, eventId, userId } = result;
+async function applyResult(token, systemEmail, result, schedule, ticket) {
+  const { action, newStatus, eventId } = result;
 
-  if (action === 'no_change') {
+  if (action === 'no_change' || action === 'skipped') {
     return { applied: false };
   }
 
   const updates = {
     schedule_status: newStatus,
     tech_calendar_response: result.techResponse,
-    customer_calendar_response: result.customerResponse
+    customer_calendar_response: result.customerResponse,
+    last_response_check_at: new Date().toISOString()
   };
 
   // Handle specific actions
   if (action === 'tech_accepted') {
     updates.technician_accepted_at = new Date().toISOString();
 
-    // Add customer to the calendar invite
+    // Add customer to the calendar invite (if they have email)
     if (ticket.customer_email) {
       try {
         await addCustomerToEvent(
           token,
-          userId,
+          systemEmail,
           eventId,
           ticket.customer_email,
           ticket.customer_name
         );
-        console.log(`[ProcessCalendar] Added customer ${ticket.customer_email} to event`);
+        console.log(`[ProcessCalendar] Added customer ${ticket.customer_email} to event ${eventId}`);
       } catch (err) {
-        console.error(`[ProcessCalendar] Failed to add customer:`, err);
+        console.error(`[ProcessCalendar] Failed to add customer to event:`, err);
+        // Continue anyway - we still update the schedule status
       }
+    } else {
+      // No customer email - skip to confirmed
+      console.log(`[ProcessCalendar] No customer email, auto-confirming schedule ${schedule.id}`);
+      updates.schedule_status = 'confirmed';
     }
   } else if (action === 'customer_accepted') {
     updates.customer_accepted_at = new Date().toISOString();
 
-    // Finalize the event (remove PENDING/TENTATIVE from subject)
+    // Finalize the event (update subject, show as busy)
     try {
-      await finalizeEvent(token, userId, eventId);
+      await finalizeEvent(token, systemEmail, eventId);
       console.log(`[ProcessCalendar] Finalized event ${eventId}`);
     } catch (err) {
       console.error(`[ProcessCalendar] Failed to finalize event:`, err);
     }
-  } else if (action === 'tech_declined' || action === 'customer_declined') {
-    // Delete the calendar event
-    try {
-      await deleteEvent(token, userId, eventId);
-      console.log(`[ProcessCalendar] Deleted event ${eventId}`);
-    } catch (err) {
-      console.error(`[ProcessCalendar] Failed to delete event:`, err);
+  } else if (action === 'tech_declined' || action === 'customer_declined' || action === 'event_deleted') {
+    // Cancel the calendar event (if it still exists)
+    if (action !== 'event_deleted') {
+      try {
+        await cancelEvent(token, systemEmail, eventId);
+        console.log(`[ProcessCalendar] Cancelled event ${eventId}`);
+      } catch (err) {
+        console.error(`[ProcessCalendar] Failed to cancel event:`, err);
+      }
     }
 
     // Return ticket to unscheduled (set status back to 'triaged')
@@ -324,7 +347,7 @@ async function applyResult(token, result, schedule, ticket) {
     return { applied: false, error: error.message };
   }
 
-  console.log(`[ProcessCalendar] Updated schedule ${schedule.id}: ${action}`);
+  console.log(`[ProcessCalendar] Updated schedule ${schedule.id}: ${action} → ${updates.schedule_status}`);
   return { applied: true, action };
 }
 
@@ -338,120 +361,78 @@ module.exports = async (req, res) => {
     }
   }
 
-  console.log('[ProcessCalendar] Starting calendar response processing');
+  console.log('[ProcessCalendar] Starting calendar response processing (polling mode)');
 
   try {
     const token = await getAppToken();
+    const systemEmail = await getSystemAccountEmail();
 
-    // Get unprocessed notifications with schedule and ticket details
-    const { data: notifications, error: fetchError } = await supabase
-      .from('graph_change_notifications')
+    console.log(`[ProcessCalendar] Using system account: ${systemEmail}`);
+
+    // Find schedules that are pending responses
+    const { data: pendingSchedules, error: fetchError } = await supabase
+      .from('service_schedules')
       .select(`
-        *,
-        service_schedules!schedule_id (
-          id,
-          schedule_status,
-          calendar_event_id,
-          technician_id,
-          technician_email,
-          ticket_id
-        )
+        id,
+        ticket_id,
+        calendar_event_id,
+        schedule_status,
+        technician_id,
+        technician_email,
+        technician_name,
+        tech_calendar_response,
+        customer_calendar_response,
+        last_response_check_at
       `)
-      .is('processed_at', null)
+      .in('schedule_status', ['pending_tech', 'pending_customer'])
+      .not('calendar_event_id', 'is', null)
       .order('created_at', { ascending: true })
-      .limit(50);
+      .limit(20);
 
     if (fetchError) {
       throw fetchError;
     }
 
-    console.log(`[ProcessCalendar] Found ${notifications?.length || 0} unprocessed notifications`);
+    console.log(`[ProcessCalendar] Found ${pendingSchedules?.length || 0} pending schedules to check`);
 
     const results = {
-      processed: 0,
+      checked: 0,
       techAccepted: 0,
       customerAccepted: 0,
       declined: 0,
-      skipped: 0,
+      noChange: 0,
       errors: 0
     };
 
-    for (const notification of notifications || []) {
+    for (const schedule of pendingSchedules || []) {
       try {
-        // Find the schedule by calendar_event_id if not joined
-        let schedule = notification.service_schedules;
-
-        if (!schedule && notification.resource_id) {
-          const { data: foundSchedule } = await supabase
-            .from('service_schedules')
-            .select('*')
-            .eq('calendar_event_id', notification.resource_id)
-            .single();
-          schedule = foundSchedule;
-        }
-
-        if (!schedule) {
-          console.log(`[ProcessCalendar] No schedule found for event ${notification.resource_id}`);
-          await supabase
-            .from('graph_change_notifications')
-            .update({
-              processed_at: new Date().toISOString(),
-              processed_result: 'skipped',
-              error_message: 'No matching schedule found'
-            })
-            .eq('id', notification.id);
-          results.skipped++;
-          continue;
-        }
-
         // Get ticket details
         const { data: ticket } = await supabase
           .from('service_tickets')
-          .select('*')
+          .select('id, customer_email, customer_name, customer_phone, title')
           .eq('id', schedule.ticket_id)
           .single();
 
         if (!ticket) {
           console.log(`[ProcessCalendar] No ticket found for schedule ${schedule.id}`);
-          results.skipped++;
           continue;
         }
 
-        // Process the notification
-        const result = await processNotification(token, notification, schedule, ticket);
+        // Process the schedule
+        const result = await processSchedule(token, systemEmail, schedule, ticket);
 
         // Apply the result
-        const applied = await applyResult(token, result, schedule, ticket);
-
-        // Mark notification as processed
-        await supabase
-          .from('graph_change_notifications')
-          .update({
-            processed_at: new Date().toISOString(),
-            processed_result: applied.applied ? 'success' : 'skipped',
-            schedule_id: schedule.id
-          })
-          .eq('id', notification.id);
+        const applied = await applyResult(token, systemEmail, result, schedule, ticket);
 
         // Update counters
-        results.processed++;
+        results.checked++;
         if (result.action === 'tech_accepted') results.techAccepted++;
         else if (result.action === 'customer_accepted') results.customerAccepted++;
-        else if (result.action.includes('declined')) results.declined++;
-        else results.skipped++;
+        else if (result.action.includes('declined') || result.action === 'event_deleted') results.declined++;
+        else results.noChange++;
 
       } catch (error) {
-        console.error(`[ProcessCalendar] Error processing notification ${notification.id}:`, error);
-
-        await supabase
-          .from('graph_change_notifications')
-          .update({
-            processed_at: new Date().toISOString(),
-            processed_result: 'error',
-            error_message: error.message
-          })
-          .eq('id', notification.id);
-
+        console.error(`[ProcessCalendar] Error processing schedule ${schedule.id}:`, error);
         results.errors++;
       }
     }
@@ -460,6 +441,7 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      systemEmail,
       ...results
     });
 
