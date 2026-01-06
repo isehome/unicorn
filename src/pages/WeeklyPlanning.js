@@ -372,6 +372,17 @@ const WeeklyPlanning = () => {
       return;
     }
 
+    // PREVENT DUPLICATE: Check if ticket already has an active schedule (not a reschedule)
+    if (!isReschedule && ticket.id) {
+      const existingSchedule = weekSchedules.find(
+        s => s.ticket_id === ticket.id && s.status !== 'cancelled'
+      );
+      if (existingSchedule) {
+        setError(`This ticket already has a schedule on ${existingSchedule.scheduled_date}. Remove the existing schedule first or drag the existing card to reschedule.`);
+        return;
+      }
+    }
+
     // IMPORTANT: Fetch fresh ticket data from database to get latest estimated_hours
     // The drag data might be stale if triage was updated after the panel loaded
     let freshTicket = ticket;
@@ -848,27 +859,26 @@ const WeeklyPlanning = () => {
     try {
       console.log('[WeeklyPlanning] Removing schedule:', schedule.id);
 
-      // Send cancellation email if schedule was committed (has a calendar_event_id)
-      if (schedule.calendar_event_id && schedule.technician_id && authContext) {
-        const technician = technicians.find(t => t.id === schedule.technician_id);
-        if (technician?.email) {
-          try {
-            console.log('[WeeklyPlanning] Sending cancellation email to:', technician.email);
-            const ticket = schedule.ticket || {};
-            await sendMeetingCancellationEmail(authContext, {
-              eventId: schedule.calendar_event_id,
-              technicianEmail: technician.email,
-              technicianName: schedule.technician_name || technician.full_name,
-              customerName: ticket.customer_name,
-              scheduledDate: schedule.scheduled_date,
-              startTime: schedule.scheduled_time_start,
-              scheduleId: schedule.id
-            });
-            console.log('[WeeklyPlanning] Calendar event cancelled');
-          } catch (emailErr) {
-            console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
-            // Continue anyway - don't block the removal
-          }
+      // Cancel calendar event if schedule was committed (has a calendar_event_id)
+      // Note: We use system account API which doesn't require user authContext
+      if (schedule.calendar_event_id) {
+        try {
+          const technician = technicians.find(t => t.id === schedule.technician_id);
+          const ticket = schedule.ticket || {};
+          console.log('[WeeklyPlanning] Cancelling calendar event:', schedule.calendar_event_id);
+          await sendMeetingCancellationEmail(null, {
+            eventId: schedule.calendar_event_id,
+            technicianEmail: technician?.email,
+            technicianName: schedule.technician_name || technician?.full_name,
+            customerName: ticket.customer_name,
+            scheduledDate: schedule.scheduled_date,
+            startTime: schedule.scheduled_time_start,
+            scheduleId: schedule.id
+          });
+          console.log('[WeeklyPlanning] Calendar event cancelled successfully');
+        } catch (emailErr) {
+          console.warn('[WeeklyPlanning] Failed to cancel calendar event:', emailErr);
+          // Continue anyway - don't block the removal
         }
       }
 
