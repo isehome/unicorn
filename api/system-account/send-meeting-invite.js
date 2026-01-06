@@ -61,9 +61,17 @@ module.exports = async (req, res) => {
     ].filter(Boolean).join('');
 
     // Build the datetime strings (ISO format)
-    // scheduledDate is "YYYY-MM-DD", startTime/endTime is "HH:MM"
-    const startDateTime = `${scheduledDate}T${startTime}:00`;
-    const endDateTime = `${scheduledDate}T${endTime}:00`;
+    // scheduledDate is "YYYY-MM-DD", startTime/endTime could be "HH:MM" or "HH:MM:SS"
+    // Normalize to HH:MM:SS format
+    const normalizeTime = (time) => {
+      if (!time) return '00:00:00';
+      const parts = time.split(':');
+      if (parts.length === 2) return `${time}:00`; // Add seconds if missing
+      return time; // Already has seconds
+    };
+
+    const startDateTime = `${scheduledDate}T${normalizeTime(startTime)}`;
+    const endDateTime = `${scheduledDate}T${normalizeTime(endTime)}`;
 
     // Create the calendar event with the technician as an attendee
     const eventPayload = {
