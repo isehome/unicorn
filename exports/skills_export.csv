@@ -1,0 +1,32 @@
+Category,Skill Name,Description,Sort Order
+network,Network Troubleshooting,Diagnose and resolve network connectivity issues,1
+network,Switch Configuration,Configure managed switches and VLANs,2
+network,Firewall Management,Configure and manage firewalls and security rules,3
+network,WiFi Installation,Install and configure wireless access points,4
+network,Network Cable Testing,Test and certify network cabling,5
+av,TV Mounting,Mount and install televisions,1
+av,Audio System Setup,Configure whole-home audio systems,2
+av,Home Theater Installation,Design and install home theater systems,3
+av,Video Distribution,Configure video matrix and distribution systems,4
+av,Projector Setup,Install and calibrate projectors,5
+shades,Motorized Shade Installation,Install motorized window treatments,1
+shades,Shade Programming,Program shade limits and scenes,2
+shades,Shade Motor Replacement,Replace shade motors and components,3
+control,Control4 Programming,Program Control4 systems,1
+control,Crestron Programming,Program Crestron systems,2
+control,Savant Programming,Program Savant systems,3
+control,Lutron Programming,Program Lutron lighting and shade systems,4
+control,Remote Troubleshooting,Troubleshoot and program remotes,5
+wiring,Low Voltage Wiring,Install low voltage structured wiring,1
+wiring,Cable Termination,Terminate RJ45 coax and other connectors,2
+wiring,Wire Pull and Fish,Pull wire through walls and ceilings,3
+wiring,Rack Building,Build and organize equipment racks,4
+installation,Equipment Rack Installation,Install and organize AV racks,1
+installation,In-Wall Speaker Installation,Cut and install in-wall/ceiling speakers,2
+installation,Outdoor Installation,Install outdoor audio and video equipment,3
+maintenance,Firmware Updates,Update device firmware and software,1
+maintenance,System Health Checks,Perform system diagnostics and health checks,2
+maintenance,Preventive Maintenance,Perform routine maintenance tasks,3
+general,Customer Communication,Professional customer interaction and explanation,1
+general,Documentation,Create accurate service documentation,2
+general,Safety Compliance,Follow safety protocols and procedures,3

@@ -127,6 +127,35 @@ async function commitFile(path, content, message, branch) {
 }
 
 /**
+ * Create or update a file with raw base64 content (for binary files like images)
+ */
+async function commitFileRaw(path, base64Content, message, branch) {
+  // Check if file exists to get SHA for update
+  const existingSha = await getFileSha(path, branch);
+
+  const body = {
+    message,
+    content: base64Content, // Already base64 encoded
+    branch
+  };
+
+  if (existingSha) {
+    body.sha = existingSha;
+  }
+
+  const data = await githubRequest(
+    `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${path}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    }
+  );
+
+  console.log(`[GitHub] Committed file (raw): ${path} on ${branch}`);
+  return data;
+}
+
+/**
  * Delete a file from the repository
  */
 async function deleteFile(path, message, branch = 'main') {
@@ -257,9 +286,10 @@ async function commitBugReport(bugId, markdownContent, screenshotBase64, summary
       ? screenshotBase64.split(',')[1]
       : screenshotBase64;
 
-    await commitFile(
+    // Commit the screenshot using raw base64 (commitFile will handle encoding)
+    await commitFileRaw(
       screenshotPath,
-      Buffer.from(base64Data, 'base64').toString('binary'),
+      base64Data,
       `Add screenshot for ${bugId}`,
       branchName
     );
@@ -391,6 +421,7 @@ module.exports = {
   getMainBranchSha,
   createBranch,
   commitFile,
+  commitFileRaw,
   deleteFile,
   createPullRequest,
   getPullRequestForBranch,

@@ -37,6 +37,9 @@ const SettingsPage = () => {
   });
   const [loggingOut, setLoggingOut] = useState(false);
 
+  // Admin access state - users need director+ role (level >= 60)
+  const [hasAdminAccess, setHasAdminAccess] = useState(false);
+
   // Avatar color state
   const [avatarColor, setAvatarColor] = useState('#8B5CF6');
   const [loadingAvatarColor, setLoadingAvatarColor] = useState(false);
@@ -47,33 +50,46 @@ const SettingsPage = () => {
   const displayName = user?.displayName || user?.full_name || user?.name || user?.email || 'User';
   const email = user?.email || '';
 
-  // Load user's current avatar color from profiles table (keyed by user.id)
-  const loadUserAvatarColor = useCallback(async () => {
+  // Role level helper - matches AdminPage.js logic
+  const getRoleLevel = (role) => {
+    const levels = { owner: 100, admin: 80, director: 60, manager: 40, technician: 20 };
+    return levels[role] || 0;
+  };
+
+  // Load user's profile data including avatar color and role
+  const loadUserProfile = useCallback(async () => {
     if (!user?.id || !supabase) return;
 
     try {
       setLoadingAvatarColor(true);
       const { data, error } = await supabase
         .from('profiles')
-        .select('avatar_color')
+        .select('avatar_color, role')
         .eq('id', user.id)
         .single();
 
       if (error) {
         console.log('[SettingsPage] Profile not found, will create on first save:', error.message);
-      } else if (data?.avatar_color) {
-        setAvatarColor(data.avatar_color);
+        setHasAdminAccess(false);
+      } else {
+        if (data?.avatar_color) {
+          setAvatarColor(data.avatar_color);
+        }
+        // Check if user has director+ role (level >= 60)
+        const roleLevel = getRoleLevel(data?.role);
+        setHasAdminAccess(roleLevel >= 60);
       }
     } catch (err) {
-      console.error('[SettingsPage] Failed to load avatar color:', err);
+      console.error('[SettingsPage] Failed to load profile:', err);
+      setHasAdminAccess(false);
     } finally {
       setLoadingAvatarColor(false);
     }
   }, [user?.id]);
 
   useEffect(() => {
-    loadUserAvatarColor();
-  }, [loadUserAvatarColor]);
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   // Handle avatar color change - saves directly to profiles table
   const handleAvatarColorChange = async (newColor) => {
@@ -296,24 +312,26 @@ const SettingsPage = () => {
       {/* AI Copilot Settings */}
       <AISettings />
 
-      {/* Admin Section */}
-      <section className="rounded-2xl border p-4" style={sectionStyles.card}>
-        <button
-          onClick={() => navigate('/admin')}
-          className="w-full flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-              <Shield size={20} className="text-amber-600 dark:text-amber-400" />
+      {/* Admin Section - Only shown for director+ roles */}
+      {hasAdminAccess && (
+        <section className="rounded-2xl border p-4" style={sectionStyles.card}>
+          <button
+            onClick={() => navigate('/admin')}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Shield size={20} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="text-left">
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Admin</h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Manage users, roles, integrations, and system settings</p>
+              </div>
             </div>
-            <div className="text-left">
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Admin</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Manage users, roles, integrations, and system settings</p>
-            </div>
-          </div>
-          <ChevronRight size={20} className="text-gray-400" />
-        </button>
-      </section>
+            <ChevronRight size={20} className="text-gray-400" />
+          </button>
+        </section>
+      )}
 
       <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
         <div>
