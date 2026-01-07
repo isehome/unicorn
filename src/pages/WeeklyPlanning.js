@@ -989,7 +989,7 @@ const WeeklyPlanning = () => {
   }
 
   return (
-    <div className={`min-h-screen bg-zinc-900 flex flex-col ${isEmbedded ? 'h-screen' : ''}`}>
+    <div className={`min-h-screen bg-zinc-900 flex flex-col ${isEmbedded ? 'h-screen' : '-mt-4 sm:-mt-6'}`}>
 
       {/* Header / Filter Bar */}
       <TechnicianFilterBar

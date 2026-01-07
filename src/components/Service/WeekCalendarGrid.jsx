@@ -318,7 +318,7 @@ const ScheduleBlock = memo(({
       draggable={isDraggable}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      className={`absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 hover:shadow-lg transition-all overflow-hidden group ${
+      className={`absolute left-1 right-1 rounded-lg border-l-4 px-2 py-1 hover:shadow-lg transition-all overflow-hidden ${
         isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
       } ${isDragging ? 'opacity-50 scale-95' : ''}`}
       style={{
@@ -329,6 +329,7 @@ const ScheduleBlock = memo(({
         zIndex: isDragging ? 50 : 20
       }}
       onClick={() => onClick?.(schedule)}
+      title={technicianName ? `Technician: ${technicianName}` : undefined}
     >
       {/* Header row - customer name, category, and technician avatar */}
       <div className="flex items-center justify-between gap-1">
@@ -401,10 +402,10 @@ const ScheduleBlock = memo(({
       )}
 
 
-      {/* Reschedule indicator */}
+      {/* Reschedule indicator - bottom left to avoid avatar */}
       {schedule.reschedule_requested_at && (
-        <div className="absolute top-1 right-1">
-          <AlertCircle size={12} className="text-amber-500" />
+        <div className="absolute bottom-1 left-1">
+          <AlertCircle size={12} className="text-amber-500" title="Reschedule requested" />
         </div>
       )}
     </div>
