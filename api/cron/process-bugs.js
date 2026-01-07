@@ -18,16 +18,38 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { analyzeWithGemini, generateMarkdown, generateSlug } = require('../bugs/analyze');
-const { commitBugReport } = require('../bugs/github');
-const { sendGraphEmail } = require('../_graphMail');
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
+// Lazy load these modules to avoid initialization errors
+let analyzeWithGemini, generateMarkdown, commitBugReport, sendGraphEmail;
+
+function loadModules() {
+  if (!analyzeWithGemini) {
+    const analyze = require('../bugs/analyze');
+    analyzeWithGemini = analyze.analyzeWithGemini;
+    generateMarkdown = analyze.generateMarkdown;
+  }
+  if (!commitBugReport) {
+    const github = require('../bugs/github');
+    commitBugReport = github.commitBugReport;
+  }
+  if (!sendGraphEmail) {
+    const graph = require('../_graphMail');
+    sendGraphEmail = graph.sendGraphEmail;
+  }
+}
+
+// Lazy initialize Supabase client
+let supabase;
+function getSupabase() {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
+    );
+  }
+  return supabase;
+}
 
 const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
 const MAX_BUGS_PER_RUN = 3; // Process up to 3 bugs per cron run to avoid timeouts
@@ -39,7 +61,7 @@ async function generateBugId() {
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
   // Count existing reports for today
-  const { count } = await supabase
+  const { count } = await getSupabase()
     .from('bug_reports')
     .select('*', { count: 'exact', head: true })
     .like('bug_report_id', `BR-${today}-%`);
@@ -160,12 +182,15 @@ function buildAnalysisEmailHtml(bugReport, analysis, bugId, prUrl) {
  * Process a single bug report
  */
 async function processBugReport(bugReport) {
+  // Load modules on first use
+  loadModules();
+
   const bugId = await generateBugId();
 
   console.log(`[ProcessBugs] Processing bug ${bugReport.id} as ${bugId}...`);
 
   // Update status to processing
-  await supabase
+  await getSupabase()
     .from('bug_reports')
     .update({
       status: 'processing',
@@ -224,7 +249,7 @@ async function processBugReport(bugReport) {
     }
 
     // Update database with results
-    await supabase
+    await getSupabase()
       .from('bug_reports')
       .update({
         status: 'analyzed',
@@ -243,7 +268,7 @@ async function processBugReport(bugReport) {
 
     // Clear screenshot from DB to save space (it's now in GitHub)
     if (githubResult) {
-      await supabase
+      await getSupabase()
         .from('bug_reports')
         .update({ screenshot_base64: null })
         .eq('id', bugReport.id);
@@ -255,7 +280,7 @@ async function processBugReport(bugReport) {
     console.error(`[ProcessBugs] Failed to process ${bugId}:`, error);
 
     // Update status to failed
-    await supabase
+    await getSupabase()
       .from('bug_reports')
       .update({
         status: 'failed',
@@ -292,7 +317,7 @@ module.exports = async (req, res) => {
 
   try {
     // Query pending bug reports
-    const { data: pendingBugs, error: fetchError } = await supabase
+    const { data: pendingBugs, error: fetchError } = await getSupabase()
       .from('bug_reports')
       .select('*')
       .eq('status', 'pending')
