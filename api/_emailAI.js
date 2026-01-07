@@ -7,19 +7,32 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { createClient } = require('@supabase/supabase-js');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Lazy-initialized clients
+let _supabase = null;
+let _genAI = null;
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+  return _supabase;
+}
+
+function getGenAI() {
+  if (!_genAI) {
+    _genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || process.env.GEMINI_API_KEY);
+  }
+  return _genAI;
+}
 
 /**
  * Get email agent configuration
  */
 async function getAgentConfig() {
-  const { data: configs } = await supabase
+  const { data: configs } = await getSupabase()
     .from('app_configuration')
     .select('key, value')
     .like('key', 'email_agent_%');
@@ -68,7 +81,7 @@ function shouldIgnoreEmail(fromEmail, ignoreDomains) {
 async function lookupCustomer(email) {
   if (!email) return null;
 
-  const { data: contact } = await supabase
+  const { data: contact } = await getSupabase()
     .from('global_contacts')
     .select('*')
     .ilike('email', email)
@@ -99,7 +112,7 @@ function isReplyToNotification(subject, body) {
  * Analyze email with Gemini AI
  */
 async function analyzeEmail(email, customer, config) {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const customerContext = customer
     ? `
@@ -218,7 +231,7 @@ async function generateReply(email, analysis, customer, config) {
   }
 
   // Otherwise generate a new one
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-1.5-flash' });
 
   const prompt = `${config.systemPrompt}
 

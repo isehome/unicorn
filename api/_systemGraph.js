@@ -13,11 +13,17 @@ const { createClient } = require('@supabase/supabase-js');
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
-// Supabase client
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Lazy-initialized Supabase client to avoid crashes at module load time
+let _supabase = null;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+  return _supabase;
+}
 
 // Azure AD configuration (same as existing MSAL setup)
 const config = {
@@ -100,7 +106,7 @@ async function getSystemAccountEmail() {
   }
 
   try {
-    const { data } = await supabase
+    const { data } = await getSupabase()
       .from('app_configuration')
       .select('value')
       .eq('key', 'system_account_email')
@@ -125,7 +131,7 @@ async function getSystemAccountEmail() {
  */
 async function logUsage(operation, target, success, error = null, metadata = {}) {
   try {
-    await supabase.from('system_account_usage_log').insert({
+    await getSupabase().from('system_account_usage_log').insert({
       operation,
       target,
       success,

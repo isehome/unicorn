@@ -13,10 +13,17 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { getAppToken, getSystemAccountEmail } = require('./_systemGraph');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Lazy-initialized Supabase client
+let _supabase = null;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+  return _supabase;
+}
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -489,7 +496,7 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
       }
     }
 
-    await supabase
+    await getSupabase()
       .from('service_tickets')
       .update({ status: 'triaged' })
       .eq('id', ticket.id);
@@ -497,7 +504,7 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
     console.log(`[CalendarProcessor] Returned ticket ${ticket.id} to unscheduled`);
   }
 
-  const { error } = await supabase
+  const { error } = await getSupabase()
     .from('service_schedules')
     .update(updates)
     .eq('id', schedule.id);
@@ -522,7 +529,7 @@ async function processCalendarResponses(scheduleIds = null) {
   console.log(`[CalendarProcessor] Using system account: ${systemEmail}`);
 
   // Build query for pending schedules
-  let query = supabase
+  let query = getSupabase()
     .from('service_schedules')
     .select(`
       id,
@@ -560,7 +567,7 @@ async function processCalendarResponses(scheduleIds = null) {
   let technicianEmails = {};
 
   if (technicianIds.length > 0) {
-    const { data: technicians } = await supabase
+    const { data: technicians } = await getSupabase()
       .from('contacts')
       .select('id, email')
       .in('id', technicianIds);
@@ -586,7 +593,7 @@ async function processCalendarResponses(scheduleIds = null) {
     try {
       schedule.technician_email = technicianEmails[schedule.technician_id] || null;
 
-      const { data: ticket } = await supabase
+      const { data: ticket } = await getSupabase()
         .from('service_tickets')
         .select('id, customer_email, customer_name, customer_phone, title, service_address')
         .eq('id', schedule.ticket_id)
