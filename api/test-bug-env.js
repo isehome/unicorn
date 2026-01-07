@@ -29,24 +29,24 @@ module.exports = async (req, res) => {
   }
 
   try {
-    require('./analyze');
-    importTests['./analyze'] = 'OK';
+    require('./bugs/analyze');
+    importTests['./bugs/analyze'] = 'OK';
   } catch (e) {
-    importTests['./analyze'] = 'FAILED: ' + e.message;
+    importTests['./bugs/analyze'] = 'FAILED: ' + e.message;
   }
 
   try {
-    require('./github');
-    importTests['./github'] = 'OK';
+    require('./bugs/github');
+    importTests['./bugs/github'] = 'OK';
   } catch (e) {
-    importTests['./github'] = 'FAILED: ' + e.message;
+    importTests['./bugs/github'] = 'FAILED: ' + e.message;
   }
 
   try {
-    require('../_graphMail');
-    importTests['../_graphMail'] = 'OK';
+    require('./_graphMail');
+    importTests['./_graphMail'] = 'OK';
   } catch (e) {
-    importTests['../_graphMail'] = 'FAILED: ' + e.message;
+    importTests['./_graphMail'] = 'FAILED: ' + e.message;
   }
 
   return res.json({
