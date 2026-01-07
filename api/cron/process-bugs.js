@@ -294,28 +294,28 @@ async function processBugReport(bugReport) {
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  console.log('[Cron] Starting bug reports processing job...');
-
-  // Check required environment variables
-  const missingEnvVars = [];
-  if (!process.env.GEMINI_API_KEY) missingEnvVars.push('GEMINI_API_KEY');
-  if (!process.env.GITHUB_TOKEN) missingEnvVars.push('GITHUB_TOKEN');
-  if (!process.env.SUPABASE_URL && !process.env.REACT_APP_SUPABASE_URL) missingEnvVars.push('SUPABASE_URL');
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) missingEnvVars.push('SUPABASE_SERVICE_ROLE_KEY');
-
-  if (missingEnvVars.length > 0) {
-    console.error('[Cron] Missing environment variables:', missingEnvVars);
-    return res.status(500).json({
-      error: 'Missing environment variables',
-      missing: missingEnvVars
-    });
-  }
-
+  // Wrap everything in try-catch to capture any error
   try {
+    if (req.method !== 'POST' && req.method !== 'GET') {
+      return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    console.log('[Cron] Starting bug reports processing job...');
+
+    // Check required environment variables
+    const missingEnvVars = [];
+    if (!process.env.GEMINI_API_KEY) missingEnvVars.push('GEMINI_API_KEY');
+    if (!process.env.GITHUB_TOKEN) missingEnvVars.push('GITHUB_TOKEN');
+    if (!process.env.SUPABASE_URL && !process.env.REACT_APP_SUPABASE_URL) missingEnvVars.push('SUPABASE_URL');
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) missingEnvVars.push('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (missingEnvVars.length > 0) {
+      console.error('[Cron] Missing environment variables:', missingEnvVars);
+      return res.status(500).json({
+        error: 'Missing environment variables',
+        missing: missingEnvVars
+      });
+    }
     // Query pending bug reports
     const { data: pendingBugs, error: fetchError } = await getSupabase()
       .from('bug_reports')
@@ -367,6 +367,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({
       success: false,
       error: error.message,
+      stack: error.stack,
       triggered_at: new Date().toISOString()
     });
   }
