@@ -4,7 +4,7 @@
  * Runs every 3 minutes to process pending bug reports with Gemini AI.
  *
  * Endpoint: POST /api/cron/process-bugs
- * Schedule: */3 * * * * (every 3 minutes)
+ * Schedule: every 3 minutes (cron: 0/3 * * * *)
  *
  * Flow:
  * 1. Query pending bug reports from database
