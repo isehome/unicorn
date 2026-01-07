@@ -3606,3 +3606,293 @@ npm install intuit-oauth
 | `qbo_customer_mapping` | **NEW** - QBO customer mappings |
 
 ---
+
+---
+
+## AI-Enhanced Bug Reporting System
+
+### Overview
+
+The bug reporting system captures user-reported issues and uses **Gemini AI** to analyze them, suggest specific code fixes, and create GitHub PRs for tracking. Bug reports are stored as markdown files in the Git repository.
+
+### Architecture Flow
+
+```
+User Reports Bug (BugReporter.js)
+        ↓
+    /api/bug-report
+        ↓
+    Saves to Supabase `bug_reports` table (status: pending)
+        ↓
+    Sends immediate "Bug Received" email
+        ↓
+    Returns to user immediately
+        ↓
+    [Background - every 3 minutes]
+        ↓
+    /api/cron/process-bugs picks up pending bugs
+        ↓
+    Gemini AI analyzes: screenshot + user description + console errors + code context
+        ↓
+    Generates markdown report with YAML frontmatter
+        ↓
+    Creates GitHub branch: bug-report/BR-YYYY-MM-DD-####
+        ↓
+    Commits .md file + screenshot
+        ↓
+    Opens Pull Request
+        ↓
+    Sends enhanced email with AI fix suggestions
+        ↓
+    Updates DB status to "analyzed"
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/components/BugReporter.js` | Frontend bug report modal (screenshot, voice input, console errors) |
+| `api/bug-report.js` | Initial submission endpoint - saves to queue |
+| `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
+| `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
+| `api/bugs/list.js` | List bugs with filtering/pagination |
+| `api/bugs/[id].js` | Get/Delete/Reanalyze single bug |
+| `api/cron/process-bugs.js` | Background processor (cron every 3 min) |
+| `src/components/Admin/BugTodosTab.js` | Admin UI for bug management |
+
+### Database Table: `bug_reports`
+
+```sql
+CREATE TABLE bug_reports (
+  id UUID PRIMARY KEY,
+  created_at TIMESTAMPTZ,
+  
+  -- Reporter
+  reported_by_email TEXT,
+  reported_by_name TEXT,
+  
+  -- Bug data
+  url TEXT NOT NULL,
+  user_agent TEXT,
+  description TEXT NOT NULL,
+  console_errors JSONB,
+  screenshot_base64 TEXT,
+  
+  -- Processing
+  status TEXT CHECK (status IN ('pending', 'processing', 'analyzed', 'failed')),
+  processed_at TIMESTAMPTZ,
+  processing_error TEXT,
+  
+  -- AI Results
+  bug_report_id TEXT,        -- BR-2026-01-07-0001
+  md_file_path TEXT,         -- bug-reports/2026-01/BR-...md
+  ai_summary TEXT,
+  ai_severity TEXT,
+  ai_suggested_files JSONB,
+  ai_fix_prompt TEXT,
+  
+  -- GitHub
+  pr_url TEXT,
+  pr_number INTEGER,
+  branch_name TEXT
+);
+```
+
+### Git Repository Structure
+
+```
+/bug-reports/
+  2026-01/
+    BR-2026-01-07-0001-login-button-broken.md
+    BR-2026-01-07-0002-schedule-not-saving.md
+  attachments/
+    BR-2026-01-07-0001/
+      screenshot.jpg
+    BR-2026-01-07-0002/
+      screenshot.jpg
+```
+
+### Markdown Bug Report Format (YAML Frontmatter)
+
+```yaml
+---
+id: BR-2026-01-07-0001
+title: "Login button not responding"
+status: new
+severity: high
+priority: p1
+reported_at: 2026-01-07T14:32:05Z
+reported_by: John Smith <john@example.com>
+app: unicorn
+area: auth
+environment:
+  url: https://unicorn.app/login
+  browser: "Chrome 121"
+  os: "macOS 14.2"
+labels: ["ui", "auth"]
+assignee: ""
+ai_analysis:
+  summary: "Login button onClick handler not bound correctly"
+  root_cause: "Missing async/await on auth call"
+  fix_prompt: |
+    In src/pages/Login.js line 45:
+    Change: onClick={handleLogin}
+    To: onClick={async () => await handleLogin()}
+  suggested_files:
+    - "src/pages/Login.js:45"
+  confidence: 0.85
+---
+
+## Summary
+...
+
+## AI Fix Prompt
+...
+```
+
+### AI Analysis Priority
+
+The AI analyzes bug reports with this priority:
+
+1. **User Description (PRIMARY)** - What the user said is wrong
+2. **Console Errors** - Technical errors captured
+3. **Screenshot** - Visual context
+4. **Source Code** - Relevant files based on URL
+
+The AI is instructed to treat the user's description as the PRIMARY source of truth, not just blindly analyze code/screenshots.
+
+### How AI Gets Code Context
+
+The system maps URL paths to source files using `api/bugs/analyze.js`:
+
+| URL Pattern | Primary File |
+|-------------|--------------|
+| `/admin` | `src/pages/AdminPage.js` |
+| `/service` | `src/components/Service/ServiceDashboard.js` |
+| `/service/tickets/:id` | `src/components/Service/ServiceTicketDetail.js` |
+| `/projects/:id/shades/:shadeId` | `src/pages/ShadeDetailPage.js` |
+| etc. | See PAGE_FILE_MAP in analyze.js |
+
+### Accessing Bug Reports for AI Tools
+
+#### Option 1: Query Database (Current Bugs)
+
+```javascript
+// From Supabase
+const { data: bugs } = await supabase
+  .from('bug_reports')
+  .select('*')
+  .eq('status', 'analyzed')
+  .order('created_at', { ascending: false });
+```
+
+#### Option 2: Read from Git Repository (Historical)
+
+Bug reports are committed as markdown files to the repository. You can read them directly:
+
+```bash
+# List all bug reports
+ls bug-reports/*/BR-*.md
+
+# Read a specific bug report
+cat bug-reports/2026-01/BR-2026-01-07-0001-login-button-broken.md
+
+# Search for bugs by keyword
+grep -r "auth" bug-reports/
+
+# Get bugs from last 7 days
+find bug-reports -name "*.md" -mtime -7
+```
+
+#### Option 3: GitHub API
+
+```bash
+# List bug report files via GitHub API
+curl -H "Authorization: Bearer $GITHUB_TOKEN" \
+  "https://api.github.com/repos/isehome/unicorn/contents/bug-reports"
+
+# Get a specific bug report content
+curl -H "Authorization: Bearer $GITHUB_TOKEN" \
+  "https://api.github.com/repos/isehome/unicorn/contents/bug-reports/2026-01/BR-2026-01-07-0001.md"
+```
+
+#### Option 4: Via Unicorn API Endpoints
+
+```bash
+# List bugs with filtering
+GET /api/bugs/list?status=analyzed&limit=20
+
+# Get single bug with full details
+GET /api/bugs/{uuid}
+
+# Response includes ai_fix_prompt, ai_suggested_files, etc.
+```
+
+### Using Bug Reports in AI Prompts
+
+When fixing bugs, you can provide context like:
+
+```
+I need to fix this bug:
+
+Bug ID: BR-2026-01-07-0001
+User Report: "The login button doesn't work when I click it"
+AI Analysis: Login button onClick handler not bound correctly
+Suggested Fix: In src/pages/Login.js line 45, add async/await
+Affected Files: src/pages/Login.js:45
+
+Please review the suggested fix and implement it.
+```
+
+### Admin UI: Bug Todos Tab
+
+Located at **Admin → Bug Todos** (9th tab)
+
+Features:
+- Stats cards: Pending | Analyzed | Failed | Total
+- Filter by status
+- Expandable bug cards showing:
+  - User description
+  - AI-suggested fix
+  - Affected files
+  - Console errors
+- Actions:
+  - **View Report** - Opens GitHub markdown file
+  - **Reanalyze** - Resets to pending for re-processing
+  - **Mark Fixed** - Deletes from GitHub + database
+
+### Environment Variables Required
+
+```
+GEMINI_API_KEY=xxx           # For AI analysis
+GITHUB_TOKEN=ghp_xxx         # For creating branches/PRs (needs repo write)
+BUG_REPORT_EMAIL=xxx         # Email recipient for bug reports
+```
+
+### Cron Job
+
+The bug processor runs every 3 minutes via Vercel cron:
+
+```json
+// vercel.json
+{
+  "crons": [
+    {
+      "path": "/api/cron/process-bugs",
+      "schedule": "*/3 * * * *"
+    }
+  ]
+}
+```
+
+### Workflow for Fixing Bugs
+
+1. **Bug submitted** → User sees "Bug report submitted! AI analysis will be sent shortly."
+2. **AI processes** → Within 3 minutes, creates GitHub PR
+3. **Developer reviews** → Opens PR, reads AI analysis
+4. **Implement fix** → Make changes based on `ai_fix_prompt`
+5. **Mark fixed** → Admin → Bug Todos → Mark Fixed (deletes .md file)
+
+Or merge the PR and delete the branch.
+
+---
