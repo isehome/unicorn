@@ -329,7 +329,6 @@ const ScheduleBlock = memo(({
         zIndex: isDragging ? 50 : 20
       }}
       onClick={() => onClick?.(schedule)}
-      title={technicianName ? `Technician: ${technicianName}` : undefined}
     >
       {/* Header row - customer name, category, and technician avatar */}
       <div className="flex items-center justify-between gap-1">
