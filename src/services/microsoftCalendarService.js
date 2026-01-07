@@ -33,13 +33,16 @@ const getDateRange = (date) => {
   };
 };
 
+// Use consistent timezone for all calendar operations
+// Service schedules are in Indianapolis, so use that timezone consistently
+// This ensures events display at the same time they were scheduled
+const SERVICE_TIMEZONE = 'America/Indiana/Indianapolis';
+
 const getTimeZone = () => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  } catch (error) {
-    console.warn('[Calendar] Failed to resolve timezone, defaulting to UTC', error);
-    return 'UTC';
-  }
+  // Always return the service timezone to ensure consistency
+  // between event creation (which uses America/Indiana/Indianapolis)
+  // and event fetching/display
+  return SERVICE_TIMEZONE;
 };
 
 const mapGraphEvent = (event) => ({

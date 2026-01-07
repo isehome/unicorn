@@ -11,61 +11,6 @@
 
 ---
 
-# 🚨🚨🚨 CRITICAL: AUTHENTICATION ARCHITECTURE 🚨🚨🚨
-
-## ⚠️ THIS APP USES MSAL - NOT SUPABASE AUTH ⚠️
-
-**READ THIS BEFORE WRITING ANY CODE THAT TOUCHES AUTH, RLS, OR USER DATA**
-
-| What | Reality |
-|------|---------|
-| **Authentication Provider** | Microsoft MSAL (Azure AD) |
-| **Supabase Auth Status** | ❌ NOT USED - DISABLED |
-| **`supabase.auth.getUser()`** | ❌ ALWAYS RETURNS `null` |
-| **`auth.uid()` in RLS** | ❌ ALWAYS `null` - WILL FAIL |
-| **`auth.jwt()` in RLS** | ❌ EMPTY - NO JWT FROM SUPABASE |
-| **`auth.role()` in RLS** | ⚠️ Returns `anon` for all requests |
-
-### 🔴 RLS POLICIES THAT WILL FAIL:
-```sql
--- ❌ THESE WILL ALWAYS BLOCK ALL REQUESTS:
-USING (auth.uid() = user_id)           -- auth.uid() is NULL
-USING (auth.role() = 'authenticated')  -- role is always 'anon'
-WITH CHECK (auth.jwt()->>'email' = ...)  -- jwt is empty
-```
-
-### ✅ RLS POLICIES THAT WORK:
-```sql
--- Option 1: Allow anon role (app handles security)
-USING (auth.role() IN ('anon', 'authenticated'))
-
--- Option 2: Disable RLS for admin tables (app handles security)
-ALTER TABLE my_admin_table DISABLE ROW LEVEL SECURITY;
-```
-
-### 🔑 HOW TO GET THE CURRENT USER:
-```javascript
-// ❌ WRONG - WILL ALWAYS BE NULL
-const { data: { user } } = await supabase.auth.getUser();
-
-// ✅ CORRECT - Use MSAL AuthContext
-import { useAuth } from '../contexts/AuthContext';
-const { user } = useAuth();  // Microsoft user from MSAL
-// user.id = Microsoft Graph ID (UUID)
-// user.email = user's email
-// user.displayName = "Full Name"
-```
-
-### 📋 CHECKLIST BEFORE WRITING DB CODE:
-- [ ] Am I using `useAuth()` hook to get user, NOT `supabase.auth`?
-- [ ] If I need RLS, am I using `anon` role or disabling RLS?
-- [ ] Am I passing `userId` explicitly from component to service?
-- [ ] Am I NOT creating foreign keys to `auth.users`?
-
-**If you forget this and use Supabase Auth patterns, you WILL get 401/42501 errors.**
-
----
-
 # PART 1: WHAT THIS APP IS
 
 ## Overview
@@ -2243,159 +2188,27 @@ The Gemini API uses **camelCase** for all field names:
 }
 ```
 
-### Available Models (Updated 2026-01-04)
+### Available Models
 | Model ID | Description | Status |
 |----------|-------------|--------|
-| `gemini-2.5-flash-native-audio-preview-12-2025` | Native audio, best quality | **CURRENT DEFAULT** |
-| `gemini-2.0-flash-exp` | Text + audio, supports transcription | Fallback option |
+| `gemini-2.5-flash-native-audio-preview-09-2025` | Latest, best audio quality | **Recommended** |
+| `gemini-2.0-flash-live-001` | Stable fallback | Deprecated Dec 2025 |
 
 Users can select their model in Settings > AI Copilot Settings.
 
-### 🎯 WORKING VOICE BASELINE (2026-01-05)
-
-⚠️ **DO NOT MODIFY THIS WORKING CONFIGURATION WITHOUT TESTING**
-
-The voice module is working with bidirectional audio. This is the PROVEN baseline.
-
-**Files:**
-- `src/contexts/AIBrainContext.js` - Main voice implementation (WORKING)
-- `src/components/Admin/VoiceTestPanel.js` - Voice tuning panel (WORKING)
-
----
-
-#### Complete Working Setup Config
-
-```javascript
-// AIBrainContext.js - getSettings() function
-const getSettings = useCallback(() => ({
-    voice: localStorage.getItem('ai_voice') || 'Puck',
-    persona: localStorage.getItem('ai_persona') || 'brief',
-    customInstructions: localStorage.getItem('ai_custom_instructions') || '',
-    vadStartSensitivity: parseInt(localStorage.getItem('ai_vad_start') || '1', 10),
-    vadEndSensitivity: parseInt(localStorage.getItem('ai_vad_end') || '2', 10),
-}), []);
-
-// Model
-const DEFAULT_MODEL = 'gemini-2.5-flash-native-audio-preview-12-2025';
-
-// Full setup config sent to WebSocket
-const setupConfig = {
-    setup: {
-        model: `models/${selectedModel}`,
-        generationConfig: {
-            responseModalities: ['AUDIO'],  // AUDIO ONLY - never TEXT
-            speechConfig: {
-                voiceConfig: {
-                    prebuiltVoiceConfig: { voiceName: voiceSettings.voice }
-                }
-            }
-        },
-        // NOTE: NO transcription configs - they break connections
-        systemInstruction: { parts: [{ text: buildSystemInstruction() }] },
-        tools: [{
-            functionDeclarations: tools.map(t => ({
-                name: t.name,
-                description: t.description,
-                parameters: t.parameters
-            }))
-        }],
-        realtimeInputConfig: {
-            automaticActivityDetection: {
-                disabled: false,
-                // START: 1=HIGH (triggers easily), else LOW (needs clear speech)
-                startOfSpeechSensitivity: voiceSettings.vadStartSensitivity === 1
-                    ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
-                // END: 1=HIGH (quick cutoff), else LOW (patient, waits longer)
-                endOfSpeechSensitivity: voiceSettings.vadEndSensitivity === 1
-                    ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW',
-                // Fixed timing values - PROVEN TO WORK
-                prefixPaddingMs: 300,
-                // Base 1000ms + 500ms if patient mode (vadEnd=2)
-                silenceDurationMs: 1000 + (voiceSettings.vadEndSensitivity === 2 ? 500 : 0)
-            }
-        }
-    }
-};
-```
-
----
-
-#### localStorage Keys
-
-| Key | Default | Values | Purpose |
-|-----|---------|--------|---------|
-| `ai_voice` | `'Puck'` | Puck, Charon, Kore, Fenrir, Aoede | Voice selection |
-| `ai_persona` | `'brief'` | brief, detailed | Response style |
-| `ai_vad_start` | `'1'` | 1=HIGH, 2=LOW | Speech trigger sensitivity |
-| `ai_vad_end` | `'2'` | 1=HIGH (quick), 2=LOW (patient) | End-of-speech detection |
-| `ai_model` | (uses DEFAULT_MODEL) | Model ID | Model override |
-| `ai_custom_instructions` | `''` | Any text | Custom prompt additions |
-
----
-
-#### Audio Settings (PROVEN WORKING)
-
-| Setting | Value | Notes |
-|---------|-------|-------|
-| Input sample rate | 16kHz | PCM16 mono to Gemini |
-| Output sample rate | 24kHz | PCM16 mono from Gemini |
-| Channel count | 1 (mono) | Required |
-| Echo cancellation | true | Prevents feedback |
-| Noise suppression | true | Cleaner audio |
-
----
-
-#### Timing Values (Current Baseline)
-
-| Parameter | Value | Effect |
-|-----------|-------|--------|
-| `prefixPaddingMs` | 300 | Catches beginning of utterance |
-| `silenceDurationMs` | 1000-1500 | Base 1000ms + 500ms if patient mode |
-
----
-
-#### What Works ✅
-
-- Microphone capture and streaming to Gemini
-- Audio playback from Gemini responses
-- Tool/function calling (5 meta-tools)
-- VAD (voice activity detection) with HIGH/LOW only
-- Training mode with specialized prompts
-- Brain training transcript capture
-
-#### What Doesn't Work ❌ (Google bugs)
-
-- Native transcription with gemini-2.5 (outputAudioTranscription/inputAudioTranscription)
-- MEDIUM sensitivity values (causes 1007 errors)
-- TEXT modality with native audio model
-
 ### VAD (Voice Activity Detection) Settings
-
-⚠️ **CRITICAL: Only HIGH and LOW work with gemini-2.5-flash-native-audio!**
-- ❌ MEDIUM sensitivity causes WebSocket 1007 errors
-- ✅ Use only `START_SENSITIVITY_HIGH` or `START_SENSITIVITY_LOW`
-- ✅ Use only `END_SENSITIVITY_HIGH` or `END_SENSITIVITY_LOW`
-
 ```javascript
-// WORKING pattern from AIBrainContext - DO NOT CHANGE
 realtimeInputConfig: {
     automaticActivityDetection: {
         disabled: false,
-        // START: 1=HIGH (triggers easily), else LOW (needs clear speech)
-        startOfSpeechSensitivity: vadStartSensitivity === 1 ? 'START_SENSITIVITY_HIGH' : 'START_SENSITIVITY_LOW',
-        // END: 1=HIGH (quick cutoff), else LOW (patient, waits longer)
-        endOfSpeechSensitivity: vadEndSensitivity === 1 ? 'END_SENSITIVITY_HIGH' : 'END_SENSITIVITY_LOW',
-        // Fixed timing values that work
-        prefixPaddingMs: 300,
-        // Base 1000ms + 500ms if patient mode
-        silenceDurationMs: 1000 + (vadEndSensitivity === 2 ? 500 : 0)
+        // Use full enum names (not just "LOW" or "HIGH")
+        startOfSpeechSensitivity: "START_SENSITIVITY_LOW",   // Less sensitive to background noise
+        endOfSpeechSensitivity: "END_SENSITIVITY_HIGH",      // Waits longer before ending turn
+        prefixPaddingMs: 100,   // Wait before committing speech start
+        silenceDurationMs: 500  // Silence duration before end of speech
     }
 }
 ```
-
-**Settings stored in localStorage:**
-- `ai_vad_start`: 1=HIGH (sensitive), 2=LOW (requires clear speech)
-- `ai_vad_end`: 1=HIGH (quick response), 2=LOW (patient, waits longer)
 
 ### Tool Declaration Format
 ```javascript

@@ -249,9 +249,6 @@ const ScheduleBlock = memo(({
   const isDraggable = colors.isDraggable !== false;
   const isDraft = status === 'draft' || status === 'tentative';
 
-  // Get status icon component
-  const StatusIcon = status === 'confirmed' ? Check : (status === 'cancelled' ? X : Clock);
-
   // Get technician info
   const technicianName = schedule.technician_name || ticket.assigned_to_name || '';
   const technicianInitials = getInitials(technicianName);

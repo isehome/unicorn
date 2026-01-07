@@ -163,81 +163,143 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
   const startTime = schedule.scheduled_time_start?.slice(0, 5) || '00:00';
   const endTime = schedule.scheduled_time_end?.slice(0, 5) || '00:00';
 
-  const emailBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); padding: 24px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">Service Appointment Confirmation</h1>
-      </div>
+  // Brand colors from styleSystem.js
+  const BRAND_SUCCESS = '#94AF32';  // Olive green - primary action color
+  const BRAND_PRIMARY = '#8B5CF6';  // Violet - brand primary
+  const BRAND_DANGER = '#EF4444';   // Red - decline/cancel
 
-      <div style="padding: 24px; background: #ffffff;">
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-          Hello ${ticket.customer_name || 'Valued Customer'},
-        </p>
+  // Logo URL - use production domain for email compatibility
+  const logoUrl = 'https://unicorn-one.vercel.app/android-chrome-192x192.png';
 
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-          Your service technician has confirmed their availability for your appointment. Please confirm this time works for you.
-        </p>
+  // Use table-based layout for maximum email client compatibility
+  // Inline styles throughout - no CSS classes
+  const emailBody = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Your Service Appointment</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #18181B; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #18181B;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; background-color: #27272A; border-radius: 12px; overflow: hidden;">
 
-        <div style="background: #f3f4f6; border-radius: 8px; padding: 20px; margin: 24px 0;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Date:</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${dateStr}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Time:</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${startTime} - ${endTime}</td>
-            </tr>
-            ${schedule.technician_name ? `
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Technician:</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${schedule.technician_name}</td>
-            </tr>
-            ` : ''}
-            ${ticket.service_address ? `
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Location:</td>
-              <td style="padding: 8px 0; color: #111827; font-size: 14px; font-weight: 600;">${ticket.service_address}</td>
-            </tr>
-            ` : ''}
-          </table>
-        </div>
+          <!-- Header with Logo -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #18181B 0%, #27272A 100%); padding: 30px 40px; text-align: center; border-bottom: 3px solid ${BRAND_PRIMARY};">
+              <img src="${logoUrl}" alt="Intelligent Systems" width="60" height="60" style="display: block; margin: 0 auto 16px auto; border-radius: 12px;">
+              <h1 style="color: #FAFAFA; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">INTELLIGENT SYSTEMS</h1>
+              <p style="color: #A1A1AA; margin: 8px 0 0 0; font-size: 14px;">Field Operations</p>
+            </td>
+          </tr>
 
-        <p style="color: #374151; font-size: 16px; line-height: 1.6; text-align: center; margin-bottom: 24px;">
-          <strong>Please confirm your appointment:</strong>
-        </p>
+          <!-- Action Required Banner -->
+          <tr>
+            <td style="background-color: ${BRAND_SUCCESS}; padding: 16px 40px; text-align: center;">
+              <p style="color: #ffffff; margin: 0; font-size: 18px; font-weight: bold; letter-spacing: 0.5px;">⚡ ACTION REQUIRED</p>
+            </td>
+          </tr>
 
-        <div style="text-align: center; margin: 24px 0;">
-          <a href="${acceptUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 0 8px;">
-            ✓ Accept Appointment
-          </a>
-          <a href="${declineUrl}" style="display: inline-block; background: #ef4444; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; margin: 0 8px;">
-            ✗ Decline
-          </a>
-        </div>
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 40px; background-color: #ffffff;">
+              <p style="color: #18181B; font-size: 18px; line-height: 1.6; margin: 0 0 16px 0;">
+                Hello <strong>${ticket.customer_name || 'Valued Customer'}</strong>,
+              </p>
 
-        <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin-top: 24px;">
-          If the buttons above don't work, you can copy and paste this link into your browser:<br>
-          <span style="color: #4f46e5; word-break: break-all;">${acceptUrl}</span>
-        </p>
+              <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0;">
+                Great news! Your service technician has confirmed their availability. Please confirm this appointment works for you.
+              </p>
 
-        <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
-          <em>Note: You may have also received a calendar invite. Accepting either the calendar invite or clicking the button above will confirm your appointment.</em>
-        </p>
-      </div>
+              <!-- Appointment Details Box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #F4F4F5; border-left: 4px solid ${BRAND_PRIMARY}; border-radius: 0 8px 8px 0; margin-bottom: 30px;">
+                <tr>
+                  <td style="padding: 24px;">
+                    <p style="color: ${BRAND_PRIMARY}; font-size: 12px; font-weight: bold; margin: 0 0 16px 0; text-transform: uppercase; letter-spacing: 1px;">Appointment Details</p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td style="padding: 10px 0; color: #71717A; font-size: 14px; width: 110px; vertical-align: top;">📅 Date:</td>
+                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${dateStr}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 10px 0; color: #71717A; font-size: 14px; vertical-align: top;">🕐 Time:</td>
+                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${startTime} - ${endTime}</td>
+                      </tr>
+                      ${schedule.technician_name ? `<tr>
+                        <td style="padding: 10px 0; color: #71717A; font-size: 14px; vertical-align: top;">👤 Technician:</td>
+                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${schedule.technician_name}</td>
+                      </tr>` : ''}
+                      ${ticket.service_address ? `<tr>
+                        <td style="padding: 10px 0; color: #71717A; font-size: 14px; vertical-align: top;">📍 Location:</td>
+                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${ticket.service_address}</td>
+                      </tr>` : ''}
+                    </table>
+                  </td>
+                </tr>
+              </table>
 
-      <div style="background: #f9fafb; padding: 16px 24px; text-align: center; border-top: 1px solid #e5e7eb;">
-        <p style="color: #6b7280; font-size: 12px; margin: 0;">
-          <strong style="color: #4f46e5;">INTELLIGENT SYSTEMS</strong> | Field Operations<br>
-          Questions? Reply to this email or call our office.
-        </p>
-      </div>
-    </div>
-  `;
+              <!-- Primary CTA Button - VERY PROMINENT -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px;">
+                <tr>
+                  <td align="center">
+                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                      <tr>
+                        <td align="center" style="background-color: ${BRAND_SUCCESS}; border-radius: 10px;">
+                          <a href="${acceptUrl}" style="display: block; padding: 20px 40px; color: #ffffff; text-decoration: none; font-weight: bold; font-size: 20px; text-align: center;">
+                            ✓ YES, CONFIRM MY APPOINTMENT
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Secondary decline link - subtle -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 30px;">
+                <tr>
+                  <td align="center" style="padding-top: 8px;">
+                    <a href="${declineUrl}" style="color: #71717A; font-size: 13px; text-decoration: underline;">I need to reschedule this appointment</a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Divider -->
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px;">
+                <tr>
+                  <td style="border-top: 1px solid #E4E4E7;"></td>
+                </tr>
+              </table>
+
+              <!-- Fallback Link - compact -->
+              <p style="color: #A1A1AA; font-size: 12px; line-height: 1.5; margin: 0;">
+                <strong>Button not working?</strong> Copy this link: <span style="color: ${BRAND_PRIMARY}; word-break: break-all;">${acceptUrl}</span>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #18181B; padding: 24px 40px; text-align: center;">
+              <p style="color: #71717A; font-size: 12px; margin: 0;">
+                Questions? Reply to this email or call our office.<br>
+                <span style="color: #52525B;">© Intelligent Systems Engineering</span>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 
   const emailPayload = {
     message: {
-      subject: `Please Confirm: Service Appointment on ${dateStr}`,
+      subject: `ACTION REQUIRED: Confirm Your Service Appointment - ${dateStr}`,
       body: {
         contentType: 'HTML',
         content: emailBody
@@ -249,7 +311,8 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
             name: ticket.customer_name || ticket.customer_email
           }
         }
-      ]
+      ],
+      importance: 'high'
     },
     saveToSentItems: true
   };
@@ -469,7 +532,10 @@ async function processCalendarResponses(scheduleIds = null) {
       technician_id,
       technician_name,
       tech_calendar_response,
-      customer_calendar_response
+      customer_calendar_response,
+      scheduled_date,
+      scheduled_time_start,
+      scheduled_time_end
     `)
     .not('calendar_event_id', 'is', null);
 
@@ -522,7 +588,7 @@ async function processCalendarResponses(scheduleIds = null) {
 
       const { data: ticket } = await supabase
         .from('service_tickets')
-        .select('id, customer_email, customer_name, customer_phone, title')
+        .select('id, customer_email, customer_name, customer_phone, title, service_address')
         .eq('id', schedule.ticket_id)
         .single();
 

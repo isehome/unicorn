@@ -374,8 +374,10 @@ const WeeklyPlanning = () => {
 
     // PREVENT DUPLICATE: Check if ticket already has an active schedule (not a reschedule)
     if (!isReschedule && ticket.id) {
-      const existingSchedule = weekSchedules.find(
-        s => s.ticket_id === ticket.id && s.status !== 'cancelled'
+      // Get all schedules from loaded weeks
+      const allSchedules = weeks.flatMap(w => w.schedules || []);
+      const existingSchedule = allSchedules.find(
+        s => s.ticket_id === ticket.id && s.schedule_status !== 'cancelled'
       );
       if (existingSchedule) {
         setError(`This ticket already has a schedule on ${existingSchedule.scheduled_date}. Remove the existing schedule first or drag the existing card to reschedule.`);
