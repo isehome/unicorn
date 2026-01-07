@@ -1,0 +1,578 @@
+/**
+ * Bug Report AI Analysis Module
+ *
+ * Uses Gemini to analyze bug reports with multimodal capabilities:
+ * - Screenshot analysis (visual context)
+ * - Console errors (technical context)
+ * - User description (intent context)
+ * - Relevant source code (code context)
+ *
+ * Generates specific fix suggestions with file paths and line numbers.
+ */
+
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('fs');
+const path = require('path');
+
+// Page to file mapping - maps URL routes to source files
+const PAGE_FILE_MAP = {
+  '/': {
+    primary: 'src/components/TechnicianDashboard.js',
+    related: ['src/services/projectService.js']
+  },
+  '/pm-dashboard': {
+    primary: 'src/components/PMDashboard.js',
+    related: ['src/services/projectService.js']
+  },
+  '/project/:id': {
+    primary: 'src/components/ProjectDetailView.js',
+    related: ['src/services/projectService.js']
+  },
+  '/pm/project/:projectId': {
+    primary: 'src/components/PMProjectView.js',
+    related: ['src/services/projectService.js', 'src/components/PM/']
+  },
+  '/pm-project/:projectId': {
+    primary: 'src/components/PMProjectView.js',
+    related: ['src/services/projectService.js', 'src/components/PM/']
+  },
+  '/wire-drops': {
+    primary: 'src/components/WireDropsHub.js',
+    related: ['src/services/wireDropService.js']
+  },
+  '/wire-drops/:id': {
+    primary: 'src/components/WireDropDetail.js',
+    related: ['src/services/wireDropService.js']
+  },
+  '/prewire-mode': {
+    primary: 'src/components/PrewireMode.js',
+    related: []
+  },
+  '/projects/:projectId/shades': {
+    primary: 'src/components/ShadeManager.js',
+    related: ['src/services/shadeService.js']
+  },
+  '/projects/:projectId/shades/:shadeId': {
+    primary: 'src/pages/ShadeDetailPage.js',
+    related: ['src/components/ShadeMeasurement.js', 'src/services/shadeService.js']
+  },
+  '/service': {
+    primary: 'src/components/Service/ServiceDashboard.js',
+    related: ['src/services/serviceService.js', 'api/service/']
+  },
+  '/service/tickets': {
+    primary: 'src/components/Service/ServiceTicketList.js',
+    related: ['src/services/serviceService.js']
+  },
+  '/service/tickets/new': {
+    primary: 'src/components/Service/NewTicketForm.js',
+    related: ['src/services/serviceService.js']
+  },
+  '/service/tickets/:id': {
+    primary: 'src/components/Service/ServiceTicketDetail.js',
+    related: ['src/services/serviceService.js', 'api/service/tickets.js']
+  },
+  '/service/weekly-planning': {
+    primary: 'src/components/Service/WeeklyPlanning.js',
+    related: ['src/services/scheduleService.js']
+  },
+  '/admin': {
+    primary: 'src/pages/AdminPage.js',
+    related: ['src/components/Admin/']
+  },
+  '/settings': {
+    primary: 'src/pages/SettingsPage.js',
+    related: []
+  },
+  '/people': {
+    primary: 'src/components/PeopleManagement.js',
+    related: ['src/services/contactService.js']
+  },
+  '/contacts/:contactId': {
+    primary: 'src/components/ContactDetailPage.js',
+    related: ['src/services/contactService.js']
+  },
+  '/todos': {
+    primary: 'src/components/TodosListPage.js',
+    related: ['src/services/todoService.js']
+  },
+  '/issues': {
+    primary: 'src/components/IssuesListPage.js',
+    related: ['src/services/issueService.js']
+  },
+  '/parts': {
+    primary: 'src/components/PartsListPage.js',
+    related: ['src/services/partsService.js']
+  },
+  '/global-parts': {
+    primary: 'src/components/GlobalPartsManager.js',
+    related: ['src/services/partsService.js']
+  },
+  '/vendors': {
+    primary: 'src/components/VendorManagement.js',
+    related: ['src/services/vendorService.js']
+  },
+  '/projects/:projectId/equipment': {
+    primary: 'src/components/EquipmentListPage.js',
+    related: ['src/services/equipmentService.js']
+  },
+  '/projects/:projectId/receiving': {
+    primary: 'src/components/PartsReceivingPage.js',
+    related: ['src/services/equipmentService.js']
+  },
+  '/projects/:projectId/procurement': {
+    primary: 'src/components/PM/PMProcurementPage.js',
+    related: ['src/services/procurementService.js']
+  },
+  '/projects/:projectId/floor-plan': {
+    primary: 'src/components/FloorPlanViewer.js',
+    related: []
+  },
+};
+
+/**
+ * Match a URL pathname to its page mapping
+ */
+function getPageMapping(pathname) {
+  // Try exact match first
+  if (PAGE_FILE_MAP[pathname]) {
+    return { pattern: pathname, ...PAGE_FILE_MAP[pathname] };
+  }
+
+  // Try pattern matching for dynamic routes
+  for (const [pattern, mapping] of Object.entries(PAGE_FILE_MAP)) {
+    if (pattern.includes(':')) {
+      const regex = new RegExp(
+        '^' + pattern.replace(/:[^/]+/g, '[^/]+') + '$'
+      );
+      if (regex.test(pathname)) {
+        return { pattern, ...mapping };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract pathname from a full URL
+ */
+function extractPathname(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.pathname;
+  } catch {
+    // If URL parsing fails, treat as pathname
+    return url.split('?')[0];
+  }
+}
+
+/**
+ * Read a source file safely
+ */
+function readSourceFile(filePath, rootDir) {
+  try {
+    const fullPath = path.join(rootDir, filePath);
+    if (fs.existsSync(fullPath)) {
+      const stats = fs.statSync(fullPath);
+      // Only read files, not directories, and limit size
+      if (stats.isFile() && stats.size < 100000) { // 100KB max
+        return fs.readFileSync(fullPath, 'utf8');
+      }
+    }
+  } catch (err) {
+    console.error(`[BugAnalyze] Failed to read ${filePath}:`, err.message);
+  }
+  return null;
+}
+
+/**
+ * Get code context for a bug report URL
+ */
+function getCodeContext(url, rootDir) {
+  const pathname = extractPathname(url);
+  const mapping = getPageMapping(pathname);
+
+  if (!mapping) {
+    return {
+      pathname,
+      files: [],
+      context: 'Unable to determine source files for this page.'
+    };
+  }
+
+  const files = [];
+  let context = '';
+
+  // Read primary file
+  const primaryContent = readSourceFile(mapping.primary, rootDir);
+  if (primaryContent) {
+    files.push(mapping.primary);
+    context += `\n### ${mapping.primary}\n\`\`\`javascript\n${primaryContent.slice(0, 15000)}\n\`\`\`\n`;
+  }
+
+  // Read related files (limited)
+  for (const related of (mapping.related || []).slice(0, 2)) {
+    // Skip directories
+    if (related.endsWith('/')) continue;
+
+    const relatedContent = readSourceFile(related, rootDir);
+    if (relatedContent) {
+      files.push(related);
+      context += `\n### ${related}\n\`\`\`javascript\n${relatedContent.slice(0, 8000)}\n\`\`\`\n`;
+    }
+  }
+
+  return {
+    pathname,
+    pattern: mapping.pattern,
+    files,
+    context: context || 'No source files found for code context.'
+  };
+}
+
+/**
+ * Extract area/category from URL
+ */
+function extractArea(url) {
+  const pathname = extractPathname(url);
+
+  if (pathname.includes('/service')) return 'service';
+  if (pathname.includes('/admin')) return 'admin';
+  if (pathname.includes('/project')) return 'projects';
+  if (pathname.includes('/shades')) return 'shades';
+  if (pathname.includes('/wire-drops') || pathname.includes('/prewire')) return 'wiring';
+  if (pathname.includes('/equipment') || pathname.includes('/parts')) return 'equipment';
+  if (pathname.includes('/people') || pathname.includes('/contacts')) return 'contacts';
+  if (pathname.includes('/settings')) return 'settings';
+
+  return 'general';
+}
+
+/**
+ * Parse user agent to extract browser/OS info
+ */
+function parseUserAgent(userAgent) {
+  if (!userAgent) return { browser: 'Unknown', os: 'Unknown' };
+
+  let browser = 'Unknown';
+  let os = 'Unknown';
+
+  // Detect browser
+  if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) {
+    const match = userAgent.match(/Chrome\/(\d+)/);
+    browser = match ? `Chrome ${match[1]}` : 'Chrome';
+  } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+    const match = userAgent.match(/Version\/(\d+)/);
+    browser = match ? `Safari ${match[1]}` : 'Safari';
+  } else if (userAgent.includes('Firefox')) {
+    const match = userAgent.match(/Firefox\/(\d+)/);
+    browser = match ? `Firefox ${match[1]}` : 'Firefox';
+  } else if (userAgent.includes('Edg')) {
+    const match = userAgent.match(/Edg\/(\d+)/);
+    browser = match ? `Edge ${match[1]}` : 'Edge';
+  }
+
+  // Detect OS
+  if (userAgent.includes('Windows')) {
+    os = 'Windows';
+  } else if (userAgent.includes('Mac OS X')) {
+    const match = userAgent.match(/Mac OS X (\d+[._]\d+)/);
+    os = match ? `macOS ${match[1].replace('_', '.')}` : 'macOS';
+  } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+    os = 'iOS';
+  } else if (userAgent.includes('Android')) {
+    os = 'Android';
+  } else if (userAgent.includes('Linux')) {
+    os = 'Linux';
+  }
+
+  return { browser, os };
+}
+
+/**
+ * Analyze a bug report with Gemini AI
+ *
+ * @param {Object} bugReport - The bug report data
+ * @param {string} bugReport.description - User's description
+ * @param {string} bugReport.screenshot_base64 - Screenshot as data URL
+ * @param {Array} bugReport.console_errors - Array of console errors
+ * @param {string} bugReport.url - Page URL
+ * @param {string} bugReport.user_agent - Browser user agent
+ * @param {string} rootDir - Root directory of the codebase
+ * @returns {Object} Analysis results
+ */
+async function analyzeWithGemini(bugReport, rootDir) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  // Initialize Gemini
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+  // Get code context
+  const codeContext = getCodeContext(bugReport.url, rootDir);
+
+  // Format console errors
+  const errorsText = bugReport.console_errors?.length > 0
+    ? bugReport.console_errors.join('\n\n')
+    : 'No console errors captured.';
+
+  // Parse environment info
+  const { browser, os } = parseUserAgent(bugReport.user_agent);
+  const area = extractArea(bugReport.url);
+
+  // Build prompt - USER DESCRIPTION FIRST for proper context
+  // The AI must understand what the user is reporting BEFORE analyzing screenshot/code
+  const textPrompt = `You are a senior software developer analyzing a bug report for the Unicorn app (a field service management application built with React).
+
+## CRITICAL: Read the User's Description First
+
+The user's description is THE PRIMARY SOURCE OF TRUTH for understanding this bug. Read it carefully before looking at anything else. The user knows what they were trying to do and what went wrong.
+
+---
+
+## User's Bug Report (READ THIS FIRST)
+
+"${bugReport.description}"
+
+---
+
+Now that you understand what the user is reporting, use the following supporting information to diagnose the issue:
+
+## Context
+- **Page URL:** ${bugReport.url}
+- **Area:** ${area}
+- **Browser:** ${browser}
+- **OS:** ${os}
+
+## Console Errors
+These errors were captured when the bug occurred:
+\`\`\`
+${errorsText}
+\`\`\`
+
+## Relevant Source Code
+Based on the page URL, here are the likely relevant source files:
+${codeContext.context}
+
+## Screenshot
+${bugReport.screenshot_base64 ? 'A screenshot is attached below. Use it to verify what the user described and look for visual clues.' : 'No screenshot was captured.'}
+
+---
+
+## Your Task
+
+Based on the user's description (the primary context), analyze the console errors, source code, and screenshot to:
+1. Understand exactly what the user was trying to do
+2. Identify what went wrong
+3. Find the root cause in the code
+4. Suggest a specific fix
+
+Provide your analysis as a JSON object:
+
+{
+  "summary": "One-line summary that reflects the user's actual problem",
+  "severity": "critical|high|medium|low",
+  "root_cause": "Technical explanation of what's causing the bug the user described",
+  "fix_prompt": "Detailed technical instructions for fixing this specific issue, including file paths and code changes",
+  "suggested_files": [
+    {
+      "file": "src/path/to/file.js",
+      "line": 123,
+      "description": "What to change in this file"
+    }
+  ],
+  "testing_steps": [
+    "Step 1 to verify the fix addresses what the user reported",
+    "Step 2 to verify no regressions"
+  ],
+  "labels": ["ui", "state", "api", "etc"],
+  "confidence": 0.85
+}
+
+Important:
+- Your summary should reflect what the USER reported, not just what you see in errors
+- The fix_prompt must address the user's actual problem
+- Be SPECIFIC about file paths and line numbers
+- If the user's description doesn't match what you see in errors/screenshot, note this discrepancy
+- Lower confidence if the user's description is vague or you can't pinpoint the cause
+
+Return ONLY valid JSON, no markdown formatting.`;
+
+  // Build content parts - TEXT FIRST, then image
+  // This ensures the AI reads the user's context before analyzing the screenshot
+  const parts = [];
+
+  // Add text prompt FIRST (contains user description and context)
+  parts.push({ text: textPrompt });
+
+  // Add screenshot AFTER text so AI has context for what to look for
+  if (bugReport.screenshot_base64) {
+    try {
+      // Extract base64 data from data URL
+      const base64Data = bugReport.screenshot_base64.includes(',')
+        ? bugReport.screenshot_base64.split(',')[1]
+        : bugReport.screenshot_base64;
+
+      parts.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: 'image/jpeg'
+        }
+      });
+    } catch (err) {
+      console.error('[BugAnalyze] Failed to process screenshot:', err.message);
+    }
+  }
+
+  // Call Gemini
+  const result = await model.generateContent(parts);
+  const response = await result.response;
+  const text = response.text();
+
+  // Parse JSON response
+  let analysis;
+  try {
+    const cleanedText = text
+      .replace(/```json\n?/g, '')
+      .replace(/```\n?/g, '')
+      .trim();
+    analysis = JSON.parse(cleanedText);
+  } catch (parseError) {
+    console.error('[BugAnalyze] Failed to parse Gemini response:', text);
+    // Return a basic analysis if parsing fails
+    analysis = {
+      summary: 'Unable to parse AI analysis',
+      severity: 'medium',
+      root_cause: 'AI response could not be parsed. Manual analysis required.',
+      fix_prompt: text, // Include raw response
+      suggested_files: codeContext.files.map(f => ({ file: f, description: 'Review this file' })),
+      testing_steps: ['Manually verify the fix'],
+      labels: [area],
+      confidence: 0.3
+    };
+  }
+
+  // Add metadata
+  return {
+    ...analysis,
+    analyzed_at: new Date().toISOString(),
+    code_files_analyzed: codeContext.files,
+    page_pattern: codeContext.pattern
+  };
+}
+
+/**
+ * Generate the slug for a bug report
+ */
+function generateSlug(description) {
+  return description
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 50)
+    .replace(/-+$/, '');
+}
+
+/**
+ * Generate markdown content for a bug report
+ */
+function generateMarkdown(bugReport, analysis, bugId) {
+  const { browser, os } = parseUserAgent(bugReport.user_agent);
+  const area = extractArea(bugReport.url);
+  const reportedAt = bugReport.created_at || new Date().toISOString();
+
+  const yaml = `---
+id: ${bugId}
+title: "${analysis.summary?.replace(/"/g, '\\"') || 'Bug Report'}"
+status: new
+severity: ${analysis.severity || 'medium'}
+priority: ${analysis.severity === 'critical' ? 'p0' : analysis.severity === 'high' ? 'p1' : 'p2'}
+reported_at: ${reportedAt}
+reported_by: ${bugReport.reported_by_name || 'Unknown'} <${bugReport.reported_by_email || 'unknown'}>
+app: unicorn
+area: ${area}
+environment:
+  url: ${bugReport.url}
+  browser: "${browser}"
+  os: "${os}"
+labels: [${(analysis.labels || [area]).map(l => `"${l}"`).join(', ')}]
+assignee: ""
+ai_analysis:
+  summary: "${analysis.summary?.replace(/"/g, '\\"') || ''}"
+  root_cause: "${analysis.root_cause?.replace(/"/g, '\\"').replace(/\n/g, ' ') || ''}"
+  fix_prompt: |
+    ${(analysis.fix_prompt || '').split('\n').join('\n    ')}
+  suggested_files:
+${(analysis.suggested_files || []).map(f => `    - "${f.file || f}${f.line ? ':' + f.line : ''}"`).join('\n') || '    []'}
+  confidence: ${analysis.confidence || 0.5}
+---
+
+## Summary
+
+${analysis.summary || bugReport.description}
+
+## User Description
+
+${bugReport.description}
+
+## Steps to Reproduce
+
+1. Navigate to ${bugReport.url}
+2. [Steps from user description need to be extracted manually]
+
+## Expected Result
+
+[To be determined from user description]
+
+## Actual Result
+
+${analysis.root_cause || 'Bug occurring as described by user.'}
+
+## Console Errors
+
+\`\`\`
+${bugReport.console_errors?.join('\n\n') || 'No console errors captured.'}
+\`\`\`
+
+## Screenshot
+
+![Screenshot](../attachments/${bugId}/screenshot.jpg)
+
+## AI Analysis
+
+### Root Cause
+${analysis.root_cause || 'Unable to determine root cause.'}
+
+### Suggested Fix
+
+${analysis.fix_prompt || 'Manual investigation required.'}
+
+### Affected Files
+${(analysis.suggested_files || []).map(f => `- \`${f.file || f}\`${f.line ? ` (line ${f.line})` : ''}${f.description ? `: ${f.description}` : ''}`).join('\n') || '- Unknown'}
+
+### Testing Steps
+${(analysis.testing_steps || ['Manually verify the fix']).map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+### AI Confidence
+${Math.round((analysis.confidence || 0.5) * 100)}%
+
+---
+*Generated by Unicorn AI Bug Analyzer at ${analysis.analyzed_at}*
+`;
+
+  return yaml;
+}
+
+module.exports = {
+  analyzeWithGemini,
+  generateMarkdown,
+  generateSlug,
+  getCodeContext,
+  getPageMapping,
+  extractArea,
+  parseUserAgent
+};

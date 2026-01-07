@@ -1,6 +1,14 @@
 const { sendGraphEmail, getDelegatedTokenFromHeader } = require('./_graphMail');
+const { createClient } = require('@supabase/supabase-js');
 
 const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
+
+// Initialize Supabase client for bug report queue
+const supabase = createClient(
+  process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false } }
+);
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -80,19 +88,67 @@ module.exports = async function handler(req, res) {
       </div>
     `;
 
-    // Send the email from the user's mailbox if they have a delegated token
+    // Save to database queue for background AI processing
+    let bugRecord = null;
+    try {
+      const { data, error: dbError } = await supabase
+        .from('bug_reports')
+        .insert({
+          reported_by_email: userEmail,
+          reported_by_name: userName,
+          url,
+          user_agent: userAgent,
+          description: description.trim(),
+          console_errors: consoleErrors || [],
+          screenshot_base64: screenshot,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('[BugReport] Failed to save to database:', dbError);
+        // Continue anyway - we'll still send the email
+      } else {
+        bugRecord = data;
+        console.log('[BugReport] Bug report queued for AI analysis:', bugRecord.id);
+      }
+    } catch (dbErr) {
+      console.error('[BugReport] Database error:', dbErr);
+      // Continue anyway - we'll still send the email
+    }
+
+    // Send immediate confirmation email (AI analysis will follow later)
+    const emailSubject = bugRecord
+      ? `[Bug Received] ${description.substring(0, 50)}${description.length > 50 ? '...' : ''} - ${userName || 'User'} (AI analysis pending)`
+      : `[Bug Report] ${description.substring(0, 50)}${description.length > 50 ? '...' : ''} - ${userName || 'User'}`;
+
     await sendGraphEmail({
       to: [BUG_REPORT_EMAIL],
-      subject: `[Bug Report] ${description.substring(0, 50)}${description.length > 50 ? '...' : ''} - ${userName || 'User'}`,
+      subject: emailSubject,
       html
     }, {
       delegatedToken,
       sendAsUser: true // Send from user's own mailbox using /me/sendMail
     });
 
+    // Update the record to mark initial email as sent
+    if (bugRecord) {
+      await supabase
+        .from('bug_reports')
+        .update({ initial_email_sent_at: new Date().toISOString() })
+        .eq('id', bugRecord.id);
+    }
+
     console.log('[BugReport] Bug report sent successfully to', BUG_REPORT_EMAIL);
 
-    return res.status(200).json({ success: true, message: 'Bug report sent successfully' });
+    return res.status(200).json({
+      success: true,
+      message: bugRecord
+        ? 'Bug report submitted! AI analysis will be sent shortly.'
+        : 'Bug report sent successfully',
+      bugId: bugRecord?.id
+    });
   } catch (error) {
     console.error('[BugReport] Failed to send bug report:', error);
     return res.status(500).json({ error: 'Failed to send bug report', details: error.message });

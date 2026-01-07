@@ -18,7 +18,7 @@ import {
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, Layers, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
-  ArrowRight, RefreshCw, AlertTriangle, Check
+  ArrowRight, RefreshCw, AlertTriangle, Check, Bug
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -28,6 +28,7 @@ import Button from '../components/ui/Button';
 import { quickbooksService } from '../services/quickbooksService';
 import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
 import AITrainingTab from '../components/Admin/AITrainingTab';
+import BugTodosTab from '../components/Admin/BugTodosTab';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2728,6 +2729,17 @@ const AdminPage = () => {
           <Bot size={16} />
           AI Training
         </button>
+        <button
+          onClick={() => setActiveTab('bug-todos')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'bug-todos'
+              ? 'bg-red-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Bug size={16} />
+          Bug Todos
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -2739,6 +2751,7 @@ const AdminPage = () => {
       {activeTab === 'integrations' && renderIntegrationsTab()}
       {activeTab === 'import' && renderImportTab()}
       {activeTab === 'ai-training' && <AITrainingTab />}
+      {activeTab === 'bug-todos' && <BugTodosTab />}
 
       {/* Modals */}
       {renderEmployeeSkillsModal()}
