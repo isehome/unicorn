@@ -2140,9 +2140,7 @@ const ServiceTicketDetail = () => {
                           className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50 border-l-2"
                           style={{ borderLeftColor: tech.highestProficiency === 'expert' ? '#10B981' : tech.highestProficiency === 'proficient' ? '#3B82F6' : '#F59E0B' }}
                         >
-                          <div className="p-2 bg-zinc-600 rounded-full">
-                            <User size={16} className="text-zinc-300" />
-                          </div>
+                          <TechnicianAvatar name={tech.full_name} color={tech.avatar_color} size="md" />
                           <div className="flex-1">
                             <div className="text-white flex items-center gap-2">
                               {tech.full_name}
@@ -2177,9 +2175,7 @@ const ServiceTicketDetail = () => {
                           disabled={saving}
                           className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50"
                         >
-                          <div className="p-2 bg-zinc-600 rounded-full">
-                            <User size={16} className="text-zinc-300" />
-                          </div>
+                          <TechnicianAvatar name={tech.full_name} color={tech.avatar_color} size="md" />
                           <div className="flex-1">
                             <div className="text-white">{tech.full_name}</div>
                             {tech.role && (
@@ -2201,9 +2197,7 @@ const ServiceTicketDetail = () => {
                       disabled={saving}
                       className="w-full flex items-center gap-3 p-3 bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors text-left disabled:opacity-50"
                     >
-                      <div className="p-2 bg-zinc-600 rounded-full">
-                        <User size={16} className="text-zinc-300" />
-                      </div>
+                      <TechnicianAvatar name={tech.full_name} color={tech.avatar_color} size="md" />
                       <div className="flex-1">
                         <div className="text-white">{tech.full_name}</div>
                         {tech.role && (
