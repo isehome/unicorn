@@ -1,6 +1,6 @@
 /**
  * Test endpoint to debug bug analysis
- * GET /api/bugs/test-analyze
+ * GET /api/test-bug-analyze
  */
 
 module.exports = async (req, res) => {
@@ -39,23 +39,23 @@ module.exports = async (req, res) => {
 
     // Test analyze module
     steps.push('4. Testing analyze module import');
-    const analyze = require('./analyze');
+    const analyze = require('./bugs/analyze');
     steps.push('4a. Analyze module imported');
     steps.push('4b. Analyze exports: ' + Object.keys(analyze).join(', '));
 
     // Test github module
     steps.push('5. Testing github module import');
-    const github = require('./github');
+    const github = require('./bugs/github');
     steps.push('5a. Github module imported');
 
     // Test graphMail module
     steps.push('6. Testing graphMail module import');
-    const graphMail = require('../_graphMail');
+    const graphMail = require('./_graphMail');
     steps.push('6a. GraphMail module imported');
 
     // Test process-bugs module
     steps.push('7. Testing process-bugs module import');
-    const processBugs = require('../cron/process-bugs');
+    const processBugs = require('./cron/process-bugs');
     steps.push('7a. Process-bugs module imported');
     steps.push('7b. Process-bugs type: ' + typeof processBugs);
 

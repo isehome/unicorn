@@ -6,8 +6,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bug, Clock, CheckCircle, AlertCircle, XCircle,
-  Loader2, RefreshCw, ExternalLink, Trash2, RotateCw,
-  ChevronDown, ChevronUp, FileText, Github, Mail
+  Loader2, RefreshCw, Trash2, RotateCw,
+  ChevronDown, ChevronUp, FileText, Github, Mail,
+  Copy, Check, Image, User, Link, Code, Monitor
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -21,6 +22,11 @@ const BugTodosTab = () => {
   const [filter, setFilter] = useState('all');
   const [expandedBug, setExpandedBug] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
+  const [markdownContent, setMarkdownContent] = useState({});
+  const [loadingMarkdown, setLoadingMarkdown] = useState({});
+  const [copiedField, setCopiedField] = useState(null);
+  const [bugDetails, setBugDetails] = useState({});
+  const [loadingDetails, setLoadingDetails] = useState({});
 
   // Styles
   const textPrimary = mode === 'dark' ? 'text-white' : 'text-gray-900';
@@ -130,6 +136,134 @@ const BugTodosTab = () => {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  /**
+   * Load full bug details (including screenshot) when expanding
+   */
+  const loadBugDetails = async (bugId) => {
+    if (bugDetails[bugId] || loadingDetails[bugId]) return;
+
+    setLoadingDetails(prev => ({ ...prev, [bugId]: true }));
+    try {
+      const response = await fetch(`/api/bugs/${bugId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setBugDetails(prev => ({ ...prev, [bugId]: data.bug }));
+      }
+    } catch (err) {
+      console.error('Error loading bug details:', err);
+    } finally {
+      setLoadingDetails(prev => ({ ...prev, [bugId]: false }));
+    }
+  };
+
+  /**
+   * Handle bug expand/collapse
+   */
+  const handleExpandBug = (bugId) => {
+    if (expandedBug === bugId) {
+      setExpandedBug(null);
+    } else {
+      setExpandedBug(bugId);
+      // Load full details when expanding
+      loadBugDetails(bugId);
+    }
+  };
+
+  /**
+   * Load markdown content from GitHub
+   */
+  const loadMarkdownContent = async (bugId, mdPath) => {
+    if (markdownContent[bugId] || loadingMarkdown[bugId]) return;
+
+    setLoadingMarkdown(prev => ({ ...prev, [bugId]: true }));
+    try {
+      const response = await fetch(`/api/bugs/markdown?path=${encodeURIComponent(mdPath)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setMarkdownContent(prev => ({ ...prev, [bugId]: data.content }));
+      }
+    } catch (err) {
+      console.error('Error loading markdown:', err);
+    } finally {
+      setLoadingMarkdown(prev => ({ ...prev, [bugId]: false }));
+    }
+  };
+
+  /**
+   * Copy text to clipboard
+   */
+  const copyToClipboard = async (text, fieldId) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldId);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  /**
+   * Generate comprehensive fix prompt for AI assistants
+   */
+  const generateFixPrompt = (bug) => {
+    const lines = [];
+    lines.push(`# Bug Fix Request: ${bug.bug_report_id || 'Bug Report'}`);
+    lines.push('');
+
+    if (bug.ai_summary) {
+      lines.push(`## Summary`);
+      lines.push(bug.ai_summary);
+      lines.push('');
+    }
+
+    lines.push(`## User Description`);
+    lines.push(bug.description || 'No description provided');
+    lines.push('');
+
+    if (bug.url) {
+      lines.push(`## Page URL`);
+      lines.push(bug.url);
+      lines.push('');
+    }
+
+    if (bug.ai_suggested_files?.length > 0) {
+      lines.push(`## Affected Files`);
+      bug.ai_suggested_files.forEach(file => {
+        const filePath = file.file || file;
+        const line = file.line ? `:${file.line}` : '';
+        const desc = file.description ? ` - ${file.description}` : '';
+        lines.push(`- ${filePath}${line}${desc}`);
+      });
+      lines.push('');
+    }
+
+    if (bug.console_errors?.length > 0) {
+      lines.push(`## Console Errors`);
+      lines.push('```');
+      lines.push(bug.console_errors.join('\n\n'));
+      lines.push('```');
+      lines.push('');
+    }
+
+    if (bug.ai_fix_prompt) {
+      lines.push(`## AI Analysis & Suggested Fix`);
+      lines.push(bug.ai_fix_prompt);
+      lines.push('');
+    }
+
+    lines.push(`## Instructions`);
+    lines.push(`Please analyze this bug report and implement a fix. Focus on:`);
+    lines.push(`1. Review the affected files listed above`);
+    lines.push(`2. Check the console errors for clues`);
+    lines.push(`3. Implement the suggested fix or a better alternative`);
+    lines.push(`4. Test the fix to ensure it resolves the issue`);
+    lines.push('');
+    lines.push(`---`);
+    lines.push(`*Bug ID: ${bug.bug_report_id || bug.id}*`);
+
+    return lines.join('\n');
   };
 
   /**
@@ -305,7 +439,7 @@ const BugTodosTab = () => {
               {/* Bug Header - Always visible */}
               <div
                 className={`p-4 cursor-pointer ${hoverBg}`}
-                onClick={() => setExpandedBug(expandedBug === bug.id ? null : bug.id)}
+                onClick={() => handleExpandBug(bug.id)}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -363,34 +497,173 @@ const BugTodosTab = () => {
 
               {/* Expanded Content */}
               {expandedBug === bug.id && (
-                <div className={`border-t ${borderColor} p-4 space-y-4`}>
-                  {/* Description */}
-                  <div>
-                    <h4 className={`text-sm font-medium ${textSecondary} mb-2`}>User Description</h4>
-                    <p className={`${textPrimary} whitespace-pre-wrap`}>{bug.description}</p>
-                  </div>
-
-                  {/* AI Analysis */}
-                  {bug.ai_fix_prompt && (
-                    <div className={`p-4 rounded-lg ${mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-50'}`}>
-                      <h4 className={`text-sm font-medium ${textSecondary} mb-2`}>AI Suggested Fix</h4>
-                      <pre className={`${textPrimary} whitespace-pre-wrap text-sm font-mono`}>
-                        {bug.ai_fix_prompt}
-                      </pre>
+                <div className={`border-t ${borderColor} p-4 space-y-6`}>
+                  {/* Loading indicator for details */}
+                  {loadingDetails[bug.id] && (
+                    <div className="flex items-center gap-2 py-4">
+                      <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+                      <span className={textSecondary}>Loading full bug details...</span>
                     </div>
                   )}
 
-                  {/* Suggested Files */}
+                  {/* Two Column Layout for Screenshot and Info */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Left Column - Screenshot */}
+                    <div>
+                      <h4 className={`text-sm font-medium ${textSecondary} mb-3 flex items-center gap-2`}>
+                        <Image className="w-4 h-4" />
+                        Screenshot
+                      </h4>
+                      {(bugDetails[bug.id]?.screenshot_base64 || bug.screenshot_base64) ? (
+                        <div className={`rounded-lg overflow-hidden border ${borderColor}`}>
+                          <img
+                            src={(() => {
+                              const screenshot = bugDetails[bug.id]?.screenshot_base64 || bug.screenshot_base64;
+                              return screenshot.startsWith('data:') ? screenshot : `data:image/jpeg;base64,${screenshot}`;
+                            })()}
+                            alt="Bug screenshot"
+                            className="w-full h-auto"
+                          />
+                        </div>
+                      ) : loadingDetails[bug.id] ? (
+                        <div className={`p-8 rounded-lg border ${borderColor} text-center ${textSecondary}`}>
+                          <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-violet-500" />
+                          <p className="text-sm">Loading screenshot...</p>
+                        </div>
+                      ) : (
+                        <div className={`p-8 rounded-lg border ${borderColor} text-center ${textSecondary}`}>
+                          <Image className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No screenshot available</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right Column - Bug Details */}
+                    <div className="space-y-4">
+                      {/* AI Summary with Severity */}
+                      {bug.ai_summary && (
+                        <div className={`p-4 rounded-lg ${mode === 'dark' ? 'bg-violet-900/20 border border-violet-500/30' : 'bg-violet-50 border border-violet-200'}`}>
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <h4 className={`text-sm font-medium ${mode === 'dark' ? 'text-violet-300' : 'text-violet-700'}`}>
+                              AI Summary
+                            </h4>
+                            {bug.ai_severity && (
+                              <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${severityColors[bug.ai_severity]}`}>
+                                {bug.ai_severity.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <p className={`${textPrimary} text-sm`}>{bug.ai_summary}</p>
+                        </div>
+                      )}
+
+                      {/* User Description */}
+                      <div>
+                        <h4 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
+                          <User className="w-4 h-4" />
+                          User Description
+                        </h4>
+                        <p className={`${textPrimary} whitespace-pre-wrap text-sm`}>{bug.description}</p>
+                      </div>
+
+                      {/* Page URL */}
+                      {bug.url && (
+                        <div>
+                          <h4 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
+                            <Link className="w-4 h-4" />
+                            Page URL
+                          </h4>
+                          <a
+                            href={bug.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-violet-500 hover:underline break-all"
+                          >
+                            {bug.url}
+                          </a>
+                        </div>
+                      )}
+
+                      {/* Reporter Info */}
+                      <div>
+                        <h4 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
+                          <Mail className="w-4 h-4" />
+                          Reported By
+                        </h4>
+                        <p className={`${textPrimary} text-sm`}>
+                          {bug.reported_by_name || 'Anonymous'}
+                          {bug.reported_by_email && (
+                            <span className={textSecondary}> ({bug.reported_by_email})</span>
+                          )}
+                        </p>
+                        <p className={`${textSecondary} text-xs mt-1`}>{formatDate(bug.created_at)}</p>
+                      </div>
+
+                      {/* Environment Info */}
+                      {bug.user_agent && (
+                        <div>
+                          <h4 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
+                            <Monitor className="w-4 h-4" />
+                            Environment
+                          </h4>
+                          <p className={`${textSecondary} text-xs font-mono break-all`}>{bug.user_agent}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Comprehensive Fix Prompt - Full Width */}
+                  <div className={`p-4 rounded-lg ${mode === 'dark' ? 'bg-green-900/20 border border-green-500/30' : 'bg-green-50 border border-green-200'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className={`text-sm font-medium ${mode === 'dark' ? 'text-green-300' : 'text-green-700'} flex items-center gap-2`}>
+                        <Code className="w-4 h-4" />
+                        Copy Fix Prompt for AI Assistant
+                      </h4>
+                      <button
+                        onClick={() => copyToClipboard(generateFixPrompt(bug), `fix-${bug.id}`)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          copiedField === `fix-${bug.id}`
+                            ? 'bg-green-500 text-white'
+                            : mode === 'dark'
+                              ? 'bg-green-500/20 text-green-300 hover:bg-green-500/30'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                        }`}
+                      >
+                        {copiedField === `fix-${bug.id}` ? (
+                          <>
+                            <Check className="w-4 h-4" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            Copy Prompt
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <pre className={`text-xs font-mono whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto ${mode === 'dark' ? 'text-green-200' : 'text-green-800'}`}>
+                      {generateFixPrompt(bug)}
+                    </pre>
+                  </div>
+
+                  {/* Affected Files */}
                   {bug.ai_suggested_files?.length > 0 && (
                     <div>
-                      <h4 className={`text-sm font-medium ${textSecondary} mb-2`}>Affected Files</h4>
+                      <h4 className={`text-sm font-medium ${textSecondary} mb-2 flex items-center gap-2`}>
+                        <FileText className="w-4 h-4" />
+                        Affected Files
+                      </h4>
                       <ul className="space-y-1">
                         {bug.ai_suggested_files.map((file, i) => (
-                          <li key={i} className={`text-sm ${textPrimary} font-mono`}>
-                            {file.file || file}{file.line ? `:${file.line}` : ''}
-                            {file.description && (
-                              <span className={`ml-2 ${textSecondary} font-sans`}>- {file.description}</span>
-                            )}
+                          <li key={i} className={`text-sm ${textPrimary} font-mono flex items-start gap-2`}>
+                            <span className="text-violet-500">•</span>
+                            <span>
+                              {file.file || file}{file.line ? `:${file.line}` : ''}
+                              {file.description && (
+                                <span className={`ml-2 ${textSecondary} font-sans`}>- {file.description}</span>
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
@@ -400,12 +673,108 @@ const BugTodosTab = () => {
                   {/* Console Errors */}
                   {bug.console_errors?.length > 0 && (
                     <div>
-                      <h4 className={`text-sm font-medium ${textSecondary} mb-2`}>Console Errors</h4>
-                      <pre className={`p-3 rounded-lg text-xs font-mono overflow-x-auto ${
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
+                          <AlertCircle className="w-4 h-4" />
+                          Console Errors
+                        </h4>
+                        <button
+                          onClick={() => copyToClipboard(bug.console_errors.join('\n\n'), `errors-${bug.id}`)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            copiedField === `errors-${bug.id}`
+                              ? 'bg-green-500 text-white'
+                              : mode === 'dark'
+                                ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {copiedField === `errors-${bug.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <pre className={`p-3 rounded-lg text-xs font-mono overflow-x-auto max-h-40 overflow-y-auto ${
                         mode === 'dark' ? 'bg-red-900/20 text-red-300' : 'bg-red-50 text-red-700'
                       }`}>
                         {bug.console_errors.join('\n\n')}
                       </pre>
+                    </div>
+                  )}
+
+                  {/* AI Analysis (from Gemini) */}
+                  {bug.ai_fix_prompt && (
+                    <div className={`p-4 rounded-lg ${mode === 'dark' ? 'bg-blue-900/20 border border-blue-500/30' : 'bg-blue-50 border border-blue-200'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`text-sm font-medium ${mode === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>
+                          AI Analysis & Suggested Fix
+                        </h4>
+                        <button
+                          onClick={() => copyToClipboard(bug.ai_fix_prompt, `ai-${bug.id}`)}
+                          className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                            copiedField === `ai-${bug.id}`
+                              ? 'bg-green-500 text-white'
+                              : mode === 'dark'
+                                ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30'
+                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                          }`}
+                        >
+                          {copiedField === `ai-${bug.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        </button>
+                      </div>
+                      <pre className={`${textPrimary} whitespace-pre-wrap text-sm font-mono`}>
+                        {bug.ai_fix_prompt}
+                      </pre>
+                    </div>
+                  )}
+
+                  {/* Markdown Content from GitHub */}
+                  {bug.md_file_path && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`text-sm font-medium ${textSecondary} flex items-center gap-2`}>
+                          <Github className="w-4 h-4" />
+                          Full Bug Report (Markdown)
+                        </h4>
+                        {/* Manual load button if not auto-loaded */}
+                        {!markdownContent[bug.id] && !bugDetails[bug.id]?.markdown_content && !loadingMarkdown[bug.id] && !loadingDetails[bug.id] && (
+                          <button
+                            onClick={() => loadMarkdownContent(bug.id, bug.md_file_path)}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                              mode === 'dark'
+                                ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                          >
+                            Load from GitHub
+                          </button>
+                        )}
+                        {/* Copy button when content is available */}
+                        {(markdownContent[bug.id] || bugDetails[bug.id]?.markdown_content) && (
+                          <button
+                            onClick={() => copyToClipboard(markdownContent[bug.id] || bugDetails[bug.id]?.markdown_content, `md-${bug.id}`)}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+                              copiedField === `md-${bug.id}`
+                                ? 'bg-green-500 text-white'
+                                : mode === 'dark'
+                                  ? 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            }`}
+                          >
+                            {copiedField === `md-${bug.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          </button>
+                        )}
+                      </div>
+                      {(loadingMarkdown[bug.id] || loadingDetails[bug.id]) && !markdownContent[bug.id] && !bugDetails[bug.id]?.markdown_content && (
+                        <div className="flex items-center gap-2 py-4">
+                          <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
+                          <span className={textSecondary}>Loading markdown...</span>
+                        </div>
+                      )}
+                      {(markdownContent[bug.id] || bugDetails[bug.id]?.markdown_content) && (
+                        <pre className={`p-4 rounded-lg text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto ${
+                          mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-50'
+                        } ${textPrimary}`}>
+                          {markdownContent[bug.id] || bugDetails[bug.id]?.markdown_content}
+                        </pre>
+                      )}
                     </div>
                   )}
 
@@ -426,6 +795,22 @@ const BugTodosTab = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {bug.pr_url && (
+                        <a
+                          href={bug.pr_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            mode === 'dark'
+                              ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          <Github className="w-4 h-4" />
+                          View PR
+                        </a>
+                      )}
+
                       {bug.md_file_path && (
                         <a
                           href={`https://github.com/isehome/unicorn/blob/main/${bug.md_file_path}`}
@@ -438,7 +823,7 @@ const BugTodosTab = () => {
                           }`}
                         >
                           <FileText className="w-4 h-4" />
-                          View Report
+                          View on GitHub
                         </a>
                       )}
 
