@@ -16,7 +16,7 @@ import {
   Settings, Users, Award, Plus, Trash2, Edit2, Save, X,
   ChevronDown, ChevronRight, Loader2, CheckCircle, AlertCircle,
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
-  Wrench, Mail, UserPlus, UserX, ArrowLeft, Layers, ToggleLeft, ToggleRight,
+  Wrench, Mail, UserPlus, UserX, ArrowLeft, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
   ArrowRight, RefreshCw, AlertTriangle, Check, Bug
 } from 'lucide-react';
@@ -163,7 +163,7 @@ const AdminPage = () => {
   // Skills state
   const [globalSkills, setGlobalSkills] = useState([]);
   const [employeeSkills, setEmployeeSkills] = useState([]);
-  const [technologyCategories, setTechnologyCategories] = useState(DEFAULT_TECHNOLOGY_CATEGORIES);
+  const [skillCategories, setSkillCategories] = useState(DEFAULT_TECHNOLOGY_CATEGORIES);
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -181,10 +181,6 @@ const AdminPage = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [employeeSkillsModal, setEmployeeSkillsModal] = useState(false);
 
-  // Category management state
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState({ name: '', label: '', color: '#3B82F6', description: '' });
-  const [editingCategory, setEditingCategory] = useState(null);
 
   // Feature flags state
   const [featureFlags, setFeatureFlags] = useState([]);
@@ -302,21 +298,21 @@ const AdminPage = () => {
       if (usersError && usersError.code !== 'PGRST116') throw usersError;
       setUsers(usersData || []);
 
-      // Load technology categories from database
+      // Load skill categories from database (unified skills system)
       const { data: categoriesData, error: categoriesError } = await supabase
-        .from('technology_categories')
+        .from('skill_categories')
         .select('*')
         .eq('is_active', true)
         .order('sort_order');
 
       if (categoriesError && categoriesError.code !== 'PGRST116') {
-        console.log('[AdminPage] Technology categories table may not exist yet, using defaults');
+        console.log('[AdminPage] Skill categories table may not exist yet, using defaults');
       }
       // Use DB categories if available, otherwise use defaults
       if (categoriesData && categoriesData.length > 0) {
-        setTechnologyCategories(categoriesData);
+        setSkillCategories(categoriesData);
       } else {
-        setTechnologyCategories(DEFAULT_TECHNOLOGY_CATEGORIES);
+        setSkillCategories(DEFAULT_TECHNOLOGY_CATEGORIES);
       }
 
       // Load global skills
@@ -711,102 +707,11 @@ const AdminPage = () => {
   };
 
   // Build skills grouped by category using dynamic categories
-  const skillsByCategory = technologyCategories.map(cat => ({
+  const skillsByCategory = skillCategories.map(cat => ({
     ...cat,
     id: cat.name || cat.id, // Use name as ID for matching with skills
     skills: globalSkills.filter(s => s.category === (cat.name || cat.id))
   }));
-
-  // Category management functions
-  const handleAddCategory = async () => {
-    if (!newCategory.name.trim() || !newCategory.label.trim()) return;
-
-    try {
-      setSaving(true);
-      const maxSortOrder = Math.max(0, ...technologyCategories.map(c => c.sort_order || 0));
-
-      const { error } = await supabase
-        .from('technology_categories')
-        .insert({
-          name: newCategory.name.trim().toLowerCase().replace(/\s+/g, '_'),
-          label: newCategory.label.trim(),
-          color: newCategory.color,
-          description: newCategory.description.trim() || null,
-          is_active: true,
-          sort_order: maxSortOrder + 1
-        });
-
-      if (error) throw error;
-
-      setNewCategory({ name: '', label: '', color: '#3B82F6', description: '' });
-      setAddingCategory(false);
-      setSuccess('Category added successfully');
-      setTimeout(() => setSuccess(null), 3000);
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Add category failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUpdateCategory = async (category) => {
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from('technology_categories')
-        .update({
-          label: category.label,
-          color: category.color,
-          description: category.description,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', category.id);
-
-      if (error) throw error;
-
-      setEditingCategory(null);
-      setSuccess('Category updated successfully');
-      setTimeout(() => setSuccess(null), 3000);
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Update category failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteCategory = async (categoryId, categoryName) => {
-    // Check if category has skills
-    const categorySkills = globalSkills.filter(s => s.category === categoryName);
-    if (categorySkills.length > 0) {
-      setError(`Cannot delete category with ${categorySkills.length} skill(s). Remove or reassign skills first.`);
-      return;
-    }
-
-    if (!window.confirm('Delete this category? This action cannot be undone.')) return;
-
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from('technology_categories')
-        .delete()
-        .eq('id', categoryId);
-
-      if (error) throw error;
-
-      setSuccess('Category deleted successfully');
-      setTimeout(() => setSuccess(null), 3000);
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Delete category failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
 
   // Feature flag management functions
   const handleToggleRoleFeature = async (role, flagId, currentEnabled) => {
@@ -1138,200 +1043,8 @@ const AdminPage = () => {
   );
 
   /**
-   * Render Categories Tab
-   */
-  const renderCategoriesTab = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Technology Categories</h2>
-          <p className="text-sm text-zinc-500">Types of work for service tickets and employee skills</p>
-        </div>
-        <Button onClick={() => setAddingCategory(true)} size="sm" icon={Plus}>
-          Add Category
-        </Button>
-      </div>
-
-      {/* Add Category Form */}
-      {addingCategory && (
-        <div className="p-4 rounded-xl border border-violet-500/50 bg-violet-500/10 space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Layers size={16} className="text-violet-500" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">New Category</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Internal Name (no spaces)</label>
-              <input
-                type="text"
-                value={newCategory.name}
-                onChange={(e) => setNewCategory(prev => ({ ...prev, name: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
-                placeholder="e.g., security_systems"
-                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Display Label</label>
-              <input
-                type="text"
-                value={newCategory.label}
-                onChange={(e) => setNewCategory(prev => ({ ...prev, label: e.target.value }))}
-                placeholder="e.g., Security Systems"
-                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Color</label>
-              <div className="flex flex-wrap gap-2">
-                {PRESET_COLORS.map(color => (
-                  <button
-                    key={color}
-                    onClick={() => setNewCategory(prev => ({ ...prev, color }))}
-                    className={`w-6 h-6 rounded-full transition-transform ${newCategory.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-800 scale-110' : 'hover:scale-110'}`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-zinc-500 mb-1 block">Description (optional)</label>
-              <input
-                type="text"
-                value={newCategory.description}
-                onChange={(e) => setNewCategory(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Brief description"
-                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-              />
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => { setAddingCategory(false); setNewCategory({ name: '', label: '', color: '#3B82F6', description: '' }); }}>
-              Cancel
-            </Button>
-            <Button size="sm" icon={Plus} onClick={handleAddCategory} disabled={!newCategory.name.trim() || !newCategory.label.trim() || saving}>
-              {saving ? 'Adding...' : 'Add Category'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Categories List */}
-      <div className="space-y-3">
-        {technologyCategories.map(category => {
-          const categorySkillCount = globalSkills.filter(s => s.category === (category.name || category.id)).length;
-          const isEditing = editingCategory?.id === category.id;
-
-          return (
-            <div
-              key={category.id || category.name}
-              className="rounded-xl border p-4"
-              style={sectionStyles.card}
-            >
-              {isEditing ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-zinc-500 mb-1 block">Display Label</label>
-                      <input
-                        type="text"
-                        value={editingCategory.label}
-                        onChange={(e) => setEditingCategory(prev => ({ ...prev, label: e.target.value }))}
-                        className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-500 mb-1 block">Description</label>
-                      <input
-                        type="text"
-                        value={editingCategory.description || ''}
-                        onChange={(e) => setEditingCategory(prev => ({ ...prev, description: e.target.value }))}
-                        className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-zinc-500 mb-1 block">Color</label>
-                    <div className="flex flex-wrap gap-2">
-                      {PRESET_COLORS.map(color => (
-                        <button
-                          key={color}
-                          onClick={() => setEditingCategory(prev => ({ ...prev, color }))}
-                          className={`w-6 h-6 rounded-full transition-transform ${editingCategory.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-800 scale-110' : 'hover:scale-110'}`}
-                          style={{ backgroundColor: color }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => setEditingCategory(null)}>
-                      Cancel
-                    </Button>
-                    <Button size="sm" icon={Save} onClick={() => handleUpdateCategory(editingCategory)} disabled={saving}>
-                      {saving ? 'Saving...' : 'Save'}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: `${category.color}20` }}
-                    >
-                      <div className="w-4 h-4 rounded-full" style={{ backgroundColor: category.color }} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-gray-900 dark:text-white">{category.label}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">
-                          {category.name || category.id}
-                        </span>
-                      </div>
-                      {category.description && (
-                        <p className="text-xs text-zinc-500">{category.description}</p>
-                      )}
-                      <p className="text-xs text-zinc-500 mt-1">
-                        {categorySkillCount} skill{categorySkillCount !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setEditingCategory({ ...category })}
-                      className="p-2 rounded-lg hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors"
-                      title="Edit category"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCategory(category.id, category.name || category.id)}
-                      className="p-2 rounded-lg hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition-colors"
-                      title={categorySkillCount > 0 ? `Cannot delete - has ${categorySkillCount} skills` : 'Delete category'}
-                      disabled={categorySkillCount > 0}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {technologyCategories.length === 0 && (
-        <div className="text-center py-8 text-zinc-500">
-          <Layers size={32} className="mx-auto mb-2 opacity-50" />
-          <p>No categories yet. Add your first category to get started.</p>
-        </div>
-      )}
-    </div>
-  );
-
-  /**
    * Render Skills Tab - Uses new 3-level hierarchy component
+   * Categories are now managed within SkillsManager
    */
   const renderSkillsTab = () => (
     <SkillsManager
@@ -2527,17 +2240,6 @@ const AdminPage = () => {
           Users
         </button>
         <button
-          onClick={() => setActiveTab('categories')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            activeTab === 'categories'
-              ? 'bg-violet-500 text-white'
-              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
-          }`}
-        >
-          <Layers size={16} />
-          Technology
-        </button>
-        <button
           onClick={() => setActiveTab('skills')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
             activeTab === 'skills'
@@ -2618,7 +2320,6 @@ const AdminPage = () => {
 
       {/* Tab Content */}
       {activeTab === 'users' && renderUsersTab()}
-      {activeTab === 'categories' && renderCategoriesTab()}
       {activeTab === 'skills' && renderSkillsTab()}
       {activeTab === 'employee-skills' && renderEmployeeSkillsTab()}
       {activeTab === 'features' && renderFeaturesTab()}

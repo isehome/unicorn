@@ -120,18 +120,19 @@ const ServiceTicketList = () => {
     setView('service-ticket-list');
   }, [loadTickets, setView]);
 
-  // Load technology categories from database
+  // Load skill categories from database (only those marked as show_in_service)
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const { data, error } = await supabase
-          .from('technology_categories')
-          .select('name, label')
+          .from('skill_categories')
+          .select('name, label, color')
           .eq('is_active', true)
+          .neq('show_in_service', false) // Include categories where show_in_service is true or null
           .order('sort_order');
 
         if (!error && data?.length > 0) {
-          setCategories(data.map(c => ({ value: c.name, label: c.label })));
+          setCategories(data.map(c => ({ value: c.name, label: c.label, color: c.color })));
         }
       } catch (err) {
         console.log('[ServiceTicketList] Using default categories');

@@ -8,10 +8,17 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Trash2, Edit2, Save, X, ChevronDown, ChevronRight,
   Loader2, Upload, Download, AlertTriangle, Check, FileSpreadsheet,
-  Layers, FolderOpen, Award
+  Layers, FolderOpen, Award, Eye, EyeOff, ExternalLink, Link2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
+
+// Preset colors for category picker
+const PRESET_COLORS = [
+  '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EF4444',
+  '#EC4899', '#6366F1', '#64748B', '#14B8A6', '#F97316',
+  '#84CC16', '#06B6D4', '#A855F7', '#F43F5E', '#22C55E'
+];
 
 // Import mode options
 const IMPORT_MODES = [
@@ -35,6 +42,9 @@ const SkillsManager = ({ onSuccess, onError }) => {
   const [addingTo, setAddingTo] = useState(null); // { type: 'category'|'class'|'skill', parentId: null|uuid }
   const [newItemName, setNewItemName] = useState('');
   const [newItemDescription, setNewItemDescription] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#64748B');
+  const [newCategoryShowInService, setNewCategoryShowInService] = useState(true);
+  const [newSkillTrainingUrls, setNewSkillTrainingUrls] = useState('');
 
   // Import state
   const [showImportModal, setShowImportModal] = useState(false);
@@ -132,14 +142,13 @@ const SkillsManager = ({ onSuccess, onError }) => {
           name,
           label: newItemName.trim(),
           description: newItemDescription.trim() || null,
-          color: '#64748B',
+          color: newCategoryColor,
+          show_in_service: newCategoryShowInService,
           is_active: true,
           sort_order: categories.length
         });
       if (error) throw error;
-      setAddingTo(null);
-      setNewItemName('');
-      setNewItemDescription('');
+      resetAddForm();
       onSuccess?.('Category added');
       await loadData();
     } catch (err) {
@@ -147,6 +156,15 @@ const SkillsManager = ({ onSuccess, onError }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const resetAddForm = () => {
+    setAddingTo(null);
+    setNewItemName('');
+    setNewItemDescription('');
+    setNewCategoryColor('#64748B');
+    setNewCategoryShowInService(true);
+    setNewSkillTrainingUrls('');
   };
 
   const handleAddClass = async (categoryId) => {
@@ -165,9 +183,7 @@ const SkillsManager = ({ onSuccess, onError }) => {
           sort_order: getClassesForCategory(categoryId).length
         });
       if (error) throw error;
-      setAddingTo(null);
-      setNewItemName('');
-      setNewItemDescription('');
+      resetAddForm();
       onSuccess?.('Class added');
       await loadData();
     } catch (err) {
@@ -181,6 +197,12 @@ const SkillsManager = ({ onSuccess, onError }) => {
     if (!newItemName.trim()) return;
     try {
       setSaving(true);
+      // Parse training URLs (one per line or comma-separated)
+      const trainingUrls = newSkillTrainingUrls
+        .split(/[\n,]/)
+        .map(url => url.trim())
+        .filter(url => url.length > 0);
+
       const { error } = await supabase
         .from('global_skills')
         .insert({
@@ -188,14 +210,61 @@ const SkillsManager = ({ onSuccess, onError }) => {
           category: categoryName,
           class_id: classId,
           description: newItemDescription.trim() || null,
+          training_urls: trainingUrls.length > 0 ? trainingUrls : [],
           is_active: true,
           sort_order: getSkillsForClass(classId).length
         });
       if (error) throw error;
-      setAddingTo(null);
-      setNewItemName('');
-      setNewItemDescription('');
+      resetAddForm();
       onSuccess?.('Skill added');
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Update handlers
+  const handleUpdateCategory = async (category) => {
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('skill_categories')
+        .update({
+          label: category.label,
+          color: category.color,
+          description: category.description,
+          show_in_service: category.show_in_service,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', category.id);
+      if (error) throw error;
+      setEditingItem(null);
+      onSuccess?.('Category updated');
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateSkill = async (skill) => {
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('global_skills')
+        .update({
+          name: skill.name,
+          description: skill.description,
+          training_urls: skill.training_urls || [],
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', skill.id);
+      if (error) throw error;
+      setEditingItem(null);
+      onSuccess?.('Skill updated');
       await loadData();
     } catch (err) {
       onError?.(err.message);
@@ -560,16 +629,61 @@ const SkillsManager = ({ onSuccess, onError }) => {
             <FolderOpen size={16} className="text-violet-500" />
             <span className="text-sm font-medium text-gray-900 dark:text-white">New Category</span>
           </div>
-          <input
-            type="text"
-            value={newItemName}
-            onChange={(e) => setNewItemName(e.target.value)}
-            placeholder="Category name (e.g., Access Control)"
-            className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-            autoFocus
-          />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Category Name</label>
+              <input
+                type="text"
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                placeholder="e.g., Access Control"
+                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Description (optional)</label>
+              <input
+                type="text"
+                value={newItemDescription}
+                onChange={(e) => setNewItemDescription(e.target.value)}
+                placeholder="Brief description"
+                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Color</label>
+              <div className="flex flex-wrap gap-2">
+                {PRESET_COLORS.map(color => (
+                  <button
+                    key={color}
+                    onClick={() => setNewCategoryColor(color)}
+                    className={`w-6 h-6 rounded-full transition-transform ${newCategoryColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-800 scale-110' : 'hover:scale-110'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-zinc-500 mb-1 block">Show in Service Tickets</label>
+              <button
+                onClick={() => setNewCategoryShowInService(!newCategoryShowInService)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                  newCategoryShowInService
+                    ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-400'
+                    : 'bg-zinc-500/10 border-zinc-500/50 text-zinc-500'
+                }`}
+              >
+                {newCategoryShowInService ? <Eye size={16} /> : <EyeOff size={16} />}
+                <span className="text-sm">{newCategoryShowInService ? 'Visible in Service' : 'Hidden from Service'}</span>
+              </button>
+              <p className="text-xs text-zinc-500 mt-1">Turn off for categories like "Soft Skills"</p>
+            </div>
+          </div>
           <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => { setAddingTo(null); setNewItemName(''); }}>
+            <Button variant="secondary" size="sm" onClick={resetAddForm}>
               Cancel
             </Button>
             <Button size="sm" icon={Plus} onClick={handleAddCategory} disabled={!newItemName.trim() || saving}>
@@ -582,24 +696,101 @@ const SkillsManager = ({ onSuccess, onError }) => {
       {/* Categories List */}
       {categories.map(category => (
         <div key={category.id} className="rounded-xl border overflow-hidden bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
-          {/* Category Header */}
-          <button
-            onClick={() => toggleCategory(category.id)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-zinc-700/50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color || '#64748B' }} />
-              <span className="font-medium text-gray-900 dark:text-white">{category.label}</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                ({getClassesForCategory(category.id).length} classes, {getSkillsForCategory(category.name).length} skills)
-              </span>
+          {/* Category Header - Editing Mode */}
+          {editingItem?.type === 'category' && editingItem.data.id === category.id ? (
+            <div className="p-4 space-y-3 bg-violet-500/5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Display Label</label>
+                  <input
+                    type="text"
+                    value={editingItem.data.label}
+                    onChange={(e) => setEditingItem({ ...editingItem, data: { ...editingItem.data, label: e.target.value } })}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Description</label>
+                  <input
+                    type="text"
+                    value={editingItem.data.description || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, data: { ...editingItem.data, description: e.target.value } })}
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Color</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_COLORS.map(color => (
+                      <button
+                        key={color}
+                        onClick={() => setEditingItem({ ...editingItem, data: { ...editingItem.data, color } })}
+                        className={`w-6 h-6 rounded-full transition-transform ${editingItem.data.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-zinc-800 scale-110' : 'hover:scale-110'}`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-zinc-500 mb-1 block">Show in Service Tickets</label>
+                  <button
+                    onClick={() => setEditingItem({ ...editingItem, data: { ...editingItem.data, show_in_service: !editingItem.data.show_in_service } })}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+                      editingItem.data.show_in_service
+                        ? 'bg-green-500/10 border-green-500/50 text-green-600 dark:text-green-400'
+                        : 'bg-zinc-500/10 border-zinc-500/50 text-zinc-500'
+                    }`}
+                  >
+                    {editingItem.data.show_in_service ? <Eye size={16} /> : <EyeOff size={16} />}
+                    <span className="text-sm">{editingItem.data.show_in_service ? 'Visible in Service' : 'Hidden from Service'}</span>
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" size="sm" onClick={() => setEditingItem(null)}>Cancel</Button>
+                <Button size="sm" icon={Save} onClick={() => handleUpdateCategory(editingItem.data)} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
             </div>
-            {expandedCategories[category.id] ? (
-              <ChevronDown size={20} className="text-gray-400" />
-            ) : (
-              <ChevronRight size={20} className="text-gray-400" />
-            )}
-          </button>
+          ) : (
+            /* Category Header - View Mode */
+            <div className="flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-zinc-700/50 transition-colors">
+              <button
+                onClick={() => toggleCategory(category.id)}
+                className="flex items-center gap-3 flex-1"
+              >
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color || '#64748B' }} />
+                <span className="font-medium text-gray-900 dark:text-white">{category.label}</span>
+                {category.show_in_service === false && (
+                  <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">
+                    <EyeOff size={12} /> Hidden
+                  </span>
+                )}
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  ({getClassesForCategory(category.id).length} classes, {getSkillsForCategory(category.name).length} skills)
+                </span>
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingItem({ type: 'category', data: { ...category } })}
+                  className="p-2 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-400 hover:text-zinc-600 dark:hover:text-white transition-colors"
+                  title="Edit category"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button onClick={() => toggleCategory(category.id)}>
+                  {expandedCategories[category.id] ? (
+                    <ChevronDown size={20} className="text-gray-400" />
+                  ) : (
+                    <ChevronRight size={20} className="text-gray-400" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Category Content */}
           {expandedCategories[category.id] && (
@@ -676,8 +867,20 @@ const SkillsManager = ({ onSuccess, onError }) => {
                             placeholder="Description (optional)"
                             className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
                           />
+                          <div>
+                            <label className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                              <Link2 size={12} /> Training URLs (one per line)
+                            </label>
+                            <textarea
+                              value={newSkillTrainingUrls}
+                              onChange={(e) => setNewSkillTrainingUrls(e.target.value)}
+                              placeholder="https://training.example.com/course1&#10;https://youtube.com/watch?v=..."
+                              rows={2}
+                              className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                            />
+                          </div>
                           <div className="flex gap-2 justify-end">
-                            <Button variant="secondary" size="sm" onClick={() => { setAddingTo(null); setNewItemName(''); setNewItemDescription(''); }}>Cancel</Button>
+                            <Button variant="secondary" size="sm" onClick={resetAddForm}>Cancel</Button>
                             <Button size="sm" icon={Plus} onClick={() => handleAddSkill(cls.id, category.name)} disabled={!newItemName.trim() || saving}>
                               Add Skill
                             </Button>
@@ -694,33 +897,101 @@ const SkillsManager = ({ onSuccess, onError }) => {
 
                       {/* Skills */}
                       {getSkillsForClass(cls.id).map(skill => (
-                        <div key={skill.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/30">
-                          <div className="flex items-center gap-2">
-                            {selectMode && (
-                              <input
-                                type="checkbox"
-                                checked={selectedSkills.has(skill.id)}
-                                onChange={() => toggleSkillSelection(skill.id)}
-                                className="w-4 h-4 rounded border-gray-300 dark:border-zinc-600"
-                              />
-                            )}
-                            <Award size={14} className="text-gray-400" />
+                        editingItem?.type === 'skill' && editingItem.data.id === skill.id ? (
+                          // Edit Skill Mode
+                          <div key={skill.id} className="p-3 bg-emerald-500/10 rounded-lg space-y-2 mb-2">
+                            <input
+                              type="text"
+                              value={editingItem.data.name}
+                              onChange={(e) => setEditingItem({ ...editingItem, data: { ...editingItem.data, name: e.target.value } })}
+                              className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                            />
+                            <input
+                              type="text"
+                              value={editingItem.data.description || ''}
+                              onChange={(e) => setEditingItem({ ...editingItem, data: { ...editingItem.data, description: e.target.value } })}
+                              placeholder="Description"
+                              className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                            />
                             <div>
-                              <span className="text-sm text-gray-900 dark:text-white">{skill.name}</span>
-                              {skill.description && (
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{skill.description}</p>
-                              )}
+                              <label className="text-xs text-zinc-500 mb-1 flex items-center gap-1">
+                                <Link2 size={12} /> Training URLs (one per line)
+                              </label>
+                              <textarea
+                                value={(editingItem.data.training_urls || []).join('\n')}
+                                onChange={(e) => setEditingItem({
+                                  ...editingItem,
+                                  data: {
+                                    ...editingItem.data,
+                                    training_urls: e.target.value.split('\n').map(u => u.trim()).filter(u => u)
+                                  }
+                                })}
+                                rows={2}
+                                className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                              />
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <Button variant="secondary" size="sm" onClick={() => setEditingItem(null)}>Cancel</Button>
+                              <Button size="sm" icon={Save} onClick={() => handleUpdateSkill(editingItem.data)} disabled={saving}>
+                                {saving ? 'Saving...' : 'Save'}
+                              </Button>
                             </div>
                           </div>
-                          {!selectMode && (
-                            <button
-                              onClick={() => handleDeleteSkill(skill.id)}
-                              className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
+                        ) : (
+                          // View Skill Mode
+                          <div key={skill.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/30 group">
+                            <div className="flex items-center gap-2">
+                              {selectMode && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSkills.has(skill.id)}
+                                  onChange={() => toggleSkillSelection(skill.id)}
+                                  className="w-4 h-4 rounded border-gray-300 dark:border-zinc-600"
+                                />
+                              )}
+                              <Award size={14} className="text-gray-400" />
+                              <div>
+                                <span className="text-sm text-gray-900 dark:text-white">{skill.name}</span>
+                                {skill.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{skill.description}</p>
+                                )}
+                                {skill.training_urls && skill.training_urls.length > 0 && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {skill.training_urls.map((url, idx) => (
+                                      <a
+                                        key={idx}
+                                        href={url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
+                                      >
+                                        <ExternalLink size={10} /> Training {skill.training_urls.length > 1 ? idx + 1 : ''}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {!selectMode && (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={() => setEditingItem({ type: 'skill', data: { ...skill } })}
+                                  className="p-1.5 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                                  title="Edit skill"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteSkill(skill.id)}
+                                  className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
+                                  title="Delete skill"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
                       ))}
 
                       {getSkillsForClass(cls.id).length === 0 && (

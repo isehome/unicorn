@@ -12,6 +12,7 @@ import { Printer, CheckCircle, WifiOff, AlertCircle, Smartphone, LogOut, Chevron
 import { supabase } from '../lib/supabase';
 
 import AISettings from './UserSettings/AISettings';
+import UserSkillsSection from './UserSettings/UserSkillsSection';
 
 
 const SettingsPage = () => {
@@ -311,6 +312,9 @@ const SettingsPage = () => {
 
       {/* AI Copilot Settings */}
       <AISettings />
+
+      {/* User Skills Section */}
+      <UserSkillsSection />
 
       {/* Admin Section - Only shown for director+ roles */}
       {hasAdminAccess && (

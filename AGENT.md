@@ -3973,3 +3973,145 @@ The bug processor runs every 3 minutes via Vercel cron:
 Or merge the PR and delete the branch.
 
 ---
+
+## 2026-01-08
+
+### Unified Skills System (Major Feature)
+
+Consolidated skills as the **single source of truth** for both service ticket categories and employee skill development/tracking.
+
+#### Overview
+
+```
+skill_categories (master)
+├── show_in_service: true/false (filter for service UI)
+├── color, label, icon, description
+│
+├── Service Tickets (filtered by show_in_service=true)
+│   ├── NewTicketForm category buttons
+│   ├── ServiceTicketList filters
+│   └── Technician skill matching (future)
+│
+└── Employee Development (all categories)
+    ├── Admin: Assign skills to employees via SkillsManager
+    ├── Profile: Display skills on Settings page (read-only)
+    └── Training URLs per skill (clickable links)
+```
+
+#### Database Changes
+
+**Migration File:** `database/migrations/20260108_unified_skills.sql`
+
+**Tables:**
+| Table | Purpose |
+|-------|---------|
+| `skill_categories` | Master category list with `show_in_service` flag |
+| `skill_classes` | Intermediate grouping (Category → Class → Skill) |
+| `global_skills` | Individual skills with `training_urls` JSONB array |
+| `employee_skills` | Links employees to skills with proficiency levels |
+
+**New Columns:**
+- `skill_categories.show_in_service` BOOLEAN - Hide categories like "Soft Skills" from service ticket UI
+- `skill_categories.icon` TEXT - Icon name for service ticket display
+- `global_skills.training_urls` JSONB - Array of training resource URLs per skill
+
+**Proficiency Levels:**
+- `training` - Currently learning
+- `proficient` - Can perform independently
+- `expert` - Can train others
+
+**Helper Function:**
+```sql
+SELECT * FROM get_qualified_technicians('network', 'proficient');
+-- Returns technicians qualified for network work at proficient+ level
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/Admin/SkillsManager.js` | Added category color picker, show_in_service toggle, training URLs management |
+| `src/pages/AdminPage.js` | **Removed** Technology Categories tab entirely (consolidated into SkillsManager) |
+| `src/components/Service/NewTicketForm.js` | Now loads categories from `skill_categories` WHERE `show_in_service = true` |
+| `src/components/Service/ServiceTicketList.js` | Dynamic categories from `skill_categories` with colors |
+| `src/components/Service/ServiceTicketDetail.js` | Dynamic categories from database |
+| `src/components/UserSettings/UserSkillsSection.js` | **NEW** - Displays user's skills on Settings page (read-only) |
+| `src/components/SettingsPage.js` | Added UserSkillsSection component |
+
+#### SkillsManager Features
+
+**Category Management:**
+- Color picker with preset colors for category branding
+- `show_in_service` toggle to hide categories from service ticket UI
+- Full CRUD for categories, classes, and skills
+
+**Skill Management:**
+- Training URLs field (comma-separated, stored as JSONB array)
+- Displayed as clickable external links in employee skill lists
+- CSV import with Replace All/Merge/Append modes
+
+**Employee Skills:**
+- Assign skills to employees with proficiency level
+- Certification tracking with date and certifier
+- Notes field for additional context
+
+#### UserSkillsSection Component
+
+**Location:** `src/components/UserSettings/UserSkillsSection.js`
+
+**Features:**
+- Read-only display of user's assigned skills
+- Skills grouped by category (collapsible)
+- Proficiency badges (Training=amber, Proficient=blue, Expert=emerald)
+- Training URLs as clickable external links
+- Summary badges showing count by proficiency level
+- Proficiency level legend at bottom
+
+**Usage:**
+```jsx
+import UserSkillsSection from '../components/UserSettings/UserSkillsSection';
+
+// In SettingsPage.js, after AISettings section
+<UserSkillsSection />
+```
+
+#### Service Ticket Integration
+
+**Before:** Service components used hardcoded `DEFAULT_CATEGORIES` array
+
+**After:** Categories loaded dynamically from `skill_categories` table:
+```javascript
+const { data: categories } = await supabase
+  .from('skill_categories')
+  .select('*')
+  .eq('is_active', true)
+  .neq('show_in_service', false)  // Hide Soft Skills etc.
+  .order('sort_order');
+```
+
+#### Default Categories (Seeded)
+
+| Name | Label | show_in_service | Icon |
+|------|-------|-----------------|------|
+| network | Network | ✅ | wifi |
+| av | Audio/Video | ✅ | tv |
+| shades | Shades | ✅ | blinds |
+| control | Control Systems | ✅ | settings |
+| wiring | Wiring | ✅ | cable |
+| installation | Installation | ✅ | build |
+| maintenance | Maintenance | ✅ | wrench |
+| general | General | ✅ | clipboard |
+| soft_skills | Soft Skills | ❌ | users |
+
+#### Running the Migration
+
+**REQUIRED:** Run the SQL migration in Supabase Dashboard → SQL Editor:
+
+1. Open `database/migrations/20260108_unified_skills.sql`
+2. Copy entire contents
+3. Paste into Supabase SQL Editor
+4. Execute
+
+The migration is idempotent (safe to run multiple times) - it uses `CREATE TABLE IF NOT EXISTS` and `DO $$ IF NOT EXISTS $$` patterns.
+
+---

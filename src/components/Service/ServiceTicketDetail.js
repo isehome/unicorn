@@ -147,7 +147,7 @@ const ServiceTicketDetail = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
 
-  // Technology categories from database
+  // Skill categories from database (for service tickets)
   const [categories, setCategories] = useState([
     { value: 'network', label: 'Network' },
     { value: 'av', label: 'AV' },
@@ -163,18 +163,19 @@ const ServiceTicketDetail = () => {
     setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
   };
 
-  // Load technology categories from database
+  // Load skill categories from database (only those marked as show_in_service)
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const { data, error } = await supabase
-          .from('technology_categories')
-          .select('name, label')
+          .from('skill_categories')
+          .select('name, label, color')
           .eq('is_active', true)
+          .neq('show_in_service', false) // Include categories where show_in_service is true or null
           .order('sort_order');
 
         if (!error && data?.length > 0) {
-          setCategories(data.map(c => ({ value: c.name, label: c.label })));
+          setCategories(data.map(c => ({ value: c.name, label: c.label, color: c.color })));
         }
       } catch (err) {
         console.log('[ServiceTicketDetail] Using default categories');

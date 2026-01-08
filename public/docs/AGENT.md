@@ -3666,31 +3666,33 @@ User Reports Bug (BugReporter.js)
 CREATE TABLE bug_reports (
   id UUID PRIMARY KEY,
   created_at TIMESTAMPTZ,
-  
+
   -- Reporter
   reported_by_email TEXT,
   reported_by_name TEXT,
-  
+
   -- Bug data
   url TEXT NOT NULL,
   user_agent TEXT,
   description TEXT NOT NULL,
   console_errors JSONB,
-  screenshot_base64 TEXT,
-  
+  screenshot_base64 TEXT,     -- Cleared after GitHub upload to save space
+
   -- Processing
   status TEXT CHECK (status IN ('pending', 'processing', 'analyzed', 'failed')),
   processed_at TIMESTAMPTZ,
   processing_error TEXT,
-  
+
   -- AI Results
-  bug_report_id TEXT,        -- BR-2026-01-07-0001
-  md_file_path TEXT,         -- bug-reports/2026-01/BR-...md
+  bug_report_id TEXT,         -- BR-2026-01-07-0001
+  md_file_path TEXT,          -- bug-reports/2026-01/BR-...md
   ai_summary TEXT,
   ai_severity TEXT,
   ai_suggested_files JSONB,
   ai_fix_prompt TEXT,
-  
+  ai_confidence DECIMAL(3,2), -- 0-1 confidence score
+  ai_token_usage JSONB,       -- { prompt_tokens, completion_tokens, total_tokens }
+
   -- GitHub
   pr_url TEXT,
   pr_number INTEGER,
@@ -3848,18 +3850,93 @@ Please review the suggested fix and implement it.
 
 Located at **Admin → Bug Todos** (9th tab)
 
-Features:
+**Features:**
 - Stats cards: Pending | Analyzed | Failed | Total
 - Filter by status
-- Expandable bug cards showing:
-  - User description
-  - AI-suggested fix
-  - Affected files
-  - Console errors
-- Actions:
-  - **View Report** - Opens GitHub markdown file
-  - **Reanalyze** - Resets to pending for re-processing
-  - **Mark Fixed** - Deletes from GitHub + database
+- Expandable bug cards matching email format:
+  - Violet header banner with bug ID
+  - Severity & Confidence cards side by side
+  - Summary, Suggested Fix, Affected Files
+  - PR link, Reporter info, Description, Page URL
+  - Console errors (red box)
+  - Screenshot (fetched from GitHub if not in DB)
+  - Token usage display with estimated cost
+
+**Actions:**
+- **Download Report** - Downloads complete `.md` file with dual-perspective AI instructions
+- **View PR** - Opens GitHub pull request
+- **Reanalyze** - Resets to pending for re-processing
+- **Mark Fixed** - Deletes from GitHub + database
+
+### Downloadable Bug Report (.md)
+
+The "Download Report" button generates a complete markdown file optimized for external AI assistants (Claude Code, etc.):
+
+```markdown
+# Bug Report: BR-2026-01-07-0001
+
+## App Context
+This is the **Unicorn** app - a React-based field operations management system.
+- **Stack:** React 18, Supabase (PostgreSQL), Vercel serverless functions
+- **UI:** Tailwind CSS, Lucide icons, dark/light mode support
+- **Key patterns:** Service-based architecture, React hooks, async/await
+- **Repo:** https://github.com/isehome/unicorn
+
+## Bug Details
+| Field | Value |
+|-------|-------|
+| **Severity** | HIGH |
+| **Reporter** | John Smith (john@example.com) |
+| **Page URL** | https://unicorn.app/admin |
+
+## Screenshot
+> **Important:** Review this screenshot to understand the visual context of the bug.
+
+![Bug Screenshot](https://raw.githubusercontent.com/isehome/unicorn/bug-report/BR-.../screenshot.jpg)
+
+## AI Analysis & Suggested Fix
+[Gemini's suggested fix here]
+
+---
+
+## Instructions for AI Assistant
+
+> **Important:** This bug report includes a suggested fix from our internal Gemini AI agent.
+> Your task is to provide a **second, independent analysis** to verify or improve upon it.
+
+### Step 1: Independent Analysis
+Before reading the suggested fix above, perform your own analysis...
+
+### Step 2: Compare Approaches
+Now review the "AI Analysis & Suggested Fix" section above and compare...
+
+### Step 3: Implement the Best Solution
+Based on both perspectives, implement the fix that...
+
+### Step 4: Verify
+After implementing, briefly explain...
+```
+
+**Key features of the downloadable report:**
+- **App Context** - Brief primer on the Unicorn stack (~200 tokens)
+- **GitHub Screenshot URL** - Uses raw.githubusercontent.com so the image renders in AI tools
+- **Dual-Perspective Instructions** - Asks the receiving AI to independently analyze, then compare with Gemini's fix
+- This "second opinion" approach increases fix confidence
+
+### Token Usage Tracking
+
+The system tracks Gemini API token usage for cost monitoring:
+
+```javascript
+// Captured from Gemini response
+{
+  prompt_tokens: 2500,
+  completion_tokens: 800,
+  total_tokens: 3300
+}
+```
+
+Displayed in UI as: `Tokens: 2,500 prompt + 800 completion = 3,300 total | ~$0.0003 est.`
 
 ### Environment Variables Required
 
