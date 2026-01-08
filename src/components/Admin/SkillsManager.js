@@ -1,0 +1,839 @@
+/**
+ * SkillsManager.js
+ * 3-level skill hierarchy management (Category → Class → Skill)
+ * With CSV import (Replace All, Merge, Append) and batch delete
+ */
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Plus, Trash2, Edit2, Save, X, ChevronDown, ChevronRight,
+  Loader2, Upload, Download, AlertTriangle, Check, FileSpreadsheet,
+  Layers, FolderOpen, Award
+} from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import Button from '../ui/Button';
+
+// Import mode options
+const IMPORT_MODES = [
+  { id: 'replace', label: 'Replace All', description: 'Delete all existing skills and import fresh', icon: AlertTriangle, color: 'text-red-500' },
+  { id: 'merge', label: 'Merge', description: 'Update existing, add new (match by Category+Class+Skill)', icon: Layers, color: 'text-yellow-500' },
+  { id: 'append', label: 'Append', description: 'Add all as new (may create duplicates)', icon: Plus, color: 'text-green-500' }
+];
+
+const SkillsManager = ({ onSuccess, onError }) => {
+  // Data state
+  const [categories, setCategories] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [skills, setSkills] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // UI state
+  const [expandedCategories, setExpandedCategories] = useState({});
+  const [expandedClasses, setExpandedClasses] = useState({});
+  const [editingItem, setEditingItem] = useState(null); // { type: 'category'|'class'|'skill', data: {...} }
+  const [addingTo, setAddingTo] = useState(null); // { type: 'category'|'class'|'skill', parentId: null|uuid }
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemDescription, setNewItemDescription] = useState('');
+
+  // Import state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importMode, setImportMode] = useState('merge');
+  const [importData, setImportData] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Batch delete state
+  const [selectedSkills, setSelectedSkills] = useState(new Set());
+  const [selectMode, setSelectMode] = useState(false);
+
+  // Load data
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Load categories
+      const { data: catData, error: catError } = await supabase
+        .from('skill_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (catError) throw catError;
+      setCategories(catData || []);
+
+      // Load classes
+      const { data: classData, error: classError } = await supabase
+        .from('skill_classes')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (!classError) {
+        setClasses(classData || []);
+      }
+
+      // Load skills
+      const { data: skillData, error: skillError } = await supabase
+        .from('global_skills')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order');
+
+      if (skillError) throw skillError;
+      setSkills(skillData || []);
+
+    } catch (err) {
+      console.error('[SkillsManager] Load failed:', err);
+      onError?.(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Get classes for a category
+  const getClassesForCategory = (categoryId) => {
+    return classes.filter(c => c.category_id === categoryId);
+  };
+
+  // Get skills for a class
+  const getSkillsForClass = (classId) => {
+    return skills.filter(s => s.class_id === classId);
+  };
+
+  // Get skills for a category (via class or direct category match)
+  const getSkillsForCategory = (categoryName) => {
+    return skills.filter(s => s.category === categoryName);
+  };
+
+  // Toggle expand
+  const toggleCategory = (catId) => {
+    setExpandedCategories(prev => ({ ...prev, [catId]: !prev[catId] }));
+  };
+
+  const toggleClass = (classId) => {
+    setExpandedClasses(prev => ({ ...prev, [classId]: !prev[classId] }));
+  };
+
+  // Add handlers
+  const handleAddCategory = async () => {
+    if (!newItemName.trim()) return;
+    try {
+      setSaving(true);
+      const name = newItemName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const { error } = await supabase
+        .from('skill_categories')
+        .insert({
+          name,
+          label: newItemName.trim(),
+          description: newItemDescription.trim() || null,
+          color: '#64748B',
+          is_active: true,
+          sort_order: categories.length
+        });
+      if (error) throw error;
+      setAddingTo(null);
+      setNewItemName('');
+      setNewItemDescription('');
+      onSuccess?.('Category added');
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddClass = async (categoryId) => {
+    if (!newItemName.trim()) return;
+    try {
+      setSaving(true);
+      const name = newItemName.trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const { error } = await supabase
+        .from('skill_classes')
+        .insert({
+          category_id: categoryId,
+          name,
+          label: newItemName.trim(),
+          description: newItemDescription.trim() || null,
+          is_active: true,
+          sort_order: getClassesForCategory(categoryId).length
+        });
+      if (error) throw error;
+      setAddingTo(null);
+      setNewItemName('');
+      setNewItemDescription('');
+      onSuccess?.('Class added');
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddSkill = async (classId, categoryName) => {
+    if (!newItemName.trim()) return;
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('global_skills')
+        .insert({
+          name: newItemName.trim(),
+          category: categoryName,
+          class_id: classId,
+          description: newItemDescription.trim() || null,
+          is_active: true,
+          sort_order: getSkillsForClass(classId).length
+        });
+      if (error) throw error;
+      setAddingTo(null);
+      setNewItemName('');
+      setNewItemDescription('');
+      onSuccess?.('Skill added');
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleDeleteSkill = async (skillId) => {
+    if (!window.confirm('Delete this skill? This will remove it from all employees.')) return;
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('global_skills')
+        .delete()
+        .eq('id', skillId);
+      if (error) throw error;
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedSkills.size === 0) return;
+    if (!window.confirm(`Delete ${selectedSkills.size} selected skills? This will remove them from all employees.`)) return;
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from('global_skills')
+        .delete()
+        .in('id', Array.from(selectedSkills));
+      if (error) throw error;
+      setSelectedSkills(new Set());
+      setSelectMode(false);
+      onSuccess?.(`Deleted ${selectedSkills.size} skills`);
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // CSV Import handlers
+  const parseCSV = (text) => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return null;
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const catIdx = headers.findIndex(h => h === 'category');
+    const classIdx = headers.findIndex(h => h === 'class');
+    const skillIdx = headers.findIndex(h => h === 'skill');
+    const descIdx = headers.findIndex(h => h === 'description');
+
+    if (catIdx === -1 || skillIdx === -1) {
+      return { error: 'CSV must have "Category" and "Skill" columns' };
+    }
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      // Handle quoted CSV values
+      const row = lines[i].match(/("([^"]*)"|[^,]*)(,|$)/g)?.map(v =>
+        v.replace(/,$/, '').replace(/^"|"$/g, '').trim()
+      ) || lines[i].split(',').map(v => v.trim());
+
+      if (row[catIdx] || row[skillIdx]) {
+        rows.push({
+          category: row[catIdx] || '',
+          class: classIdx >= 0 ? (row[classIdx] || 'General') : 'General',
+          skill: row[skillIdx] || '',
+          description: descIdx >= 0 ? (row[descIdx] || '') : ''
+        });
+      }
+    }
+
+    return { rows };
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const parsed = parseCSV(text);
+
+      if (parsed?.error) {
+        onError?.(parsed.error);
+        return;
+      }
+
+      setImportData(parsed.rows);
+
+      // Build preview
+      const preview = {};
+      parsed.rows.forEach(row => {
+        if (!preview[row.category]) preview[row.category] = {};
+        if (!preview[row.category][row.class]) preview[row.category][row.class] = [];
+        preview[row.category][row.class].push({ skill: row.skill, description: row.description });
+      });
+      setImportPreview(preview);
+      setShowImportModal(true);
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input
+  };
+
+  const handleImport = async () => {
+    if (!importData || importData.length === 0) return;
+
+    try {
+      setImporting(true);
+
+      if (importMode === 'replace') {
+        // Delete all existing skills, classes
+        await supabase.from('global_skills').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('skill_classes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      }
+
+      // Group by category and class
+      const structure = {};
+      importData.forEach(row => {
+        if (!structure[row.category]) structure[row.category] = {};
+        if (!structure[row.category][row.class]) structure[row.category][row.class] = [];
+        structure[row.category][row.class].push({ skill: row.skill, description: row.description });
+      });
+
+      // Process each category
+      for (const [catLabel, classesObj] of Object.entries(structure)) {
+        const catName = catLabel.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+        // Upsert category
+        const { data: catData } = await supabase
+          .from('skill_categories')
+          .upsert({
+            name: catName,
+            label: catLabel,
+            is_active: true,
+            sort_order: Object.keys(structure).indexOf(catLabel)
+          }, { onConflict: 'name' })
+          .select()
+          .single();
+
+        const categoryId = catData?.id;
+        if (!categoryId) continue;
+
+        // Process each class
+        for (const [classLabel, skillsArr] of Object.entries(classesObj)) {
+          const className = classLabel.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+
+          // Upsert class
+          let classId;
+          if (importMode === 'merge' || importMode === 'replace') {
+            const { data: existingClass } = await supabase
+              .from('skill_classes')
+              .select('id')
+              .eq('category_id', categoryId)
+              .eq('name', className)
+              .single();
+
+            if (existingClass) {
+              classId = existingClass.id;
+            } else {
+              const { data: newClass } = await supabase
+                .from('skill_classes')
+                .insert({
+                  category_id: categoryId,
+                  name: className,
+                  label: classLabel,
+                  is_active: true,
+                  sort_order: Object.keys(classesObj).indexOf(classLabel)
+                })
+                .select()
+                .single();
+              classId = newClass?.id;
+            }
+          } else {
+            // Append mode - always create new
+            const { data: newClass } = await supabase
+              .from('skill_classes')
+              .insert({
+                category_id: categoryId,
+                name: className + '_' + Date.now(),
+                label: classLabel,
+                is_active: true,
+                sort_order: Object.keys(classesObj).indexOf(classLabel)
+              })
+              .select()
+              .single();
+            classId = newClass?.id;
+          }
+
+          if (!classId) continue;
+
+          // Process skills
+          for (let i = 0; i < skillsArr.length; i++) {
+            const { skill, description } = skillsArr[i];
+            if (!skill) continue;
+
+            if (importMode === 'merge') {
+              // Check if skill exists
+              const { data: existing } = await supabase
+                .from('global_skills')
+                .select('id')
+                .eq('class_id', classId)
+                .eq('name', skill)
+                .single();
+
+              if (existing) {
+                // Update description if provided
+                if (description) {
+                  await supabase
+                    .from('global_skills')
+                    .update({ description })
+                    .eq('id', existing.id);
+                }
+              } else {
+                await supabase
+                  .from('global_skills')
+                  .insert({
+                    name: skill,
+                    category: catName,
+                    class_id: classId,
+                    description: description || null,
+                    is_active: true,
+                    sort_order: i
+                  });
+              }
+            } else {
+              // Replace or Append - just insert
+              await supabase
+                .from('global_skills')
+                .insert({
+                  name: skill,
+                  category: catName,
+                  class_id: classId,
+                  description: description || null,
+                  is_active: true,
+                  sort_order: i
+                });
+            }
+          }
+        }
+      }
+
+      setShowImportModal(false);
+      setImportData(null);
+      setImportPreview(null);
+      onSuccess?.(`Imported ${importData.length} skills`);
+      await loadData();
+
+    } catch (err) {
+      console.error('[SkillsManager] Import failed:', err);
+      onError?.(err.message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Export CSV
+  const handleExport = () => {
+    const rows = [['Category', 'Class', 'Skill', 'Description']];
+
+    categories.forEach(cat => {
+      const catClasses = getClassesForCategory(cat.id);
+      catClasses.forEach(cls => {
+        const clsSkills = getSkillsForClass(cls.id);
+        clsSkills.forEach(skill => {
+          rows.push([cat.label, cls.label, skill.name, skill.description || '']);
+        });
+      });
+    });
+
+    const csv = rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `skills_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Toggle skill selection
+  const toggleSkillSelection = (skillId) => {
+    setSelectedSkills(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(skillId)) {
+        newSet.delete(skillId);
+      } else {
+        newSet.add(skillId);
+      }
+      return newSet;
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="animate-spin text-gray-400" size={24} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Skills (3-Level Hierarchy)</h2>
+        <div className="flex items-center gap-2">
+          {selectMode ? (
+            <>
+              <span className="text-sm text-gray-500">{selectedSkills.size} selected</span>
+              <Button
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={handleBatchDelete}
+                disabled={selectedSkills.size === 0 || saving}
+              >
+                Delete Selected
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => { setSelectMode(false); setSelectedSkills(new Set()); }}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="secondary" size="sm" icon={Trash2} onClick={() => setSelectMode(true)}>
+                Batch Delete
+              </Button>
+              <Button variant="secondary" size="sm" icon={Download} onClick={handleExport}>
+                Export CSV
+              </Button>
+              <Button variant="secondary" size="sm" icon={Upload} onClick={() => fileInputRef.current?.click()}>
+                Import CSV
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <Button size="sm" icon={Plus} onClick={() => setAddingTo({ type: 'category', parentId: null })}>
+                Add Category
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Add Category Form */}
+      {addingTo?.type === 'category' && (
+        <div className="p-4 rounded-xl border border-violet-500/50 bg-violet-500/10 space-y-3">
+          <div className="flex items-center gap-2 mb-2">
+            <FolderOpen size={16} className="text-violet-500" />
+            <span className="text-sm font-medium text-gray-900 dark:text-white">New Category</span>
+          </div>
+          <input
+            type="text"
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
+            placeholder="Category name (e.g., Access Control)"
+            className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+            autoFocus
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" size="sm" onClick={() => { setAddingTo(null); setNewItemName(''); }}>
+              Cancel
+            </Button>
+            <Button size="sm" icon={Plus} onClick={handleAddCategory} disabled={!newItemName.trim() || saving}>
+              {saving ? 'Adding...' : 'Add Category'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Categories List */}
+      {categories.map(category => (
+        <div key={category.id} className="rounded-xl border overflow-hidden bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700">
+          {/* Category Header */}
+          <button
+            onClick={() => toggleCategory(category.id)}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-zinc-700/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color || '#64748B' }} />
+              <span className="font-medium text-gray-900 dark:text-white">{category.label}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ({getClassesForCategory(category.id).length} classes, {getSkillsForCategory(category.name).length} skills)
+              </span>
+            </div>
+            {expandedCategories[category.id] ? (
+              <ChevronDown size={20} className="text-gray-400" />
+            ) : (
+              <ChevronRight size={20} className="text-gray-400" />
+            )}
+          </button>
+
+          {/* Category Content */}
+          {expandedCategories[category.id] && (
+            <div className="border-t border-gray-200 dark:border-zinc-700">
+              {/* Add Class Button */}
+              <div className="p-2 border-b border-gray-100 dark:border-zinc-700">
+                {addingTo?.type === 'class' && addingTo?.parentId === category.id ? (
+                  <div className="p-3 bg-blue-500/10 rounded-lg space-y-2">
+                    <input
+                      type="text"
+                      value={newItemName}
+                      onChange={(e) => setNewItemName(e.target.value)}
+                      placeholder="Class name (e.g., OpenPath, General)"
+                      className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                      autoFocus
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="secondary" size="sm" onClick={() => { setAddingTo(null); setNewItemName(''); }}>Cancel</Button>
+                      <Button size="sm" icon={Plus} onClick={() => handleAddClass(category.id)} disabled={!newItemName.trim() || saving}>
+                        Add Class
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setAddingTo({ type: 'class', parentId: category.id })}
+                    className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 flex items-center justify-center gap-1"
+                  >
+                    <Plus size={14} /> Add Class
+                  </button>
+                )}
+              </div>
+
+              {/* Classes List */}
+              {getClassesForCategory(category.id).map(cls => (
+                <div key={cls.id} className="border-b border-gray-100 dark:border-zinc-700 last:border-b-0">
+                  {/* Class Header */}
+                  <button
+                    onClick={() => toggleClass(cls.id)}
+                    className="w-full flex items-center justify-between p-3 pl-8 hover:bg-gray-50 dark:hover:bg-zinc-700/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Layers size={14} className="text-gray-400" />
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{cls.label}</span>
+                      <span className="text-xs text-gray-500">
+                        ({getSkillsForClass(cls.id).length} skills)
+                      </span>
+                    </div>
+                    {expandedClasses[cls.id] ? (
+                      <ChevronDown size={16} className="text-gray-400" />
+                    ) : (
+                      <ChevronRight size={16} className="text-gray-400" />
+                    )}
+                  </button>
+
+                  {/* Skills List */}
+                  {expandedClasses[cls.id] && (
+                    <div className="pl-12 pr-4 pb-2">
+                      {/* Add Skill */}
+                      {addingTo?.type === 'skill' && addingTo?.parentId === cls.id ? (
+                        <div className="p-3 bg-emerald-500/10 rounded-lg space-y-2 mb-2">
+                          <input
+                            type="text"
+                            value={newItemName}
+                            onChange={(e) => setNewItemName(e.target.value)}
+                            placeholder="Skill name"
+                            className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                            autoFocus
+                          />
+                          <input
+                            type="text"
+                            value={newItemDescription}
+                            onChange={(e) => setNewItemDescription(e.target.value)}
+                            placeholder="Description (optional)"
+                            className="w-full px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button variant="secondary" size="sm" onClick={() => { setAddingTo(null); setNewItemName(''); setNewItemDescription(''); }}>Cancel</Button>
+                            <Button size="sm" icon={Plus} onClick={() => handleAddSkill(cls.id, category.name)} disabled={!newItemName.trim() || saving}>
+                              Add Skill
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setAddingTo({ type: 'skill', parentId: cls.id })}
+                          className="w-full py-2 text-sm text-emerald-500 hover:text-emerald-600 flex items-center gap-1 mb-2"
+                        >
+                          <Plus size={14} /> Add Skill
+                        </button>
+                      )}
+
+                      {/* Skills */}
+                      {getSkillsForClass(cls.id).map(skill => (
+                        <div key={skill.id} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700/30">
+                          <div className="flex items-center gap-2">
+                            {selectMode && (
+                              <input
+                                type="checkbox"
+                                checked={selectedSkills.has(skill.id)}
+                                onChange={() => toggleSkillSelection(skill.id)}
+                                className="w-4 h-4 rounded border-gray-300 dark:border-zinc-600"
+                              />
+                            )}
+                            <Award size={14} className="text-gray-400" />
+                            <div>
+                              <span className="text-sm text-gray-900 dark:text-white">{skill.name}</span>
+                              {skill.description && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{skill.description}</p>
+                              )}
+                            </div>
+                          </div>
+                          {!selectMode && (
+                            <button
+                              onClick={() => handleDeleteSkill(skill.id)}
+                              className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+
+                      {getSkillsForClass(cls.id).length === 0 && (
+                        <p className="text-sm text-gray-400 italic py-2">No skills yet</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {getClassesForCategory(category.id).length === 0 && (
+                <p className="text-sm text-gray-400 italic p-4">No classes yet. Add a class to organize skills.</p>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {categories.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          No categories yet. Add a category or import from CSV.
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-zinc-800 rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 dark:border-zinc-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <FileSpreadsheet size={20} />
+                Import Skills from CSV
+              </h3>
+              <button onClick={() => { setShowImportModal(false); setImportData(null); setImportPreview(null); }}>
+                <X size={20} className="text-gray-400 hover:text-gray-600" />
+              </button>
+            </div>
+
+            <div className="p-4 flex-1 overflow-y-auto space-y-4">
+              {/* Import Mode Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Import Mode</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {IMPORT_MODES.map(mode => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setImportMode(mode.id)}
+                      className={`p-3 rounded-lg border text-left transition-colors ${
+                        importMode === mode.id
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-gray-200 dark:border-zinc-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <mode.icon size={16} className={mode.color} />
+                        <span className="font-medium text-sm text-gray-900 dark:text-white">{mode.label}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">{mode.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview */}
+              {importPreview && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Preview ({importData?.length} skills)
+                  </label>
+                  <div className="border border-gray-200 dark:border-zinc-600 rounded-lg max-h-64 overflow-y-auto">
+                    {Object.entries(importPreview).map(([cat, classesObj]) => (
+                      <div key={cat} className="border-b border-gray-100 dark:border-zinc-700 last:border-b-0">
+                        <div className="p-2 bg-gray-50 dark:bg-zinc-700/50 font-medium text-sm">{cat}</div>
+                        {Object.entries(classesObj).map(([cls, skillsArr]) => (
+                          <div key={cls} className="pl-4">
+                            <div className="p-2 text-sm text-gray-600 dark:text-gray-400">↳ {cls}</div>
+                            {skillsArr.slice(0, 5).map((s, i) => (
+                              <div key={i} className="pl-6 py-1 text-xs text-gray-500">• {s.skill}</div>
+                            ))}
+                            {skillsArr.length > 5 && (
+                              <div className="pl-6 py-1 text-xs text-gray-400 italic">...and {skillsArr.length - 5} more</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {importMode === 'replace' && (
+                <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
+                  <AlertTriangle size={16} className="text-red-500 mt-0.5" />
+                  <div className="text-sm text-red-600 dark:text-red-400">
+                    <strong>Warning:</strong> Replace All will delete ALL existing skills and classes before importing. This cannot be undone.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => { setShowImportModal(false); setImportData(null); setImportPreview(null); }}>
+                Cancel
+              </Button>
+              <Button icon={importing ? Loader2 : Check} onClick={handleImport} disabled={importing}>
+                {importing ? 'Importing...' : `Import (${importMode})`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default SkillsManager;

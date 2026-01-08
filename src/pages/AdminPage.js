@@ -29,6 +29,7 @@ import { quickbooksService } from '../services/quickbooksService';
 import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
 import AITrainingTab from '../components/Admin/AITrainingTab';
 import BugTodosTab from '../components/Admin/BugTodosTab';
+import SkillsManager from '../components/Admin/SkillsManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -1330,143 +1331,16 @@ const AdminPage = () => {
   );
 
   /**
-   * Render Skills Tab
+   * Render Skills Tab - Uses new 3-level hierarchy component
    */
   const renderSkillsTab = () => (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Skills</h2>
-        <Button onClick={() => setAddingSkill(true)} size="sm" icon={Plus}>
-          Add Skill
-        </Button>
-      </div>
-
-      {/* Add Skill Form */}
-      {addingSkill && (
-        <div className="p-4 rounded-xl border border-violet-500/50 bg-violet-500/10 space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={16} className="text-violet-500" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">New Skill</span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <input
-              type="text"
-              value={newSkill.name}
-              onChange={(e) => setNewSkill(prev => ({ ...prev, name: e.target.value }))}
-              placeholder="Skill name"
-              className="px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-            />
-            <select
-              value={newSkill.category}
-              onChange={(e) => setNewSkill(prev => ({ ...prev, category: e.target.value }))}
-              className="px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-            >
-              {technologyCategories.map(cat => (
-                <option key={cat.id || cat.name} value={cat.name || cat.id}>{cat.label}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={newSkill.description}
-              onChange={(e) => setNewSkill(prev => ({ ...prev, description: e.target.value }))}
-              placeholder="Description (optional)"
-              className="px-3 py-2 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded-lg text-sm text-gray-900 dark:text-white"
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="secondary" size="sm" onClick={() => setAddingSkill(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" icon={Plus} onClick={handleAddSkill} disabled={!newSkill.name.trim() || saving}>
-              {saving ? 'Adding...' : 'Add Skill'}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Skills by Category */}
-      {skillsByCategory.map(category => (
-        <div key={category.id} className="rounded-xl border overflow-hidden" style={sectionStyles.card}>
-          <button
-            onClick={() => toggleCategory(category.id)}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 dark:hover:bg-zinc-700/50 transition-colors"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: category.color }} />
-              <span className="font-medium text-gray-900 dark:text-white">{category.label}</span>
-              <span className="text-xs text-gray-500 dark:text-gray-400">
-                ({category.skills.length} skills)
-              </span>
-            </div>
-            {expandedCategories[category.id] ? (
-              <ChevronDown size={20} className="text-gray-400" />
-            ) : (
-              <ChevronRight size={20} className="text-gray-400" />
-            )}
-          </button>
-
-          {expandedCategories[category.id] && (
-            <div className="border-t border-gray-200 dark:border-zinc-700">
-              {category.skills.length === 0 ? (
-                <div className="p-4 text-center text-sm text-gray-500">No skills in this category</div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-zinc-700">
-                  {category.skills.map(skill => (
-                    <div key={skill.id} className="p-3 flex items-center justify-between">
-                      {editingSkill?.id === skill.id ? (
-                        <div className="flex-1 flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={editingSkill.name}
-                            onChange={(e) => setEditingSkill(prev => ({ ...prev, name: e.target.value }))}
-                            className="flex-1 px-2 py-1 bg-white dark:bg-zinc-700 border border-gray-200 dark:border-zinc-600 rounded text-sm text-gray-900 dark:text-white"
-                          />
-                          <button
-                            onClick={() => handleUpdateSkill(editingSkill)}
-                            className="p-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
-                          >
-                            <Save size={16} />
-                          </button>
-                          <button
-                            onClick={() => setEditingSkill(null)}
-                            className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-500"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <span className="text-sm text-gray-900 dark:text-white">{skill.name}</span>
-                            {skill.description && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">{skill.description}</p>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditingSkill(skill)}
-                              className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-500"
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteSkill(skill.id)}
-                              className="p-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
+    <SkillsManager
+      onSuccess={(msg) => {
+        setSuccess(msg);
+        setTimeout(() => setSuccess(null), 3000);
+      }}
+      onError={(msg) => setError(msg)}
+    />
   );
 
   /**
