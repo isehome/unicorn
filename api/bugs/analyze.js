@@ -433,6 +433,16 @@ Return ONLY valid JSON, no markdown formatting.`;
   const response = await result.response;
   const text = response.text();
 
+  // Capture token usage from Gemini response
+  const usageMetadata = response.usageMetadata || {};
+  const tokenUsage = {
+    prompt_tokens: usageMetadata.promptTokenCount || 0,
+    completion_tokens: usageMetadata.candidatesTokenCount || 0,
+    total_tokens: usageMetadata.totalTokenCount || 0
+  };
+
+  console.log(`[BugAnalyze] Token usage: ${tokenUsage.prompt_tokens} prompt + ${tokenUsage.completion_tokens} completion = ${tokenUsage.total_tokens} total`);
+
   // Parse JSON response
   let analysis;
   try {
@@ -456,12 +466,13 @@ Return ONLY valid JSON, no markdown formatting.`;
     };
   }
 
-  // Add metadata
+  // Add metadata including token usage
   return {
     ...analysis,
     analyzed_at: new Date().toISOString(),
     code_files_analyzed: codeContext.files,
-    page_pattern: codeContext.pattern
+    page_pattern: codeContext.pattern,
+    token_usage: tokenUsage
   };
 }
 

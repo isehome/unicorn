@@ -248,7 +248,7 @@ async function processBugReport(bugReport) {
       console.error(`[ProcessBugs] Email send failed:`, emailError.message);
     }
 
-    // Update database with results
+    // Update database with results (including token usage)
     await getSupabase()
       .from('bug_reports')
       .update({
@@ -258,6 +258,8 @@ async function processBugReport(bugReport) {
         ai_severity: analysis.severity,
         ai_suggested_files: analysis.suggested_files || [],
         ai_fix_prompt: analysis.fix_prompt,
+        ai_confidence: analysis.confidence || null,
+        ai_token_usage: analysis.token_usage || null,
         md_file_path: githubResult?.mdPath,
         pr_url: githubResult?.prUrl,
         pr_number: githubResult?.prNumber,
