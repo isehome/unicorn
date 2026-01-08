@@ -416,6 +416,37 @@ async function getBugReportContent(path) {
   return content;
 }
 
+/**
+ * Get a screenshot from GitHub (returns base64 data URL)
+ */
+async function getBugScreenshot(bugId, branch = null) {
+  const screenshotPath = `bug-reports/attachments/${bugId}/screenshot.jpg`;
+  const branchToUse = branch || `bug-report/${bugId}`;
+
+  try {
+    const data = await githubRequest(
+      `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${screenshotPath}?ref=${branchToUse}`
+    );
+
+    // Return as data URL
+    return `data:image/jpeg;base64,${data.content.replace(/\n/g, '')}`;
+  } catch (err) {
+    // Try main branch if bug report branch doesn't exist
+    if (branch !== 'main') {
+      try {
+        const data = await githubRequest(
+          `/repos/${REPO_OWNER}/${REPO_NAME}/contents/${screenshotPath}?ref=main`
+        );
+        return `data:image/jpeg;base64,${data.content.replace(/\n/g, '')}`;
+      } catch {
+        // Screenshot not found
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
 module.exports = {
   githubRequest,
   getMainBranchSha,
@@ -431,5 +462,6 @@ module.exports = {
   deleteBugReport,
   listBugReports,
   getBugReportContent,
+  getBugScreenshot,
   getFileSha
 };

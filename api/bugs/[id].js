@@ -7,7 +7,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
-const { deleteBugReport, getBugReportContent } = require('./github');
+const { deleteBugReport, getBugReportContent, getBugScreenshot } = require('./github');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
@@ -58,10 +58,21 @@ module.exports = async (req, res) => {
         }
       }
 
+      // If screenshot is not in DB but bug has been processed, try to fetch from GitHub
+      let screenshotBase64 = bug.screenshot_base64;
+      if (!screenshotBase64 && bug.bug_report_id && bug.status === 'analyzed') {
+        try {
+          screenshotBase64 = await getBugScreenshot(bug.bug_report_id, bug.branch_name);
+        } catch (githubError) {
+          console.warn('[BugGet] Failed to fetch screenshot from GitHub:', githubError.message);
+        }
+      }
+
       return res.json({
         success: true,
         bug: {
           ...bug,
+          screenshot_base64: screenshotBase64,
           markdown_content: markdownContent
         }
       });
