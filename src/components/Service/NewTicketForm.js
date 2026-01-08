@@ -15,7 +15,9 @@ import {
   Building,
   X,
   Check,
-  Loader2
+  Loader2,
+  Plus,
+  UserPlus
 } from 'lucide-react';
 import { serviceTicketService, customerLookupService } from '../../services/serviceTicketService';
 import { useAppState } from '../../contexts/AppStateContext';
@@ -67,8 +69,11 @@ const NewTicketForm = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searchPerformed, setSearchPerformed] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
-  const [saveAsNewContact, setSaveAsNewContact] = useState(false);
+  const [showAddContactForm, setShowAddContactForm] = useState(false);
+  const [newContactData, setNewContactData] = useState({ name: '', email: '', phone: '', company: '', address: '' });
+  const [creatingContact, setCreatingContact] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -106,6 +111,7 @@ const NewTicketForm = () => {
   const handleSearch = useCallback(async (query) => {
     if (!query || query.length < 2) {
       setSearchResults([]);
+      setSearchPerformed(false);
       return;
     }
 
@@ -113,6 +119,7 @@ const NewTicketForm = () => {
       setSearching(true);
       const results = await customerLookupService.search(query);
       setSearchResults(results);
+      setSearchPerformed(true);
     } catch (err) {
       console.error('[NewTicketForm] Search failed:', err);
     } finally {
@@ -134,12 +141,15 @@ const NewTicketForm = () => {
     setForm(prev => ({
       ...prev,
       contact_id: contact.id,
-      customer_name: contact.full_name || '',
+      customer_name: contact.full_name || contact.name || '',
       customer_phone: contact.phone || '',
-      customer_email: contact.email || ''
+      customer_email: contact.email || '',
+      customer_address: contact.address || ''
     }));
     setSearchQuery('');
     setSearchResults([]);
+    setSearchPerformed(false);
+    setShowAddContactForm(false);
   };
 
   const clearContact = () => {
@@ -152,6 +162,47 @@ const NewTicketForm = () => {
       customer_email: '',
       customer_address: ''
     }));
+    setShowAddContactForm(false);
+    setNewContactData({ name: '', email: '', phone: '', company: '', address: '' });
+  };
+
+  // Create new contact using the same pattern as people module
+  const handleCreateContact = async (e) => {
+    e.preventDefault();
+    if (!newContactData.name.trim()) {
+      setError('Contact name is required');
+      return;
+    }
+
+    try {
+      setCreatingContact(true);
+      setError('');
+
+      const { data, error: createError } = await supabase
+        .from('contacts')
+        .insert([{
+          name: newContactData.name.trim(),
+          full_name: newContactData.name.trim(),
+          email: newContactData.email.trim() || null,
+          phone: newContactData.phone.trim() || null,
+          company: newContactData.company.trim() || null,
+          address: newContactData.address.trim() || null,
+          is_internal: false,
+          is_active: true
+        }])
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Select the newly created contact
+      selectContact(data);
+    } catch (err) {
+      console.error('[NewTicketForm] Failed to create contact:', err);
+      setError(`Failed to create contact: ${err.message}`);
+    } finally {
+      setCreatingContact(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -166,29 +217,8 @@ const NewTicketForm = () => {
       setSaving(true);
       setError('');
 
-      let contactId = form.contact_id;
-
-      // If user wants to save as new contact and has entered customer details
-      if (saveAsNewContact && !contactId && form.customer_name.trim()) {
-        try {
-          const newContact = await customerLookupService.createContact({
-            customer_name: form.customer_name,
-            customer_phone: form.customer_phone,
-            customer_email: form.customer_email,
-            customer_address: form.customer_address
-          });
-          contactId = newContact.id;
-        } catch (contactErr) {
-          console.error('[NewTicketForm] Failed to create contact:', contactErr);
-          setError(`Failed to create contact: ${contactErr.message}`);
-          setSaving(false);
-          return;
-        }
-      }
-
       const ticketData = {
         ...form,
-        contact_id: contactId,
         title: form.title.trim(),
         description: form.description.trim() || null,
         customer_name: form.customer_name.trim() || null,
@@ -290,14 +320,14 @@ const NewTicketForm = () => {
                   )}
 
                   {/* Search Results Dropdown */}
-                  {searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-700 border border-zinc-600 rounded-lg shadow-lg overflow-hidden z-10">
+                  {(searchResults.length > 0 || (searchPerformed && searchResults.length === 0 && searchQuery.length >= 2)) && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-zinc-700 border border-zinc-600 rounded-lg shadow-lg overflow-hidden z-10 max-h-64 overflow-y-auto">
                       {searchResults.map(contact => (
                         <button
                           key={contact.id}
                           type="button"
                           onClick={() => selectContact(contact)}
-                          className="w-full p-3 text-left hover:bg-zinc-600 transition-colors"
+                          className="w-full p-3 text-left hover:bg-zinc-600 transition-colors border-b border-zinc-600 last:border-b-0"
                         >
                           <div className="text-white">{contact.full_name}</div>
                           <div className="text-sm text-zinc-400">
@@ -306,70 +336,138 @@ const NewTicketForm = () => {
                           </div>
                         </button>
                       ))}
+
+                      {/* No results - show create option */}
+                      {searchPerformed && searchResults.length === 0 && (
+                        <div className="p-3 text-center text-zinc-400 text-sm">
+                          No contacts found for "{searchQuery}"
+                        </div>
+                      )}
+
+                      {/* Create New Contact button - always show at bottom */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddContactForm(true);
+                          setNewContactData(prev => ({ ...prev, name: searchQuery }));
+                          setSearchResults([]);
+                          setSearchQuery('');
+                        }}
+                        className="w-full p-3 text-left hover:bg-emerald-600/20 transition-colors flex items-center gap-2 border-t border-zinc-600 text-emerald-400"
+                      >
+                        <UserPlus size={18} />
+                        <span>Create New Contact{searchQuery ? `: "${searchQuery}"` : ''}</span>
+                      </button>
                     </div>
                   )}
                 </div>
 
-                <p className="text-sm text-zinc-500 mb-4">Or enter customer details manually:</p>
-
-                {/* Manual Entry */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-zinc-400 mb-1 block">Name</label>
-                    <input
-                      type="text"
-                      value={form.customer_name}
-                      onChange={(e) => setForm(prev => ({ ...prev, customer_name: e.target.value }))}
-                      placeholder="Customer name"
-                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-zinc-400 mb-1 block">Phone</label>
-                    <input
-                      type="tel"
-                      value={form.customer_phone}
-                      onChange={(e) => setForm(prev => ({ ...prev, customer_phone: e.target.value }))}
-                      placeholder="Phone number"
-                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-zinc-400 mb-1 block">Email</label>
-                    <input
-                      type="email"
-                      value={form.customer_email}
-                      onChange={(e) => setForm(prev => ({ ...prev, customer_email: e.target.value }))}
-                      placeholder="Email address"
-                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-zinc-400 mb-1 block">Address</label>
-                    <input
-                      type="text"
-                      value={form.customer_address}
-                      onChange={(e) => setForm(prev => ({ ...prev, customer_address: e.target.value }))}
-                      placeholder="Service address"
-                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Save as new contact checkbox */}
-                {form.customer_name.trim() && (
-                  <label className="flex items-center gap-3 mt-4 p-3 bg-zinc-700/50 rounded-lg cursor-pointer hover:bg-zinc-700 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={saveAsNewContact}
-                      onChange={(e) => setSaveAsNewContact(e.target.checked)}
-                      className="w-4 h-4 rounded border-zinc-500 bg-zinc-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-zinc-800"
-                    />
-                    <div>
-                      <span className="text-white text-sm font-medium">Save as new contact</span>
-                      <p className="text-xs text-zinc-400">Add this customer to your contacts for future service tickets</p>
+                {/* Add Contact Form - inline */}
+                {showAddContactForm && (
+                  <div className="mt-4 p-4 bg-zinc-700/50 rounded-lg border border-zinc-600">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-white font-medium flex items-center gap-2">
+                        <UserPlus size={18} className="text-emerald-400" />
+                        Create New Contact
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAddContactForm(false);
+                          setNewContactData({ name: '', email: '', phone: '', company: '', address: '' });
+                        }}
+                        className="p-1 text-zinc-400 hover:text-white"
+                      >
+                        <X size={16} />
+                      </button>
                     </div>
-                  </label>
+
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        placeholder="Name *"
+                        value={newContactData.name}
+                        onChange={(e) => setNewContactData(prev => ({ ...prev, name: e.target.value }))}
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        required
+                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="tel"
+                          placeholder="Phone"
+                          value={newContactData.phone}
+                          onChange={(e) => setNewContactData(prev => ({ ...prev, phone: e.target.value }))}
+                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        />
+                        <input
+                          type="email"
+                          placeholder="Email"
+                          value={newContactData.email}
+                          onChange={(e) => setNewContactData(prev => ({ ...prev, email: e.target.value }))}
+                          className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Company"
+                        value={newContactData.company}
+                        onChange={(e) => setNewContactData(prev => ({ ...prev, company: e.target.value }))}
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Address"
+                        value={newContactData.address}
+                        onChange={(e) => setNewContactData(prev => ({ ...prev, address: e.target.value }))}
+                        className="w-full px-3 py-2 bg-zinc-600 border border-zinc-500 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
+                      />
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleCreateContact}
+                          disabled={creatingContact || !newContactData.name.trim()}
+                          className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg text-white font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          {creatingContact ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            <>
+                              <Plus size={16} />
+                              Create & Select
+                            </>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddContactForm(false);
+                            setNewContactData({ name: '', email: '', phone: '', company: '', address: '' });
+                          }}
+                          className="px-3 py-2 bg-zinc-600 hover:bg-zinc-500 rounded-lg text-white transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual entry hint when no form shown */}
+                {!showAddContactForm && (
+                  <p className="text-sm text-zinc-500 mt-4">
+                    Search for a contact above, or{' '}
+                    <button
+                      type="button"
+                      onClick={() => setShowAddContactForm(true)}
+                      className="text-emerald-400 hover:text-emerald-300 underline"
+                    >
+                      create a new contact
+                    </button>
+                  </p>
                 )}
               </>
             )}
