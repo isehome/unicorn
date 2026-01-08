@@ -31,7 +31,7 @@ module.exports = async (req, res) => {
 
         // Initialize Gemini
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Prompt engineering for robust parsing
         const prompt = `

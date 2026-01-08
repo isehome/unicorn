@@ -112,7 +112,7 @@ function isReplyToNotification(subject, body) {
  * Analyze email with Gemini AI
  */
 async function analyzeEmail(email, customer, config) {
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const customerContext = customer
     ? `
@@ -231,7 +231,7 @@ async function generateReply(email, analysis, customer, config) {
   }
 
   // Otherwise generate a new one
-  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.0-flash' });
+  const model = getGenAI().getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `${config.systemPrompt}
 
