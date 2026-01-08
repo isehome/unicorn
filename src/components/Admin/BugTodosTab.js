@@ -270,18 +270,31 @@ const BugTodosTab = () => {
    * Generate complete bug report markdown (like the email format)
    * This includes ALL data for pasting into AI assistants
    */
-  const generateCompleteBugReport = (bug, screenshot) => {
+  const generateCompleteBugReport = (bug, screenshotUrl) => {
     const lines = [];
 
     // Header
     lines.push(`# Bug Report: ${bug.bug_report_id || 'Bug Report'}`);
     lines.push('');
 
+    // App Context - Brief primer for AI assistants
+    lines.push(`## App Context`);
+    lines.push(`This is the **Unicorn** app - a React-based field operations management system.`);
+    lines.push(`- **Stack:** React 18, Supabase (PostgreSQL), Vercel serverless functions`);
+    lines.push(`- **UI:** Tailwind CSS, Lucide icons, dark/light mode support`);
+    lines.push(`- **Key patterns:** Service-based architecture, React hooks, async/await`);
+    lines.push(`- **Repo:** https://github.com/isehome/unicorn`);
+    lines.push('');
+
     // Metadata
-    lines.push(`**Severity:** ${(bug.ai_severity || 'unknown').toUpperCase()}`);
-    lines.push(`**Status:** ${bug.status}`);
-    lines.push(`**Reported:** ${formatDate(bug.created_at)}`);
-    lines.push(`**Reporter:** ${bug.reported_by_name || 'Anonymous'} (${bug.reported_by_email || 'No email'})`);
+    lines.push(`## Bug Details`);
+    lines.push(`| Field | Value |`);
+    lines.push(`|-------|-------|`);
+    lines.push(`| **Severity** | ${(bug.ai_severity || 'unknown').toUpperCase()} |`);
+    lines.push(`| **Status** | ${bug.status} |`);
+    lines.push(`| **Reported** | ${formatDate(bug.created_at)} |`);
+    lines.push(`| **Reporter** | ${bug.reported_by_name || 'Anonymous'} (${bug.reported_by_email || 'No email'}) |`);
+    lines.push(`| **Page URL** | ${bug.url || 'N/A'} |`);
     lines.push('');
 
     // AI Summary
@@ -296,10 +309,12 @@ const BugTodosTab = () => {
     lines.push(bug.description || 'No description provided');
     lines.push('');
 
-    // Page URL
-    if (bug.url) {
-      lines.push(`## Page URL`);
-      lines.push(bug.url);
+    // Screenshot - Use GitHub raw URL so it actually renders
+    if (screenshotUrl) {
+      lines.push(`## Screenshot`);
+      lines.push(`> **Important:** Review this screenshot to understand the visual context of the bug.`);
+      lines.push('');
+      lines.push(`![Bug Screenshot](${screenshotUrl})`);
       lines.push('');
     }
 
@@ -340,25 +355,43 @@ const BugTodosTab = () => {
       lines.push('');
     }
 
-    // Screenshot
-    if (screenshot) {
-      lines.push(`## Screenshot`);
-      lines.push(`![Bug Screenshot](${screenshot})`);
-      lines.push('');
-    }
-
-    // Instructions for AI
+    // Instructions for AI - Dual perspective verification
     lines.push(`---`);
     lines.push('');
     lines.push(`## Instructions for AI Assistant`);
-    lines.push(`Please analyze this bug report and implement a fix. Focus on:`);
-    lines.push(`1. Review the affected files listed above`);
-    lines.push(`2. Check the console errors for clues`);
-    lines.push(`3. Implement the suggested fix or a better alternative`);
-    lines.push(`4. Test the fix to ensure it resolves the issue`);
+    lines.push('');
+    lines.push(`> **Important:** This bug report includes a suggested fix from our internal Gemini AI agent.`);
+    lines.push(`> Your task is to provide a **second, independent analysis** to verify or improve upon it.`);
+    lines.push('');
+    lines.push(`### Step 1: Independent Analysis`);
+    lines.push(`Before reading the suggested fix above, perform your own analysis:`);
+    lines.push(`1. **Examine the screenshot** to understand the visual context of the bug`);
+    lines.push(`2. **Read the console errors** for stack traces and error messages`);
+    lines.push(`3. **Review the affected files** in the codebase`);
+    lines.push(`4. **Form your own hypothesis** about the root cause`);
+    lines.push('');
+    lines.push(`### Step 2: Compare Approaches`);
+    lines.push(`Now review the "AI Analysis & Suggested Fix" section above and compare:`);
+    lines.push(`- Does the suggested fix align with your independent analysis?`);
+    lines.push(`- Are there edge cases or issues the suggested fix might miss?`);
+    lines.push(`- Is there a simpler or more robust solution?`);
+    lines.push('');
+    lines.push(`### Step 3: Implement the Best Solution`);
+    lines.push(`Based on both perspectives, implement the fix that:`);
+    lines.push(`- Addresses the root cause (not just symptoms)`);
+    lines.push(`- Handles edge cases appropriately`);
+    lines.push(`- Follows the codebase's existing patterns`);
+    lines.push(`- Includes any necessary error handling`);
+    lines.push('');
+    lines.push(`### Step 4: Verify`);
+    lines.push(`After implementing, briefly explain:`);
+    lines.push(`- Which approach you chose and why`);
+    lines.push(`- Any improvements you made over the suggested fix`);
+    lines.push(`- How to test the fix works correctly`);
     lines.push('');
     lines.push(`---`);
     lines.push(`*Bug ID: ${bug.bug_report_id || bug.id} | Generated by Unicorn AI Bug Analyzer*`);
+    lines.push(`*Dual-perspective verification enabled for higher fix confidence*`);
 
     return lines.join('\n');
   };
@@ -367,9 +400,14 @@ const BugTodosTab = () => {
    * Download complete bug report as .md file
    */
   const downloadBugReport = (bug) => {
-    const details = bugDetails[bug.id] || bug;
-    const screenshot = details.screenshot_base64;
-    const content = generateCompleteBugReport(bug, screenshot);
+    // Build GitHub raw URL for the screenshot (renders in markdown viewers and AI assistants)
+    // Screenshot is stored at: bug-reports/attachments/{bugId}/screenshot.jpg on the bug's branch
+    let screenshotUrl = null;
+    if (bug.bug_report_id && bug.branch_name) {
+      screenshotUrl = `https://raw.githubusercontent.com/isehome/unicorn/${bug.branch_name}/bug-reports/attachments/${bug.bug_report_id}/screenshot.jpg`;
+    }
+
+    const content = generateCompleteBugReport(bug, screenshotUrl);
 
     // Create blob and download
     const blob = new Blob([content], { type: 'text/markdown' });
