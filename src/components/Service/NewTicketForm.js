@@ -68,6 +68,7 @@ const NewTicketForm = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
+  const [saveAsNewContact, setSaveAsNewContact] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
@@ -165,8 +166,29 @@ const NewTicketForm = () => {
       setSaving(true);
       setError('');
 
+      let contactId = form.contact_id;
+
+      // If user wants to save as new contact and has entered customer details
+      if (saveAsNewContact && !contactId && form.customer_name.trim()) {
+        try {
+          const newContact = await customerLookupService.createContact({
+            customer_name: form.customer_name,
+            customer_phone: form.customer_phone,
+            customer_email: form.customer_email,
+            customer_address: form.customer_address
+          });
+          contactId = newContact.id;
+        } catch (contactErr) {
+          console.error('[NewTicketForm] Failed to create contact:', contactErr);
+          setError(`Failed to create contact: ${contactErr.message}`);
+          setSaving(false);
+          return;
+        }
+      }
+
       const ticketData = {
         ...form,
+        contact_id: contactId,
         title: form.title.trim(),
         description: form.description.trim() || null,
         customer_name: form.customer_name.trim() || null,
@@ -333,6 +355,22 @@ const NewTicketForm = () => {
                     />
                   </div>
                 </div>
+
+                {/* Save as new contact checkbox */}
+                {form.customer_name.trim() && (
+                  <label className="flex items-center gap-3 mt-4 p-3 bg-zinc-700/50 rounded-lg cursor-pointer hover:bg-zinc-700 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={saveAsNewContact}
+                      onChange={(e) => setSaveAsNewContact(e.target.checked)}
+                      className="w-4 h-4 rounded border-zinc-500 bg-zinc-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-zinc-800"
+                    />
+                    <div>
+                      <span className="text-white text-sm font-medium">Save as new contact</span>
+                      <p className="text-xs text-zinc-400">Add this customer to your contacts for future service tickets</p>
+                    </div>
+                  </label>
+                )}
               </>
             )}
           </div>
