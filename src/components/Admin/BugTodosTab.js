@@ -8,7 +8,7 @@ import {
   Bug, Clock, CheckCircle, AlertCircle, XCircle,
   Loader2, RefreshCw, Trash2, RotateCw,
   ChevronDown, ChevronUp, FileText, Github, Mail,
-  Copy, Check, Image, User, Link, Code, Monitor, Download
+  Copy, Check, Image, User, Link, Code, Monitor, Download, ExternalLink
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -414,11 +414,50 @@ const BugTodosTab = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${bug.bug_report_id || 'bug-report'}.md`;
+    // Use AI-generated slug if available for descriptive filename
+    const slug = bug.ai_filename_slug || (bug.ai_summary || '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 40);
+    const filename = slug ? `${bug.bug_report_id}-${slug}.md` : `${bug.bug_report_id || 'bug-report'}.md`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Open bug report in native app (downloads and opens with system default app)
+   */
+  const openBugReportInApp = (bug) => {
+    // Build GitHub raw URL for the screenshot
+    let screenshotUrl = null;
+    if (bug.bug_report_id && bug.branch_name) {
+      screenshotUrl = `https://raw.githubusercontent.com/isehome/unicorn/${bug.branch_name}/bug-reports/attachments/${bug.bug_report_id}/screenshot.jpg`;
+    }
+
+    const content = generateCompleteBugReport(bug, screenshotUrl);
+
+    // Use AI-generated slug if available for descriptive filename
+    const slug = bug.ai_filename_slug || (bug.ai_summary || '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 40);
+    const filename = slug ? `${bug.bug_report_id}-${slug}.md` : `${bug.bug_report_id || 'bug-report'}.md`;
+
+    // Create blob with data URL that triggers native app
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+
+    // Create and click a hidden link - using download attribute causes download
+    // To open in native app, we need to use window.open or create link without download attr
+    // On macOS, .md files will open in default markdown editor
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    // Add target to help some browsers open in new context
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Clean up the URL after a delay
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   /**
@@ -919,21 +958,19 @@ const BugTodosTab = () => {
                           Download Report
                         </button>
 
-                        {bug.pr_url && (
-                          <a
-                            href={bug.pr_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                              mode === 'dark'
-                                ? 'bg-zinc-700 text-white hover:bg-zinc-600'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                          >
-                            <Github className="w-4 h-4" />
-                            View PR
-                          </a>
-                        )}
+                        {/* Open in native app button */}
+                        <button
+                          onClick={() => openBugReportInApp(bug)}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            mode === 'dark'
+                              ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                          title="Download and open in default markdown editor"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Open File
+                        </button>
 
                         <button
                           onClick={() => handleReanalyze(bug.id)}

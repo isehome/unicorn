@@ -375,6 +375,7 @@ Provide your analysis as a JSON object:
 
 {
   "summary": "One-line summary that reflects the user's actual problem",
+  "filename_slug": "short-descriptive-name (2-5 words, lowercase, hyphens, no special chars, e.g. 'login-button-broken' or 'schedule-not-saving')",
   "severity": "critical|high|medium|low",
   "root_cause": "Technical explanation of what's causing the bug the user described",
   "fix_prompt": "Detailed technical instructions for fixing this specific issue, including file paths and code changes",

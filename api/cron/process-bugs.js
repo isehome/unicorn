@@ -220,7 +220,8 @@ async function processBugReport(bugReport) {
         bugId,
         markdown,
         bugReport.screenshot_base64,
-        analysis.summary || bugReport.description
+        analysis.summary || bugReport.description,
+        analysis.filename_slug
       );
       console.log(`[ProcessBugs] GitHub PR created: ${githubResult.prUrl}`);
     } catch (githubError) {
@@ -260,6 +261,7 @@ async function processBugReport(bugReport) {
         ai_fix_prompt: analysis.fix_prompt,
         ai_confidence: analysis.confidence || null,
         ai_token_usage: analysis.token_usage || null,
+        ai_filename_slug: analysis.filename_slug || null,
         md_file_path: githubResult?.mdPath,
         pr_url: githubResult?.prUrl,
         pr_number: githubResult?.prNumber,

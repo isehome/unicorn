@@ -254,16 +254,16 @@ async function deleteBranch(branchName) {
  * @param {string} markdownContent - The markdown file content
  * @param {string} screenshotBase64 - The screenshot as base64 data URL
  * @param {string} summary - Short summary for commit/PR title
+ * @param {string} filenameSlug - AI-generated short descriptive slug for filename (optional)
  * @returns {Object} Result with branch name and PR URL
  */
-async function commitBugReport(bugId, markdownContent, screenshotBase64, summary) {
+async function commitBugReport(bugId, markdownContent, screenshotBase64, summary, filenameSlug) {
   // Generate paths
   const dateFolder = bugId.substring(3, 10); // Extract YYYY-MM from BR-YYYY-MM-DD-####
-  const slug = summary
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .slice(0, 40);
+  // Use AI-generated slug if provided, otherwise generate from summary
+  const slug = filenameSlug
+    ? filenameSlug.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40)
+    : summary.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 40);
   const branchName = `bug-report/${bugId}`;
   const mdPath = `bug-reports/${dateFolder}/${bugId}-${slug}.md`;
   const screenshotPath = `bug-reports/attachments/${bugId}/screenshot.jpg`;

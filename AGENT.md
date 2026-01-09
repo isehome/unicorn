@@ -3652,7 +3652,7 @@ User Reports Bug (BugReporter.js)
 | File | Purpose |
 |------|---------|
 | `src/components/BugReporter.js` | Frontend bug report modal (screenshot, voice input, console errors) |
-| `api/bug-report.js` | Initial submission endpoint - saves to queue |
+| `api/bug-report.js` | Initial submission endpoint - saves to queue, sends email via **system account** (never expires) |
 | `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
 | `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
 | `api/bugs/list.js` | List bugs with filtering/pagination |
@@ -3692,6 +3692,7 @@ CREATE TABLE bug_reports (
   ai_fix_prompt TEXT,
   ai_confidence DECIMAL(3,2), -- 0-1 confidence score
   ai_token_usage JSONB,       -- { prompt_tokens, completion_tokens, total_tokens }
+  ai_filename_slug TEXT,      -- AI-generated short name like "login-button-broken"
 
   -- GitHub
   pr_url TEXT,
@@ -3864,9 +3865,14 @@ Located at **Admin → Bug Todos** (9th tab)
 
 **Actions:**
 - **Download Report** - Downloads complete `.md` file with dual-perspective AI instructions
-- **View PR** - Opens GitHub pull request
+- **Open File** - Downloads and opens `.md` file in system default markdown editor
+- **View PR** (GitHub icon in header) - Opens GitHub pull request
 - **Reanalyze** - Resets to pending for re-processing
 - **Mark Fixed** - Deletes from GitHub + database
+
+**Filenames:** Bug reports use AI-generated descriptive slugs for meaningful filenames:
+- Example: `BR-2026-01-09-0001-login-button-broken.md` instead of just `BR-2026-01-09-0001.md`
+- The AI generates a 2-5 word slug based on the bug description (stored in `ai_filename_slug`)
 
 ### Downloadable Bug Report (.md)
 

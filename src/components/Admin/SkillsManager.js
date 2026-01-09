@@ -95,8 +95,11 @@ const SkillsManager = ({ onSuccess, onError }) => {
       setSkills(skillData || []);
 
     } catch (err) {
-      console.error('[SkillsManager] Load failed:', err);
-      onError?.(err.message);
+      // Extract meaningful error message from various error formats
+      const errorMessage = err?.message || err?.error_description ||
+        (typeof err === 'object' ? JSON.stringify(err) : String(err));
+      console.error('[SkillsManager] Load failed:', errorMessage, err);
+      onError?.(errorMessage || 'Failed to load skills data');
     } finally {
       setLoading(false);
     }
@@ -522,8 +525,10 @@ const SkillsManager = ({ onSuccess, onError }) => {
       await loadData();
 
     } catch (err) {
-      console.error('[SkillsManager] Import failed:', err);
-      onError?.(err.message);
+      const errorMessage = err?.message || err?.error_description ||
+        (typeof err === 'object' ? JSON.stringify(err) : String(err));
+      console.error('[SkillsManager] Import failed:', errorMessage, err);
+      onError?.(errorMessage || 'Failed to import skills');
     } finally {
       setImporting(false);
     }
