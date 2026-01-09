@@ -6,6 +6,7 @@ import DateField from './ui/DateField';
 import TimeSelectionGrid from './ui/TimeSelectionGrid';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, fetchEventsForDate } from '../services/microsoftCalendarService';
 import { projectStakeholdersService, todoStakeholdersService } from '../services/supabaseService';
 import { stakeholderColors } from '../styles/styleSystem';
@@ -22,6 +23,10 @@ const TodoDetailModal = ({
 }) => {
   useTheme(); // Ensure theme context is available
   const authContext = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
+
+  // Tab state for AI awareness (details vs comments)
+  const [activeTab, setActiveTab] = useState('details');
   const [title, setTitle] = useState(todo?.title || '');
   const [description, setDescription] = useState(todo?.description || '');
   const [dueBy, setDueBy] = useState(todo?.dueBy ? String(todo.dueBy).substring(0, 10) : '');
@@ -120,6 +125,167 @@ const TodoDetailModal = ({
     setImportance(todo?.importance || 'normal');
     setCalendarEventId(todo?.calendarEventId || todo?.calendar_event_id || null);
   }, [todo]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION - Publish modal state
+  // ══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    if (todo) {
+      // Modal is open - publish state
+      publishState({
+        modal: {
+          type: 'todo-detail',
+          title: 'Todo Details',
+          todoId: todo.id,
+          todoTitle: todo.title,
+          activeTab: activeTab,
+          formFields: [
+            'title',
+            'description',
+            'due_date',
+            'importance',
+            'do_date',
+            'start_time',
+            'duration_hours',
+            'stakeholders'
+          ],
+          currentValues: {
+            title,
+            description,
+            due_date: dueBy,
+            importance,
+            do_date: doBy,
+            start_time: doByTime,
+            duration_hours: plannedHours,
+            stakeholders: stakeholders.map(s => ({
+              id: s.id,
+              name: s.contactName,
+              role: s.roleName
+            })),
+            completed: todo.completed
+          }
+        }
+      });
+    } else {
+      // Modal is closed - clear modal state
+      publishState({ modal: null });
+    }
+  }, [
+    publishState,
+    todo,
+    activeTab,
+    title,
+    description,
+    dueBy,
+    importance,
+    doBy,
+    doByTime,
+    plannedHours,
+    stakeholders
+  ]);
+
+  // Refs to hold latest function references for AI actions
+  const handleSaveRef = React.useRef(null);
+  const handleAddStakeholderRef = React.useRef(null);
+
+  // Register actions for AI Brain
+  useEffect(() => {
+    if (!todo) return;
+
+    const actions = {
+      set_field: async ({ field, value }) => {
+        try {
+          switch (field) {
+            case 'title':
+              setTitle(value);
+              return { success: true, message: `Title set to "${value}"` };
+            case 'description':
+              setDescription(value);
+              return { success: true, message: 'Description updated' };
+            case 'due_date':
+              setDueBy(value || '');
+              return { success: true, message: value ? `Due date set to ${value}` : 'Due date cleared' };
+            case 'importance':
+              if (['low', 'normal', 'high', 'critical'].includes(value)) {
+                setImportance(value);
+                return { success: true, message: `Importance set to ${value}` };
+              }
+              return { success: false, error: 'Invalid importance. Use: low, normal, high, critical' };
+            case 'do_date':
+              setDoBy(value || '');
+              return { success: true, message: value ? `Do date set to ${value}` : 'Do date cleared' };
+            case 'start_time':
+              setDoByTime(value || '09:00');
+              return { success: true, message: `Start time set to ${value}` };
+            case 'duration_hours':
+              const hours = parseFloat(value);
+              if (!isNaN(hours) && hours > 0) {
+                setPlannedHours(hours);
+                return { success: true, message: `Duration set to ${hours} hours` };
+              }
+              return { success: false, error: 'Invalid duration. Must be a positive number.' };
+            default:
+              return { success: false, error: `Unknown field: ${field}` };
+          }
+        } catch (err) {
+          return { success: false, error: err.message || 'Failed to set field' };
+        }
+      },
+      switch_tab: async ({ tab }) => {
+        if (['details', 'comments'].includes(tab)) {
+          setActiveTab(tab);
+          return { success: true, message: `Switched to ${tab} tab` };
+        }
+        return { success: false, error: 'Invalid tab. Use: details or comments' };
+      },
+      add_comment: async ({ comment }) => {
+        // Comments not yet implemented in this modal, but action registered for future
+        return { success: false, error: 'Comments feature not yet implemented in this modal' };
+      },
+      add_stakeholder: async ({ stakeholderName }) => {
+        const match = availableStakeholders.find(s =>
+          s.contact_name?.toLowerCase().includes(stakeholderName.toLowerCase())
+        );
+        if (match && handleAddStakeholderRef.current) {
+          await handleAddStakeholderRef.current(match);
+          return { success: true, message: `Added stakeholder: ${match.contact_name}` };
+        }
+        return { success: false, error: `Stakeholder "${stakeholderName}" not found in project` };
+      },
+      save_todo: async () => {
+        try {
+          if (handleSaveRef.current) {
+            await handleSaveRef.current();
+          }
+          return { success: true, message: 'Todo saved successfully' };
+        } catch (err) {
+          return { success: false, error: err.message || 'Failed to save todo' };
+        }
+      },
+      mark_complete: async () => {
+        try {
+          await onToggleComplete(todo);
+          return { success: true, message: todo.completed ? 'Todo marked as open' : 'Todo marked as complete' };
+        } catch (err) {
+          return { success: false, error: err.message || 'Failed to toggle completion' };
+        }
+      },
+      close: async () => {
+        onClose();
+        return { success: true, message: 'Modal closed' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [
+    todo,
+    registerActions,
+    unregisterActions,
+    availableStakeholders,
+    onToggleComplete,
+    onClose
+  ]);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -297,6 +463,10 @@ const TodoDetailModal = ({
       }
     }
   };
+
+  // Update refs for AI action handlers
+  handleSaveRef.current = handleSave;
+  handleAddStakeholderRef.current = handleAddStakeholder;
 
   const importanceColors = {
     low: { bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e' },

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrinter } from '../contexts/PrinterContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import ThemeToggle from './ui/ThemeToggle';
 import Button from './ui/Button';
@@ -16,9 +17,10 @@ import UserSkillsSection from './UserSettings/UserSkillsSection';
 
 
 const SettingsPage = () => {
-  const { mode } = useTheme();
+  const { mode, toggleTheme } = useTheme();
   const { user, logout, updateAvatarColor } = useAuth();
   const navigate = useNavigate();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
   const {
     connected,
@@ -134,10 +136,10 @@ const SettingsPage = () => {
   };
 
   // Handle default workspace change
-  const handleDefaultWorkspaceChange = (workspace) => {
+  const handleDefaultWorkspaceChange = useCallback((workspace) => {
     setDefaultWorkspace(workspace);
     localStorage.setItem('default-workspace-mode', workspace);
-  };
+  }, []);
 
   // Handle logout
   const handleLogout = async () => {
@@ -158,6 +160,106 @@ const SettingsPage = () => {
   const handleDisconnectPrinter = async () => {
     await disconnectPrinter();
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'settings',
+      activeSection: showAvatarModal ? 'avatar-color' : 'main',
+      theme: mode,
+      defaultWorkspace: defaultWorkspace,
+      printerStatus: {
+        connected,
+        connecting,
+        supported,
+        isIOSSafari
+      },
+      user: {
+        displayName,
+        email,
+        hasAdminAccess
+      },
+      hint: 'Settings page. Can toggle theme, change default workspace, open AI settings, open admin panel (if authorized), or sign out.'
+    });
+  }, [publishState, mode, defaultWorkspace, connected, connecting, supported, isIOSSafari, displayName, email, hasAdminAccess, showAvatarModal]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      toggle_theme: async () => {
+        toggleTheme();
+        const newMode = mode === 'light' ? 'dark' : 'light';
+        return { success: true, message: `Switched to ${newMode} mode` };
+      },
+      set_default_workspace: async ({ workspace }) => {
+        if (['technician', 'pm'].includes(workspace)) {
+          handleDefaultWorkspaceChange(workspace);
+          const workspaceName = workspace === 'pm' ? 'Project Manager' : 'Technician';
+          return { success: true, message: `Default workspace set to ${workspaceName}` };
+        }
+        return { success: false, error: 'Invalid workspace. Use: technician or pm' };
+      },
+      open_ai_settings: async () => {
+        // AI Settings is rendered inline on this page
+        // Scroll to it for visibility
+        const aiSection = document.querySelector('[data-section="ai-settings"]');
+        if (aiSection) {
+          aiSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return { success: true, message: 'AI Settings section is visible on this page' };
+      },
+      open_profile: async () => {
+        setShowAvatarModal(true);
+        return { success: true, message: 'Opening avatar color picker' };
+      },
+      open_admin: async () => {
+        if (hasAdminAccess) {
+          navigate('/admin');
+          return { success: true, message: 'Navigating to Admin panel' };
+        }
+        return { success: false, error: 'You do not have admin access (requires director+ role)' };
+      },
+      connect_printer: async () => {
+        if (isIOSSafari) {
+          return { success: false, error: 'Bluetooth printing not supported in Safari on iOS. Please use the Bluefy browser.' };
+        }
+        if (!supported) {
+          return { success: false, error: 'Bluetooth printing not supported in this browser' };
+        }
+        if (connected) {
+          return { success: true, message: 'Printer is already connected' };
+        }
+        await handleConnectPrinter();
+        return { success: true, message: 'Attempting to connect to printer...' };
+      },
+      disconnect_printer: async () => {
+        if (!connected) {
+          return { success: true, message: 'Printer is not connected' };
+        }
+        await handleDisconnectPrinter();
+        return { success: true, message: 'Disconnected from printer' };
+      },
+      sign_out: async () => {
+        await handleLogout();
+        return { success: true, message: 'Signing out...' };
+      },
+      go_to_technician_dashboard: async () => {
+        navigate('/');
+        return { success: true, message: 'Navigating to Technician dashboard' };
+      },
+      go_to_pm_dashboard: async () => {
+        navigate('/pm-dashboard');
+        return { success: true, message: 'Navigating to Project Manager dashboard' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, mode, toggleTheme, hasAdminAccess, navigate, connected, supported, isIOSSafari, handleDefaultWorkspaceChange]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-24 space-y-4">

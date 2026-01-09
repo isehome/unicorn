@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
 import { Printer, Loader, Check, X, AlertCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 
 /**
  * PrintLabelModal - Modal for printing wire drop labels
@@ -18,10 +19,91 @@ const PrintLabelModal = ({
   isPrinting
 }) => {
   const { mode } = useTheme();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const [showUnprintConfirm, setShowUnprintConfirm] = useState(false);
   const [lastPrintStatus, setLastPrintStatus] = useState(null); // 'success' | 'error' | null
 
   const isAlreadyPrinted = wireDrop?.labels_printed;
+
+  // Publish modal state for AI awareness
+  useEffect(() => {
+    if (isOpen && wireDrop) {
+      publishState({
+        modal: {
+          type: 'print-label',
+          title: 'Print Labels',
+          wireDropName: wireDrop.drop_name || 'Wire Drop',
+          wireDropId: wireDrop.id,
+          roomName: wireDrop.room_name,
+          uid: wireDrop.uid,
+          isAlreadyPrinted: wireDrop.labels_printed,
+          printerConnected,
+          hint: 'Print labels for wire drop'
+        }
+      });
+    } else {
+      // Clear modal state when closed
+      publishState({ modal: null });
+    }
+  }, [isOpen, wireDrop, printerConnected, publishState]);
+
+  // Action handler for printing labels
+  const handlePrintAction = useCallback(async ({ copies = 1 }) => {
+    if (!printerConnected) {
+      return { success: false, error: 'Printer not connected. Go to Settings to connect.' };
+    }
+    if (!wireDrop) {
+      return { success: false, error: 'No wire drop selected' };
+    }
+    try {
+      await onPrint(wireDrop, copies);
+      return { success: true, message: `Print job sent for ${copies} label${copies > 1 ? 's' : ''}` };
+    } catch (err) {
+      return { success: false, error: err.message || 'Print failed' };
+    }
+  }, [printerConnected, wireDrop, onPrint]);
+
+  // Action handler for marking as printed
+  const handleMarkPrintedAction = useCallback(async () => {
+    if (!wireDrop) {
+      return { success: false, error: 'No wire drop selected' };
+    }
+    try {
+      // Toggle the printed state
+      const newPrintedState = !wireDrop.labels_printed;
+      await onMarkPrinted(wireDrop.id, newPrintedState);
+      return {
+        success: true,
+        message: newPrintedState ? 'Marked as printed' : 'Marked as unprinted'
+      };
+    } catch (err) {
+      return { success: false, error: err.message || 'Failed to update print status' };
+    }
+  }, [wireDrop, onMarkPrinted]);
+
+  // Action handler for closing the modal
+  const handleCloseAction = useCallback(async () => {
+    setLastPrintStatus(null);
+    setShowUnprintConfirm(false);
+    onClose();
+    return { success: true, message: 'Modal closed' };
+  }, [onClose]);
+
+  // Register actions when modal is open
+  useEffect(() => {
+    if (isOpen && wireDrop) {
+      registerActions({
+        print_one: async () => handlePrintAction({ copies: 1 }),
+        print_two: async () => handlePrintAction({ copies: 2 }),
+        mark_printed: handleMarkPrintedAction,
+        close: handleCloseAction
+      });
+
+      return () => {
+        unregisterActions(['print_one', 'print_two', 'mark_printed', 'close']);
+      };
+    }
+  }, [isOpen, wireDrop, registerActions, unregisterActions, handlePrintAction, handleMarkPrintedAction, handleCloseAction]);
 
   const handlePrint = async (copies) => {
     if (!printerConnected) {

@@ -3,10 +3,11 @@
  * Modal for adding/editing manual time entries on service tickets
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Clock, Calendar, User, FileText, Loader2, Trash2 } from 'lucide-react';
 import { serviceTimeService } from '../../services/serviceTimeService';
 import { brandColors } from '../../styles/styleSystem';
+import { useAppState } from '../../contexts/AppStateContext';
 
 /**
  * Format date for date input (YYYY-MM-DD)
@@ -49,6 +50,8 @@ const ServiceTimeEntryModal = ({
   currentUser,
   onSaved
 }) => {
+  const { publishState, registerActions, unregisterActions } = useAppState();
+
   const [formData, setFormData] = useState({
     technician_email: '',
     technician_name: '',
@@ -61,6 +64,14 @@ const ServiceTimeEntryModal = ({
   const [error, setError] = useState(null);
 
   const isEditing = !!entry;
+
+  // Refs for stable action handlers
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
 
   // Initialize form with entry data or defaults
   useEffect(() => {
@@ -83,6 +94,124 @@ const ServiceTimeEntryModal = ({
       });
     }
   }, [entry, currentUser]);
+
+  // Publish modal state to AppState when open/closed
+  useEffect(() => {
+    if (isOpen) {
+      publishState({
+        modal: {
+          type: 'service-time-entry',
+          title: isEditing ? 'Edit Time Entry' : 'Add Time Entry',
+          formFields: ['technician_email', 'work_date', 'hours', 'notes'],
+          currentValues: formData
+        }
+      });
+    } else {
+      // Clear modal state when closed
+      publishState({ modal: null });
+    }
+  }, [isOpen, isEditing, formData, publishState]);
+
+  // Submit entry action handler
+  const submitEntry = useCallback(async () => {
+    const data = formDataRef.current;
+
+    // Validate
+    if (!data.technician_email) {
+      return { success: false, error: 'Please select a technician' };
+    }
+    if (!data.work_date) {
+      return { success: false, error: 'Please select a date' };
+    }
+    if (!data.hours || data.hours <= 0) {
+      return { success: false, error: 'Please enter valid hours' };
+    }
+
+    // Create check_in and check_out from date and hours
+    const workDate = new Date(data.work_date + 'T08:00:00');
+    const checkInDate = workDate;
+    const checkOutDate = new Date(workDate.getTime() + (data.hours * 3600000));
+
+    try {
+      setSaving(true);
+
+      if (isEditing && entry) {
+        await serviceTimeService.updateTimeEntry(entry.id, {
+          check_in: checkInDate.toISOString(),
+          check_out: checkOutDate.toISOString(),
+          notes: data.notes || null
+        });
+      } else {
+        await serviceTimeService.createManualEntry(ticketId, {
+          technician_email: data.technician_email,
+          technician_name: data.technician_name,
+          check_in: checkInDate.toISOString(),
+          check_out: checkOutDate.toISOString(),
+          notes: data.notes || null,
+          created_by_id: currentUser?.id,
+          created_by_name: currentUser?.name || currentUser?.full_name
+        });
+      }
+
+      onSavedRef.current?.();
+      onCloseRef.current();
+      return { success: true, message: isEditing ? 'Time entry updated' : 'Time entry added' };
+    } catch (err) {
+      console.error('[ServiceTimeEntryModal] Save failed:', err);
+      setError(err.message || 'Failed to save time entry');
+      return { success: false, error: err.message || 'Failed to save time entry' };
+    } finally {
+      setSaving(false);
+    }
+  }, [isEditing, entry, ticketId, currentUser]);
+
+  // Register actions for AI
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const actions = {
+      set_field: ({ field, value }) => {
+        if (!['technician_email', 'work_date', 'hours', 'notes'].includes(field)) {
+          return { success: false, error: `Unknown field: ${field}. Available fields: technician_email, work_date, hours, notes` };
+        }
+        if (field === 'hours') {
+          const numValue = parseFloat(value);
+          if (isNaN(numValue) || numValue <= 0 || numValue > 12) {
+            return { success: false, error: 'Hours must be between 0.5 and 12' };
+          }
+          setFormData(prev => ({ ...prev, [field]: numValue }));
+        } else if (field === 'technician_email') {
+          const tech = technicians.find(t => t.email === value);
+          setFormData(prev => ({
+            ...prev,
+            technician_email: value,
+            technician_name: tech?.full_name || tech?.name || value
+          }));
+        } else {
+          setFormData(prev => ({ ...prev, [field]: value }));
+        }
+        setError(null);
+        return { success: true, message: `Set ${field} to ${value}` };
+      },
+      set_hours: ({ hours }) => {
+        const numHours = parseFloat(hours);
+        if (isNaN(numHours) || numHours <= 0 || numHours > 12) {
+          return { success: false, error: 'Hours must be between 0.5 and 12' };
+        }
+        setFormData(prev => ({ ...prev, hours: numHours }));
+        setError(null);
+        return { success: true, message: `Set hours to ${numHours}` };
+      },
+      submit_entry: submitEntry,
+      cancel: () => {
+        onCloseRef.current();
+        return { success: true, message: 'Modal closed' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [isOpen, registerActions, unregisterActions, technicians, submitEntry]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

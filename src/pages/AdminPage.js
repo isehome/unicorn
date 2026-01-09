@@ -23,6 +23,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import Button from '../components/ui/Button';
 import { quickbooksService } from '../services/quickbooksService';
@@ -148,6 +149,7 @@ const AdminPage = () => {
   const { mode } = useTheme();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // Tab state
@@ -398,6 +400,157 @@ const AdminPage = () => {
       loadData();
     }
   }, [isAuthorized, loadData]);
+
+  // Publish state to AppStateContext for Voice AI
+  useEffect(() => {
+    const enabledFeatureCount = featureFlags.filter(f => {
+      // Check if any role has this feature enabled
+      return USER_ROLES.some(role => roleFeatureFlags[role.id]?.[f.id] === true);
+    }).length;
+
+    publishState({
+      view: 'admin',
+      activeTab,
+      userCount: users.length,
+      activeUsers: users.filter(u => u.is_active !== false).length,
+      skillCount: globalSkills.length,
+      featureFlagsCount: featureFlags.length,
+      enabledFeatureCount,
+      qboConnected: qboStatus.connected,
+      hint: `Admin panel - ${activeTab} tab. ${users.length} users, ${globalSkills.length} skills, ${featureFlags.length} feature flags configured.`
+    });
+  }, [activeTab, users, globalSkills, featureFlags, roleFeatureFlags, qboStatus.connected, publishState]);
+
+  // Register actions for Voice AI
+  useEffect(() => {
+    const actions = {
+      switch_tab: async ({ tab }) => {
+        const validTabs = ['users', 'skills', 'employee-skills', 'features', 'integrations', 'import', 'ai-training', 'bug-todos'];
+        if (!validTabs.includes(tab)) {
+          return { success: false, error: `Invalid tab. Valid tabs are: ${validTabs.join(', ')}` };
+        }
+        setActiveTab(tab);
+        return { success: true, message: `Switched to ${tab} tab` };
+      },
+      search_users: async ({ query }) => {
+        if (!query) {
+          return {
+            success: true,
+            users: users.map(u => ({
+              id: u.id,
+              name: u.full_name,
+              email: u.email,
+              role: u.role,
+              isActive: u.is_active !== false
+            }))
+          };
+        }
+        const filtered = users.filter(u =>
+          u.full_name?.toLowerCase().includes(query.toLowerCase()) ||
+          u.email?.toLowerCase().includes(query.toLowerCase())
+        );
+        return {
+          success: true,
+          users: filtered.map(u => ({
+            id: u.id,
+            name: u.full_name,
+            email: u.email,
+            role: u.role,
+            isActive: u.is_active !== false
+          })),
+          message: `Found ${filtered.length} users matching "${query}"`
+        };
+      },
+      list_users: async () => {
+        return {
+          success: true,
+          users: users.map(u => ({
+            id: u.id,
+            name: u.full_name,
+            email: u.email,
+            role: u.role,
+            isActive: u.is_active !== false
+          })),
+          message: `${users.length} total users`
+        };
+      },
+      list_skills: async () => {
+        return {
+          success: true,
+          skills: globalSkills.map(s => ({
+            id: s.id,
+            name: s.name,
+            category: s.category,
+            description: s.description
+          })),
+          message: `${globalSkills.length} skills configured`
+        };
+      },
+      list_feature_flags: async () => {
+        return {
+          success: true,
+          features: featureFlags.map(f => ({
+            id: f.id,
+            key: f.flag_key,
+            name: f.name,
+            category: f.category,
+            description: f.description
+          })),
+          message: `${featureFlags.length} feature flags configured`
+        };
+      },
+      toggle_feature_for_role: async ({ flagId, role }) => {
+        if (!flagId || !role) {
+          return { success: false, error: 'flagId and role are required' };
+        }
+        const flag = featureFlags.find(f => f.id === flagId || f.flag_key === flagId);
+        if (!flag) {
+          return { success: false, error: 'Feature flag not found' };
+        }
+        const validRole = USER_ROLES.find(r => r.id === role);
+        if (!validRole) {
+          return { success: false, error: `Invalid role. Valid roles are: ${USER_ROLES.map(r => r.id).join(', ')}` };
+        }
+        const currentEnabled = roleFeatureFlags[role]?.[flag.id] || false;
+        await handleToggleRoleFeature(role, flag.id, currentEnabled);
+        return { success: true, message: `Feature "${flag.name}" ${!currentEnabled ? 'enabled' : 'disabled'} for ${role}` };
+      },
+      manage_skills: async () => {
+        setActiveTab('skills');
+        return { success: true, message: 'Navigated to skills management tab' };
+      },
+      view_integrations: async () => {
+        setActiveTab('integrations');
+        return { success: true, message: 'Navigated to integrations tab' };
+      },
+      refresh_data: async () => {
+        await loadData();
+        return { success: true, message: 'Admin data refreshed' };
+      },
+      get_user_by_email: async ({ email }) => {
+        if (!email) {
+          return { success: false, error: 'Email is required' };
+        }
+        const foundUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+        if (!foundUser) {
+          return { success: false, error: `No user found with email "${email}"` };
+        }
+        return {
+          success: true,
+          user: {
+            id: foundUser.id,
+            name: foundUser.full_name,
+            email: foundUser.email,
+            role: foundUser.role,
+            isActive: foundUser.is_active !== false
+          }
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [users, globalSkills, featureFlags, roleFeatureFlags, handleToggleRoleFeature, loadData, registerActions, unregisterActions]);
 
   // Load QuickBooks connection status
   useEffect(() => {
@@ -714,7 +867,7 @@ const AdminPage = () => {
   }));
 
   // Feature flag management functions
-  const handleToggleRoleFeature = async (role, flagId, currentEnabled) => {
+  const handleToggleRoleFeature = useCallback(async (role, flagId, currentEnabled) => {
     try {
       setSaving(true);
       const newEnabled = !currentEnabled;
@@ -749,7 +902,7 @@ const AdminPage = () => {
     } finally {
       setSaving(false);
     }
-  };
+  }, []);
 
   const handleToggleUserFeature = async (userId, flagId, currentEnabled, existingId) => {
     try {

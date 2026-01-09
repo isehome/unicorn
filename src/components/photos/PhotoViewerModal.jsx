@@ -1,8 +1,9 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Trash2, RefreshCcw } from 'lucide-react';
 import CachedSharePointImage from '../CachedSharePointImage';
 import Button from '../ui/Button';
+import { useAppState } from '../../contexts/AppStateContext';
 
 const formatTimestamp = (value) => {
   if (!value) return '';
@@ -21,9 +22,99 @@ const PhotoViewerModal = ({
   onDelete,
   canEdit = true,
   loading = false,
-  replaceMode = 'file' // 'file' | 'action'
+  replaceMode = 'file', // 'file' | 'action'
+  // Optional gallery navigation props
+  photos = null,
+  currentIndex = 0,
+  onNavigate = null
 }) => {
   const fileInputRef = useRef(null);
+  const { publishState, registerActions, unregisterActions } = useAppState();
+
+  // Calculate photo count and index for display
+  const photoCount = photos?.length || (photo ? 1 : 0);
+  const displayIndex = photos ? currentIndex : 0;
+
+  // Publish modal state when open/closed or navigation changes
+  useEffect(() => {
+    if (isOpen && photo) {
+      publishState({
+        'modal.type': 'photo-viewer',
+        'modal.title': 'Photo Viewer',
+        'modal.photoCount': photoCount,
+        'modal.currentIndex': displayIndex,
+        hint: `Viewing photo ${displayIndex + 1} of ${photoCount}`
+      });
+    } else {
+      // Clear modal state when closed
+      publishState({
+        'modal.type': null,
+        'modal.title': null,
+        'modal.photoCount': null,
+        'modal.currentIndex': null
+      });
+    }
+  }, [isOpen, photo, photoCount, displayIndex, publishState]);
+
+  // Register actions for AI control
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const actions = {
+      next_photo: async () => {
+        if (!photos || photos.length <= 1) {
+          return { success: false, error: 'No additional photos to navigate to' };
+        }
+        if (displayIndex >= photos.length - 1) {
+          return { success: false, error: 'Already at the last photo' };
+        }
+        if (onNavigate) {
+          onNavigate(displayIndex + 1);
+          return { success: true, message: `Navigated to photo ${displayIndex + 2} of ${photoCount}` };
+        }
+        return { success: false, error: 'Photo navigation not available' };
+      },
+
+      previous_photo: async () => {
+        if (!photos || photos.length <= 1) {
+          return { success: false, error: 'No additional photos to navigate to' };
+        }
+        if (displayIndex <= 0) {
+          return { success: false, error: 'Already at the first photo' };
+        }
+        if (onNavigate) {
+          onNavigate(displayIndex - 1);
+          return { success: true, message: `Navigated to photo ${displayIndex} of ${photoCount}` };
+        }
+        return { success: false, error: 'Photo navigation not available' };
+      },
+
+      delete_photo: async () => {
+        if (!canEdit) {
+          return { success: false, error: 'Editing is not permitted' };
+        }
+        if (loading) {
+          return { success: false, error: 'Operation in progress, please wait' };
+        }
+        if (!onDelete) {
+          return { success: false, error: 'Delete action not available' };
+        }
+        onDelete();
+        return { success: true, message: 'Photo deletion initiated' };
+      },
+
+      close: async () => {
+        if (onClose) {
+          onClose();
+          return { success: true, message: 'Photo viewer closed' };
+        }
+        return { success: false, error: 'Unable to close photo viewer' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [isOpen, photos, photoCount, displayIndex, canEdit, loading, onNavigate, onDelete, onClose, registerActions, unregisterActions]);
 
   const metadata = useMemo(() => {
     if (!photo) return null;

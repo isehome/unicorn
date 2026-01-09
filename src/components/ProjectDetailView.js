@@ -8,6 +8,7 @@ import React, {
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import Button from './ui/Button';
 import DateInput from './ui/DateInput';
 import {
@@ -122,6 +123,7 @@ const ProjectDetailView = () => {
   const palette = theme.palette;
   const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const pageClasses = mode === 'dark'
     ? 'bg-zinc-900 text-gray-100'
     : 'bg-gray-50 text-gray-900';
@@ -425,6 +427,95 @@ const ProjectDetailView = () => {
       setEditingStakeholder(null);
     }
   }, [expandedSection]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    if (!project) return;
+    publishState({
+      view: 'project-detail-technician',
+      project: {
+        id: project.id,
+        name: project.name,
+        address: project.address,
+        status: project.status
+      },
+      expandedSection: expandedSection,
+      wireDropCount: wireDrops?.length || 0,
+      todoCount: todos?.length || 0,
+      issueCount: issues?.length || 0,
+      stakeholders: {
+        internal: stakeholders.internal?.length || 0,
+        external: stakeholders.external?.length || 0
+      },
+      hint: 'Technician project detail view. Shows wire drops, todos, issues, contacts, equipment.'
+    });
+  }, [publishState, project, expandedSection, wireDrops, todos, issues, stakeholders]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      expand_section: async ({ section }) => {
+        const validSections = ['wireDrops', 'todos', 'issues', 'people', 'equipment', 'permits', 'lucid'];
+        if (validSections.includes(section)) {
+          setExpandedSection(section);
+          return { success: true, message: `Expanded ${section} section` };
+        }
+        return { success: false, error: `Invalid section. Valid: ${validSections.join(', ')}` };
+      },
+      collapse_section: async () => {
+        setExpandedSection(null);
+        return { success: true, message: 'Section collapsed' };
+      },
+      go_to_wire_drops: async () => {
+        setExpandedSection('wireDrops');
+        return { success: true, message: 'Showing wire drops' };
+      },
+      go_to_shades: async () => {
+        navigate(`/projects/${id}/shades`);
+        return { success: true, message: 'Navigating to shades' };
+      },
+      go_to_equipment: async () => {
+        setExpandedSection('equipment');
+        return { success: true, message: 'Showing equipment' };
+      },
+      go_to_prewire: async () => {
+        navigate(`/prewire-mode?project=${id}`);
+        return { success: true, message: 'Navigating to prewire mode' };
+      },
+      create_issue: async () => {
+        setExpandedSection('issues');
+        setTimeout(() => handleNewIssue && handleNewIssue(), 300);
+        return { success: true, message: 'Opening new issue form' };
+      },
+      list_todos: async () => {
+        return {
+          success: true,
+          todos: todos?.map(t => ({
+            title: t.title,
+            completed: t.completed,
+            importance: t.importance
+          })) || []
+        };
+      },
+      list_issues: async () => {
+        return {
+          success: true,
+          issues: issues?.map(i => ({
+            title: i.title,
+            status: i.status,
+            priority: i.priority
+          })) || []
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, id, navigate, todos, issues]);
 
   const toggleSection = (section) => {
     setExpandedSection((prev) => (prev === section ? null : section));

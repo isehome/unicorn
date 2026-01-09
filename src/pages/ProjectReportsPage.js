@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { reportService } from '../services/reportService';
 import { milestoneService } from '../services/milestoneService';
@@ -29,9 +30,11 @@ import {
 
 const ProjectReportsPage = () => {
   const { projectId } = useParams();
+  const navigate = useNavigate();
   const { mode } = useTheme();
   const isDark = mode === 'dark';
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Data state
   const [fullReportData, setFullReportData] = useState(null);
@@ -234,6 +237,181 @@ const ProjectReportsPage = () => {
     const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent('(Rich HTML content copied to clipboard - paste here with Ctrl+V / Cmd+V)')}`;
     window.location.href = mailtoUrl;
   }, [issueReportData]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Available report types for AI awareness
+  const reportTypes = useMemo(() => [
+    { id: 'overview', label: 'Overview' },
+    { id: 'issues', label: 'Issues' },
+    { id: 'wiredrops', label: 'Wire Drops' },
+    { id: 'equipment', label: 'Equipment' }
+  ], []);
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const projectName = fullReportData?.project?.name || issueReportData?.project?.name;
+    const { milestoneProgress, wireDropProgress, equipmentStatus, issueStats, permitStatus } = fullReportData || {};
+
+    publishState({
+      view: 'project-reports',
+      project: {
+        id: projectId,
+        name: projectName || 'Unknown Project'
+      },
+      activeTab,
+      reportTypes: reportTypes.map(rt => rt.id),
+      stats: {
+        openIssues: issueStats?.open || 0,
+        blockedIssues: issueStats?.blocked || 0,
+        totalIssues: issueStats?.total || 0,
+        milestoneProgress: milestoneProgress?.completedCount || 0,
+        totalMilestones: milestoneProgress?.milestones?.length || 0,
+        wireDrops: wireDropProgress?.total || milestonePercentages?.commissioning?.totalItems || 0,
+        equipment: equipmentStatus?.total || milestonePercentages?.trim_orders?.totalItems || 0,
+        permits: permitStatus?.completed || 0,
+        totalPermits: permitStatus?.total || 0
+      },
+      filters: {
+        stakeholder: stakeholderFilter,
+        issueStatus: issueStatusFilter
+      },
+      stakeholders: stakeholders.slice(0, 10).map(s => ({
+        id: s.id,
+        name: s.name,
+        role: s.role,
+        isInternal: s.is_internal
+      })),
+      hint: `Project reports page for ${projectName || 'project'}. Shows overview, issues, wire drops, and equipment reports. Current tab: ${activeTab}.`
+    });
+  }, [
+    publishState, projectId, activeTab, fullReportData, issueReportData,
+    milestonePercentages, stakeholders, stakeholderFilter, issueStatusFilter, reportTypes
+  ]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      select_report_type: async ({ reportType }) => {
+        const validTypes = ['overview', 'issues', 'wiredrops', 'equipment'];
+        const normalized = reportType?.toLowerCase();
+        if (validTypes.includes(normalized)) {
+          setActiveTab(normalized);
+          return { success: true, message: `Switched to ${normalized} report` };
+        }
+        return { success: false, error: `Invalid report type. Use: ${validTypes.join(', ')}` };
+      },
+      generate_report: async ({ reportType }) => {
+        // Refresh report data
+        try {
+          await loadReports();
+          if (reportType) {
+            const validTypes = ['overview', 'issues', 'wiredrops', 'equipment'];
+            const normalized = reportType.toLowerCase();
+            if (validTypes.includes(normalized)) {
+              setActiveTab(normalized);
+            }
+          }
+          return { success: true, message: 'Report data refreshed successfully' };
+        } catch (err) {
+          return { success: false, error: `Failed to generate report: ${err.message}` };
+        }
+      },
+      export_report: async ({ format }) => {
+        // Copy report to clipboard
+        if (!issueReportData) {
+          return { success: false, error: 'No report data available to export' };
+        }
+        try {
+          const textContent = reportService.generateEmailBody(issueReportData, 'text');
+          await navigator.clipboard.writeText(textContent);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+          return { success: true, message: 'Report copied to clipboard' };
+        } catch (err) {
+          return { success: false, error: `Failed to export report: ${err.message}` };
+        }
+      },
+      filter_by_stakeholder: async ({ stakeholderName }) => {
+        if (stakeholderName === 'all') {
+          setStakeholderFilter('all');
+          return { success: true, message: 'Showing issues for all stakeholders' };
+        }
+        if (stakeholderName === 'external') {
+          setStakeholderFilter('external');
+          return { success: true, message: 'Showing external stakeholders only' };
+        }
+        if (stakeholderName === 'internal') {
+          setStakeholderFilter('internal');
+          return { success: true, message: 'Showing internal stakeholders only' };
+        }
+        const found = stakeholders.find(s =>
+          s.name.toLowerCase().includes(stakeholderName.toLowerCase())
+        );
+        if (found) {
+          setStakeholderFilter(found.id);
+          return { success: true, message: `Filtering by stakeholder: ${found.name}` };
+        }
+        return { success: false, error: 'Stakeholder not found' };
+      },
+      filter_issues_by_status: async ({ status }) => {
+        const validStatuses = ['all', 'open', 'blocked', 'resolved'];
+        if (validStatuses.includes(status)) {
+          setIssueStatusFilter(status);
+          return { success: true, message: `Filtering issues by status: ${status}` };
+        }
+        return { success: false, error: `Invalid status. Use: ${validStatuses.join(', ')}` };
+      },
+      email_report: async ({ stakeholderId }) => {
+        if (!issueReportData) {
+          return { success: false, error: 'No report data available' };
+        }
+        if (stakeholderId) {
+          const group = issueReportData.stakeholderGroups?.find(g =>
+            g.stakeholder.id === stakeholderId ||
+            g.stakeholder.name.toLowerCase().includes(stakeholderId.toLowerCase())
+          );
+          if (group) {
+            handleOpenInEmail(group);
+            return { success: true, message: `Opening email for ${group.stakeholder.name}` };
+          }
+          return { success: false, error: 'Stakeholder not found' };
+        }
+        handleOpenInEmail();
+        return { success: true, message: 'Opening email client with full report' };
+      },
+      go_back: async () => {
+        navigate(`/project/${projectId}`);
+        return { success: true, message: 'Navigating back to project' };
+      },
+      get_report_summary: async () => {
+        const { milestoneProgress, issueStats, permitStatus } = fullReportData || {};
+        return {
+          success: true,
+          summary: {
+            openIssues: issueStats?.open || 0,
+            blockedIssues: issueStats?.blocked || 0,
+            milestonesComplete: milestoneProgress?.completedCount || 0,
+            totalMilestones: milestoneProgress?.milestones?.length || 0,
+            permitsComplete: permitStatus?.completed || 0,
+            totalPermits: permitStatus?.total || 0,
+            prewireProgress: milestonePercentages?.prewire_phase?.percentage || 0,
+            trimProgress: milestonePercentages?.trim_phase?.percentage || 0,
+            commissioningProgress: milestonePercentages?.commissioning?.percentage || 0
+          }
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [
+    registerActions, unregisterActions, navigate, projectId, loadReports,
+    issueReportData, fullReportData, milestonePercentages, stakeholders,
+    handleOpenInEmail
+  ]);
 
   // Loading state
   if (loading) {

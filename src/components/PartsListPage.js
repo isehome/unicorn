@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { partsService } from '../services/partsService';
 import Button from './ui/Button';
 import {
@@ -45,6 +46,7 @@ const PartsListPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   const {
     data: parts = [],
@@ -158,6 +160,113 @@ const PartsListPage = () => {
 
     return filtered;
   }, [parts, search, phaseFilter]);
+
+  // Get unique categories for filtering
+  const categories = useMemo(() => {
+    const cats = new Set(parts.map(p => p.category).filter(Boolean));
+    return Array.from(cats).sort();
+  }, [parts]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'parts-list',
+      stats: {
+        total: parts.length,
+        visible: filteredParts.length,
+        prewireCount: parts.filter(p => p.required_for_prewire === true).length,
+        trimCount: parts.filter(p => p.required_for_prewire !== true).length
+      },
+      filters: {
+        search: search,
+        phase: phaseFilter
+      },
+      categories: categories,
+      editMode: editMode,
+      inventoryMode: inventoryMode,
+      visibleParts: filteredParts.slice(0, 10).map(p => ({
+        id: p.id,
+        partNumber: p.part_number,
+        name: p.name,
+        manufacturer: p.manufacturer,
+        category: p.category,
+        quantityAvailable: p.quantity_available ?? p.quantity_on_hand ?? 0
+      })),
+      hint: 'Parts catalog page. Search/filter parts by name, number, manufacturer, category. Can filter by phase (prewire/trim).'
+    });
+  }, [publishState, parts, filteredParts, search, phaseFilter, categories, editMode, inventoryMode]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_parts: async ({ query }) => {
+        setSearch(query || '');
+        return { success: true, message: query ? `Searching for: ${query}` : 'Search cleared' };
+      },
+      filter_by_category: async ({ category }) => {
+        // Since parts don't have a dedicated category filter state, we'll use search
+        if (!category || category === 'all') {
+          setSearch('');
+          return { success: true, message: 'Showing all parts' };
+        }
+        const matchedCategory = categories.find(c => c.toLowerCase().includes(category.toLowerCase()));
+        if (matchedCategory) {
+          setSearch(matchedCategory);
+          return { success: true, message: `Filtering by category: ${matchedCategory}` };
+        }
+        return { success: false, error: `Category not found. Available: ${categories.join(', ')}` };
+      },
+      filter_by_phase: async ({ phase }) => {
+        if (['all', 'prewire', 'trim'].includes(phase)) {
+          setPhaseFilter(phase);
+          return { success: true, message: `Filtering by phase: ${phase}` };
+        }
+        return { success: false, error: 'Invalid phase. Use: all, prewire, or trim' };
+      },
+      open_part_detail: async ({ partName, partNumber }) => {
+        const part = filteredParts.find(p => {
+          if (partNumber && p.part_number?.toLowerCase().includes(partNumber.toLowerCase())) return true;
+          if (partName && (p.name?.toLowerCase().includes(partName.toLowerCase()) ||
+                          p.model?.toLowerCase().includes(partName.toLowerCase()))) return true;
+          return false;
+        });
+        if (part) {
+          navigate(`/parts/${part.id}`);
+          return { success: true, message: `Opening part: ${part.name || part.part_number}` };
+        }
+        return { success: false, error: 'Part not found' };
+      },
+      list_parts_by_manufacturer: async ({ manufacturer }) => {
+        if (!manufacturer) {
+          return { success: false, error: 'Please specify a manufacturer' };
+        }
+        const matchingParts = parts.filter(p =>
+          p.manufacturer?.toLowerCase().includes(manufacturer.toLowerCase())
+        );
+        if (matchingParts.length > 0) {
+          setSearch(manufacturer);
+          return {
+            success: true,
+            message: `Found ${matchingParts.length} parts from ${manufacturer}`,
+            parts: matchingParts.slice(0, 10).map(p => ({ name: p.name, partNumber: p.part_number }))
+          };
+        }
+        return { success: false, error: `No parts found from manufacturer: ${manufacturer}` };
+      },
+      clear_filters: async () => {
+        setSearch('');
+        setPhaseFilter('all');
+        return { success: true, message: 'All filters cleared' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, filteredParts, parts, categories, navigate]);
 
   const handleFormChange = useCallback((key, value) => {
     setFormData((prev) => ({

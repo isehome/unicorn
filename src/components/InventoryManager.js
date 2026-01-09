@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { useNavigate } from 'react-router-dom';
 import { Package, AlertCircle, CheckCircle, Plus, Minus, Save, RefreshCw } from 'lucide-react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,12 +13,17 @@ const InventoryManager = ({ projectId }) => {
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [pendingChanges, setPendingChanges] = useState(new Map());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'in_stock', 'needs_order'
+  const [selectedRoom, setSelectedRoom] = useState('all');
 
   const loadInventory = useCallback(async () => {
     if (!projectId) return;
@@ -128,7 +135,7 @@ const InventoryManager = ({ projectId }) => {
     setPendingChanges(new Map());
   };
 
-  const getInventoryStatus = (item) => {
+  const getInventoryStatus = useCallback((item) => {
     const pendingChange = pendingChanges.get(item.id);
     // Use NEW inventory method: global_part.quantity_on_hand (global inventory)
     // Fallback to OLD method: project_equipment_inventory for backward compatibility
@@ -145,11 +152,11 @@ const InventoryManager = ({ projectId }) => {
       hasStock: onHand >= needed,
       isModified: pendingChanges.has(item.id)
     };
-  };
+  }, [pendingChanges]);
 
-  const groupByRoom = () => {
+  const groupByRoom = (items) => {
     const groups = new Map();
-    equipment.forEach((item) => {
+    items.forEach((item) => {
       const roomName = item.project_rooms?.name || 'Unassigned';
       if (!groups.has(roomName)) {
         groups.set(roomName, []);
@@ -158,6 +165,182 @@ const InventoryManager = ({ projectId }) => {
     });
     return Array.from(groups.entries());
   };
+
+  // Memoized list of unique rooms
+  const rooms = useMemo(() => {
+    const uniqueRooms = new Set();
+    equipment.forEach((item) => {
+      const roomName = item.project_rooms?.name || 'Unassigned';
+      uniqueRooms.add(roomName);
+    });
+    return Array.from(uniqueRooms).sort((a, b) => a.localeCompare(b));
+  }, [equipment]);
+
+  // Memoized filtered equipment based on search and filters
+  const filteredEquipment = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return equipment.filter((item) => {
+      // Room filter
+      if (selectedRoom !== 'all') {
+        const roomName = item.project_rooms?.name || 'Unassigned';
+        if (roomName !== selectedRoom) return false;
+      }
+
+      // Status filter
+      const status = getInventoryStatus(item);
+      if (statusFilter === 'in_stock' && !status.hasStock) return false;
+      if (statusFilter === 'needs_order' && status.hasStock) return false;
+
+      // Search filter
+      if (query) {
+        const searchFields = [
+          item.name,
+          item.part_number,
+          item.manufacturer,
+          item.model,
+          item.project_rooms?.name
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!searchFields.includes(query)) return false;
+      }
+
+      return true;
+    });
+  }, [equipment, searchQuery, selectedRoom, statusFilter, getInventoryStatus]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const inStockCount = equipment.filter((item) => getInventoryStatus(item).hasStock).length;
+    const needsOrderCount = equipment.length - inStockCount;
+    const totalShortage = equipment.reduce((sum, item) => {
+      const status = getInventoryStatus(item);
+      return sum + status.shortage;
+    }, 0);
+
+    publishState({
+      view: 'project-inventory',
+      projectId: projectId,
+      stats: {
+        total: equipment.length,
+        inStock: inStockCount,
+        needsOrder: needsOrderCount,
+        totalShortage: totalShortage,
+        roomCount: rooms.length
+      },
+      filters: {
+        searchQuery: searchQuery,
+        statusFilter: statusFilter,
+        selectedRoom: selectedRoom
+      },
+      rooms: rooms,
+      filteredCount: filteredEquipment.length,
+      hasPendingChanges: pendingChanges.size > 0,
+      pendingChangesCount: pendingChanges.size,
+      visibleInventory: filteredEquipment.slice(0, 10).map((item) => {
+        const status = getInventoryStatus(item);
+        return {
+          id: item.id,
+          name: item.name,
+          partNumber: item.part_number,
+          room: item.project_rooms?.name || 'Unassigned',
+          onHand: status.onHand,
+          needed: status.needed,
+          shortage: status.shortage,
+          hasStock: status.hasStock
+        };
+      }),
+      hint: 'Project inventory page. Shows equipment items with stock levels. Can search, filter by room, filter by stock status (in_stock/needs_order). Users can adjust quantity on hand and save changes.'
+    });
+  }, [publishState, projectId, equipment, searchQuery, statusFilter, selectedRoom, rooms, filteredEquipment, pendingChanges, getInventoryStatus]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_inventory: async ({ query }) => {
+        if (typeof query === 'string') {
+          setSearchQuery(query);
+          return { success: true, message: `Searching inventory for "${query}"` };
+        }
+        return { success: false, error: 'Invalid search query' };
+      },
+      clear_search: async () => {
+        setSearchQuery('');
+        return { success: true, message: 'Search cleared' };
+      },
+      filter_by_location: async ({ roomName }) => {
+        if (roomName === 'all' || !roomName) {
+          setSelectedRoom('all');
+          return { success: true, message: 'Showing all locations' };
+        }
+        const matchingRoom = rooms.find((r) => r.toLowerCase().includes(roomName.toLowerCase()));
+        if (matchingRoom) {
+          setSelectedRoom(matchingRoom);
+          return { success: true, message: `Filtering by location: ${matchingRoom}` };
+        }
+        return { success: false, error: `Location "${roomName}" not found. Available locations: ${rooms.join(', ')}` };
+      },
+      filter_by_status: async ({ status }) => {
+        const validStatuses = ['all', 'in_stock', 'needs_order'];
+        if (validStatuses.includes(status)) {
+          setStatusFilter(status);
+          const statusLabels = {
+            all: 'all statuses',
+            in_stock: 'in stock items',
+            needs_order: 'items needing order'
+          };
+          return { success: true, message: `Filtering by: ${statusLabels[status]}` };
+        }
+        return { success: false, error: `Invalid status. Use: ${validStatuses.join(', ')}` };
+      },
+      refresh_inventory: async () => {
+        await loadInventory();
+        return { success: true, message: 'Inventory refreshed' };
+      },
+      save_changes: async () => {
+        if (pendingChanges.size === 0) {
+          return { success: false, error: 'No pending changes to save' };
+        }
+        await handleSaveChanges();
+        return { success: true, message: `Saved ${pendingChanges.size} change(s)` };
+      },
+      discard_changes: async () => {
+        if (pendingChanges.size === 0) {
+          return { success: false, error: 'No pending changes to discard' };
+        }
+        handleDiscardChanges();
+        return { success: true, message: 'Changes discarded' };
+      },
+      get_inventory_summary: async () => {
+        const inStockCount = equipment.filter((item) => getInventoryStatus(item).hasStock).length;
+        const needsOrderCount = equipment.length - inStockCount;
+        const totalShortage = equipment.reduce((sum, item) => {
+          const status = getInventoryStatus(item);
+          return sum + status.shortage;
+        }, 0);
+        return {
+          success: true,
+          summary: {
+            total: equipment.length,
+            inStock: inStockCount,
+            needsOrder: needsOrderCount,
+            totalShortage: totalShortage,
+            rooms: rooms.length
+          },
+          message: `${equipment.length} total items: ${inStockCount} in stock, ${needsOrderCount} need ordering (${totalShortage} total shortage) across ${rooms.length} locations`
+        };
+      },
+      go_back: async () => {
+        navigate(`/projects/${projectId}`);
+        return { success: true, message: 'Navigating back to project' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, equipment, rooms, projectId, navigate, loadInventory, handleSaveChanges, handleDiscardChanges, pendingChanges, getInventoryStatus]);
 
   if (loading) {
     return (
@@ -170,7 +353,7 @@ const InventoryManager = ({ projectId }) => {
     );
   }
 
-  const roomGroups = groupByRoom();
+  const roomGroups = groupByRoom(filteredEquipment);
   const totalShortage = equipment.reduce((sum, item) => {
     const status = getInventoryStatus(item);
     return sum + status.shortage;

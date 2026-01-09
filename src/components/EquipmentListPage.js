@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
 import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2 } from 'lucide-react';
@@ -814,6 +815,7 @@ const EquipmentListPage = () => {
   const { theme, mode } = useTheme();
   const { openPhotoViewer } = usePhotoViewer();
   const { user } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -1102,6 +1104,150 @@ const EquipmentListPage = () => {
       total: group.headEnd.length + group.roomEnd.length
     }));
   }, [filteredEquipment]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const installedCount = equipment.filter(e => e.installed).length;
+    const orderedCount = equipment.filter(e => e.ordered).length;
+    const receivedCount = equipment.filter(e => e.received).length;
+    const deliveredCount = equipment.filter(e => e.delivered).length;
+    const headEndTotal = equipment.filter(e => e.isHeadend).length;
+    const roomEndTotal = equipment.length - headEndTotal;
+
+    publishState({
+      view: 'equipment-list',
+      projectId: projectId,
+      stats: {
+        total: equipment.length,
+        installed: installedCount,
+        ordered: orderedCount,
+        received: receivedCount,
+        delivered: deliveredCount,
+        headEnd: headEndTotal,
+        roomEnd: roomEndTotal
+      },
+      filters: {
+        searchQuery: searchQuery,
+        selectedRoom: selectedRoom,
+        installFilter: installFilter,
+        installedFilter: installedFilter
+      },
+      rooms: rooms,
+      filteredCount: filteredEquipment.length,
+      visibleEquipment: filteredEquipment.slice(0, 10).map(e => ({
+        id: e.id,
+        name: e.name,
+        partNumber: e.partNumber,
+        room: e.room,
+        installed: e.installed,
+        ordered: e.ordered,
+        received: e.received,
+        delivered: e.delivered
+      })),
+      hint: 'Equipment list page for a project. Shows all equipment items grouped by room. Can search, filter by room, filter by head-end/room-end, and filter by installed status.'
+    });
+  }, [publishState, projectId, equipment, searchQuery, selectedRoom, installFilter, installedFilter, rooms, filteredEquipment]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_equipment: async ({ query }) => {
+        if (typeof query === 'string') {
+          setSearchQuery(query);
+          return { success: true, message: `Searching for "${query}"` };
+        }
+        return { success: false, error: 'Invalid search query' };
+      },
+      clear_search: async () => {
+        setSearchQuery('');
+        return { success: true, message: 'Search cleared' };
+      },
+      filter_by_room: async ({ roomName }) => {
+        if (roomName === 'all' || !roomName) {
+          setSelectedRoom('all');
+          return { success: true, message: 'Showing all rooms' };
+        }
+        const matchingRoom = rooms.find(r => r.toLowerCase().includes(roomName.toLowerCase()));
+        if (matchingRoom) {
+          setSelectedRoom(matchingRoom);
+          return { success: true, message: `Filtering by room: ${matchingRoom}` };
+        }
+        return { success: false, error: `Room "${roomName}" not found. Available rooms: ${rooms.join(', ')}` };
+      },
+      filter_by_status: async ({ status }) => {
+        const validStatuses = ['all', 'installed', 'not_installed'];
+        if (validStatuses.includes(status)) {
+          setInstalledFilter(status);
+          return { success: true, message: `Filtering by status: ${status === 'all' ? 'all statuses' : status}` };
+        }
+        return { success: false, error: `Invalid status. Use: ${validStatuses.join(', ')}` };
+      },
+      filter_by_install_side: async ({ side }) => {
+        const validSides = ['all', 'head_end', 'room_end'];
+        if (validSides.includes(side)) {
+          setInstallFilter(side);
+          return { success: true, message: `Filtering by: ${side === 'all' ? 'all equipment' : side === 'head_end' ? 'head-end equipment' : 'room-end equipment'}` };
+        }
+        return { success: false, error: `Invalid side. Use: ${validSides.join(', ')}` };
+      },
+      import_csv: async () => {
+        // This action would typically open an import dialog or navigate to import page
+        return { success: false, error: 'CSV import is not available from this view. Please use the project management interface.' };
+      },
+      generate_po: async () => {
+        // Navigate to PO generation
+        navigate(`/projects/${projectId}/purchase-orders`);
+        return { success: true, message: 'Navigating to purchase orders page' };
+      },
+      open_equipment_detail: async ({ equipmentName, equipmentId }) => {
+        let item = null;
+        if (equipmentId) {
+          item = equipment.find(e => e.id === equipmentId);
+        } else if (equipmentName) {
+          item = equipment.find(e =>
+            e.name.toLowerCase().includes(equipmentName.toLowerCase()) ||
+            (e.partNumber && e.partNumber.toLowerCase().includes(equipmentName.toLowerCase()))
+          );
+        }
+        if (item) {
+          setExpandedItems(prev => ({ ...prev, [item.id]: true }));
+          // Scroll to the item
+          setSearchParams({ highlight: item.id });
+          return { success: true, message: `Expanded details for "${item.name}"` };
+        }
+        return { success: false, error: 'Equipment not found' };
+      },
+      collapse_all: async () => {
+        setExpandedItems({});
+        return { success: true, message: 'Collapsed all equipment details' };
+      },
+      refresh_equipment: async () => {
+        await loadEquipment();
+        return { success: true, message: 'Equipment list refreshed' };
+      },
+      list_equipment_summary: async () => {
+        const installedCount = equipment.filter(e => e.installed).length;
+        const notInstalledCount = equipment.length - installedCount;
+        return {
+          success: true,
+          summary: {
+            total: equipment.length,
+            installed: installedCount,
+            notInstalled: notInstalledCount,
+            rooms: rooms.length
+          },
+          message: `${equipment.length} total items: ${installedCount} installed, ${notInstalledCount} not installed across ${rooms.length} rooms`
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, equipment, rooms, projectId, navigate, loadEquipment, setSearchParams]);
 
   const totalItems = equipment.length;
   const headEndCount = equipment.filter((item) => item.isHeadend).length;

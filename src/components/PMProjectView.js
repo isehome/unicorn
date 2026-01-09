@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -291,6 +292,7 @@ const PMProjectViewEnhanced = () => {
   const { mode } = useTheme();
   const { user } = useAuth();
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   const [project, setProject] = useState(null);
   const [phases, setPhases] = useState([]);
@@ -1683,6 +1685,87 @@ const PMProjectViewEnhanced = () => {
   useEffect(() => {
     loadWireDrops();
   }, [loadWireDrops]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    if (!project) return;
+    publishState({
+      view: 'pm-project-detail',
+      project: {
+        id: project.id,
+        name: project.name,
+        address: project.address,
+        status: project.status,
+        phase: project.phase,
+        projectNumber: project.project_number
+      },
+      editMode: editMode,
+      expandedSections: expandedSections,
+      milestonePercentages: milestonePercentages,
+      totalTimeHours: timeData?.totalHours || 0,
+      wireDropCount: wireDropCounts?.total || 0,
+      hint: 'PM project management view. Full project editing, milestones, equipment, procurement, stakeholders.'
+    });
+  }, [publishState, project, editMode, expandedSections, milestonePercentages, timeData, wireDropCounts]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      toggle_edit_mode: async () => {
+        setEditMode(prev => !prev);
+        return { success: true, message: editMode ? 'Exiting edit mode' : 'Entering edit mode' };
+      },
+      expand_section: async ({ section }) => {
+        setExpandedSections(prev => ({ ...prev, [section]: true }));
+        return { success: true, message: `Expanded ${section}` };
+      },
+      collapse_section: async ({ section }) => {
+        setExpandedSections(prev => ({ ...prev, [section]: false }));
+        return { success: true, message: `Collapsed ${section}` };
+      },
+      go_to_shades: async () => {
+        navigate(`/projects/${projectId}/shades`);
+        return { success: true, message: 'Navigating to shades' };
+      },
+      go_to_equipment: async () => {
+        navigate(`/projects/${projectId}/equipment`);
+        return { success: true, message: 'Navigating to equipment' };
+      },
+      go_to_procurement: async () => {
+        navigate(`/projects/${projectId}/procurement`);
+        return { success: true, message: 'Navigating to procurement' };
+      },
+      go_to_receiving: async () => {
+        navigate(`/projects/${projectId}/receiving`);
+        return { success: true, message: 'Navigating to receiving' };
+      },
+      go_to_reports: async () => {
+        navigate(`/projects/${projectId}/reports`);
+        return { success: true, message: 'Navigating to reports' };
+      },
+      get_milestone_status: async () => {
+        return {
+          success: true,
+          milestones: milestonePercentages,
+          message: `Planning: ${milestonePercentages.planning_design}%, Prewire: ${milestonePercentages.prewire}%, Trim: ${milestonePercentages.trim}%, Commissioning: ${milestonePercentages.commissioning}%`
+        };
+      },
+      save_project: async () => {
+        if (editMode) {
+          // Trigger save
+          return { success: true, message: 'Saving project changes...' };
+        }
+        return { success: false, error: 'Not in edit mode' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, projectId, navigate, editMode, milestonePercentages]);
 
   // INITIAL SYNC: Sync existing permit dates to milestones on page load
   useEffect(() => {

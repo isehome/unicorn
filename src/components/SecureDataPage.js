@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
 import {
@@ -39,6 +40,7 @@ const SecureDataPage = () => {
   const { theme, mode } = useTheme();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
   
   // State
   const [secureData, setSecureData] = useState([]);
@@ -136,6 +138,136 @@ const SecureDataPage = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // Publish state to AppState for AI context
+  useEffect(() => {
+    const credentialsByType = {
+      credentials: secureData.filter(d => d.data_type === 'credentials').length,
+      network: secureData.filter(d => d.data_type === 'network').length,
+      api_key: secureData.filter(d => d.data_type === 'api_key').length,
+      certificate: secureData.filter(d => d.data_type === 'certificate').length,
+      other: secureData.filter(d => d.data_type === 'other').length
+    };
+    const linkedCount = secureData.filter(d => (d.equipment_secure_links || []).length > 0).length;
+    const unlinkedCount = secureData.length - linkedCount;
+
+    publishState({
+      view: 'secure-data',
+      projectId: projectId,
+      stats: {
+        totalCredentials: secureData.length,
+        filteredCount: filteredSecureData.length,
+        byType: credentialsByType,
+        linkedToEquipment: linkedCount,
+        unlinked: unlinkedCount,
+        equipmentCount: equipment.length
+      },
+      filters: {
+        searchQuery: searchQuery,
+        selectedEquipment: selectedEquipment
+      },
+      formOpen: showAddForm,
+      editing: editingItem ? { id: editingItem.id, name: editingItem.name } : null,
+      hint: 'Secure data page for storing project credentials, API keys, network configs, and certificates. Credentials can be linked to equipment. All access is audited. Do NOT expose actual passwords or secrets in AI responses.'
+    });
+  }, [publishState, projectId, secureData, filteredSecureData, equipment, searchQuery, selectedEquipment, showAddForm, editingItem]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      add_credential: async () => {
+        setEditingItem(null);
+        setFormData({
+          name: '',
+          data_type: 'credentials',
+          username: '',
+          password: '',
+          url: '',
+          notes: '',
+          equipment_ids: []
+        });
+        setShowAddForm(true);
+        setError('');
+        return { success: true, message: 'Add credential form opened' };
+      },
+      search_credentials: async ({ query }) => {
+        if (typeof query === 'string') {
+          setSearchQuery(query);
+          return { success: true, message: `Searching for "${query}"` };
+        }
+        return { success: false, error: 'Invalid search query' };
+      },
+      clear_search: async () => {
+        setSearchQuery('');
+        return { success: true, message: 'Search cleared' };
+      },
+      filter_by_equipment: async ({ equipmentName, equipmentId }) => {
+        if (!equipmentName && !equipmentId) {
+          setSelectedEquipment('all');
+          return { success: true, message: 'Showing all credentials' };
+        }
+        if (equipmentId === 'unassigned') {
+          setSelectedEquipment('unassigned');
+          return { success: true, message: 'Showing unassigned credentials only' };
+        }
+        let matchedEquipment = null;
+        if (equipmentId) {
+          matchedEquipment = equipment.find(e => e.id === equipmentId);
+        } else if (equipmentName) {
+          matchedEquipment = equipment.find(e =>
+            e.name.toLowerCase().includes(equipmentName.toLowerCase())
+          );
+        }
+        if (matchedEquipment) {
+          setSelectedEquipment(matchedEquipment.id);
+          return { success: true, message: `Filtering by equipment: ${matchedEquipment.name}` };
+        }
+        return { success: false, error: `Equipment not found. Available: ${equipment.map(e => e.name).join(', ')}` };
+      },
+      close_form: async () => {
+        setShowAddForm(false);
+        setEditingItem(null);
+        return { success: true, message: 'Form closed' };
+      },
+      refresh_credentials: async () => {
+        await loadData();
+        return { success: true, message: 'Credentials refreshed' };
+      },
+      go_back: async () => {
+        navigate(`/projects/${projectId}`);
+        return { success: true, message: 'Navigating back to project' };
+      },
+      view_audit_logs: async () => {
+        try {
+          const logs = await secureDataService.getAuditLogs(projectId);
+          setAuditLogs(logs || []);
+          setShowAuditModal(true);
+          return { success: true, message: 'Audit logs opened' };
+        } catch (err) {
+          return { success: false, error: 'Failed to load audit logs' };
+        }
+      },
+      get_credential_summary: async () => {
+        const byType = {};
+        secureData.forEach(d => {
+          const type = d.data_type || 'other';
+          byType[type] = (byType[type] || 0) + 1;
+        });
+        return {
+          success: true,
+          summary: {
+            total: secureData.length,
+            byType,
+            linkedToEquipment: secureData.filter(d => (d.equipment_secure_links || []).length > 0).length
+          },
+          message: `${secureData.length} credentials stored`
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, projectId, navigate, loadData, secureData, equipment]);
 
   // Filter secure data
   const filteredSecureData = useMemo(() => {

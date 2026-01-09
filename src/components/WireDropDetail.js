@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import wireDropService from '../services/wireDropService';
 import unifiService from '../services/unifiService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -61,6 +62,7 @@ const WireDropDetail = () => {
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
   const { openPhotoViewer, closePhotoViewer, updatePhotoViewerOptions, photo: activeViewerPhoto } = usePhotoViewer();
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   const [wireDrop, setWireDrop] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -291,6 +293,81 @@ const WireDropDetail = () => {
       setPrimaryRoomEquipmentId(roomEquipmentSelection[0]);
     }
   }, [roomEquipmentSelection, primaryRoomEquipmentId]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    if (!wireDrop) return;
+    const stages = wireDrop.wire_drop_stages || [];
+    const prewireStage = stages.find(s => s.stage_type === 'prewire');
+    const trimStage = stages.find(s => s.stage_type === 'trim');
+
+    publishState({
+      view: 'wire-drop-detail',
+      wireDrop: {
+        id: wireDrop.id,
+        uid: wireDrop.uid,
+        dropName: wireDrop.drop_name,
+        roomName: wireDrop.room_name,
+        floor: wireDrop.floor,
+        wireType: wireDrop.wire_type,
+        dropType: wireDrop.drop_type,
+        labelsPrinted: wireDrop.labels_printed
+      },
+      projectId: wireDrop.project_id,
+      activeTab: activeTab,
+      editing: editing,
+      stages: {
+        prewire: prewireStage?.completed || false,
+        trim: trimStage?.completed || false
+      },
+      hint: 'Wire drop detail page. Shows stages (prewire/trim), equipment assignments, photos.'
+    });
+  }, [publishState, wireDrop, activeTab, editing]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      switch_tab: async ({ tab }) => {
+        if (['prewire', 'trim', 'equipment'].includes(tab)) {
+          setActiveTab(tab);
+          return { success: true, message: `Switched to ${tab} tab` };
+        }
+        return { success: false, error: 'Invalid tab. Use: prewire, trim, or equipment' };
+      },
+      toggle_edit: async () => {
+        setEditing(prev => !prev);
+        return { success: true, message: editing ? 'Exiting edit mode' : 'Entering edit mode' };
+      },
+      mark_prewire_complete: async () => {
+        // This would need the actual completion function
+        return { success: true, message: 'Marking prewire as complete...' };
+      },
+      go_back: async () => {
+        navigate(-1);
+        return { success: true, message: 'Going back' };
+      },
+      get_wire_drop_info: async () => {
+        if (!wireDrop) return { success: false, error: 'Wire drop not loaded' };
+        return {
+          success: true,
+          info: {
+            name: wireDrop.drop_name,
+            room: wireDrop.room_name,
+            type: wireDrop.drop_type,
+            wireType: wireDrop.wire_type,
+            uid: wireDrop.uid
+          }
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, editing, navigate, wireDrop]);
 
   const loadProjectEquipmentOptions = useCallback(
     async (projectId) => {

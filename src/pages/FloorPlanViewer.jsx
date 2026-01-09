@@ -4,10 +4,11 @@
  * Mobile-optimized dedicated page with pan/zoom and pulsing highlight
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import { supabase } from '../lib/supabase';
+import { useAppState } from '../contexts/AppStateContext';
 import '../styles/FloorPlanViewer.css';
 
 export default function FloorPlanViewer() {
@@ -15,12 +16,17 @@ export default function FloorPlanViewer() {
   const [searchParams] = useSearchParams();
   const wireDropId = searchParams.get('wireDropId');
   const navigate = useNavigate();
-  
+  const { publishState, registerActions, unregisterActions } = useAppState();
+
   const [floorPlan, setFloorPlan] = useState(null);
   const [wireDrop, setWireDrop] = useState(null);
+  const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Ref to access transform controls from outside the render prop
+  const transformRef = useRef(null);
   
   useEffect(() => {
     loadFloorPlanData();
@@ -43,15 +49,15 @@ export default function FloorPlanViewer() {
         .select('*')
         .eq('id', wireDropId)
         .single();
-      
+
       if (dropError) throw dropError;
-      
+
       if (!drop.lucid_page_id || !drop.lucid_shape_id) {
         throw new Error('This wire drop is not linked to a floor plan location');
       }
 
       setWireDrop(drop);
-      
+
       // 2. Load the corresponding floor plan page
       const { data: page, error: pageError } = await supabase
         .from('lucid_pages')
@@ -59,14 +65,25 @@ export default function FloorPlanViewer() {
         .eq('project_id', projectId)
         .eq('page_id', drop.lucid_page_id)
         .single();
-      
+
       if (pageError) throw pageError;
-      
+
       if (!page) {
         throw new Error('Floor plan page not found');
       }
 
       setFloorPlan(page);
+
+      // 3. Load project context
+      const { data: proj, error: projError } = await supabase
+        .from('projects')
+        .select('id, name, address, status')
+        .eq('id', projectId)
+        .single();
+
+      if (!projError && proj) {
+        setProject(proj);
+      }
     } catch (err) {
       console.error('Error loading floor plan:', err);
       setError(err.message);
@@ -101,12 +118,111 @@ export default function FloorPlanViewer() {
     const centerX = -(shapePos.x / 100) * (floorPlan?.image_width || 1000) * 1.5;
     const centerY = -(shapePos.y / 100) * (floorPlan?.image_height || 1000) * 1.5;
     
-    return { 
-      x: centerX + (window.innerWidth / 2), 
+    return {
+      x: centerX + (window.innerWidth / 2),
       y: centerY + (window.innerHeight / 2)
     };
   };
-  
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    if (!floorPlan) return;
+
+    publishState({
+      view: 'floor-plan-viewer',
+      project: project ? {
+        id: project.id,
+        name: project.name,
+        address: project.address,
+        status: project.status
+      } : { id: projectId },
+      floorPlan: {
+        pageId: floorPlan.page_id,
+        pageTitle: floorPlan.page_title,
+        floor: floorPlan.floor_number || floorPlan.page_title
+      },
+      wireDrop: wireDrop ? {
+        id: wireDrop.id,
+        name: wireDrop.drop_name,
+        location: wireDrop.location,
+        roomName: wireDrop.room_name
+      } : null,
+      imageLoaded,
+      hint: 'Floor plan viewer showing wire drop location. Can zoom in/out, reset view, or navigate to wire drop details.'
+    });
+  }, [publishState, floorPlan, wireDrop, project, projectId, imageLoaded]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      zoom_in: async () => {
+        if (transformRef.current) {
+          transformRef.current.zoomIn();
+          return { success: true, message: 'Zoomed in on floor plan' };
+        }
+        return { success: false, error: 'Transform controls not available' };
+      },
+      zoom_out: async () => {
+        if (transformRef.current) {
+          transformRef.current.zoomOut();
+          return { success: true, message: 'Zoomed out on floor plan' };
+        }
+        return { success: false, error: 'Transform controls not available' };
+      },
+      reset_view: async () => {
+        if (transformRef.current) {
+          transformRef.current.resetTransform();
+          return { success: true, message: 'Reset floor plan view to default' };
+        }
+        return { success: false, error: 'Transform controls not available' };
+      },
+      center_on_wire_drop: async () => {
+        if (transformRef.current && shapePos) {
+          transformRef.current.resetTransform();
+          setTimeout(() => {
+            transformRef.current.centerView(1.5, 300);
+          }, 100);
+          return { success: true, message: 'Centered view on wire drop location' };
+        }
+        return { success: false, error: 'Cannot center - wire drop position not available' };
+      },
+      select_wire_drop: async () => {
+        if (wireDrop?.id) {
+          navigate(`/wire-drops/${wireDrop.id}`);
+          return { success: true, message: `Navigating to wire drop: ${wireDrop.drop_name}` };
+        }
+        return { success: false, error: 'No wire drop selected' };
+      },
+      go_back: async () => {
+        navigate(-1);
+        return { success: true, message: 'Going back to previous page' };
+      },
+      get_floor_plan_info: async () => {
+        if (!floorPlan) return { success: false, error: 'Floor plan not loaded' };
+        return {
+          success: true,
+          info: {
+            pageTitle: floorPlan.page_title,
+            floor: floorPlan.floor_number || floorPlan.page_title,
+            wireDrop: wireDrop ? {
+              name: wireDrop.drop_name,
+              location: wireDrop.location,
+              room: wireDrop.room_name
+            } : null,
+            projectName: project?.name || 'Unknown'
+          }
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, navigate, floorPlan, wireDrop, project, shapePos]);
+
   if (loading) {
     return (
       <div className="floor-plan-viewer">
@@ -160,6 +276,7 @@ export default function FloorPlanViewer() {
       </header>
       
       <TransformWrapper
+        ref={transformRef}
         initialScale={1.5}
         initialPositionX={0}
         initialPositionY={0}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppState } from '../../contexts/AppStateContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { supabase } from '../../lib/supabase';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
@@ -47,6 +48,7 @@ import {
 const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   const { mode } = useTheme();
   const { user, acquireToken } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // State
@@ -80,6 +82,190 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
       loadPODetails();
     }
   }, [isOpen, poId]);
+
+  // Publish modal state to AppState for AI awareness
+  useEffect(() => {
+    if (isOpen && po) {
+      publishState({
+        modal: {
+          type: 'po-details',
+          title: 'Purchase Order Details',
+          poNumber: po.po_number,
+          poId: po.id,
+          status: po.status,
+          supplierName: po.supplier?.name || 'Unknown Supplier',
+          totalAmount: po.total_amount,
+          itemCount: po.items?.length || 0,
+          isEditing,
+          formFields: [
+            { name: 'order_date', label: 'Order Date', type: 'date', editable: po.status === 'draft' },
+            { name: 'requested_delivery_date', label: 'Requested Delivery Date', type: 'date', editable: po.status === 'draft' },
+            { name: 'tax_amount', label: 'Tax Amount', type: 'number', editable: po.status === 'draft' },
+            { name: 'shipping_cost', label: 'Shipping Cost', type: 'number', editable: po.status === 'draft' },
+            { name: 'internal_notes', label: 'Internal Notes', type: 'textarea', editable: po.status === 'draft' },
+            { name: 'supplier_notes', label: 'Supplier Notes', type: 'textarea', editable: po.status === 'draft' },
+            { name: 'tracking_number', label: 'Tracking Number', type: 'text', editable: true },
+            { name: 'carrier', label: 'Carrier', type: 'select', options: ['UPS', 'FedEx', 'USPS', 'DHL', 'Other'], editable: true },
+          ],
+          currentValues: {
+            order_date: editData.order_date || po.order_date,
+            requested_delivery_date: editData.requested_delivery_date || po.requested_delivery_date,
+            tax_amount: editData.tax_amount ?? po.tax_amount ?? 0,
+            shipping_cost: editData.shipping_cost ?? po.shipping_cost ?? 0,
+            internal_notes: editData.internal_notes || po.internal_notes || '',
+            supplier_notes: editData.supplier_notes || po.supplier_notes || '',
+            tracking_number: trackingData.tracking_number || '',
+            carrier: trackingData.carrier || 'UPS',
+          },
+          trackingCount: tracking.length,
+        },
+      });
+    } else if (!isOpen) {
+      // Clear modal state when closed
+      publishState({ modal: null });
+    }
+  }, [isOpen, po, isEditing, editData, trackingData, tracking, publishState]);
+
+  // Register action handlers for AI
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const actions = {
+      toggle_edit_mode: () => {
+        if (!po) {
+          return { success: false, error: 'Purchase order not loaded' };
+        }
+        if (po.status !== 'draft') {
+          return { success: false, error: 'Only draft POs can be edited' };
+        }
+        if (isEditing) {
+          // Cancel editing
+          setIsEditing(false);
+          setEditData({
+            order_date: po.order_date,
+            requested_delivery_date: po.requested_delivery_date,
+            tax_amount: po.tax_amount || 0,
+            shipping_cost: po.shipping_cost || 0,
+            internal_notes: po.internal_notes || '',
+            supplier_notes: po.supplier_notes || '',
+            shipping_address_id: po.shipping_address_id || null,
+          });
+          return { success: true, message: 'Edit mode cancelled' };
+        } else {
+          setIsEditing(true);
+          return { success: true, message: 'Edit mode enabled' };
+        }
+      },
+
+      set_field: ({ field, value }) => {
+        if (!po) {
+          return { success: false, error: 'Purchase order not loaded' };
+        }
+        if (!isEditing && po.status === 'draft') {
+          return { success: false, error: 'Enter edit mode first to modify fields' };
+        }
+
+        const validFields = ['order_date', 'requested_delivery_date', 'tax_amount', 'shipping_cost', 'internal_notes', 'supplier_notes'];
+        if (!validFields.includes(field)) {
+          return { success: false, error: `Invalid field: ${field}. Valid fields: ${validFields.join(', ')}` };
+        }
+
+        setEditData(prev => ({ ...prev, [field]: value }));
+        return { success: true, message: `Set ${field} to ${value}` };
+      },
+
+      add_tracking: ({ tracking_number, carrier = 'UPS', carrier_service = '', notes = '' }) => {
+        if (!tracking_number || !tracking_number.trim()) {
+          return { success: false, error: 'Tracking number is required' };
+        }
+
+        setTrackingData({
+          tracking_number: tracking_number.trim(),
+          carrier,
+          carrier_service,
+          notes,
+        });
+        setShowTrackingForm(true);
+
+        return { success: true, message: `Tracking form populated with ${tracking_number}. Call save_tracking to confirm.` };
+      },
+
+      save_changes: async () => {
+        if (!po) {
+          return { success: false, error: 'Purchase order not loaded' };
+        }
+        if (!isEditing) {
+          return { success: false, error: 'Not in edit mode' };
+        }
+        if (po.status !== 'draft') {
+          return { success: false, error: 'Only draft POs can be saved' };
+        }
+        if (!editData.shipping_address_id) {
+          return { success: false, error: 'Shipping address is required' };
+        }
+
+        try {
+          setSaving(true);
+          setError(null);
+
+          const total =
+            (po.subtotal || 0) +
+            parseFloat(editData.tax_amount || 0) +
+            parseFloat(editData.shipping_cost || 0);
+
+          await purchaseOrderService.updatePurchaseOrder(poId, {
+            ...editData,
+            tax_amount: parseFloat(editData.tax_amount || 0),
+            shipping_cost: parseFloat(editData.shipping_cost || 0),
+            total_amount: total,
+          });
+
+          setSuccess('Purchase order updated successfully');
+          setTimeout(() => setSuccess(null), 3000);
+          setIsEditing(false);
+
+          // Reload PO details
+          const data = await purchaseOrderService.getPurchaseOrder(poId);
+          setPO(data);
+
+          if (onUpdate) {
+            onUpdate();
+          }
+
+          return { success: true, message: 'Changes saved successfully' };
+        } catch (err) {
+          setError('Failed to update purchase order');
+          return { success: false, error: err.message || 'Failed to save changes' };
+        } finally {
+          setSaving(false);
+        }
+      },
+
+      close_modal: () => {
+        setPO(null);
+        setShippingAddress(null);
+        setEditData({});
+        setIsEditing(false);
+        setError(null);
+        setSuccess(null);
+        setTracking([]);
+        setTrackingData({
+          tracking_number: '',
+          carrier: 'UPS',
+          carrier_service: '',
+          notes: '',
+        });
+        setEditingTrackingId(null);
+        setEditingTrackingData(null);
+        setShowTrackingForm(false);
+        onClose();
+        return { success: true, message: 'Modal closed' };
+      },
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [isOpen, po, isEditing, editData, poId, onClose, onUpdate, registerActions, unregisterActions]);
 
   const loadPODetails = async () => {
     try {

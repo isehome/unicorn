@@ -20,6 +20,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
@@ -42,6 +43,7 @@ const PartsReceivingPageNew = () => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const { user, acquireToken } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   const [loading, setLoading] = useState(true);
@@ -68,6 +70,177 @@ const PartsReceivingPageNew = () => {
       loadShades();
     }
   }, [projectId]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    // Calculate stats
+    const pendingPOs = purchaseOrders.filter(po => {
+      const items = po.items || [];
+      const totalOrdered = items.reduce((sum, item) => sum + (item.quantity_ordered || 0), 0);
+      const totalReceived = items.reduce((sum, item) => sum + (item.quantity_received || 0), 0);
+      return totalReceived < totalOrdered;
+    });
+    const completedPOs = purchaseOrders.filter(po => {
+      const items = po.items || [];
+      const totalOrdered = items.reduce((sum, item) => sum + (item.quantity_ordered || 0), 0);
+      const totalReceived = items.reduce((sum, item) => sum + (item.quantity_received || 0), 0);
+      return totalOrdered > 0 && totalReceived >= totalOrdered;
+    });
+    const pendingShades = shades.filter(s => !s.received);
+    const receivedShades = shades.filter(s => s.received);
+
+    publishState({
+      view: 'parts-receiving',
+      project: { id: projectId },
+      phaseFilter: phaseFilter,
+      stats: {
+        totalPOs: purchaseOrders.length,
+        pendingPOs: pendingPOs.length,
+        completedPOs: completedPOs.length,
+        totalShades: shades.length,
+        pendingShades: pendingShades.length,
+        receivedShades: receivedShades.length,
+        openIssues: Object.values(openIssuesByPO).reduce((sum, issues) => sum + issues.length, 0)
+      },
+      pendingPOList: pendingPOs.slice(0, 10).map(po => ({
+        id: po.id,
+        poNumber: po.po_number,
+        supplier: po.supplier?.name,
+        itemCount: po.items?.length || 0
+      })),
+      hint: 'Parts receiving page. Shows purchase orders and shades awaiting receipt. Can filter by phase (prewire/trim), mark items received, report issues.'
+    });
+  }, [publishState, projectId, purchaseOrders, shades, phaseFilter, openIssuesByPO]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_parts: async ({ query }) => {
+        // Find POs or items matching the query
+        const matchingPOs = purchaseOrders.filter(po => {
+          const poMatch = po.po_number?.toLowerCase().includes(query?.toLowerCase() || '');
+          const supplierMatch = po.supplier?.name?.toLowerCase().includes(query?.toLowerCase() || '');
+          const itemMatch = (po.items || []).some(item =>
+            item.equipment?.part_number?.toLowerCase().includes(query?.toLowerCase() || '') ||
+            item.equipment?.name?.toLowerCase().includes(query?.toLowerCase() || '')
+          );
+          return poMatch || supplierMatch || itemMatch;
+        });
+
+        if (matchingPOs.length > 0) {
+          // Expand matching POs
+          setExpandedPOs(prev => {
+            const next = new Set(prev);
+            matchingPOs.forEach(po => next.add(po.id));
+            return next;
+          });
+          return {
+            success: true,
+            message: `Found ${matchingPOs.length} purchase order(s) matching "${query}"`,
+            results: matchingPOs.map(po => ({ poNumber: po.po_number, supplier: po.supplier?.name }))
+          };
+        }
+        return { success: false, error: `No purchase orders found matching "${query}"` };
+      },
+
+      mark_received: async ({ poNumber }) => {
+        const po = purchaseOrders.find(p =>
+          p.po_number?.toLowerCase() === poNumber?.toLowerCase()
+        );
+        if (po) {
+          await handleReceiveAllPO(po);
+          return { success: true, message: `Marked PO ${po.po_number} as fully received` };
+        }
+        return { success: false, error: `Purchase order "${poNumber}" not found` };
+      },
+
+      scan_barcode: async () => {
+        // This would typically open a barcode scanner
+        // For now, return instructions
+        return {
+          success: true,
+          message: 'Barcode scanning is available through the device camera. Look for items by part number or PO number.'
+        };
+      },
+
+      view_pending: async () => {
+        // Collapse completed, expand pending
+        const pendingPOs = purchaseOrders.filter(po => {
+          const items = po.items || [];
+          const totalOrdered = items.reduce((sum, item) => sum + (item.quantity_ordered || 0), 0);
+          const totalReceived = items.reduce((sum, item) => sum + (item.quantity_received || 0), 0);
+          return totalReceived < totalOrdered;
+        });
+        setExpandedPOs(new Set(pendingPOs.map(po => po.id)));
+        return {
+          success: true,
+          message: `Showing ${pendingPOs.length} pending purchase order(s)`
+        };
+      },
+
+      view_received: async () => {
+        // Collapse pending, expand completed
+        const completedPOs = purchaseOrders.filter(po => {
+          const items = po.items || [];
+          const totalOrdered = items.reduce((sum, item) => sum + (item.quantity_ordered || 0), 0);
+          const totalReceived = items.reduce((sum, item) => sum + (item.quantity_received || 0), 0);
+          return totalOrdered > 0 && totalReceived >= totalOrdered;
+        });
+        setExpandedPOs(new Set(completedPOs.map(po => po.id)));
+        return {
+          success: true,
+          message: `Showing ${completedPOs.length} completed purchase order(s)`
+        };
+      },
+
+      filter_phase: async ({ phase }) => {
+        if (['all', 'prewire', 'trim'].includes(phase?.toLowerCase())) {
+          setPhaseFilter(phase.toLowerCase());
+          return { success: true, message: `Filtering by ${phase === 'all' ? 'all items' : phase + ' items'}` };
+        }
+        return { success: false, error: 'Invalid phase. Use: all, prewire, or trim' };
+      },
+
+      receive_all_shades: async () => {
+        const unreceived = shades.filter(s => !s.received);
+        if (unreceived.length === 0) {
+          return { success: false, error: 'All shades are already received' };
+        }
+        await handleReceiveAllShades();
+        return { success: true, message: `Marked ${unreceived.length} shades as received` };
+      },
+
+      toggle_shades_section: async () => {
+        setShadesExpanded(prev => !prev);
+        return { success: true, message: shadesExpanded ? 'Collapsed shades section' : 'Expanded shades section' };
+      },
+
+      list_pending_pos: async () => {
+        const pendingPOs = purchaseOrders.filter(po => {
+          const items = po.items || [];
+          const totalOrdered = items.reduce((sum, item) => sum + (item.quantity_ordered || 0), 0);
+          const totalReceived = items.reduce((sum, item) => sum + (item.quantity_received || 0), 0);
+          return totalReceived < totalOrdered;
+        });
+        return {
+          success: true,
+          purchaseOrders: pendingPOs.map(po => ({
+            poNumber: po.po_number,
+            supplier: po.supplier?.name,
+            itemCount: po.items?.length || 0
+          })),
+          count: pendingPOs.length
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, purchaseOrders, shades, phaseFilter, shadesExpanded]);
 
   // Load shades that are ordered (for receiving)
   const loadShades = async () => {

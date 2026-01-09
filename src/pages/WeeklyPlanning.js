@@ -14,6 +14,7 @@ import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from 
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
 import { checkUserAvailability, fetchEventsForDate, fetchUserEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent, deleteCalendarEvent, sendMeetingInviteEmail, sendMeetingCancellationEmail } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { brandColors } from '../styles/styleSystem';
 
 // Priority colors
@@ -68,6 +69,7 @@ const WeeklyPlanning = () => {
   // We assign the whole thing to authContext for use with calendar services
   const authContext = useAuth();
   const { user } = authContext;
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Check if embedded via URL param or iframe detection
   const isEmbedded = useMemo(() => {
@@ -257,6 +259,95 @@ const WeeklyPlanning = () => {
 
     loadData();
   }, [currentWeekStart, selectedTechnician, loadWeekSchedules, loadingTechnicians]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'weekly-planning',
+      isEmbedded: isEmbedded,
+      weekStart: currentWeekStart?.toISOString(),
+      selectedTechnician: selectedTechnician ? {
+        id: selectedTechnician,
+        name: technicians?.find(t => t.id === selectedTechnician)?.display_name
+      } : null,
+      viewMode: viewMode,
+      technicians: (technicians || []).map(t => ({ id: t.id, name: t.display_name })),
+      unscheduledTicketCount: unscheduledTickets?.length || 0,
+      loading: loading || loadingTechnicians,
+      hint: 'Weekly service scheduling view. Air traffic control for service tickets. Schedule, assign technicians.'
+    });
+  }, [publishState, currentWeekStart, selectedTechnician, viewMode, technicians, unscheduledTickets, loading, loadingTechnicians, isEmbedded]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      select_technician: async ({ technicianName }) => {
+        if (technicianName === 'all' || !technicianName) {
+          setSelectedTechnician(null);
+          return { success: true, message: 'Showing all technicians' };
+        }
+        const tech = technicians?.find(t => t.display_name?.toLowerCase().includes(technicianName.toLowerCase()));
+        if (tech) {
+          setSelectedTechnician(tech.id);
+          return { success: true, message: `Selected technician: ${tech.display_name}` };
+        }
+        return { success: false, error: 'Technician not found' };
+      },
+      go_to_next_week: async () => {
+        const nextWeek = new Date(currentWeekStart);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        setCurrentWeekStart(nextWeek);
+        return { success: true, message: 'Moved to next week' };
+      },
+      go_to_previous_week: async () => {
+        const prevWeek = new Date(currentWeekStart);
+        prevWeek.setDate(prevWeek.getDate() - 7);
+        setCurrentWeekStart(prevWeek);
+        return { success: true, message: 'Moved to previous week' };
+      },
+      go_to_current_week: async () => {
+        setCurrentWeekStart(getCurrentWeekStart());
+        return { success: true, message: 'Returned to current week' };
+      },
+      toggle_view_mode: async () => {
+        setViewMode(prev => prev === 'single' ? 'all' : 'single');
+        return { success: true, message: viewMode === 'single' ? 'Showing all technicians' : 'Showing single technician' };
+      },
+      refresh_schedules: async () => {
+        await handleRefresh();
+        return { success: true, message: 'Schedules refreshed' };
+      },
+      list_unscheduled_tickets: async () => {
+        return {
+          success: true,
+          tickets: (unscheduledTickets || []).slice(0, 10).map(t => ({
+            id: t.id,
+            title: t.title,
+            priority: t.priority,
+            contactName: t.contacts?.name
+          })),
+          count: unscheduledTickets?.length || 0
+        };
+      },
+      list_technicians: async () => {
+        return {
+          success: true,
+          technicians: (technicians || []).map(t => ({
+            id: t.id,
+            name: t.display_name,
+            email: t.email
+          }))
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, technicians, currentWeekStart, viewMode, unscheduledTickets]);
 
   // Refresh data and check for calendar response updates
   const handleRefresh = async (checkResponses = true) => {

@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrinter } from '../contexts/PrinterContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import {
   Printer,
@@ -39,6 +40,7 @@ const PrewireMode = () => {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('project');
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Data states
   const [wireDrops, setWireDrops] = useState([]);
@@ -229,7 +231,113 @@ const PrewireMode = () => {
     navigate(`/wire-drops/${dropId}`);
   }, [navigate]);
 
-  // ===== VOICE AI TOOLS =====
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION (AppState pattern)
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const stats = {
+      total: wireDrops?.length || 0,
+      printed: wireDrops?.filter(d => d.labels_printed).length || 0,
+      needsPrint: wireDrops?.filter(d => !d.labels_printed).length || 0,
+      prewireComplete: wireDrops?.filter(d => {
+        const stage = d.wire_drop_stages?.find(s => s.stage_type === 'prewire');
+        return stage?.completed;
+      }).length || 0
+    };
+
+    publishState({
+      view: 'prewire-mode',
+      project: project ? { id: project.id, name: project.name } : null,
+      filters: {
+        floor: selectedFloor || 'all',
+        room: selectedRoom || 'all',
+        search: searchTerm || '',
+        showPrinted: showPrinted
+      },
+      availableFloors: availableFloors,
+      availableRooms: availableRooms,
+      wireDropStats: stats,
+      filteredCount: filteredDrops?.length || 0,
+      printerConnected: printerConnected,
+      hint: 'Prewire mode. Print labels, take photos for wire drops. Filter by floor/room.'
+    });
+  }, [publishState, project, selectedFloor, selectedRoom, searchTerm, showPrinted, wireDrops, filteredDrops, availableFloors, availableRooms, printerConnected]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      filter_by_floor: async ({ floor }) => {
+        if (floor === 'all' || floor === '') {
+          setSelectedFloor('');
+          return { success: true, message: 'Showing all floors' };
+        }
+        if (availableFloors.includes(floor)) {
+          setSelectedFloor(floor);
+          return { success: true, message: `Filtering by floor: ${floor}` };
+        }
+        return { success: false, error: `Floor not found. Available: ${availableFloors.join(', ')}` };
+      },
+      filter_by_room: async ({ room }) => {
+        if (room === 'all' || room === '') {
+          setSelectedRoom('');
+          return { success: true, message: 'Showing all rooms' };
+        }
+        const match = availableRooms.find(r => r.toLowerCase().includes(room.toLowerCase()));
+        if (match) {
+          setSelectedRoom(match);
+          return { success: true, message: `Filtering by room: ${match}` };
+        }
+        return { success: false, error: `Room not found. Available: ${availableRooms.join(', ')}` };
+      },
+      clear_filters: async () => {
+        setSelectedFloor('');
+        setSelectedRoom('');
+        setSearchTerm('');
+        return { success: true, message: 'Filters cleared' };
+      },
+      toggle_show_printed: async () => {
+        setShowPrinted(prev => !prev);
+        return { success: true, message: showPrinted ? 'Hiding printed labels' : 'Showing printed labels' };
+      },
+      open_wire_drop: async ({ name, uid }) => {
+        const drop = filteredDrops?.find(d =>
+          (name && d.drop_name?.toLowerCase().includes(name.toLowerCase())) ||
+          (uid && d.uid?.toLowerCase().includes(uid.toLowerCase()))
+        );
+        if (drop) {
+          navigate(`/wire-drops/${drop.id}`);
+          return { success: true, message: `Opening ${drop.drop_name || drop.uid}` };
+        }
+        return { success: false, error: 'Wire drop not found' };
+      },
+      print_next_unprinted: async () => {
+        const nextDrop = filteredDrops?.find(d => !d.labels_printed);
+        if (nextDrop) {
+          handleOpenPrintModal(nextDrop);
+          return { success: true, message: `Opening print modal for ${nextDrop.drop_name || nextDrop.uid}` };
+        }
+        return { success: false, error: 'No unprinted wire drops found' };
+      },
+      get_prewire_overview: async () => {
+        const total = wireDrops?.length || 0;
+        const printed = wireDrops?.filter(d => d.labels_printed).length || 0;
+        return {
+          success: true,
+          total,
+          printed,
+          needsPrint: total - printed,
+          message: `${total - printed} of ${total} wire drops need labels printed`
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, availableFloors, availableRooms, filteredDrops, wireDrops, navigate, showPrinted]);
+
+  // ===== VOICE AI TOOLS (Legacy - uses registerTools) =====
   // Register prewire-specific voice tools for hands-free control
   usePrewireTools({
     wireDrops,

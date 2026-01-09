@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { contactSecureDataService } from '../services/equipmentService';
@@ -42,6 +43,7 @@ const ContactDetailPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { theme, mode } = useTheme();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const palette = theme.palette;
   const sectionStyles = enhancedStyles.sections[mode];
 
@@ -201,6 +203,113 @@ const ContactDetailPage = () => {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    if (!contact) return;
+
+    const contactName = contact.full_name || contact.name ||
+      `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown';
+
+    publishState({
+      view: 'contact-detail',
+      contact: {
+        id: contact.id,
+        name: contactName,
+        type: contact.is_internal ? 'internal' : 'external',
+        email: contact.email || null,
+        phone: contact.phone || null,
+        company: contact.company || null,
+        role: contact.role || null
+      },
+      secureDataCount: secureData.length,
+      relatedProjects: projects.map(p => ({
+        id: p.id,
+        name: p.name,
+        role: p.role
+      })),
+      hint: `Contact detail view for ${contactName}. ${contact.is_internal ? 'Internal' : 'External'} contact. Has ${secureData.length} secure data items and ${projects.length} related projects.`
+    });
+  }, [publishState, contact, secureData, projects]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      edit_contact: async () => {
+        if (!contact) {
+          return { success: false, error: 'No contact loaded' };
+        }
+        handleEditContact();
+        return { success: true, message: `Opening edit form for ${contact.full_name || contact.name}` };
+      },
+      call_contact: async () => {
+        if (!contact?.phone) {
+          return { success: false, error: 'Contact has no phone number' };
+        }
+        const sanitized = `${contact.phone}`.replace(/[^+\d]/g, '');
+        window.location.href = `tel:${sanitized}`;
+        return { success: true, message: `Calling ${contact.full_name || contact.name}` };
+      },
+      email_contact: async () => {
+        if (!contact?.email) {
+          return { success: false, error: 'Contact has no email address' };
+        }
+        window.location.href = `mailto:${contact.email}`;
+        return { success: true, message: `Opening email to ${contact.full_name || contact.name}` };
+      },
+      view_projects: async () => {
+        if (projects.length === 0) {
+          return { success: false, error: 'Contact has no associated projects' };
+        }
+        return {
+          success: true,
+          message: `Contact is associated with ${projects.length} project(s)`,
+          projects: projects.map(p => ({ id: p.id, name: p.name, role: p.role }))
+        };
+      },
+      go_to_project: async ({ projectId }) => {
+        const project = projects.find(p => p.id === projectId);
+        if (!project) {
+          return { success: false, error: 'Project not found in associated projects' };
+        }
+        navigate(`/project/${projectId}`);
+        return { success: true, message: `Navigating to project: ${project.name}` };
+      },
+      add_secure_data: async () => {
+        handleAddNew();
+        return { success: true, message: 'Opening form to add new secure data' };
+      },
+      go_back: async () => {
+        navigate(-1);
+        return { success: true, message: 'Navigating back' };
+      },
+      get_contact_info: async () => {
+        if (!contact) {
+          return { success: false, error: 'No contact loaded' };
+        }
+        const contactName = contact.full_name || contact.name ||
+          `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+        return {
+          success: true,
+          contact: {
+            name: contactName,
+            type: contact.is_internal ? 'internal' : 'external',
+            email: contact.email,
+            phone: contact.phone,
+            company: contact.company,
+            role: contact.role
+          }
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, contact, projects, navigate]);
 
   // Handlers
   const togglePasswordVisibility = async (itemId) => {

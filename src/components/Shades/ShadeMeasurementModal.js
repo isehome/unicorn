@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Save, Ruler, Camera, CheckCircle, Lock, ExternalLink, MessageSquare, Send, Info } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAppState } from '../../contexts/AppStateContext';
 import Button from '../ui/Button';
 import { projectShadeService } from '../../services/projectShadeService';
 import { supabase } from '../../lib/supabase';
@@ -12,6 +13,7 @@ const MOUNT_TYPES = ['Inside', 'Outside'];
 
 const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, availableMountTypes = [], isPMView = false }) => {
     const { mode } = useTheme();
+    const { publishState, registerActions, unregisterActions } = useAppState();
     const [uploading, setUploading] = useState(false);
 
     // Voice AI active field highlighting
@@ -178,6 +180,166 @@ const ShadeMeasurementModal = ({ isOpen, onClose, shade, onSave, currentUser, av
             setSubmittingComment(false);
         }
     };
+
+    // Publish modal state to AppStateContext for AI awareness
+    useEffect(() => {
+        if (isOpen && shade) {
+            // Get active tab label for AI
+            const tabLabel = activeTab === 'm1' ? 'M1' : activeTab === 'm2' ? 'M2' : 'Comments';
+
+            publishState({
+                modal: {
+                    type: 'shade-measurement',
+                    title: 'Shade Measurement',
+                    shadeName: shade?.name || shade?.shade_name,
+                    room: shade?.room?.name || shade?.room_name || 'Unassigned',
+                    activeTab: tabLabel,
+                    formFields: [
+                        'mount_type',
+                        'headrail_style',
+                        'ordered_width',
+                        'ordered_height',
+                        'ordered_depth',
+                        'pocket_width',
+                        'pocket_height',
+                        'pocket_depth',
+                        'widthTop',
+                        'widthMiddle',
+                        'widthBottom',
+                        'heightLeft',
+                        'heightCenter',
+                        'heightRight',
+                        'mountDepth',
+                        'installation_notes'
+                    ],
+                    currentValues: {
+                        mount_type: headerMountType,
+                        headrail_style: headerHeadrailStyle,
+                        ordered_width: orderedWidth,
+                        ordered_height: orderedHeight,
+                        ordered_depth: orderedDepth,
+                        pocket_width: pocketWidth,
+                        pocket_height: pocketHeight,
+                        pocket_depth: pocketDepth,
+                        widthTop: formData.widthTop,
+                        widthMiddle: formData.widthMiddle,
+                        widthBottom: formData.widthBottom,
+                        heightLeft: formData.heightLeft,
+                        heightCenter: formData.heightCenter,
+                        heightRight: formData.heightRight,
+                        mountDepth: formData.mountDepth,
+                        installation_notes: installationNotes
+                    }
+                }
+            });
+        } else {
+            // Clear modal state when closed
+            publishState({ modal: null });
+        }
+    }, [isOpen, shade, activeTab, headerMountType, headerHeadrailStyle, orderedWidth, orderedHeight, orderedDepth, pocketWidth, pocketHeight, pocketDepth, formData, installationNotes, publishState]);
+
+    // Register action handlers for AI
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const actions = {
+            set_field: ({ field, value }) => {
+                try {
+                    // Map field names to appropriate setters
+                    const fieldSetters = {
+                        mount_type: (v) => handleHeaderMountTypeChange(v),
+                        headrail_style: (v) => handleHeaderHeadrailStyleChange(v),
+                        ordered_width: (v) => handleOrderedWidthChange(v),
+                        ordered_height: (v) => handleOrderedHeightChange(v),
+                        ordered_depth: (v) => handleOrderedDepthChange(v),
+                        pocket_width: (v) => handlePocketWidthChange(v),
+                        pocket_height: (v) => handlePocketHeightChange(v),
+                        pocket_depth: (v) => handlePocketDepthChange(v),
+                        installation_notes: (v) => handleInstallationNotesChange(v),
+                        widthTop: (v) => handleChange('widthTop', v),
+                        widthMiddle: (v) => handleChange('widthMiddle', v),
+                        widthBottom: (v) => handleChange('widthBottom', v),
+                        heightLeft: (v) => handleChange('heightLeft', v),
+                        heightCenter: (v) => handleChange('heightCenter', v),
+                        heightRight: (v) => handleChange('heightRight', v),
+                        mountDepth: (v) => handleChange('mountDepth', v),
+                    };
+
+                    const setter = fieldSetters[field];
+                    if (setter) {
+                        setter(value);
+                        return { success: true, message: `Set ${field} to ${value}` };
+                    } else {
+                        return { success: false, error: `Unknown field: ${field}` };
+                    }
+                } catch (err) {
+                    return { success: false, error: err.message };
+                }
+            },
+            switch_tab: ({ tab }) => {
+                try {
+                    const tabMap = {
+                        'm1': 'm1',
+                        'M1': 'm1',
+                        'measure1': 'm1',
+                        'measure 1': 'm1',
+                        'm2': 'm2',
+                        'M2': 'm2',
+                        'measure2': 'm2',
+                        'measure 2': 'm2',
+                        'comments': 'comments',
+                        'Comments': 'comments'
+                    };
+                    const mappedTab = tabMap[tab];
+                    if (mappedTab) {
+                        setActiveTab(mappedTab);
+                        return { success: true, message: `Switched to ${mappedTab} tab` };
+                    } else {
+                        return { success: false, error: `Unknown tab: ${tab}. Valid tabs: M1, M2, Comments` };
+                    }
+                } catch (err) {
+                    return { success: false, error: err.message };
+                }
+            },
+            save_measurements: async () => {
+                try {
+                    handleSaveClick();
+                    return { success: true, message: 'Measurements saved and marked complete' };
+                } catch (err) {
+                    return { success: false, error: err.message };
+                }
+            },
+            add_comment: async ({ text, isPublic = false }) => {
+                try {
+                    if (!text?.trim()) {
+                        return { success: false, error: 'Comment text is required' };
+                    }
+                    setNewComment(text);
+                    setIsPublicComment(isPublic);
+                    // Switch to comments tab if not already there
+                    if (activeTab !== 'comments') {
+                        setActiveTab('comments');
+                    }
+                    // Submit the comment after a short delay to allow state update
+                    setTimeout(() => handleSubmitComment(), 100);
+                    return { success: true, message: 'Comment added' };
+                } catch (err) {
+                    return { success: false, error: err.message };
+                }
+            },
+            close: () => {
+                try {
+                    onClose();
+                    return { success: true, message: 'Modal closed' };
+                } catch (err) {
+                    return { success: false, error: err.message };
+                }
+            }
+        };
+
+        registerActions(actions);
+        return () => unregisterActions(Object.keys(actions));
+    }, [isOpen, activeTab, handleChange, handleHeaderMountTypeChange, handleHeaderHeadrailStyleChange, handleOrderedWidthChange, handleOrderedHeightChange, handleOrderedDepthChange, handlePocketWidthChange, handlePocketHeightChange, handlePocketDepthChange, handleInstallationNotesChange, handleSaveClick, handleSubmitComment, onClose, registerActions, unregisterActions]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {

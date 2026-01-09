@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
@@ -9,6 +10,7 @@ import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight } from 'l
 const PeopleManagement = () => {
   const navigate = useNavigate();
   const { theme, mode } = useTheme();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
 
@@ -168,6 +170,105 @@ const PeopleManagement = () => {
     setEditingContact(null);
     setFormData(initialFormState);
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const internalCount = allContacts?.filter(c => c.is_internal)?.length || 0;
+    const externalCount = allContacts?.filter(c => !c.is_internal)?.length || 0;
+
+    publishState({
+      view: 'people-management',
+      searchTerm: searchTerm,
+      filter: filter,
+      stats: {
+        total: allContacts?.length || 0,
+        internal: internalCount,
+        external: externalCount,
+        displayed: contacts?.length || 0
+      },
+      contacts: contacts?.slice(0, 10).map(c => ({
+        id: c.id,
+        name: c.name || `${c.first_name} ${c.last_name}`.trim(),
+        email: c.email,
+        company: c.company,
+        role: c.role,
+        isInternal: c.is_internal
+      })) || [],
+      hint: 'People/contacts management page. Can search contacts, filter by type (internal/external), open contact details, create new contacts.'
+    });
+  }, [publishState, searchTerm, filter, allContacts, contacts]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_contacts: async ({ query }) => {
+        if (typeof query === 'string') {
+          setSearchTerm(query);
+          return { success: true, message: `Searching contacts for: "${query}"` };
+        }
+        return { success: false, error: 'Please provide a search query' };
+      },
+      clear_search: async () => {
+        setSearchTerm('');
+        return { success: true, message: 'Search cleared' };
+      },
+      filter_by_type: async ({ type }) => {
+        const validTypes = ['all', 'internal', 'external'];
+        if (validTypes.includes(type)) {
+          setFilter(type);
+          return { success: true, message: `Filtering contacts by: ${type}` };
+        }
+        return { success: false, error: 'Invalid filter type. Use: all, internal, or external' };
+      },
+      open_contact: async ({ contactId, contactName }) => {
+        const contact = contactName
+          ? contacts?.find(c =>
+              (c.name || `${c.first_name} ${c.last_name}`).toLowerCase().includes(contactName.toLowerCase())
+            )
+          : contacts?.find(c => c.id === contactId);
+        if (contact) {
+          navigate(`/contacts/${contact.id}`);
+          return { success: true, message: `Opening contact: ${contact.name || `${contact.first_name} ${contact.last_name}`}` };
+        }
+        return { success: false, error: 'Contact not found' };
+      },
+      create_contact: async () => {
+        setShowAddModal(true);
+        return { success: true, message: 'Opening new contact form' };
+      },
+      list_contacts: async () => {
+        return {
+          success: true,
+          contacts: contacts?.slice(0, 10).map(c => ({
+            name: c.name || `${c.first_name} ${c.last_name}`.trim(),
+            email: c.email,
+            company: c.company,
+            isInternal: c.is_internal
+          })) || [],
+          count: contacts?.length || 0
+        };
+      },
+      show_internal_contacts: async () => {
+        setFilter('internal');
+        return { success: true, message: 'Showing internal contacts only' };
+      },
+      show_external_contacts: async () => {
+        setFilter('external');
+        return { success: true, message: 'Showing external contacts only' };
+      },
+      show_all_contacts: async () => {
+        setFilter('all');
+        return { success: true, message: 'Showing all contacts' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, contacts, navigate]);
 
   if (loading) {
     return (

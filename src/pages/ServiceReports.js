@@ -23,10 +23,12 @@ import {
 } from 'lucide-react';
 import { serviceReportService } from '../services/serviceReportService';
 import { technicianService } from '../services/serviceTicketService';
+import { useAppState } from '../contexts/AppStateContext';
 import { brandColors } from '../styles/styleSystem';
 
 const ServiceReports = () => {
   const navigate = useNavigate();
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Date range state
   const [datePreset, setDatePreset] = useState('this_month');
@@ -119,7 +121,7 @@ const ServiceReports = () => {
     loadReportData();
   }, [loadReportData]);
 
-  // Export handlers
+  // Export handlers (defined before actions useEffect so they can be referenced)
   const handleExportTickets = () => {
     if (reportData.length === 0) return;
     const filename = `service_tickets_${startDate}_to_${endDate}.csv`;
@@ -143,6 +145,149 @@ const ServiceReports = () => {
     setCustomerId('');
     setTechnicianId('');
   };
+
+  // Publish state for AI Brain
+  useEffect(() => {
+    const reportTypes = ['overview', 'tickets', 'technicians', 'customers'];
+    publishState({
+      view: 'service-reports',
+      reportTypes,
+      activeTab,
+      filters: {
+        datePreset,
+        startDate,
+        endDate,
+        customerId: customerId || null,
+        technicianId: technicianId || null
+      },
+      summary: summary ? {
+        totalTickets: summary.total_tickets,
+        openTickets: summary.open_tickets,
+        closedTickets: summary.closed_tickets,
+        totalHours: summary.total_hours,
+        totalRevenue: summary.total_revenue
+      } : null,
+      ticketCount: reportData.length,
+      technicianCount: technicianHours.length,
+      customerCount: customerHours.length,
+      hint: 'User is viewing service reports. Can generate reports, change date ranges, filter by customer/technician, switch report tabs, or export data.'
+    });
+  }, [activeTab, datePreset, startDate, endDate, customerId, technicianId, summary, reportData.length, technicianHours.length, customerHours.length, publishState]);
+
+  // Register actions for AI Brain
+  useEffect(() => {
+    const actions = {
+      generate_report: async () => {
+        await loadReportData();
+        return { success: true, message: 'Report data refreshed' };
+      },
+      select_date_range: async ({ preset, start, end }) => {
+        if (preset) {
+          const validPreset = presets.find(p => p.value === preset);
+          if (!validPreset) {
+            return { success: false, error: `Invalid preset. Available: ${presets.map(p => p.value).join(', ')}` };
+          }
+          setDatePreset(preset);
+          return { success: true, message: `Date range set to ${validPreset.label}` };
+        } else if (start && end) {
+          setDatePreset('custom');
+          setStartDate(start);
+          setEndDate(end);
+          return { success: true, message: `Custom date range set: ${start} to ${end}` };
+        }
+        return { success: false, error: 'Please provide either a preset or start/end dates' };
+      },
+      export_report: async ({ type }) => {
+        const exportType = type || activeTab;
+        switch (exportType) {
+          case 'tickets':
+            if (reportData.length === 0) {
+              return { success: false, error: 'No ticket data to export' };
+            }
+            handleExportTickets();
+            return { success: true, message: `Exported ${reportData.length} tickets to CSV` };
+          case 'technicians':
+            if (technicianHours.length === 0) {
+              return { success: false, error: 'No technician data to export' };
+            }
+            handleExportTechnicians();
+            return { success: true, message: `Exported ${technicianHours.length} technician records to CSV` };
+          case 'customers':
+            if (customerHours.length === 0) {
+              return { success: false, error: 'No customer data to export' };
+            }
+            handleExportCustomers();
+            return { success: true, message: `Exported ${customerHours.length} customer records to CSV` };
+          default:
+            return { success: false, error: `Invalid export type. Use: tickets, technicians, or customers` };
+        }
+      },
+      select_report_type: async ({ type }) => {
+        const validTypes = ['overview', 'tickets', 'technicians', 'customers'];
+        if (!validTypes.includes(type)) {
+          return { success: false, error: `Invalid report type. Available: ${validTypes.join(', ')}` };
+        }
+        setActiveTab(type);
+        return { success: true, message: `Switched to ${type} report` };
+      },
+      filter_by_customer: async ({ customerId: custId }) => {
+        if (custId) {
+          const customer = customers.find(c => c.customer_id === custId);
+          setCustomerId(custId);
+          return { success: true, message: `Filtered by customer: ${customer?.customer_name || custId}` };
+        } else {
+          setCustomerId('');
+          return { success: true, message: 'Customer filter cleared' };
+        }
+      },
+      filter_by_technician: async ({ technicianId: techId }) => {
+        if (techId) {
+          const tech = technicians.find(t => t.id === techId);
+          setTechnicianId(techId);
+          return { success: true, message: `Filtered by technician: ${tech?.full_name || techId}` };
+        } else {
+          setTechnicianId('');
+          return { success: true, message: 'Technician filter cleared' };
+        }
+      },
+      clear_filters: async () => {
+        clearFilters();
+        return { success: true, message: 'All filters cleared' };
+      },
+      get_summary: () => {
+        if (!summary) {
+          return { success: false, error: 'Summary data not loaded yet' };
+        }
+        return {
+          success: true,
+          summary: {
+            totalTickets: summary.total_tickets,
+            openTickets: summary.open_tickets,
+            closedTickets: summary.closed_tickets,
+            totalHours: serviceReportService.formatHours(summary.total_hours),
+            laborCost: serviceReportService.formatCurrency(summary.total_labor_cost),
+            partsCost: serviceReportService.formatCurrency(summary.total_parts_cost),
+            totalRevenue: serviceReportService.formatCurrency(summary.total_revenue)
+          },
+          dateRange: { startDate, endDate }
+        };
+      },
+      list_available_presets: () => {
+        return {
+          success: true,
+          presets: presets.map(p => ({ value: p.value, label: p.label })),
+          currentPreset: datePreset
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [
+    activeTab, datePreset, startDate, endDate, customerId, technicianId,
+    summary, reportData, technicianHours, customerHours, customers, technicians,
+    presets, loadReportData, registerActions, unregisterActions
+  ]);
 
   const hasFilters = customerId || technicianId;
 

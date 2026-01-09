@@ -1,7 +1,8 @@
-import React, { useCallback, memo } from 'react';
+import React, { useCallback, memo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useDashboardData } from '../hooks/useOptimizedQueries';
 import { useTechnicianProjects } from '../hooks/useTechnicianProjects';
@@ -33,6 +34,7 @@ const TechnicianDashboardOptimized = () => {
   const sectionStyles = enhancedStyles.sections[mode];
   const authContext = useAuth();
   const { login, user } = authContext;
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Fetch dashboard data (projects, calendar, counts)
   const { projects, userProjectIds, calendar, counts, userTodos, isLoading, error } = useDashboardData(user?.email, authContext);
@@ -99,6 +101,107 @@ const TechnicianDashboardOptimized = () => {
       console.error('Failed to update todo duration:', err);
     }
   }, [userTodos]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'technician-dashboard',
+      viewMode: viewMode,
+      selectedDate: selectedDate?.toISOString(),
+      projects: displayedProjects?.map(p => ({
+        id: p.id,
+        name: p.name,
+        address: p.address,
+        status: p.status,
+        isCheckedIn: checkedInProjects[p.id] || false
+      })) || [],
+      projectCount: displayedProjects?.length || 0,
+      showingMyProjects: showMyProjects,
+      stats: counts?.data ? {
+        todosCount: counts.data.todos || 0,
+        issuesCount: counts.data.issues || 0
+      } : null,
+      calendarConnected: calendar?.data?.connected || false,
+      todayEvents: calendar?.data?.events?.length || 0,
+      hint: 'Technician home dashboard. Can open projects, view calendar, navigate to todos/issues.'
+    });
+  }, [publishState, viewMode, selectedDate, displayedProjects, checkedInProjects, showMyProjects, counts?.data, calendar?.data]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      open_project: async ({ projectId, projectName }) => {
+        const project = projectName
+          ? displayedProjects?.find(p => p.name.toLowerCase().includes(projectName.toLowerCase()))
+          : displayedProjects?.find(p => p.id === projectId);
+        if (project) {
+          navigate(`/project/${project.id}`);
+          return { success: true, message: `Opening project: ${project.name}` };
+        }
+        return { success: false, error: 'Project not found' };
+      },
+      list_projects: async () => {
+        return {
+          success: true,
+          projects: displayedProjects?.map(p => ({
+            name: p.name,
+            address: p.address,
+            status: p.status
+          })) || []
+        };
+      },
+      check_in_project: async ({ projectId, projectName }) => {
+        const project = projectName
+          ? displayedProjects?.find(p => p.name.toLowerCase().includes(projectName.toLowerCase()))
+          : displayedProjects?.find(p => p.id === projectId);
+        if (project) {
+          await handleCheckIn(project.id);
+          return { success: true, message: `Checked into ${project.name}` };
+        }
+        return { success: false, error: 'Project not found' };
+      },
+      check_out_project: async ({ projectId, projectName }) => {
+        const project = projectName
+          ? displayedProjects?.find(p => p.name.toLowerCase().includes(projectName.toLowerCase()))
+          : displayedProjects?.find(p => p.id === projectId);
+        if (project) {
+          await handleCheckOut(project.id);
+          return { success: true, message: `Checked out of ${project.name}` };
+        }
+        return { success: false, error: 'Project not found' };
+      },
+      toggle_my_projects: async () => {
+        handleToggleProjectView();
+        return { success: true, message: showMyProjects ? 'Showing all projects' : 'Showing my projects only' };
+      },
+      switch_view: async ({ mode }) => {
+        if (mode === 'list' || mode === 'day') {
+          setViewMode(mode);
+          return { success: true, message: `Switched to ${mode} view` };
+        }
+        return { success: false, error: 'Invalid view mode. Use "list" or "day"' };
+      },
+      refresh_calendar: async () => {
+        await calendar?.refetch();
+        return { success: true, message: 'Calendar refreshed' };
+      },
+      go_to_todos: async () => {
+        navigate('/todos');
+        return { success: true, message: 'Navigating to todos' };
+      },
+      go_to_issues: async () => {
+        navigate('/issues');
+        return { success: true, message: 'Navigating to issues' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, displayedProjects, navigate, handleCheckIn, handleCheckOut, handleToggleProjectView, showMyProjects, calendar]);
 
   // Loading state
   if (isLoading) {

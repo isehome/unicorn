@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supplierService } from '../../services/supplierService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppState } from '../../contexts/AppStateContext';
 import { sendNotificationEmail, SYSTEM_EMAIL, WHITELIST_NOTICE_HTML, WHITELIST_NOTICE_TEXT, generateVendorEmailFooter, wrapEmailHtml } from '../../services/issueNotificationService';
 import { companySettingsService } from '../../services/companySettingsService';
 
@@ -58,6 +59,7 @@ const generateUniqueShortCode = (name, existingCodes, currentSupplierId = null) 
 
 export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClose, onSave }) => {
   const { acquireToken } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [nameError, setNameError] = useState(null);
@@ -124,6 +126,57 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       });
     }
   }, [initialSupplier, isCreateMode]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION - Publish modal state
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish modal state when open (always open when component is mounted)
+  useEffect(() => {
+    // Define all form fields for AI awareness
+    const formFields = [
+      { name: 'name', label: 'Supplier Name', type: 'text', required: true },
+      { name: 'short_code', label: 'Short Code', type: 'text', required: true, maxLength: 10 },
+      { name: 'payment_terms', label: 'Payment Terms', type: 'select', options: ['Net 30', 'Net 45', 'Net 60', 'Due on Receipt', 'COD', 'Prepaid'] },
+      { name: 'contact_name', label: 'Contact Name', type: 'text' },
+      { name: 'email', label: 'Email(s)', type: 'text', description: 'Multiple emails separated by commas' },
+      { name: 'phone', label: 'Phone', type: 'tel' },
+      { name: 'address', label: 'Street Address', type: 'text' },
+      { name: 'city', label: 'City', type: 'text' },
+      { name: 'state', label: 'State', type: 'text', maxLength: 2 },
+      { name: 'zip', label: 'ZIP Code', type: 'text' },
+      { name: 'country', label: 'Country', type: 'text' },
+      { name: 'website', label: 'Website', type: 'url' },
+      { name: 'account_number', label: 'Account Number', type: 'text' },
+      { name: 'shipping_account', label: 'Shipping Account', type: 'text' },
+      { name: 'notes', label: 'Notes', type: 'textarea' },
+      { name: 'is_active', label: 'Active Supplier', type: 'checkbox' },
+      { name: 'is_preferred', label: 'Preferred Supplier', type: 'checkbox' },
+      { name: 'is_internal_inventory', label: 'Internal Inventory Supplier', type: 'checkbox' }
+    ];
+
+    publishState({
+      modal: {
+        type: 'supplier-edit',
+        title: isCreateMode ? 'Add Supplier' : 'Edit Supplier',
+        formFields: formFields,
+        currentValues: formData,
+        supplierId: supplierId || null,
+        isCreateMode: isCreateMode
+      },
+      hint: isCreateMode
+        ? 'Add Supplier modal is open. User can create a new supplier with name, short code, contact info, address, payment terms, and status flags. Use set_field to update fields, save_supplier to save, or cancel to close.'
+        : `Edit Supplier modal is open for "${formData.name || 'supplier'}". User can update supplier details. Use set_field to modify fields, toggle_active/toggle_preferred to change status, save_supplier to save, or cancel to close.`
+    });
+
+    // Cleanup: clear modal state when unmounting
+    return () => {
+      publishState({
+        modal: null,
+        hint: null
+      });
+    };
+  }, [publishState, isCreateMode, formData, supplierId]);
 
   // Check if vendor name is unique
   const checkNameUnique = useCallback((name) => {
@@ -332,6 +385,72 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       setLoading(false);
     }
   };
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      set_field: async ({ field, value }) => {
+        const validFields = [
+          'name', 'short_code', 'contact_name', 'email', 'phone',
+          'address', 'city', 'state', 'zip', 'country',
+          'website', 'account_number', 'payment_terms', 'shipping_account', 'notes',
+          'is_active', 'is_preferred', 'is_internal_inventory'
+        ];
+
+        if (!validFields.includes(field)) {
+          return { success: false, error: `Invalid field "${field}". Valid fields: ${validFields.join(', ')}` };
+        }
+
+        // Handle special field types
+        if (field === 'payment_terms') {
+          const validTerms = ['Net 30', 'Net 45', 'Net 60', 'Due on Receipt', 'COD', 'Prepaid'];
+          if (!validTerms.includes(value)) {
+            return { success: false, error: `Invalid payment terms. Valid options: ${validTerms.join(', ')}` };
+          }
+        }
+
+        if (['is_active', 'is_preferred', 'is_internal_inventory'].includes(field)) {
+          if (typeof value !== 'boolean') {
+            return { success: false, error: `Field "${field}" requires a boolean value (true/false)` };
+          }
+        }
+
+        handleChange(field, value);
+        return { success: true, message: `Set ${field} to "${value}"` };
+      },
+
+      save_supplier: async () => {
+        // Trigger form submission
+        const fakeEvent = { preventDefault: () => {} };
+        try {
+          await handleSubmit(fakeEvent);
+          return { success: true, message: isCreateMode ? 'Supplier created successfully' : 'Supplier saved successfully' };
+        } catch (err) {
+          return { success: false, error: err.message || 'Failed to save supplier' };
+        }
+      },
+
+      cancel: async () => {
+        onClose();
+        return { success: true, message: 'Modal closed' };
+      },
+
+      toggle_active: async ({ value }) => {
+        const newValue = typeof value === 'boolean' ? value : !formData.is_active;
+        handleChange('is_active', newValue);
+        return { success: true, message: `Supplier ${newValue ? 'activated' : 'deactivated'}` };
+      },
+
+      toggle_preferred: async ({ value }) => {
+        const newValue = typeof value === 'boolean' ? value : !formData.is_preferred;
+        handleChange('is_preferred', newValue);
+        return { success: true, message: `Supplier ${newValue ? 'marked as preferred' : 'unmarked as preferred'}` };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, formData, isCreateMode, onClose]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

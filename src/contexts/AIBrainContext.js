@@ -204,7 +204,8 @@ ${buildContextString(state)}`;
         { name: 'get_context', description: 'Get current app state. CALL THIS FIRST.', parameters: { type: 'object', properties: {} } },
         { name: 'execute_action', description: 'Execute action: highlight_field, set_measurement, save_measurements, open_shade, etc.', parameters: { type: 'object', properties: { action: { type: 'string' }, params: { type: 'object' } }, required: ['action'] } },
         { name: 'search_knowledge', description: 'Search knowledge base for product info (Lutron, Ubiquiti, etc). USE FIRST for product questions.', parameters: { type: 'object', properties: { query: { type: 'string' }, manufacturer: { type: 'string' } }, required: ['query'] } },
-        { name: 'navigate', description: 'Go to: dashboard, prewire, settings, or project name with optional section.', parameters: { type: 'object', properties: { destination: { type: 'string' }, section: { type: 'string' } }, required: ['destination'] } },
+        { name: 'navigate', description: 'Navigate anywhere: dashboard, home, prewire, service, tickets, todos, issues, people, vendors, parts, settings, admin, knowledge, weekly planning - OR project name with section (shades, equipment, procurement, receiving, inventory, floor plan, reports, secure data).', parameters: { type: 'object', properties: { destination: { type: 'string', description: 'Page name or project name' }, section: { type: 'string', description: 'For projects: shades, equipment, procurement, receiving, inventory, floor plan, reports, secure data' } }, required: ['destination'] } },
+        { name: 'quick_create', description: 'Create new items: todo, issue, ticket, contact, note. Provide type and relevant fields.', parameters: { type: 'object', properties: { type: { type: 'string', enum: ['todo', 'issue', 'ticket', 'contact', 'note'], description: 'Type of item to create' }, title: { type: 'string', description: 'Title/name of item' }, description: { type: 'string', description: 'Description or details' }, priority: { type: 'string', enum: ['low', 'medium', 'high', 'urgent'], description: 'Priority level' }, projectId: { type: 'string', description: 'Project ID if applicable' }, dueDate: { type: 'string', description: 'Due date (YYYY-MM-DD)' } }, required: ['type', 'title'] } },
         { name: 'web_search', description: 'Search web for general info not in knowledge base.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
         { name: 'get_page_training', description: 'Get training context for current page - returns business context, workflow info, common mistakes, best practices.', parameters: { type: 'object', properties: { pageRoute: { type: 'string', description: 'Optional: specific page route. If omitted, uses current page.' } } } },
         { name: 'teach_page', description: 'Start teaching the user about the current page using trained context.', parameters: { type: 'object', properties: { style: { type: 'string', enum: ['overview', 'walkthrough', 'tips'], description: 'Teaching style: overview (quick intro), walkthrough (step by step), tips (best practices)' } } } },
@@ -236,32 +237,220 @@ ${buildContextString(state)}`;
     };
 
     const handleNavigation = async (destination, section) => {
-        const sections = {
+        // Comprehensive navigation targets (30+)
+        const staticRoutes = {
+            // Dashboards
             dashboard: '/pm-dashboard',
-            home: '/pm-dashboard',
+            'pm dashboard': '/pm-dashboard',
+            'project manager dashboard': '/pm-dashboard',
+            home: '/',
+            'tech dashboard': '/',
+            'technician dashboard': '/',
+
+            // Wire Drops
             prewire: '/prewire-mode',
-            settings: '/settings',
-            issues: '/issues',
-            todos: '/todos',
+            'prewire mode': '/prewire-mode',
+            'wire drops': '/wire-drops',
+            'wire drops hub': '/wire-drops',
+
+            // Service CRM
             service: '/service',
+            'service dashboard': '/service',
             tickets: '/service/tickets',
-            'new ticket': '/service/tickets/new'
+            'service tickets': '/service/tickets',
+            'new ticket': '/service/tickets/new',
+            'create ticket': '/service/tickets/new',
+            'weekly planning': '/service/weekly-planning',
+            'service planning': '/service/weekly-planning',
+            'schedule': '/service/weekly-planning',
+            'service reports': '/service/reports',
+
+            // Tasks & Issues
+            todos: '/todos',
+            'my todos': '/todos',
+            'todo list': '/todos',
+            issues: '/issues',
+            'all issues': '/issues',
+            'issue list': '/issues',
+
+            // People & Contacts
+            people: '/people',
+            contacts: '/people',
+            'contact list': '/people',
+            'people management': '/people',
+
+            // Vendors & Parts
+            vendors: '/vendors',
+            'vendor management': '/vendors',
+            'supplier list': '/vendors',
+            parts: '/parts',
+            'parts list': '/parts',
+            'global parts': '/global-parts',
+            'parts catalog': '/global-parts',
+
+            // Admin & Settings
+            settings: '/settings',
+            'my settings': '/settings',
+            'user settings': '/settings',
+            admin: '/admin',
+            'admin panel': '/admin',
+            'administration': '/admin',
+            'knowledge': '/settings/knowledge',
+            'knowledge base': '/settings/knowledge',
         };
-        if (sections[destination.toLowerCase()]) {
-            navigateRef.current(sections[destination.toLowerCase()]);
-            return { success: true, message: `Going to ${destination}` };
+
+        const dest = destination.toLowerCase().trim();
+
+        // Check static routes first
+        if (staticRoutes[dest]) {
+            navigateRef.current(staticRoutes[dest]);
+            return { success: true, message: `Navigating to ${destination}` };
         }
+
+        // Project section shortcuts (for current project context)
+        const currentPath = window.location.pathname;
+        const projectMatch = currentPath.match(/\/(?:pm-)?project[s]?\/([^/]+)/);
+        const currentProjectId = projectMatch?.[1];
+
+        const projectSections = {
+            shades: (id) => `/projects/${id}/shades`,
+            windows: (id) => `/projects/${id}/shades`,
+            'shade manager': (id) => `/projects/${id}/shades`,
+            equipment: (id) => `/projects/${id}/equipment`,
+            'equipment list': (id) => `/projects/${id}/equipment`,
+            procurement: (id) => `/projects/${id}/procurement`,
+            'purchase orders': (id) => `/projects/${id}/procurement`,
+            pos: (id) => `/projects/${id}/procurement`,
+            receiving: (id) => `/projects/${id}/receiving`,
+            'parts receiving': (id) => `/projects/${id}/receiving`,
+            inventory: (id) => `/projects/${id}/inventory`,
+            'project inventory': (id) => `/projects/${id}/inventory`,
+            'floor plan': (id) => `/projects/${id}/floor-plan`,
+            floorplan: (id) => `/projects/${id}/floor-plan`,
+            reports: (id) => `/projects/${id}/reports`,
+            'project reports': (id) => `/projects/${id}/reports`,
+            'secure data': (id) => `/projects/${id}/secure-data`,
+            credentials: (id) => `/projects/${id}/secure-data`,
+        };
+
+        // If user asks for a section and we're in a project, go there
+        if (projectSections[dest] && currentProjectId) {
+            navigateRef.current(projectSections[dest](currentProjectId));
+            return { success: true, message: `Going to ${destination} for current project` };
+        }
+
+        // Search for project by name
         const { data: projects } = await supabase.from('projects').select('id, name').ilike('name', `%${destination}%`).limit(5);
-        if (!projects?.length) return { success: false, error: `No project "${destination}"` };
-        if (projects.length > 1) return { success: false, error: 'Multiple matches', matches: projects.map(p => p.name) };
-        let url = `/pm-project/${projects[0].id}`;
-        if (section) {
-            const s = section.toLowerCase();
-            if (['shades', 'windows'].includes(s)) url = `/projects/${projects[0].id}/shades`;
-            else if (s === 'equipment') url = `/projects/${projects[0].id}/equipment`;
+        if (!projects?.length) {
+            return { success: false, error: `No destination or project found for "${destination}". Try: dashboard, service, tickets, todos, issues, settings, or a project name.` };
         }
+        if (projects.length > 1) {
+            return { success: false, error: 'Multiple projects match', matches: projects.map(p => p.name), hint: 'Please be more specific' };
+        }
+
+        // Navigate to project with optional section
+        const projectId = projects[0].id;
+        let url = `/pm-project/${projectId}`;
+
+        if (section) {
+            const s = section.toLowerCase().trim();
+            if (projectSections[s]) {
+                url = projectSections[s](projectId);
+            }
+        }
+
         navigateRef.current(url);
-        return { success: true, message: `Opening ${projects[0].name}` };
+        return { success: true, message: `Opening ${projects[0].name}${section ? ` - ${section}` : ''}` };
+    };
+
+    const handleQuickCreate = async ({ type, title, description, priority, projectId, dueDate }) => {
+        const user = supabase.auth.getUser ? (await supabase.auth.getUser())?.data?.user : null;
+        const userId = user?.id;
+
+        // Get current project context if not provided
+        let currentProjectId = projectId;
+        if (!currentProjectId) {
+            const currentPath = window.location.pathname;
+            const projectMatch = currentPath.match(/\/(?:pm-)?project[s]?\/([^/]+)/);
+            currentProjectId = projectMatch?.[1];
+        }
+
+        try {
+            switch (type) {
+                case 'todo': {
+                    const { data, error } = await supabase.from('todos').insert({
+                        title,
+                        description: description || null,
+                        importance: priority === 'urgent' ? 'critical' : priority === 'high' ? 'high' : priority === 'low' ? 'low' : 'medium',
+                        project_id: currentProjectId || null,
+                        due_date: dueDate || null,
+                        created_by: userId,
+                        status: 'pending',
+                    }).select().single();
+                    if (error) throw error;
+                    return { success: true, message: `Created todo: ${title}`, id: data?.id };
+                }
+
+                case 'issue': {
+                    if (!currentProjectId) {
+                        return { success: false, error: 'Issues require a project context. Navigate to a project first.' };
+                    }
+                    const { data, error } = await supabase.from('issues').insert({
+                        title,
+                        description: description || null,
+                        priority: priority || 'medium',
+                        project_id: currentProjectId,
+                        status: 'open',
+                        created_by: userId,
+                    }).select().single();
+                    if (error) throw error;
+                    return { success: true, message: `Created issue: ${title}`, id: data?.id };
+                }
+
+                case 'ticket': {
+                    const { data, error } = await supabase.from('service_tickets').insert({
+                        title,
+                        description: description || null,
+                        priority: priority || 'medium',
+                        status: 'new',
+                        created_by: userId,
+                    }).select().single();
+                    if (error) throw error;
+                    navigateRef.current(`/service/tickets/${data?.id}`);
+                    return { success: true, message: `Created service ticket: ${title}`, id: data?.id };
+                }
+
+                case 'contact': {
+                    const { data, error } = await supabase.from('contacts').insert({
+                        name: title,
+                        notes: description || null,
+                        created_by: userId,
+                    }).select().single();
+                    if (error) throw error;
+                    return { success: true, message: `Created contact: ${title}`, id: data?.id };
+                }
+
+                case 'note': {
+                    // Notes attach to current project or ticket
+                    const noteData = {
+                        content: `${title}${description ? '\n\n' + description : ''}`,
+                        created_by: userId,
+                    };
+                    if (currentProjectId) {
+                        noteData.project_id = currentProjectId;
+                    }
+                    const { data, error } = await supabase.from('notes').insert(noteData).select().single();
+                    if (error) throw error;
+                    return { success: true, message: `Added note: ${title}`, id: data?.id };
+                }
+
+                default:
+                    return { success: false, error: `Unknown type: ${type}. Use: todo, issue, ticket, contact, or note.` };
+            }
+        } catch (error) {
+            console.error('[AIBrain] quick_create error:', error);
+            return { success: false, error: error.message || 'Failed to create item' };
+        }
     };
 
     const handleToolCall = useCallback(async (toolCall) => {
@@ -272,6 +461,7 @@ ${buildContextString(state)}`;
             case 'execute_action': return await executeAction(args.action, args.params || {});
             case 'search_knowledge': return await searchKnowledgeBase(args.query, args.manufacturer);
             case 'navigate': return await handleNavigation(args.destination, args.section);
+            case 'quick_create': return await handleQuickCreate(args);
             case 'web_search': return { message: `Searching for "${args.query}"...`, useGrounding: true };
             case 'get_page_training': {
                 const route = args.pageRoute || getPatternRoute(window.location.pathname);
@@ -1060,7 +1250,6 @@ ${buildContextString(state)}`;
             debugLog, clearDebugLog, audioChunksSent, audioChunksReceived,
             // Platform info
             platformInfo: { isIOS: /iPhone|iPad|iPod/.test(navigator.userAgent), isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent) },
-            registerTools: () => { }, unregisterTools: () => { },
             // Training mode integration
             setTranscriptCallback: (callback) => { transcriptCallbackRef.current = callback; },
             clearTranscriptCallback: () => { transcriptCallbackRef.current = null; },

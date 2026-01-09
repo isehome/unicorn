@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -44,10 +45,12 @@ const PMOrderEquipmentPageEnhanced = () => {
   const navigate = useNavigate();
   const { mode } = useTheme();
   const { user } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // State
   const [loading, setLoading] = useState(true);
+  const [project, setProject] = useState(null);
   const [saving, setSaving] = useState(false);
   const [equipment, setEquipment] = useState([]);
   const [vendorGroups, setVendorGroups] = useState({});
@@ -95,9 +98,9 @@ const PMOrderEquipmentPageEnhanced = () => {
     return phase === 'prewire' ? 'prewire_prep' : 'trim_prep';
   };
 
-  // Load project default shipping address on mount
+  // Load project info and default shipping address on mount
   useEffect(() => {
-    loadProjectDefaultShipping();
+    loadProjectInfo();
   }, [projectId]);
 
   useEffect(() => {
@@ -117,11 +120,11 @@ const PMOrderEquipmentPageEnhanced = () => {
 
   // No longer need to load vendor grouping - checkbox view uses equipment directly
 
-  const loadProjectDefaultShipping = async () => {
+  const loadProjectInfo = async () => {
     try {
       const { data, error: fetchError } = await supabase
         .from('projects')
-        .select('default_shipping_address_id')
+        .select('id, name, project_number, default_shipping_address_id')
         .eq('id', projectId)
         .single();
 
@@ -133,11 +136,15 @@ const PMOrderEquipmentPageEnhanced = () => {
         }
         throw fetchError;
       }
+
+      // Set project info for AI context
+      setProject(data ? { id: data.id, name: data.name, projectNumber: data.project_number } : null);
+
       const defaultShippingId = data?.default_shipping_address_id || null;
-      console.log('📦 Loaded project default shipping address:', defaultShippingId);
+      console.log('📦 Loaded project info:', data?.name, 'shipping:', defaultShippingId);
       setProjectDefaultShippingId(defaultShippingId);
     } catch (err) {
-      console.error('Failed to load project default shipping address:', err);
+      console.error('Failed to load project info:', err);
     }
   };
 
@@ -371,6 +378,200 @@ const PMOrderEquipmentPageEnhanced = () => {
       setOpenIssuesByPO({});
     }
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    // Calculate PO stats by status
+    const poStats = {
+      draft: purchaseOrders.filter(po => po.status === 'draft').length,
+      submitted: purchaseOrders.filter(po => po.status === 'submitted').length,
+      confirmed: purchaseOrders.filter(po => po.status === 'confirmed').length,
+      partiallyReceived: purchaseOrders.filter(po => po.status === 'partially_received').length,
+      received: purchaseOrders.filter(po => po.status === 'received').length,
+      total: purchaseOrders.length
+    };
+
+    // Calculate equipment stats
+    const equipmentStats = {
+      total: equipment.length,
+      needsOrdering: equipment.filter(e => e.quantity_needed > 0).length,
+      inDraftPO: equipment.filter(e => e.has_draft_po_only).length,
+      fullyOrdered: equipment.filter(e => e.quantity_needed === 0 && e.quantity_ordered > 0).length
+    };
+
+    publishState({
+      view: 'procurement',
+      project: project ? { id: project.id, name: project.name, projectNumber: project.projectNumber } : { id: projectId },
+      currentTab: tab,
+      purchaseOrderStats: poStats,
+      equipmentStats: equipmentStats,
+      openReceivingIssues: receivingIssues.length,
+      recentPOs: purchaseOrders.slice(0, 5).map(po => ({
+        id: po.id,
+        poNumber: po.po_number,
+        status: po.status,
+        supplierName: po.supplier?.name || po.supplier_name,
+        totalAmount: po.total_amount
+      })),
+      hint: `Procurement page for project. Current tab: ${tab}. Shows equipment to order, active POs, and vendor management. Can create POs, filter by status, view vendor details.`
+    });
+  }, [publishState, project, projectId, tab, purchaseOrders, equipment, receivingIssues]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      create_po: async ({ vendorName }) => {
+        // Find equipment for this vendor that needs ordering
+        const vendorEquipment = equipment.filter(e =>
+          e.quantity_needed > 0 &&
+          (e.supplier?.toLowerCase().includes(vendorName?.toLowerCase() || '') ||
+           e.global_part?.supplier?.name?.toLowerCase().includes(vendorName?.toLowerCase() || ''))
+        );
+
+        if (vendorEquipment.length === 0) {
+          return { success: false, error: `No equipment needing orders found for vendor "${vendorName}"` };
+        }
+
+        // Select all items for this vendor
+        const newSelections = {};
+        vendorEquipment.forEach(item => {
+          newSelections[item.part_number] = {
+            selected: true,
+            quantity: item.quantity_needed,
+            group: { supplier: item.supplier_id ? { id: item.supplier_id, name: item.supplier } : null }
+          };
+        });
+        setSelectedItems(newSelections);
+        setPoModalOpen(true);
+        return {
+          success: true,
+          message: `Opening PO creation for ${vendorEquipment.length} item(s) from ${vendorName}`,
+          itemCount: vendorEquipment.length
+        };
+      },
+
+      filter_by_status: async ({ status }) => {
+        // Navigate to POs tab and let user see filtered results
+        const validStatuses = ['draft', 'submitted', 'confirmed', 'partially_received', 'received', 'cancelled'];
+        if (!validStatuses.includes(status?.toLowerCase())) {
+          return { success: false, error: `Invalid status. Valid options: ${validStatuses.join(', ')}` };
+        }
+        setTab('pos');
+        return {
+          success: true,
+          message: `Showing POs tab. Filter for "${status}" status.`,
+          matchingCount: purchaseOrders.filter(po => po.status === status?.toLowerCase()).length
+        };
+      },
+
+      open_po: async ({ poNumber }) => {
+        const po = purchaseOrders.find(p =>
+          p.po_number?.toLowerCase().includes(poNumber?.toLowerCase() || '')
+        );
+        if (po) {
+          setSelectedPOId(po.id);
+          setPoDetailsModalOpen(true);
+          return { success: true, message: `Opening PO ${po.po_number}` };
+        }
+        return { success: false, error: `Purchase order "${poNumber}" not found` };
+      },
+
+      search_pos: async ({ query }) => {
+        const matchingPOs = purchaseOrders.filter(po => {
+          const poMatch = po.po_number?.toLowerCase().includes(query?.toLowerCase() || '');
+          const supplierMatch = po.supplier?.name?.toLowerCase().includes(query?.toLowerCase() || '') ||
+                               po.supplier_name?.toLowerCase().includes(query?.toLowerCase() || '');
+          return poMatch || supplierMatch;
+        });
+
+        if (matchingPOs.length > 0) {
+          setTab('pos');
+          return {
+            success: true,
+            message: `Found ${matchingPOs.length} purchase order(s) matching "${query}"`,
+            results: matchingPOs.map(po => ({
+              poNumber: po.po_number,
+              supplier: po.supplier?.name || po.supplier_name,
+              status: po.status,
+              total: po.total_amount
+            }))
+          };
+        }
+        return { success: false, error: `No purchase orders found matching "${query}"` };
+      },
+
+      view_vendor: async ({ vendorName }) => {
+        setTab('vendors');
+        return { success: true, message: `Showing vendors tab. Search for "${vendorName}" to view details.` };
+      },
+
+      switch_tab: async ({ tabName }) => {
+        const validTabs = ['inventory', 'prewire', 'trim', 'pos', 'vendors', 'issues'];
+        if (validTabs.includes(tabName?.toLowerCase())) {
+          setTab(tabName.toLowerCase());
+          return { success: true, message: `Switched to ${tabName} tab` };
+        }
+        return { success: false, error: `Invalid tab. Valid options: ${validTabs.join(', ')}` };
+      },
+
+      list_draft_pos: async () => {
+        const draftPOs = purchaseOrders.filter(po => po.status === 'draft');
+        return {
+          success: true,
+          purchaseOrders: draftPOs.map(po => ({
+            poNumber: po.po_number,
+            supplier: po.supplier?.name || po.supplier_name,
+            totalAmount: po.total_amount,
+            itemCount: po.items?.length || 0
+          })),
+          count: draftPOs.length,
+          message: draftPOs.length > 0
+            ? `Found ${draftPOs.length} draft PO(s) awaiting submission`
+            : 'No draft POs found'
+        };
+      },
+
+      list_items_needing_order: async () => {
+        const needsOrdering = equipment.filter(e => e.quantity_needed > 0);
+        return {
+          success: true,
+          items: needsOrdering.slice(0, 10).map(e => ({
+            name: e.name,
+            partNumber: e.part_number,
+            quantityNeeded: e.quantity_needed,
+            supplier: e.supplier
+          })),
+          count: needsOrdering.length,
+          message: needsOrdering.length > 0
+            ? `Found ${needsOrdering.length} item(s) needing orders`
+            : 'All equipment has been ordered'
+        };
+      },
+
+      view_receiving_issues: async () => {
+        if (receivingIssues.length === 0) {
+          return { success: true, message: 'No open receiving issues' };
+        }
+        setTab('issues');
+        return {
+          success: true,
+          message: `Showing ${receivingIssues.length} open receiving issue(s)`,
+          issues: receivingIssues.map(i => ({
+            title: i.title,
+            status: i.status,
+            priority: i.priority
+          }))
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, purchaseOrders, equipment, receivingIssues, tab]);
 
   const toggleVendorExpansion = (vendorName) => {
     setExpandedVendors(prev => ({

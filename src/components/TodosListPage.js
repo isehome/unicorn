@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { projectStakeholdersService, projectTodosService } from '../services/supabaseService';
 import { fetchTodayEvents } from '../services/microsoftCalendarService';
@@ -35,6 +36,7 @@ const TodosListPage = () => {
   const navigate = useNavigate();
   const sectionStyles = enhancedStyles.sections[mode];
   const palette = theme.palette;
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const [loading, setLoading] = useState(true);
   const [todos, setTodos] = useState([]);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -189,6 +191,92 @@ const TodosListPage = () => {
     };
     load();
   }, [user?.email]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const openTodos = todos.filter(t => !t.completed);
+    const completedTodos = todos.filter(t => t.completed);
+
+    publishState({
+      view: 'todos-list',
+      viewMode: viewMode,
+      selectedDate: selectedDate?.toISOString(),
+      stats: {
+        total: todos.length,
+        open: openTodos.length,
+        completed: completedTodos.length
+      },
+      showingCompleted: showCompleted,
+      projectFilter: projectFilter,
+      projects: projects.map(p => ({ id: p.id, name: p.name })),
+      visibleTodos: visible?.slice(0, 10).map(t => ({
+        id: t.id,
+        title: t.title,
+        completed: t.completed,
+        importance: t.importance,
+        projectId: t.project_id
+      })) || [],
+      hint: 'Todos list page. Shows all user todos across projects. Can filter by project, toggle completed.'
+    });
+  }, [publishState, todos, visible, viewMode, selectedDate, showCompleted, projectFilter, projects]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      toggle_show_completed: async () => {
+        setShowCompleted(prev => !prev);
+        return { success: true, message: showCompleted ? 'Hiding completed todos' : 'Showing completed todos' };
+      },
+      filter_by_project: async ({ projectName, projectId }) => {
+        if (projectId === 'all' || projectName === 'all') {
+          setProjectFilter('all');
+          return { success: true, message: 'Showing todos from all projects' };
+        }
+        const proj = projectName
+          ? projects.find(p => p.name.toLowerCase().includes(projectName.toLowerCase()))
+          : projects.find(p => p.id === projectId);
+        if (proj) {
+          setProjectFilter(proj.id);
+          return { success: true, message: `Filtering by project: ${proj.name}` };
+        }
+        return { success: false, error: 'Project not found' };
+      },
+      mark_todo_complete: async ({ todoTitle }) => {
+        const todo = todos.find(t => t.title.toLowerCase().includes(todoTitle.toLowerCase()) && !t.completed);
+        if (todo) {
+          await handleToggleTodo(todo);
+          return { success: true, message: `Marked "${todo.title}" as complete` };
+        }
+        return { success: false, error: 'Todo not found or already completed' };
+      },
+      switch_view: async ({ mode }) => {
+        if (['list', 'calendar'].includes(mode)) {
+          setViewMode(mode);
+          return { success: true, message: `Switched to ${mode} view` };
+        }
+        return { success: false, error: 'Invalid view mode. Use: list or calendar' };
+      },
+      create_todo: async () => {
+        setShowAddTodo(true);
+        return { success: true, message: 'Opening add todo form' };
+      },
+      list_open_todos: async () => {
+        const openTodos = visible?.filter(t => !t.completed).slice(0, 10) || [];
+        return {
+          success: true,
+          todos: openTodos.map(t => ({ title: t.title, importance: t.importance })),
+          count: openTodos.length
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, todos, visible, projects, showCompleted, handleToggleTodo]);
 
   const visible = useMemo(() => {
     let list = todos.filter(t => (showCompleted ? true : !t.completed));

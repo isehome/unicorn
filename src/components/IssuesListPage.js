@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useCallback, memo } from 'react';
+import React, { useMemo, useState, useCallback, memo, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '../lib/queryClient';
@@ -76,6 +77,7 @@ const IssuesListPageOptimized = () => {
   const [searchParams] = useSearchParams();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
+  const { publishState, registerActions, unregisterActions } = useAppState();
 
   // Initialize state from URL params (only on first render)
   const initialProjectParam = searchParams.get('project');
@@ -185,6 +187,93 @@ const IssuesListPageOptimized = () => {
     
     return list;
   }, [issuesQuery.data, filter, blockedOnly, projectFilter, debouncedSearchQuery]);
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const allIssues = issuesQuery.data || [];
+    const openIssues = allIssues.filter(i => !['closed', 'resolved'].includes((i.status || '').toLowerCase()));
+    const blockedIssues = allIssues.filter(i => (i.status || '').toLowerCase() === 'blocked');
+
+    publishState({
+      view: 'issues-list',
+      stats: {
+        total: allIssues.length,
+        open: openIssues.length,
+        blocked: blockedIssues.length,
+        visible: visibleIssues?.length || 0
+      },
+      filters: {
+        status: filter,
+        project: projectFilter,
+        blockedOnly: blockedOnly,
+        search: searchQuery
+      },
+      projects: (projectsQuery.data || []).map(p => ({ id: p.id, name: p.name })),
+      visibleIssues: (visibleIssues || []).slice(0, 10).map(i => ({
+        id: i.id,
+        title: i.title,
+        status: i.status,
+        projectId: i.project_id
+      })),
+      hint: 'Issues list page. Shows issues across projects. Can filter by status, project, blocked.'
+    });
+  }, [publishState, issuesQuery.data, visibleIssues, filter, projectFilter, blockedOnly, searchQuery, projectsQuery.data]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      filter_by_status: async ({ status }) => {
+        if (['all', 'open', 'closed'].includes(status)) {
+          setFilter(status);
+          return { success: true, message: `Filtering by status: ${status}` };
+        }
+        return { success: false, error: 'Invalid status. Use: all, open, or closed' };
+      },
+      toggle_blocked_only: async () => {
+        setBlockedOnly(prev => !prev);
+        return { success: true, message: blockedOnly ? 'Showing all issues' : 'Showing blocked only' };
+      },
+      filter_by_project: async ({ projectName }) => {
+        if (projectName === 'all') {
+          setProjectFilter('all');
+          return { success: true, message: 'Showing issues from all projects' };
+        }
+        const proj = (projectsQuery.data || []).find(p => p.name.toLowerCase().includes(projectName.toLowerCase()));
+        if (proj) {
+          setProjectFilter(proj.id);
+          return { success: true, message: `Filtering by project: ${proj.name}` };
+        }
+        return { success: false, error: 'Project not found' };
+      },
+      search_issues: async ({ query }) => {
+        setSearchQuery(query || '');
+        return { success: true, message: query ? `Searching for: ${query}` : 'Search cleared' };
+      },
+      open_issue: async ({ issueTitle }) => {
+        const issue = visibleIssues?.find(i => i.title.toLowerCase().includes(issueTitle.toLowerCase()));
+        if (issue) {
+          navigate(`/project/${issue.project_id}/issues/${issue.id}`);
+          return { success: true, message: `Opening issue: ${issue.title}` };
+        }
+        return { success: false, error: 'Issue not found' };
+      },
+      list_blocked_issues: async () => {
+        const blocked = (issuesQuery.data || []).filter(i => (i.status || '').toLowerCase() === 'blocked');
+        return {
+          success: true,
+          issues: blocked.slice(0, 10).map(i => ({ title: i.title, projectId: i.project_id })),
+          count: blocked.length
+        };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, visibleIssues, issuesQuery.data, projectsQuery.data, navigate, blockedOnly]);
 
   // Optimized handlers
   const handleNavigateToIssue = useCallback((issue) => {

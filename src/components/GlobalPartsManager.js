@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, FileText, Package, Edit2, Wrench, ExternalLink } from 'lucide-react';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
@@ -6,10 +6,12 @@ import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
 import { supabase } from '../lib/supabase';
 import { partsService } from '../services/partsService';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 
 const GlobalPartsManager = () => {
   const { mode } = useTheme();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   const [parts, setParts] = useState([]);
@@ -112,7 +114,7 @@ const GlobalPartsManager = () => {
     setSelectedPart(null);
   };
 
-  const handleTogglePrewire = async (part, newValue) => {
+  const handleTogglePrewire = useCallback(async (part, newValue) => {
     try {
       // Use RPC function to bypass RLS issues
       const { data, error } = await supabase.rpc('update_part_prewire_status', {
@@ -135,16 +137,19 @@ const GlobalPartsManager = () => {
       );
 
       // Update selected part if it's currently open in editor
-      if (selectedPart && selectedPart.id === part.id) {
-        setSelectedPart(prev => ({ ...prev, required_for_prewire: updatedValue }));
-      }
+      setSelectedPart(prev => {
+        if (prev && prev.id === part.id) {
+          return { ...prev, required_for_prewire: updatedValue };
+        }
+        return prev;
+      });
     } catch (err) {
       console.error('Failed to update prewire status:', err);
       alert('Failed to update prewire status: ' + err.message);
     }
-  };
+  }, []);
 
-  const handleUpdateInventory = async (partId, newQuantity) => {
+  const handleUpdateInventory = useCallback(async (partId, newQuantity) => {
     try {
       setSavingInventory(partId);
 
@@ -174,7 +179,7 @@ const GlobalPartsManager = () => {
     } finally {
       setSavingInventory(null);
     }
-  };
+  }, []);
 
   const getDocumentationStatus = (part) => {
     const hasSchematic = !!part.schematic_url;
@@ -183,6 +188,130 @@ const GlobalPartsManager = () => {
     const count = [hasSchematic, hasInstall, hasTechnical].filter(Boolean).length;
     return { count, hasSchematic, hasInstall, hasTechnical };
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    const prewireCount = parts.filter(p => p.required_for_prewire === true).length;
+    const trimCount = parts.filter(p => p.required_for_prewire !== true).length;
+
+    publishState({
+      view: 'global-parts-manager',
+      searchQuery: searchQuery,
+      filter: filter,
+      stats: {
+        total: parts.length,
+        filtered: filteredParts.length,
+        prewire: prewireCount,
+        trim: trimCount
+      },
+      parts: filteredParts.slice(0, 10).map(p => ({
+        id: p.id,
+        partNumber: p.part_number,
+        name: p.name,
+        manufacturer: p.manufacturer,
+        model: p.model,
+        category: p.category,
+        requiredForPrewire: p.required_for_prewire,
+        quantityOnHand: p.quantity_on_hand || 0
+      })),
+      hint: 'Global parts catalog page. Can search parts, filter by prewire/trim phase, edit part documentation, update inventory, or toggle prewire status.'
+    });
+  }, [publishState, parts, filteredParts, searchQuery, filter]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      search_parts: async ({ query }) => {
+        if (typeof query === 'string') {
+          setSearchQuery(query);
+          return { success: true, message: query ? `Searching for "${query}"` : 'Cleared search' };
+        }
+        return { success: false, error: 'Invalid search query' };
+      },
+      filter_by_category: async ({ category }) => {
+        if (['all', 'prewire', 'trim'].includes(category)) {
+          setFilter(category);
+          return { success: true, message: `Filtering by category: ${category}` };
+        }
+        return { success: false, error: 'Invalid category. Use: all, prewire, or trim' };
+      },
+      add_part: async () => {
+        // Note: GlobalPartsManager doesn't have a built-in add part modal
+        // Parts are typically added via CSV import from projects
+        return { success: false, error: 'Parts are added via CSV import from projects. Navigate to a project and import equipment.' };
+      },
+      edit_part: async ({ partName, partId, partNumber }) => {
+        const part = partName
+          ? parts.find(p => p.name?.toLowerCase().includes(partName.toLowerCase()))
+          : partNumber
+          ? parts.find(p => p.part_number?.toLowerCase().includes(partNumber.toLowerCase()))
+          : parts.find(p => p.id === partId);
+        if (part) {
+          setSelectedPart(part);
+          setShowEditor(true);
+          return { success: true, message: `Opening documentation editor for: ${part.name || part.part_number}` };
+        }
+        return { success: false, error: 'Part not found' };
+      },
+      delete_part: async () => {
+        // Note: GlobalPartsManager doesn't support deleting parts directly
+        return { success: false, error: 'Part deletion is not supported from this view. Parts are managed through project equipment.' };
+      },
+      toggle_prewire: async ({ partName, partId, partNumber, value }) => {
+        const part = partName
+          ? parts.find(p => p.name?.toLowerCase().includes(partName.toLowerCase()))
+          : partNumber
+          ? parts.find(p => p.part_number?.toLowerCase().includes(partNumber.toLowerCase()))
+          : parts.find(p => p.id === partId);
+        if (part) {
+          const newValue = typeof value === 'boolean' ? value : !part.required_for_prewire;
+          await handleTogglePrewire(part, newValue);
+          return { success: true, message: `${newValue ? 'Marked' : 'Unmarked'} "${part.name || part.part_number}" as prewire part` };
+        }
+        return { success: false, error: 'Part not found' };
+      },
+      update_inventory: async ({ partName, partId, partNumber, quantity }) => {
+        const part = partName
+          ? parts.find(p => p.name?.toLowerCase().includes(partName.toLowerCase()))
+          : partNumber
+          ? parts.find(p => p.part_number?.toLowerCase().includes(partNumber.toLowerCase()))
+          : parts.find(p => p.id === partId);
+        if (part) {
+          if (typeof quantity !== 'number' || quantity < 0) {
+            return { success: false, error: 'Invalid quantity. Provide a non-negative number.' };
+          }
+          await handleUpdateInventory(part.id, quantity);
+          return { success: true, message: `Updated inventory for "${part.name || part.part_number}" to ${quantity}` };
+        }
+        return { success: false, error: 'Part not found' };
+      },
+      list_parts: async () => {
+        return {
+          success: true,
+          parts: filteredParts.slice(0, 10).map(p => ({
+            name: p.name,
+            partNumber: p.part_number,
+            manufacturer: p.manufacturer,
+            requiredForPrewire: p.required_for_prewire,
+            quantityOnHand: p.quantity_on_hand || 0
+          })),
+          count: filteredParts.length
+        };
+      },
+      clear_filters: async () => {
+        setSearchQuery('');
+        setFilter('all');
+        return { success: true, message: 'Cleared all filters' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, parts, filteredParts, handleTogglePrewire, handleUpdateInventory]);
 
   if (loading) {
     return (

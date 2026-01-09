@@ -1,12 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { Activity, FileText, ArrowRight } from 'lucide-react';
 
 const WireDropsHub = () => {
   const { mode } = useTheme();
   const navigate = useNavigate();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   const hubItems = [
@@ -43,6 +45,53 @@ const WireDropsHub = () => {
     };
     return colors[color] || colors.violet;
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // AI VOICE COPILOT INTEGRATION
+  // ══════════════════════════════════════════════════════════════
+
+  // Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'wire-drops-hub',
+      availableOptions: hubItems.map(item => ({
+        title: item.title,
+        description: item.description,
+        path: item.path
+      })),
+      optionCount: hubItems.length,
+      hint: 'Wire drops navigation hub. Can open wire drops list or Lucid Chart integration.'
+    });
+  }, [publishState]);
+
+  // Register actions for AI
+  useEffect(() => {
+    const actions = {
+      open_wire_drops_list: async () => {
+        navigate('/wire-drops-list');
+        return { success: true, message: 'Opening wire drops list' };
+      },
+      open_lucid_chart: async () => {
+        navigate('/lucid-test');
+        return { success: true, message: 'Opening Lucid Chart integration' };
+      },
+      navigate_to: async ({ destination }) => {
+        const dest = destination?.toLowerCase();
+        if (dest?.includes('list') || dest?.includes('wire drop')) {
+          navigate('/wire-drops-list');
+          return { success: true, message: 'Opening wire drops list' };
+        }
+        if (dest?.includes('lucid') || dest?.includes('chart')) {
+          navigate('/lucid-test');
+          return { success: true, message: 'Opening Lucid Chart integration' };
+        }
+        return { success: false, error: 'Unknown destination. Available: wire drops list, lucid chart' };
+      }
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, navigate]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">

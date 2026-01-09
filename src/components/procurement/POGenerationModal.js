@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppState } from '../../contexts/AppStateContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { poGeneratorService } from '../../services/poGeneratorService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
@@ -47,6 +48,7 @@ const POGenerationModal = ({
 }) => {
   const { mode } = useTheme();
   const { user } = useAuth();
+  const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
   // Version log to verify new code is loading
@@ -146,6 +148,126 @@ const POGenerationModal = ({
       console.log('⏸️ Modal conditions not met (isOpen:', isOpen, 'supplierId:', supplierId, ')');
     }
   }, [isOpen, supplierId, projectDefaultShippingId]);
+
+  // Collect form data for AppState publishing
+  const formData = {
+    orderDate,
+    requestedDeliveryDate,
+    taxAmount,
+    shippingCost,
+    internalNotes,
+    supplierNotes,
+    shippingAddressId
+  };
+
+  // Publish modal state to AppState for AI awareness
+  useEffect(() => {
+    if (isOpen) {
+      publishState({
+        modal: {
+          type: 'po-generation',
+          title: 'Create Purchase Order',
+          formFields: [
+            { name: 'orderDate', type: 'date', required: true, label: 'Order Date' },
+            { name: 'requestedDeliveryDate', type: 'date', label: 'Requested Delivery Date' },
+            { name: 'taxAmount', type: 'number', label: 'Tax Amount' },
+            { name: 'shippingCost', type: 'number', label: 'Shipping Cost' },
+            { name: 'internalNotes', type: 'textarea', label: 'Internal Notes' },
+            { name: 'supplierNotes', type: 'textarea', label: 'Supplier Notes' },
+            { name: 'shippingAddressId', type: 'select', required: true, label: 'Shipping Address' },
+          ],
+          currentValues: formData,
+          context: {
+            supplierId,
+            supplierName,
+            projectId,
+            milestoneStage,
+            poNumberPreview,
+            subtotal,
+            total,
+            itemCount: groupedItems.length
+          },
+          hint: 'PO creation modal. User can set order details and shipping address.'
+        }
+      });
+    } else {
+      // Clear modal state when closed
+      publishState({ modal: null });
+    }
+  }, [isOpen, formData, publishState, supplierId, supplierName, projectId, milestoneStage, poNumberPreview, subtotal, total, groupedItems.length]);
+
+  // Register modal-specific actions for AI
+  const setField = useCallback((params) => {
+    const { field, value } = params;
+    switch (field) {
+      case 'orderDate':
+        setOrderDate(value);
+        break;
+      case 'requestedDeliveryDate':
+        setRequestedDeliveryDate(value);
+        break;
+      case 'taxAmount':
+        setTaxAmount(value);
+        break;
+      case 'shippingCost':
+        setShippingCost(value);
+        break;
+      case 'internalNotes':
+        setInternalNotes(value);
+        break;
+      case 'supplierNotes':
+        setSupplierNotes(value);
+        break;
+      case 'shippingAddressId':
+        setShippingAddressId(value);
+        break;
+      default:
+        return { success: false, error: `Unknown field: ${field}` };
+    }
+    return { success: true, field, value };
+  }, []);
+
+  const submitForm = useCallback(() => {
+    // Trigger form submission programmatically
+    const form = document.querySelector('form');
+    if (form) {
+      form.requestSubmit();
+      return { success: true, message: 'Form submission triggered' };
+    }
+    return { success: false, error: 'Form not found' };
+  }, []);
+
+  // handleClose defined here so cancelModal can reference it
+  const handleClose = useCallback(() => {
+    // Reset form
+    setOrderDate(new Date().toISOString().split('T')[0]);
+    setRequestedDeliveryDate('');
+    setTaxAmount(0);
+    setShippingCost(0);
+    setInternalNotes('');
+    setSupplierNotes('');
+    setError(null);
+    setPoNumberPreview('');
+
+    onClose();
+  }, [onClose]);
+
+  const cancelModal = useCallback(() => {
+    handleClose();
+    return { success: true, message: 'Modal closed' };
+  }, [handleClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      const actions = {
+        set_field: setField,
+        submit_form: submitForm,
+        cancel: cancelModal
+      };
+      registerActions(actions);
+      return () => unregisterActions(Object.keys(actions));
+    }
+  }, [isOpen, registerActions, unregisterActions, setField, submitForm, cancelModal]);
 
   const loadPONumberPreview = async () => {
     try {
@@ -274,20 +396,6 @@ const POGenerationModal = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleClose = () => {
-    // Reset form
-    setOrderDate(new Date().toISOString().split('T')[0]);
-    setRequestedDeliveryDate('');
-    setTaxAmount(0);
-    setShippingCost(0);
-    setInternalNotes('');
-    setSupplierNotes('');
-    setError(null);
-    setPoNumberPreview('');
-
-    onClose();
   };
 
   if (!isOpen) return null;
