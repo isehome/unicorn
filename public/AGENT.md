@@ -2333,15 +2333,69 @@ const {
 ### 2. AIBrainContext (`src/contexts/AIBrainContext.js`)
 The Voice AI agent with 5 meta-tools.
 
-**5 Meta-Tools:**
+**6 Meta-Tools (Updated Jan 2025):**
 
 | Tool | Description |
 |------|-------------|
 | `get_context` | **CALL FIRST** - Returns current view, project, shade, form data, available actions |
 | `execute_action` | Execute registered action: `highlight_field`, `set_measurement`, `open_shade`, etc. |
 | `search_knowledge` | Search Azure AI knowledge base for Lutron, Ubiquiti, Control4 docs |
-| `navigate` | Go to dashboard, prewire, settings, or project by name |
+| `navigate` | Go to 35+ destinations including project sections (see Navigation Targets below) |
+| `quick_create` | Create todos, issues, tickets, contacts, notes by voice |
 | `web_search` | Search web for general info not in knowledge base |
+
+### Navigation Targets (35+ Destinations)
+
+**Static Routes:**
+| Voice Command | Route |
+|---------------|-------|
+| "dashboard", "pm dashboard" | `/pm-dashboard` |
+| "home", "tech dashboard" | `/` |
+| "prewire", "prewire mode", "wire drops hub" | `/prewire-mode`, `/wire-drops` |
+| "service", "service dashboard" | `/service` |
+| "tickets", "service tickets" | `/service/tickets` |
+| "new ticket", "create ticket" | `/service/tickets/new` |
+| "weekly planning", "schedule" | `/service/weekly-planning` |
+| "service reports" | `/service/reports` |
+| "todos", "my todos", "task list" | `/todos` |
+| "issues", "all issues", "issue list" | `/issues` |
+| "people", "contacts", "contact list" | `/people` |
+| "vendors", "supplier list" | `/vendors` |
+| "parts", "parts list", "parts catalog" | `/parts` |
+| "global parts", "master parts" | `/global-parts` |
+| "settings", "preferences" | `/settings` |
+| "admin", "administration" | `/admin` |
+| "knowledge", "knowledge base" | `/settings/knowledge` |
+
+**Project Sections** (when in project context or by name):
+| Voice Command | Route |
+|---------------|-------|
+| "shades", "windows", "shade manager" | `/projects/:id/shades` |
+| "equipment", "equipment list" | `/projects/:id/equipment` |
+| "procurement", "purchase orders", "pos" | `/projects/:id/procurement` |
+| "receiving", "parts receiving" | `/projects/:id/receiving` |
+| "inventory", "project inventory" | `/projects/:id/inventory` |
+| "floor plan", "floorplan" | `/projects/:id/floor-plan` |
+| "reports", "project reports" | `/projects/:id/reports` |
+| "secure data", "credentials" | `/projects/:id/secure-data` |
+
+### Quick Create Types
+
+| Type | Voice Example | Required |
+|------|--------------|----------|
+| `todo` | "Create a todo to call the electrician" | title |
+| `issue` | "Log an issue about the missing bracket" | title, project context |
+| `ticket` | "Create a service ticket for network troubleshooting" | title |
+| `contact` | "Add a contact named John Smith" | name |
+| `note` | "Add a note about the customer's preference" | title/content |
+
+### Teaching Mode Tools (Training Integration)
+
+| Tool | Description |
+|------|-------------|
+| `get_page_training` | Retrieves trained context for current page from `brain_page_training` table |
+| `teach_page` | Provides overview, walkthrough, or tips for current page |
+| `answer_page_question` | Answers questions using trained FAQ and page context |
 
 **Key States:**
 - `idle` - No active session
@@ -2530,21 +2584,211 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 
 | File | Purpose |
 |------|---------|
-| `src/contexts/AIBrainContext.js` | **NEW** Voice AI agent with 5 meta-tools |
-| `src/contexts/AppStateContext.js` | **NEW** Single Source of Truth for AI state |
+| `src/contexts/AIBrainContext.js` | Voice AI agent with 6 meta-tools + 35+ navigation targets |
+| `src/contexts/AppStateContext.js` | Single Source of Truth for AI state |
+| `src/contexts/TrainingModeContext.js` | Training mode state for page-specific AI training |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
-| `src/components/Shades/ShadeDetailPage.js` | Shade measuring with AppState integration |
-| `src/components/Shades/ShadeManager.js` | Shade list with AppState integration |
-| `src/components/PMDashboard.js` | Dashboard with AppState integration |
+| `src/components/Admin/TrainingModePanel.js` | Admin UI for training AI on pages |
 | `src/components/UserSettings/AISettings.js` | Voice/persona/model settings |
+| `docs/AI-AWARENESS-MAP.md` | Complete inventory of AI coverage |
+| `docs/VOICE-AI-REFERENCE.md` | Quick reference for Voice AI features |
 
-### Deprecated Files (Old Architecture)
-These files are no longer used but may still exist:
-- `src/contexts/VoiceCopilotContext.js` - Replaced by AIBrainContext
-- `src/hooks/useAgentContext.js` - Replaced by AppStateContext
-- `src/hooks/useShadeDetailTools.js` - Actions now in ShadeDetailPage
-- `src/hooks/useShadeManagerTools.js` - Actions now in ShadeManager
-- `src/hooks/useKnowledgeTools.js` - Now integrated in AIBrainContext
+### Deleted Files (Jan 2025 Cleanup)
+These orphaned hook files were DELETED:
+- ~~`src/hooks/useKnowledgeTools.js`~~ - DELETED (was calling stub registerTools)
+- ~~`src/hooks/useShadeDetailTools.js`~~ - DELETED (actions now in ShadeDetailPage)
+- ~~`src/hooks/useShadeManagerTools.js`~~ - DELETED (actions now in ShadeManager)
+
+---
+
+## January 2025 Comprehensive Implementation
+
+### Coverage Stats (Updated Jan 9, 2025)
+
+| Category | Count | Status |
+|----------|-------|--------|
+| Routes with AppState | 31 of 51 | **60.8%** ✅ |
+| Modals with AI awareness | 8 of 9 | **88.9%** ✅ |
+| Navigation targets | 35+ | Static + Dynamic |
+| Quick create types | 5 | todo, issue, ticket, contact, note |
+| Orphaned hook files | 0 | DELETED |
+
+### Routes WITH AppState Integration (31 routes)
+
+**Core Pages:**
+- TechnicianDashboard (`/`) - Technician home
+- PMDashboard (`/pm-dashboard`) - PM home
+- ProjectDetailView (`/project/:id`) - Project detail
+- PMProjectView (`/pm/project/:projectId`, `/pm-project/:projectId`) - PM project view
+- PrewireMode (`/prewire-mode`) - Wire drop workflow
+- WireDropsHub (`/wire-drops`) - Wire drops list
+- WireDropDetail (`/wire-drops/:id`) - Wire drop detail
+- TodosListPage (`/todos`) - Task list
+- IssuesListPage (`/issues`) - Issues list
+
+**Service Module:**
+- ServiceDashboard (`/service`) - Service home
+- ServiceTicketList (`/service/tickets`) - Ticket list
+- ServiceTicketDetail (`/service/tickets/:id`) - Ticket detail
+- NewTicketForm (`/service/tickets/new`) - Create ticket
+- WeeklyPlanning (`/service/weekly-planning`) - Schedule
+- ServiceReports (`/service/reports`) - Service reports
+
+**Shade Management:**
+- ShadeManager (`/projects/:projectId/shades`) - Shade list
+- ShadeDetailPage (`/projects/:projectId/shades/:shadeId`) - Shade detail
+
+**Project Sections:**
+- EquipmentListPage (`/projects/:projectId/equipment`)
+- PMProcurementPage (`/projects/:projectId/procurement`)
+- PartsReceivingPage (`/projects/:projectId/receiving`)
+- InventoryPage (`/projects/:projectId/inventory`)
+- FloorPlanViewer (`/projects/:projectId/floor-plan`)
+- ProjectReportsPage (`/projects/:projectId/reports`)
+- SecureDataPage (`/projects/:projectId/secure-data`)
+
+**People & Vendors:**
+- PeopleManagement (`/people`) - Contact management
+- ContactDetailPage (`/contacts/:contactId`) - Contact detail
+- VendorManagement (`/vendors`) - Vendor/supplier list
+
+**Parts & Admin:**
+- PartsListPage (`/parts`) - Parts catalog
+- GlobalPartsManager (`/global-parts`) - Master parts
+- SettingsPage (`/settings`) - User settings
+- AdminPage (`/admin`) - Admin panel
+
+### Modals WITH AI State Publishing (8 modals)
+
+| Modal | File | AI Actions |
+|-------|------|------------|
+| POGenerationModal | `src/components/procurement/POGenerationModal.js` | set_field, create_po, cancel |
+| PODetailsModal | `src/components/procurement/PODetailsModal.js` | toggle_edit_mode, set_field, add_tracking, save_changes |
+| SupplierEditModal | `src/components/procurement/SupplierEditModal.js` | set_field, save_supplier, toggle_active, toggle_preferred |
+| TodoDetailModal | `src/components/TodoDetailModal.js` | set_field, switch_tab, add_comment, add_stakeholder, save_todo, mark_complete |
+| ShadeMeasurementModal | `src/components/Shades/ShadeMeasurementModal.js` | switch_tab, set_field, highlight_field, save_measurements |
+| ServiceTimeEntryModal | `src/components/Service/ServiceTimeEntryModal.js` | set_field, save_entry, cancel |
+| PhotoViewerModal | `src/components/photos/PhotoViewerModal.jsx` | replace_photo, delete_photo, close |
+| PrintLabelModal | `src/components/PrintLabelModal.js` | print_one, print_two, mark_printed, close |
+
+### Routes WITHOUT AppState (Intentionally Excluded)
+
+These routes are excluded because they are auth flows, debug tools, or public portals:
+- `/login`, `/auth/callback` - Auth pages
+- `/public/*`, `/shade-portal/:token` - External portals
+- `/lucid-test`, `/unifi-test`, `/voice-test`, `/service/ai-test` - Debug tools
+- `/settings/knowledge` - Admin-only knowledge management
+
+---
+
+## TESTING CHECKLIST (Untested Code - Jan 2025)
+
+**⚠️ The following components received AppState integration but have NOT been tested:**
+
+### Routes to Test
+Test each route loads without errors and AI voice commands work:
+
+1. **PeopleManagement** (`/people`)
+   - File: `src/components/PeopleManagement.js`
+   - Test: Voice "go to people", list contacts, open contact
+
+2. **VendorManagement** (`/vendors`)
+   - File: `src/components/VendorManagement.js`
+   - Test: Voice "go to vendors", list vendors, search
+
+3. **WireDropsHub** (`/wire-drops`)
+   - File: `src/components/WireDropsHub.js`
+   - Test: Voice "go to wire drops", list drops, open drop
+
+4. **EquipmentListPage** (`/projects/:id/equipment`)
+   - File: `src/components/Equipment/EquipmentListPage.js`
+   - Test: Voice "go to equipment" (from project), list equipment
+
+5. **PMProcurementPage** (`/projects/:id/procurement`)
+   - File: `src/components/PMOrder/PMOrderEquipmentPage.js` (renamed internally)
+   - Test: Voice "go to procurement", view POs
+
+6. **PartsReceivingPage** (`/projects/:id/receiving`)
+   - File: `src/components/PMOrder/PartsReceivingPage.js`
+   - Test: Voice "go to receiving", list items
+
+7. **PartsListPage** (`/parts`)
+   - File: `src/components/Parts/PartsListPage.js`
+   - Test: Voice "go to parts", search parts
+
+8. **GlobalPartsManager** (`/global-parts`)
+   - File: `src/components/Parts/GlobalPartsManager.js`
+   - Test: Voice "go to global parts", search
+
+9. **SettingsPage** (`/settings`)
+   - File: `src/components/UserSettings/SettingsPage.js`
+   - Test: Voice "go to settings", navigate sections
+
+10. **AdminPage** (`/admin`)
+    - File: `src/components/Admin/AdminPage.js`
+    - Test: Voice "go to admin", view tabs
+
+11. **ContactDetailPage** (`/contacts/:id`)
+    - File: `src/components/Contacts/ContactDetailPage.js`
+    - Test: Open contact, voice commands
+
+12. **FloorPlanViewer** (`/projects/:id/floor-plan`)
+    - File: `src/components/FloorPlan/FloorPlanViewer.jsx`
+    - Test: Voice "go to floor plan"
+
+13. **ProjectReportsPage** (`/projects/:id/reports`)
+    - File: `src/components/Reports/ProjectReportsPage.js`
+    - Test: Voice "go to reports"
+
+14. **SecureDataPage** (`/projects/:id/secure-data`)
+    - File: `src/components/SecureData/SecureDataPage.js`
+    - Test: Voice "go to secure data"
+
+15. **InventoryPage** (`/projects/:id/inventory`)
+    - File: `src/components/Inventory/InventoryManager.js`
+    - Test: Voice "go to inventory"
+
+16. **ServiceReports** (`/service/reports`)
+    - File: `src/components/Service/ServiceReports.js`
+    - Test: Voice "go to service reports"
+
+### Modals to Test
+Test each modal opens and AI can interact:
+
+1. **POGenerationModal** - Open from procurement, test set_field
+2. **PODetailsModal** - Open existing PO, test edit mode
+3. **SupplierEditModal** - Open from vendors, test field setting
+4. **TodoDetailModal** - Open todo, test comments, tab switching
+5. **ShadeMeasurementModal** - Open from shade detail, test measurements
+6. **ServiceTimeEntryModal** - Open from ticket, test time entry
+7. **PhotoViewerModal** - Open photo, test actions
+8. **PrintLabelModal** - Open from wire drop, test print actions
+
+### Quick Create to Test
+Test voice commands create items correctly:
+
+1. "Create a todo to test the system" - Should create todo
+2. "Log an issue about testing" (in project) - Should create issue
+3. "Create a service ticket for testing" - Should create ticket
+4. "Add a contact named Test User" - Should create contact
+5. "Add a note about testing" - Should create note
+
+### Navigation to Test
+Test all 35+ voice navigation targets work:
+
+1. Static routes: "go to dashboard", "go to todos", "go to vendors", etc.
+2. Project sections: "go to shades", "go to equipment" (when in project)
+3. Project by name: "go to [project name]" - should find and navigate
+
+### Common Issues to Watch For
+
+| Issue | Symptom | Fix |
+|-------|---------|-----|
+| Missing import | Component crashes on load | Add `import { useAppState } from '../contexts/AppStateContext'` |
+| Stale closure | Action uses old state | Use refs or include deps in registerActions useEffect |
+| Missing cleanup | Memory leak warning | Ensure `unregisterActions(Object.keys(actions))` in cleanup |
+| Wrong path | Navigation fails | Check route matches App.js routing |
+| No project context | Project sections fail | Ensure project is loaded before navigating to sections |
 
 ## Environment Variables
 
