@@ -95,16 +95,13 @@ const ColorPicker = ({
               type="text"
               value={customColor}
               onChange={(e) => {
-                const val = e.target.value;
-                // Allow typing partial hex codes (with or without #)
-                if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
-                  // Store exactly what user typed for responsive feedback
-                  setCustomColor(val);
-                  // Normalize and trigger onChange when it's a complete valid hex
-                  const normalizedVal = val.startsWith('#') ? val : `#${val}`;
-                  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
-                    onChange?.(normalizedVal);
-                  }
+                const val = e.target.value.toUpperCase();
+                // Allow any typing, just store it
+                setCustomColor(val);
+                // Trigger onChange when it's a complete valid hex
+                const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+                if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                  onChange?.(normalizedVal);
                 }
               }}
               onBlur={(e) => {
@@ -120,6 +117,7 @@ const ColorPicker = ({
                 }
               }}
               placeholder="#RRGGBB"
+              maxLength={7}
               className="w-20 px-1 py-0.5 text-xs font-mono bg-transparent border border-transparent hover:border-zinc-500 dark:hover:border-zinc-500 hover:border-gray-300 focus:border-violet-500 dark:focus:border-violet-500 focus:bg-zinc-700 dark:focus:bg-zinc-700 focus:bg-gray-100 rounded text-zinc-500 dark:text-zinc-500 text-gray-500 focus:text-white dark:focus:text-white focus:text-gray-900 placeholder-zinc-500 focus:outline-none transition-all cursor-text"
               title="Click to edit hex color"
             />
@@ -165,7 +163,7 @@ const ColorPicker = ({
         <input
           ref={colorInputRef}
           type="color"
-          value={customColor}
+          value={/^#[0-9A-Fa-f]{6}$/.test(customColor) ? customColor : selectedColor}
           onChange={handleCustomColorChange}
           className="sr-only"
           aria-label="Choose custom color"
@@ -178,14 +176,13 @@ const ColorPicker = ({
             type="text"
             value={customColor}
             onChange={(e) => {
-              const val = e.target.value;
-              // Allow typing with or without # prefix
-              if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
-                setCustomColor(val);
-                const normalizedVal = val.startsWith('#') ? val : `#${val}`;
-                if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
-                  onChange?.(normalizedVal);
-                }
+              const val = e.target.value.toUpperCase();
+              // Allow any typing, just store it
+              setCustomColor(val);
+              // Trigger onChange when it's a complete valid hex
+              const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+              if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                onChange?.(normalizedVal);
               }
             }}
             onBlur={(e) => {
@@ -199,6 +196,7 @@ const ColorPicker = ({
               }
             }}
             placeholder="#RRGGBB"
+            maxLength={7}
             className="w-24 px-2 py-1 text-xs font-mono bg-zinc-700 dark:bg-zinc-700 bg-gray-100 border border-zinc-600 dark:border-zinc-600 border-gray-300 rounded text-white dark:text-white text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 placeholder-gray-400 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
           />
         </div>
