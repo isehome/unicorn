@@ -2790,6 +2790,239 @@ Test all 35+ voice navigation targets work:
 | Wrong path | Navigation fails | Check route matches App.js routing |
 | No project context | Project sections fail | Ensure project is loaded before navigating to sections |
 
+---
+
+## 🚨 DEVELOPER INSTRUCTIONS: AI Awareness Requirements
+
+**CRITICAL: Every new component must be AI-aware. Follow these steps for ALL new development.**
+
+### When Creating a NEW PAGE/ROUTE:
+
+#### Step 1: Add AppState Integration
+```javascript
+import { useAppState } from '../contexts/AppStateContext';
+
+const MyNewPage = () => {
+  const { publishState, registerActions, unregisterActions } = useAppState();
+
+  // 1. Publish state for AI awareness
+  useEffect(() => {
+    publishState({
+      view: 'my-new-page',           // Unique view identifier
+      // Include ALL relevant data the AI might need:
+      items: data?.map(item => ({ id: item.id, name: item.name })),
+      itemCount: data?.length || 0,
+      filters: { status: currentFilter },
+      selectedId: selectedItem?.id,
+      hint: 'Description of what this page does and what actions are available.'
+    });
+  }, [publishState, data, currentFilter, selectedItem]);
+
+  // 2. Register actions the AI can execute
+  useEffect(() => {
+    const actions = {
+      select_item: async ({ itemId, itemName }) => {
+        const item = itemName
+          ? data?.find(i => i.name.toLowerCase().includes(itemName.toLowerCase()))
+          : data?.find(i => i.id === itemId);
+        if (item) {
+          setSelectedItem(item);
+          return { success: true, message: `Selected ${item.name}` };
+        }
+        return { success: false, error: 'Item not found' };
+      },
+      create_item: async ({ name, description }) => {
+        // Create logic here
+        return { success: true, message: `Created ${name}` };
+      },
+      // Add more actions as needed
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [registerActions, unregisterActions, data]);
+
+  // ... rest of component
+};
+```
+
+#### Step 2: Add Navigation Target (if user should be able to navigate here by voice)
+
+Edit `src/contexts/AIBrainContext.js` and add to the `staticRoutes` object (~line 240):
+```javascript
+const staticRoutes = {
+  // ... existing routes ...
+  'my new page': '/my-new-page',
+  'my page alias': '/my-new-page',  // Add aliases for voice variations
+};
+```
+
+#### Step 3: Update Documentation
+
+1. **AI-AWARENESS-MAP.md** (`docs/AI-AWARENESS-MAP.md`):
+   - Add to "Routes WITH AppState Integration" table
+   - Update route count in Executive Summary
+
+2. **VOICE-AI-REFERENCE.md** (`docs/VOICE-AI-REFERENCE.md`):
+   - Update Quick Stats if needed
+
+3. **AGENT.md** (`public/AGENT.md`):
+   - Add to "Routes WITH AppState Integration" list (this file)
+
+---
+
+### When Creating a NEW MODAL:
+
+#### Step 1: Publish Modal State When Open
+```javascript
+import { useAppState } from '../contexts/AppStateContext';
+
+const MyNewModal = ({ isOpen, onClose, data }) => {
+  const { publishState, registerActions, unregisterActions } = useAppState();
+  const [formData, setFormData] = useState({});
+
+  // Publish modal state when open
+  useEffect(() => {
+    if (isOpen) {
+      publishState({
+        modal: {
+          type: 'my-new-modal',
+          title: 'My New Modal',
+          formFields: [
+            { name: 'fieldName', type: 'text', label: 'Field Label', required: true },
+            { name: 'selectField', type: 'select', options: ['opt1', 'opt2'] },
+          ],
+          currentValues: formData,
+          data: data,  // Include relevant context
+        }
+      });
+    } else {
+      // Clear modal state when closed
+      publishState({ modal: null });
+    }
+  }, [isOpen, formData, data, publishState]);
+
+  // Register modal-specific actions
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const actions = {
+      set_field: async ({ field, value }) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+        return { success: true, message: `Set ${field} to ${value}` };
+      },
+      save: async () => {
+        // Save logic
+        onClose();
+        return { success: true, message: 'Saved successfully' };
+      },
+      cancel: async () => {
+        onClose();
+        return { success: true, message: 'Cancelled' };
+      },
+    };
+
+    registerActions(actions);
+    return () => unregisterActions(Object.keys(actions));
+  }, [isOpen, formData, registerActions, unregisterActions, onClose]);
+
+  // ... rest of modal
+};
+```
+
+#### Step 2: Update Documentation
+- Add to "Modals WITH AI State Publishing" in AI-AWARENESS-MAP.md and AGENT.md
+
+---
+
+### When Adding a NEW QUICK CREATE TYPE:
+
+Edit `src/contexts/AIBrainContext.js`:
+
+1. Add to the `quick_create` tool enum (~line 208):
+```javascript
+{ name: 'quick_create', ..., parameters: {
+  properties: {
+    type: { type: 'string', enum: ['todo', 'issue', 'ticket', 'contact', 'note', 'YOUR_NEW_TYPE'] }
+    // ...
+  }
+}}
+```
+
+2. Add handler in `handleQuickCreate` function (~line 365):
+```javascript
+case 'your_new_type': {
+  const { data, error } = await supabase.from('your_table').insert({
+    // fields
+  }).select().single();
+  if (error) throw error;
+  return { success: true, message: `Created: ${title}`, id: data?.id };
+}
+```
+
+---
+
+### When Adding a NEW PROJECT SECTION:
+
+Edit `src/contexts/AIBrainContext.js`:
+
+Add to `projectSections` object (~line 314):
+```javascript
+const projectSections = {
+  // ... existing sections ...
+  'my section': (id) => `/projects/${id}/my-section`,
+  'my section alias': (id) => `/projects/${id}/my-section`,
+};
+```
+
+---
+
+### Action Return Format (REQUIRED)
+
+ALL actions MUST return this format:
+```javascript
+// Success
+return { success: true, message: 'What happened' };
+
+// Success with data
+return { success: true, message: 'Found items', items: [...], count: 5 };
+
+// Failure
+return { success: false, error: 'Why it failed' };
+
+// Failure with hints
+return { success: false, error: 'Not found', suggestions: ['try this', 'or this'] };
+```
+
+---
+
+### Checklist Files Location
+
+| Document | Location | Purpose |
+|----------|----------|---------|
+| **Testing Checklist** | This file (`public/AGENT.md`) | Testing reference for untested code |
+| **AI Awareness Map** | `docs/AI-AWARENESS-MAP.md` | Complete inventory of all AI-aware components |
+| **Voice AI Reference** | `docs/VOICE-AI-REFERENCE.md` | Working state restore point |
+| **AI Brain Context** | `src/contexts/AIBrainContext.js` | Core Voice AI implementation |
+| **App State Context** | `src/contexts/AppStateContext.js` | SSOT for AI state |
+
+---
+
+### Pre-Commit Checklist for AI Features
+
+Before committing any new component:
+
+- [ ] Added `useAppState` import
+- [ ] Added `publishState` useEffect with view identifier and hint
+- [ ] Added `registerActions` useEffect with cleanup
+- [ ] All actions return `{ success: true/false, ... }` format
+- [ ] Added navigation target if needed (AIBrainContext.js)
+- [ ] Updated AI-AWARENESS-MAP.md with new route/modal
+- [ ] Updated VOICE-AI-REFERENCE.md stats if needed
+- [ ] Tested voice commands: "go to [page]", action names
+
+---
+
 ## Environment Variables
 
 ```bash
