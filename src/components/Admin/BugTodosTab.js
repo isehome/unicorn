@@ -425,9 +425,9 @@ const BugTodosTab = () => {
   };
 
   /**
-   * Open bug report in native app (downloads and opens with system default app)
+   * Open bug report in native app (uses Web Share API to trigger "Open in..." on mobile)
    */
-  const openBugReportInApp = (bug) => {
+  const openBugReportInApp = async (bug) => {
     // Build GitHub raw URL for the screenshot
     let screenshotUrl = null;
     if (bug.bug_report_id && bug.branch_name) {
@@ -440,23 +440,36 @@ const BugTodosTab = () => {
     const slug = bug.ai_filename_slug || (bug.ai_summary || '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 40);
     const filename = slug ? `${bug.bug_report_id}-${slug}.md` : `${bug.bug_report_id || 'bug-report'}.md`;
 
-    // Create blob with data URL that triggers native app
+    // Create file for sharing
     const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
+    const file = new File([blob], filename, { type: 'text/markdown' });
 
-    // Create and click a hidden link - using download attribute causes download
-    // To open in native app, we need to use window.open or create link without download attr
-    // On macOS, .md files will open in default markdown editor
+    // Check if Web Share API with files is supported (iOS Safari, modern Android)
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: `Bug Report: ${bug.bug_report_id || 'Bug'}`,
+          text: bug.ai_summary || 'Bug report from Unicorn'
+        });
+        return; // Successfully shared
+      } catch (err) {
+        // User cancelled or share failed - fall through to download
+        if (err.name === 'AbortError') {
+          return; // User cancelled, don't do anything
+        }
+        console.log('Share failed, falling back to download:', err);
+      }
+    }
+
+    // Fallback: Download the file (for desktop browsers or if share not supported)
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
-    // Add target to help some browsers open in new context
-    link.target = '_blank';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
-    // Clean up the URL after a delay
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
