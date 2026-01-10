@@ -462,15 +462,16 @@ const BugTodosTab = () => {
       }
     }
 
-    // Fallback: Download the file (for desktop browsers or if share not supported)
+    // Desktop fallback: Open markdown in a new browser tab for viewing
+    // Create a data URL that opens as viewable content
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    // Open in new tab - browser will display the markdown as plain text
+    // This allows copying to clipboard or saving from the browser
+    window.open(url, '_blank');
+
+    // Clean up after a delay (keep it longer since user is viewing)
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   /**
