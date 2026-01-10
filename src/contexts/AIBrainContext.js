@@ -56,6 +56,9 @@ export const AIBrainProvider = ({ children }) => {
     // Web Speech API for transcription (runs in parallel with Gemini audio)
     const speechRecognition = useRef(null);
 
+    // Screen Wake Lock to prevent phone from sleeping during conversation
+    const wakeLock = useRef(null);
+
     // Debug counters
     const [audioChunksSent, setAudioChunksSent] = useState(0);
     const [audioChunksReceived, setAudioChunksReceived] = useState(0);
@@ -78,6 +81,25 @@ export const AIBrainProvider = ({ children }) => {
         const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
         setIsConfigured(!!apiKey && apiKey.length > 10);
     }, []);
+
+    // Re-acquire wake lock when app becomes visible again during active session
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && status !== 'idle' && 'wakeLock' in navigator) {
+                // Session is active and we're visible - re-acquire wake lock
+                if (!wakeLock.current) {
+                    try {
+                        wakeLock.current = await navigator.wakeLock.request('screen');
+                        console.log('[AIBrain] Wake Lock re-acquired after visibility change');
+                    } catch (err) {
+                        console.warn('[AIBrain] Failed to re-acquire wake lock:', err.message);
+                    }
+                }
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [status]);
 
     const getSettings = useCallback(() => ({
         voice: localStorage.getItem('ai_voice') || 'Puck',
@@ -1124,6 +1146,21 @@ ${buildContextString(state)}`;
             audioTrack.onmute = () => addDebugLog('Microphone track muted by system', 'warn');
             audioTrack.onunmute = () => addDebugLog('Microphone track unmuted', 'info');
 
+            // Acquire Screen Wake Lock to prevent phone from sleeping during conversation
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock.current = await navigator.wakeLock.request('screen');
+                    addDebugLog('Screen Wake Lock acquired - phone will stay awake');
+                    wakeLock.current.addEventListener('release', () => {
+                        addDebugLog('Screen Wake Lock released', 'info');
+                    });
+                } catch (err) {
+                    addDebugLog(`Wake Lock failed: ${err.message}`, 'warn');
+                }
+            } else {
+                addDebugLog('Wake Lock API not supported on this device', 'warn');
+            }
+
             // Connect WebSocket
             addDebugLog('Connecting to Gemini Live API...');
             const socket = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`);
@@ -1238,6 +1275,12 @@ ${buildContextString(state)}`;
         // Clear audio playback state
         audioQueue.current = [];
         isPlaying.current = false;
+
+        // Release Screen Wake Lock
+        if (wakeLock.current) {
+            wakeLock.current.release().catch(() => {});
+            wakeLock.current = null;
+        }
 
         setStatus('idle');
         setError(null);
