@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bot, Play, Eye, EyeOff, CheckCircle, AlertCircle,
-  Loader2, RefreshCw, Database, Sparkles
+  Loader2, RefreshCw, Sparkles
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTrainingMode } from '../../contexts/TrainingModeContext';
@@ -26,7 +26,6 @@ const AITrainingTab = () => {
     pages: []
   });
   const [loading, setLoading] = useState(true);
-  const [initializing, setInitializing] = useState(false);
   const [error, setError] = useState(null);
 
   // Styles
@@ -36,12 +35,15 @@ const AITrainingTab = () => {
   const borderColor = mode === 'dark' ? 'border-zinc-700' : 'border-gray-200';
 
   /**
-   * Load training status from database
+   * Load training status from database (auto-initializes missing pages)
    */
   const loadTrainingStatus = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // Auto-initialize all pages from registry first (idempotent - skips existing)
+      await pageContextService.initializeFromRegistry(PAGE_REGISTRY);
+
       const status = await pageContextService.getTrainingStatus();
       const allRoutes = getAllRoutes();
 
@@ -79,22 +81,6 @@ const AITrainingTab = () => {
   useEffect(() => {
     loadTrainingStatus();
   }, [loadTrainingStatus]);
-
-  /**
-   * Initialize all pages from registry
-   */
-  const handleInitializePages = async () => {
-    setInitializing(true);
-    try {
-      await pageContextService.initializeFromRegistry(PAGE_REGISTRY);
-      await loadTrainingStatus();
-    } catch (err) {
-      console.error('Error initializing pages:', err);
-      setError(err.message);
-    } finally {
-      setInitializing(false);
-    }
-  };
 
   /**
    * Handle publish/unpublish
@@ -146,18 +132,6 @@ const AITrainingTab = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleInitializePages}
-            disabled={initializing}
-            className={`flex items-center gap-2 px-4 py-2 border ${borderColor} rounded-lg ${textSecondary} hover:bg-zinc-700/30`}
-          >
-            {initializing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Database className="w-4 h-4" />
-            )}
-            Initialize Pages
-          </button>
           <button
             onClick={() => {
               enterTrainingMode();
