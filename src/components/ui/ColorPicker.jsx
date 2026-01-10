@@ -93,24 +93,29 @@ const ColorPicker = ({
             <div className="text-zinc-300 dark:text-zinc-300 text-gray-700 font-medium">{userName}</div>
             <input
               type="text"
-              value={selectedColor}
+              value={customColor}
               onChange={(e) => {
                 const val = e.target.value;
-                // Allow typing partial hex codes
+                // Allow typing partial hex codes (with or without #)
                 if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
-                  // Ensure it starts with #
+                  // Store exactly what user typed for responsive feedback
+                  setCustomColor(val);
+                  // Normalize and trigger onChange when it's a complete valid hex
                   const normalizedVal = val.startsWith('#') ? val : `#${val}`;
-                  setCustomColor(normalizedVal);
-                  // Only trigger onChange when it's a complete valid hex
                   if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
                     onChange?.(normalizedVal);
                   }
                 }
               }}
               onBlur={(e) => {
-                // On blur, if it's not a valid complete hex, reset to current selected
+                // On blur, normalize the value
                 const val = e.target.value;
-                if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+                if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                  setCustomColor(normalizedVal);
+                  onChange?.(normalizedVal);
+                } else {
+                  // Reset to current selected if invalid
                   setCustomColor(selectedColor);
                 }
               }}
@@ -171,13 +176,13 @@ const ColorPicker = ({
           <span className="text-xs text-zinc-500 dark:text-zinc-500 text-gray-500">or enter hex:</span>
           <input
             type="text"
-            value={selectedColor}
+            value={customColor}
             onChange={(e) => {
               const val = e.target.value;
               // Allow typing with or without # prefix
               if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
+                setCustomColor(val);
                 const normalizedVal = val.startsWith('#') ? val : `#${val}`;
-                setCustomColor(normalizedVal);
                 if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
                   onChange?.(normalizedVal);
                 }
@@ -185,7 +190,11 @@ const ColorPicker = ({
             }}
             onBlur={(e) => {
               const val = e.target.value;
-              if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+              const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+              if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                setCustomColor(normalizedVal);
+                onChange?.(normalizedVal);
+              } else {
                 setCustomColor(selectedColor);
               }
             }}
