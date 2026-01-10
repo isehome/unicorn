@@ -4,7 +4,7 @@
  * Used for avatar color selection in user settings
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Check, Palette } from 'lucide-react';
 
 // Preset avatar colors - vibrant, distinguishable colors
@@ -45,7 +45,6 @@ const ColorPicker = ({
   label = 'Avatar Color',
   className = ''
 }) => {
-  const [showCustomInput, setShowCustomInput] = useState(false);
   const [customColor, setCustomColor] = useState(value || '#8B5CF6');
   const colorInputRef = useRef(null);
 
@@ -55,7 +54,7 @@ const ColorPicker = ({
   // Handle preset color selection
   const handlePresetClick = (hex) => {
     onChange?.(hex);
-    setShowCustomInput(false);
+    setCustomColor(hex);
   };
 
   // Handle custom color change
@@ -91,8 +90,34 @@ const ColorPicker = ({
             {initials}
           </div>
           <div className="text-sm">
-            <div className="text-zinc-300 font-medium">{userName}</div>
-            <div className="text-zinc-500 font-mono text-xs">{selectedColor}</div>
+            <div className="text-zinc-300 dark:text-zinc-300 text-gray-700 font-medium">{userName}</div>
+            <input
+              type="text"
+              value={selectedColor}
+              onChange={(e) => {
+                const val = e.target.value;
+                // Allow typing partial hex codes
+                if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
+                  // Ensure it starts with #
+                  const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+                  setCustomColor(normalizedVal);
+                  // Only trigger onChange when it's a complete valid hex
+                  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                    onChange?.(normalizedVal);
+                  }
+                }
+              }}
+              onBlur={(e) => {
+                // On blur, if it's not a valid complete hex, reset to current selected
+                const val = e.target.value;
+                if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                  setCustomColor(selectedColor);
+                }
+              }}
+              placeholder="#RRGGBB"
+              className="w-20 px-1 py-0.5 text-xs font-mono bg-transparent border border-transparent hover:border-zinc-500 dark:hover:border-zinc-500 hover:border-gray-300 focus:border-violet-500 dark:focus:border-violet-500 focus:bg-zinc-700 dark:focus:bg-zinc-700 focus:bg-gray-100 rounded text-zinc-500 dark:text-zinc-500 text-gray-500 focus:text-white dark:focus:text-white focus:text-gray-900 placeholder-zinc-500 focus:outline-none transition-all cursor-text"
+              title="Click to edit hex color"
+            />
           </div>
         </div>
       )}
@@ -122,10 +147,10 @@ const ColorPicker = ({
         <button
           type="button"
           onClick={handleOpenColorPicker}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white bg-zinc-700/50 hover:bg-zinc-700 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 dark:text-zinc-400 text-gray-600 hover:text-white dark:hover:text-white hover:text-gray-900 bg-zinc-700/50 dark:bg-zinc-700/50 bg-gray-200 hover:bg-zinc-700 dark:hover:bg-zinc-700 hover:bg-gray-300 rounded-lg transition-colors"
         >
           <div
-            className="w-4 h-4 rounded border border-zinc-500"
+            className="w-4 h-4 rounded border border-zinc-500 dark:border-zinc-500 border-gray-400"
             style={{ backgroundColor: customColor }}
           />
           Custom Color
@@ -141,22 +166,33 @@ const ColorPicker = ({
           aria-label="Choose custom color"
         />
 
-        {/* Manual hex input */}
-        <input
-          type="text"
-          value={selectedColor}
-          onChange={(e) => {
-            const val = e.target.value;
-            if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
-              setCustomColor(val);
-              if (val.length === 7) {
-                onChange?.(val);
+        {/* Manual hex input - labeled for clarity */}
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-zinc-500 dark:text-zinc-500 text-gray-500">or enter hex:</span>
+          <input
+            type="text"
+            value={selectedColor}
+            onChange={(e) => {
+              const val = e.target.value;
+              // Allow typing with or without # prefix
+              if (/^#?[0-9A-Fa-f]{0,6}$/.test(val)) {
+                const normalizedVal = val.startsWith('#') ? val : `#${val}`;
+                setCustomColor(normalizedVal);
+                if (/^#[0-9A-Fa-f]{6}$/.test(normalizedVal)) {
+                  onChange?.(normalizedVal);
+                }
               }
-            }
-          }}
-          placeholder="#RRGGBB"
-          className="w-24 px-2 py-1 text-xs font-mono bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
-        />
+            }}
+            onBlur={(e) => {
+              const val = e.target.value;
+              if (!/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                setCustomColor(selectedColor);
+              }
+            }}
+            placeholder="#RRGGBB"
+            className="w-24 px-2 py-1 text-xs font-mono bg-zinc-700 dark:bg-zinc-700 bg-gray-100 border border-zinc-600 dark:border-zinc-600 border-gray-300 rounded text-white dark:text-white text-gray-900 placeholder-zinc-500 dark:placeholder-zinc-500 placeholder-gray-400 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500"
+          />
+        </div>
       </div>
     </div>
   );
