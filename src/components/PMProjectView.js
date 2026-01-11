@@ -1704,13 +1704,12 @@ const PMProjectViewEnhanced = () => {
         projectNumber: project.project_number
       },
       editMode: editMode,
-      expandedSections: expandedSections,
+      sectionsCollapsed: sectionsCollapsed,
       milestonePercentages: milestonePercentages,
       totalTimeHours: timeData?.totalHours || 0,
-      wireDropCount: wireDropCounts?.total || 0,
       hint: 'PM project management view. Full project editing, milestones, equipment, procurement, stakeholders.'
     });
-  }, [publishState, project, editMode, expandedSections, milestonePercentages, timeData, wireDropCounts]);
+  }, [publishState, project, editMode, sectionsCollapsed, milestonePercentages, timeData]);
 
   // Register actions for AI
   useEffect(() => {
@@ -1720,11 +1719,11 @@ const PMProjectViewEnhanced = () => {
         return { success: true, message: editMode ? 'Exiting edit mode' : 'Entering edit mode' };
       },
       expand_section: async ({ section }) => {
-        setExpandedSections(prev => ({ ...prev, [section]: true }));
+        setSectionsCollapsed(prev => ({ ...prev, [section]: false }));
         return { success: true, message: `Expanded ${section}` };
       },
       collapse_section: async ({ section }) => {
-        setExpandedSections(prev => ({ ...prev, [section]: false }));
+        setSectionsCollapsed(prev => ({ ...prev, [section]: true }));
         return { success: true, message: `Collapsed ${section}` };
       },
       go_to_shades: async () => {
