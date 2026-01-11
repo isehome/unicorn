@@ -2333,69 +2333,15 @@ const {
 ### 2. AIBrainContext (`src/contexts/AIBrainContext.js`)
 The Voice AI agent with 5 meta-tools.
 
-**6 Meta-Tools (Updated Jan 2025):**
+**5 Meta-Tools:**
 
 | Tool | Description |
 |------|-------------|
 | `get_context` | **CALL FIRST** - Returns current view, project, shade, form data, available actions |
 | `execute_action` | Execute registered action: `highlight_field`, `set_measurement`, `open_shade`, etc. |
 | `search_knowledge` | Search Azure AI knowledge base for Lutron, Ubiquiti, Control4 docs |
-| `navigate` | Go to 35+ destinations including project sections (see Navigation Targets below) |
-| `quick_create` | Create todos, issues, tickets, contacts, notes by voice |
+| `navigate` | Go to dashboard, prewire, settings, or project by name |
 | `web_search` | Search web for general info not in knowledge base |
-
-### Navigation Targets (35+ Destinations)
-
-**Static Routes:**
-| Voice Command | Route |
-|---------------|-------|
-| "dashboard", "pm dashboard" | `/pm-dashboard` |
-| "home", "tech dashboard" | `/` |
-| "prewire", "prewire mode", "wire drops hub" | `/prewire-mode`, `/wire-drops` |
-| "service", "service dashboard" | `/service` |
-| "tickets", "service tickets" | `/service/tickets` |
-| "new ticket", "create ticket" | `/service/tickets/new` |
-| "weekly planning", "schedule" | `/service/weekly-planning` |
-| "service reports" | `/service/reports` |
-| "todos", "my todos", "task list" | `/todos` |
-| "issues", "all issues", "issue list" | `/issues` |
-| "people", "contacts", "contact list" | `/people` |
-| "vendors", "supplier list" | `/vendors` |
-| "parts", "parts list", "parts catalog" | `/parts` |
-| "global parts", "master parts" | `/global-parts` |
-| "settings", "preferences" | `/settings` |
-| "admin", "administration" | `/admin` |
-| "knowledge", "knowledge base" | `/settings/knowledge` |
-
-**Project Sections** (when in project context or by name):
-| Voice Command | Route |
-|---------------|-------|
-| "shades", "windows", "shade manager" | `/projects/:id/shades` |
-| "equipment", "equipment list" | `/projects/:id/equipment` |
-| "procurement", "purchase orders", "pos" | `/projects/:id/procurement` |
-| "receiving", "parts receiving" | `/projects/:id/receiving` |
-| "inventory", "project inventory" | `/projects/:id/inventory` |
-| "floor plan", "floorplan" | `/projects/:id/floor-plan` |
-| "reports", "project reports" | `/projects/:id/reports` |
-| "secure data", "credentials" | `/projects/:id/secure-data` |
-
-### Quick Create Types
-
-| Type | Voice Example | Required |
-|------|--------------|----------|
-| `todo` | "Create a todo to call the electrician" | title |
-| `issue` | "Log an issue about the missing bracket" | title, project context |
-| `ticket` | "Create a service ticket for network troubleshooting" | title |
-| `contact` | "Add a contact named John Smith" | name |
-| `note` | "Add a note about the customer's preference" | title/content |
-
-### Teaching Mode Tools (Training Integration)
-
-| Tool | Description |
-|------|-------------|
-| `get_page_training` | Retrieves trained context for current page from `brain_page_training` table |
-| `teach_page` | Provides overview, walkthrough, or tips for current page |
-| `answer_page_question` | Answers questions using trained FAQ and page context |
 
 **Key States:**
 - `idle` - No active session
@@ -2584,444 +2530,21 @@ The VoiceCopilotOverlay includes a debug panel (tap bug icon) showing:
 
 | File | Purpose |
 |------|---------|
-| `src/contexts/AIBrainContext.js` | Voice AI agent with 6 meta-tools + 35+ navigation targets |
-| `src/contexts/AppStateContext.js` | Single Source of Truth for AI state |
-| `src/contexts/TrainingModeContext.js` | Training mode state for page-specific AI training |
+| `src/contexts/AIBrainContext.js` | **NEW** Voice AI agent with 5 meta-tools |
+| `src/contexts/AppStateContext.js` | **NEW** Single Source of Truth for AI state |
 | `src/components/VoiceCopilotOverlay.js` | Floating mic button + debug panel |
-| `src/components/Admin/TrainingModePanel.js` | Admin UI for training AI on pages |
+| `src/components/Shades/ShadeDetailPage.js` | Shade measuring with AppState integration |
+| `src/components/Shades/ShadeManager.js` | Shade list with AppState integration |
+| `src/components/PMDashboard.js` | Dashboard with AppState integration |
 | `src/components/UserSettings/AISettings.js` | Voice/persona/model settings |
-| `docs/AI-AWARENESS-MAP.md` | Complete inventory of AI coverage |
-| `docs/VOICE-AI-REFERENCE.md` | Quick reference for Voice AI features |
 
-### Deleted Files (Jan 2025 Cleanup)
-These orphaned hook files were DELETED:
-- ~~`src/hooks/useKnowledgeTools.js`~~ - DELETED (was calling stub registerTools)
-- ~~`src/hooks/useShadeDetailTools.js`~~ - DELETED (actions now in ShadeDetailPage)
-- ~~`src/hooks/useShadeManagerTools.js`~~ - DELETED (actions now in ShadeManager)
-
----
-
-## January 2025 Comprehensive Implementation
-
-### Coverage Stats (Updated Jan 9, 2025)
-
-| Category | Count | Status |
-|----------|-------|--------|
-| Routes with AppState | 31 of 51 | **60.8%** ✅ |
-| Modals with AI awareness | 8 of 9 | **88.9%** ✅ |
-| Navigation targets | 35+ | Static + Dynamic |
-| Quick create types | 5 | todo, issue, ticket, contact, note |
-| Orphaned hook files | 0 | DELETED |
-
-### Routes WITH AppState Integration (31 routes)
-
-**Core Pages:**
-- TechnicianDashboard (`/`) - Technician home
-- PMDashboard (`/pm-dashboard`) - PM home
-- ProjectDetailView (`/project/:id`) - Project detail
-- PMProjectView (`/pm/project/:projectId`, `/pm-project/:projectId`) - PM project view
-- PrewireMode (`/prewire-mode`) - Wire drop workflow
-- WireDropsHub (`/wire-drops`) - Wire drops list
-- WireDropDetail (`/wire-drops/:id`) - Wire drop detail
-- TodosListPage (`/todos`) - Task list
-- IssuesListPage (`/issues`) - Issues list
-
-**Service Module:**
-- ServiceDashboard (`/service`) - Service home
-- ServiceTicketList (`/service/tickets`) - Ticket list
-- ServiceTicketDetail (`/service/tickets/:id`) - Ticket detail
-- NewTicketForm (`/service/tickets/new`) - Create ticket
-- WeeklyPlanning (`/service/weekly-planning`) - Schedule
-- ServiceReports (`/service/reports`) - Service reports
-
-**Shade Management:**
-- ShadeManager (`/projects/:projectId/shades`) - Shade list
-- ShadeDetailPage (`/projects/:projectId/shades/:shadeId`) - Shade detail
-
-**Project Sections:**
-- EquipmentListPage (`/projects/:projectId/equipment`)
-- PMProcurementPage (`/projects/:projectId/procurement`)
-- PartsReceivingPage (`/projects/:projectId/receiving`)
-- InventoryPage (`/projects/:projectId/inventory`)
-- FloorPlanViewer (`/projects/:projectId/floor-plan`)
-- ProjectReportsPage (`/projects/:projectId/reports`)
-- SecureDataPage (`/projects/:projectId/secure-data`)
-
-**People & Vendors:**
-- PeopleManagement (`/people`) - Contact management
-- ContactDetailPage (`/contacts/:contactId`) - Contact detail
-- VendorManagement (`/vendors`) - Vendor/supplier list
-
-**Parts & Admin:**
-- PartsListPage (`/parts`) - Parts catalog
-- GlobalPartsManager (`/global-parts`) - Master parts
-- SettingsPage (`/settings`) - User settings
-- AdminPage (`/admin`) - Admin panel
-
-### Modals WITH AI State Publishing (8 modals)
-
-| Modal | File | AI Actions |
-|-------|------|------------|
-| POGenerationModal | `src/components/procurement/POGenerationModal.js` | set_field, create_po, cancel |
-| PODetailsModal | `src/components/procurement/PODetailsModal.js` | toggle_edit_mode, set_field, add_tracking, save_changes |
-| SupplierEditModal | `src/components/procurement/SupplierEditModal.js` | set_field, save_supplier, toggle_active, toggle_preferred |
-| TodoDetailModal | `src/components/TodoDetailModal.js` | set_field, switch_tab, add_comment, add_stakeholder, save_todo, mark_complete |
-| ShadeMeasurementModal | `src/components/Shades/ShadeMeasurementModal.js` | switch_tab, set_field, highlight_field, save_measurements |
-| ServiceTimeEntryModal | `src/components/Service/ServiceTimeEntryModal.js` | set_field, save_entry, cancel |
-| PhotoViewerModal | `src/components/photos/PhotoViewerModal.jsx` | replace_photo, delete_photo, close |
-| PrintLabelModal | `src/components/PrintLabelModal.js` | print_one, print_two, mark_printed, close |
-
-### Routes WITHOUT AppState (Intentionally Excluded)
-
-These routes are excluded because they are auth flows, debug tools, or public portals:
-- `/login`, `/auth/callback` - Auth pages
-- `/public/*`, `/shade-portal/:token` - External portals
-- `/lucid-test`, `/unifi-test`, `/voice-test`, `/service/ai-test` - Debug tools
-- `/settings/knowledge` - Admin-only knowledge management
-
----
-
-## TESTING CHECKLIST (Untested Code - Jan 2025)
-
-**⚠️ The following components received AppState integration but have NOT been tested:**
-
-### Routes to Test
-Test each route loads without errors and AI voice commands work:
-
-1. **PeopleManagement** (`/people`)
-   - File: `src/components/PeopleManagement.js`
-   - Test: Voice "go to people", list contacts, open contact
-
-2. **VendorManagement** (`/vendors`)
-   - File: `src/components/VendorManagement.js`
-   - Test: Voice "go to vendors", list vendors, search
-
-3. **WireDropsHub** (`/wire-drops`)
-   - File: `src/components/WireDropsHub.js`
-   - Test: Voice "go to wire drops", list drops, open drop
-
-4. **EquipmentListPage** (`/projects/:id/equipment`)
-   - File: `src/components/Equipment/EquipmentListPage.js`
-   - Test: Voice "go to equipment" (from project), list equipment
-
-5. **PMProcurementPage** (`/projects/:id/procurement`)
-   - File: `src/components/PMOrder/PMOrderEquipmentPage.js` (renamed internally)
-   - Test: Voice "go to procurement", view POs
-
-6. **PartsReceivingPage** (`/projects/:id/receiving`)
-   - File: `src/components/PMOrder/PartsReceivingPage.js`
-   - Test: Voice "go to receiving", list items
-
-7. **PartsListPage** (`/parts`)
-   - File: `src/components/Parts/PartsListPage.js`
-   - Test: Voice "go to parts", search parts
-
-8. **GlobalPartsManager** (`/global-parts`)
-   - File: `src/components/Parts/GlobalPartsManager.js`
-   - Test: Voice "go to global parts", search
-
-9. **SettingsPage** (`/settings`)
-   - File: `src/components/UserSettings/SettingsPage.js`
-   - Test: Voice "go to settings", navigate sections
-
-10. **AdminPage** (`/admin`)
-    - File: `src/components/Admin/AdminPage.js`
-    - Test: Voice "go to admin", view tabs
-
-11. **ContactDetailPage** (`/contacts/:id`)
-    - File: `src/components/Contacts/ContactDetailPage.js`
-    - Test: Open contact, voice commands
-
-12. **FloorPlanViewer** (`/projects/:id/floor-plan`)
-    - File: `src/components/FloorPlan/FloorPlanViewer.jsx`
-    - Test: Voice "go to floor plan"
-
-13. **ProjectReportsPage** (`/projects/:id/reports`)
-    - File: `src/components/Reports/ProjectReportsPage.js`
-    - Test: Voice "go to reports"
-
-14. **SecureDataPage** (`/projects/:id/secure-data`)
-    - File: `src/components/SecureData/SecureDataPage.js`
-    - Test: Voice "go to secure data"
-
-15. **InventoryPage** (`/projects/:id/inventory`)
-    - File: `src/components/Inventory/InventoryManager.js`
-    - Test: Voice "go to inventory"
-
-16. **ServiceReports** (`/service/reports`)
-    - File: `src/components/Service/ServiceReports.js`
-    - Test: Voice "go to service reports"
-
-### Modals to Test
-Test each modal opens and AI can interact:
-
-1. **POGenerationModal** - Open from procurement, test set_field
-2. **PODetailsModal** - Open existing PO, test edit mode
-3. **SupplierEditModal** - Open from vendors, test field setting
-4. **TodoDetailModal** - Open todo, test comments, tab switching
-5. **ShadeMeasurementModal** - Open from shade detail, test measurements
-6. **ServiceTimeEntryModal** - Open from ticket, test time entry
-7. **PhotoViewerModal** - Open photo, test actions
-8. **PrintLabelModal** - Open from wire drop, test print actions
-
-### Quick Create to Test
-Test voice commands create items correctly:
-
-1. "Create a todo to test the system" - Should create todo
-2. "Log an issue about testing" (in project) - Should create issue
-3. "Create a service ticket for testing" - Should create ticket
-4. "Add a contact named Test User" - Should create contact
-5. "Add a note about testing" - Should create note
-
-### Navigation to Test
-Test all 35+ voice navigation targets work:
-
-1. Static routes: "go to dashboard", "go to todos", "go to vendors", etc.
-2. Project sections: "go to shades", "go to equipment" (when in project)
-3. Project by name: "go to [project name]" - should find and navigate
-
-### Common Issues to Watch For
-
-| Issue | Symptom | Fix |
-|-------|---------|-----|
-| Missing import | Component crashes on load | Add `import { useAppState } from '../contexts/AppStateContext'` |
-| Stale closure | Action uses old state | Use refs or include deps in registerActions useEffect |
-| Missing cleanup | Memory leak warning | Ensure `unregisterActions(Object.keys(actions))` in cleanup |
-| Wrong path | Navigation fails | Check route matches App.js routing |
-| No project context | Project sections fail | Ensure project is loaded before navigating to sections |
-
----
-
-## 🚨 DEVELOPER INSTRUCTIONS: AI Awareness Requirements
-
-**CRITICAL: Every new component must be AI-aware. Follow these steps for ALL new development.**
-
-### When Creating a NEW PAGE/ROUTE:
-
-#### Step 1: Add AppState Integration
-```javascript
-import { useAppState } from '../contexts/AppStateContext';
-
-const MyNewPage = () => {
-  const { publishState, registerActions, unregisterActions } = useAppState();
-
-  // 1. Publish state for AI awareness
-  useEffect(() => {
-    publishState({
-      view: 'my-new-page',           // Unique view identifier
-      // Include ALL relevant data the AI might need:
-      items: data?.map(item => ({ id: item.id, name: item.name })),
-      itemCount: data?.length || 0,
-      filters: { status: currentFilter },
-      selectedId: selectedItem?.id,
-      hint: 'Description of what this page does and what actions are available.'
-    });
-  }, [publishState, data, currentFilter, selectedItem]);
-
-  // 2. Register actions the AI can execute
-  useEffect(() => {
-    const actions = {
-      select_item: async ({ itemId, itemName }) => {
-        const item = itemName
-          ? data?.find(i => i.name.toLowerCase().includes(itemName.toLowerCase()))
-          : data?.find(i => i.id === itemId);
-        if (item) {
-          setSelectedItem(item);
-          return { success: true, message: `Selected ${item.name}` };
-        }
-        return { success: false, error: 'Item not found' };
-      },
-      create_item: async ({ name, description }) => {
-        // Create logic here
-        return { success: true, message: `Created ${name}` };
-      },
-      // Add more actions as needed
-    };
-
-    registerActions(actions);
-    return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, data]);
-
-  // ... rest of component
-};
-```
-
-#### Step 2: Add Navigation Target (if user should be able to navigate here by voice)
-
-Edit `src/contexts/AIBrainContext.js` and add to the `staticRoutes` object (~line 240):
-```javascript
-const staticRoutes = {
-  // ... existing routes ...
-  'my new page': '/my-new-page',
-  'my page alias': '/my-new-page',  // Add aliases for voice variations
-};
-```
-
-#### Step 3: Update Documentation
-
-1. **AI-AWARENESS-MAP.md** (`docs/AI-AWARENESS-MAP.md`):
-   - Add to "Routes WITH AppState Integration" table
-   - Update route count in Executive Summary
-
-2. **VOICE-AI-REFERENCE.md** (`docs/VOICE-AI-REFERENCE.md`):
-   - Update Quick Stats if needed
-
-3. **AGENT.md** (`public/AGENT.md`):
-   - Add to "Routes WITH AppState Integration" list (this file)
-
----
-
-### When Creating a NEW MODAL:
-
-#### Step 1: Publish Modal State When Open
-```javascript
-import { useAppState } from '../contexts/AppStateContext';
-
-const MyNewModal = ({ isOpen, onClose, data }) => {
-  const { publishState, registerActions, unregisterActions } = useAppState();
-  const [formData, setFormData] = useState({});
-
-  // Publish modal state when open
-  useEffect(() => {
-    if (isOpen) {
-      publishState({
-        modal: {
-          type: 'my-new-modal',
-          title: 'My New Modal',
-          formFields: [
-            { name: 'fieldName', type: 'text', label: 'Field Label', required: true },
-            { name: 'selectField', type: 'select', options: ['opt1', 'opt2'] },
-          ],
-          currentValues: formData,
-          data: data,  // Include relevant context
-        }
-      });
-    } else {
-      // Clear modal state when closed
-      publishState({ modal: null });
-    }
-  }, [isOpen, formData, data, publishState]);
-
-  // Register modal-specific actions
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const actions = {
-      set_field: async ({ field, value }) => {
-        setFormData(prev => ({ ...prev, [field]: value }));
-        return { success: true, message: `Set ${field} to ${value}` };
-      },
-      save: async () => {
-        // Save logic
-        onClose();
-        return { success: true, message: 'Saved successfully' };
-      },
-      cancel: async () => {
-        onClose();
-        return { success: true, message: 'Cancelled' };
-      },
-    };
-
-    registerActions(actions);
-    return () => unregisterActions(Object.keys(actions));
-  }, [isOpen, formData, registerActions, unregisterActions, onClose]);
-
-  // ... rest of modal
-};
-```
-
-#### Step 2: Update Documentation
-- Add to "Modals WITH AI State Publishing" in AI-AWARENESS-MAP.md and AGENT.md
-
----
-
-### When Adding a NEW QUICK CREATE TYPE:
-
-Edit `src/contexts/AIBrainContext.js`:
-
-1. Add to the `quick_create` tool enum (~line 208):
-```javascript
-{ name: 'quick_create', ..., parameters: {
-  properties: {
-    type: { type: 'string', enum: ['todo', 'issue', 'ticket', 'contact', 'note', 'YOUR_NEW_TYPE'] }
-    // ...
-  }
-}}
-```
-
-2. Add handler in `handleQuickCreate` function (~line 365):
-```javascript
-case 'your_new_type': {
-  const { data, error } = await supabase.from('your_table').insert({
-    // fields
-  }).select().single();
-  if (error) throw error;
-  return { success: true, message: `Created: ${title}`, id: data?.id };
-}
-```
-
----
-
-### When Adding a NEW PROJECT SECTION:
-
-Edit `src/contexts/AIBrainContext.js`:
-
-Add to `projectSections` object (~line 314):
-```javascript
-const projectSections = {
-  // ... existing sections ...
-  'my section': (id) => `/projects/${id}/my-section`,
-  'my section alias': (id) => `/projects/${id}/my-section`,
-};
-```
-
----
-
-### Action Return Format (REQUIRED)
-
-ALL actions MUST return this format:
-```javascript
-// Success
-return { success: true, message: 'What happened' };
-
-// Success with data
-return { success: true, message: 'Found items', items: [...], count: 5 };
-
-// Failure
-return { success: false, error: 'Why it failed' };
-
-// Failure with hints
-return { success: false, error: 'Not found', suggestions: ['try this', 'or this'] };
-```
-
----
-
-### Checklist Files Location
-
-| Document | Location | Purpose |
-|----------|----------|---------|
-| **Testing Checklist** | This file (`public/AGENT.md`) | Testing reference for untested code |
-| **AI Awareness Map** | `docs/AI-AWARENESS-MAP.md` | Complete inventory of all AI-aware components |
-| **Voice AI Reference** | `docs/VOICE-AI-REFERENCE.md` | Working state restore point |
-| **AI Brain Context** | `src/contexts/AIBrainContext.js` | Core Voice AI implementation |
-| **App State Context** | `src/contexts/AppStateContext.js` | SSOT for AI state |
-
----
-
-### Pre-Commit Checklist for AI Features
-
-Before committing any new component:
-
-- [ ] Added `useAppState` import
-- [ ] Added `publishState` useEffect with view identifier and hint
-- [ ] Added `registerActions` useEffect with cleanup
-- [ ] All actions return `{ success: true/false, ... }` format
-- [ ] Added navigation target if needed (AIBrainContext.js)
-- [ ] Updated AI-AWARENESS-MAP.md with new route/modal
-- [ ] Updated VOICE-AI-REFERENCE.md stats if needed
-- [ ] Tested voice commands: "go to [page]", action names
-
----
+### Deprecated Files (Old Architecture)
+These files are no longer used but may still exist:
+- `src/contexts/VoiceCopilotContext.js` - Replaced by AIBrainContext
+- `src/hooks/useAgentContext.js` - Replaced by AppStateContext
+- `src/hooks/useShadeDetailTools.js` - Actions now in ShadeDetailPage
+- `src/hooks/useShadeManagerTools.js` - Actions now in ShadeManager
+- `src/hooks/useKnowledgeTools.js` - Now integrated in AIBrainContext
 
 ## Environment Variables
 
@@ -4129,7 +3652,7 @@ User Reports Bug (BugReporter.js)
 | File | Purpose |
 |------|---------|
 | `src/components/BugReporter.js` | Frontend bug report modal (screenshot, voice input, console errors) |
-| `api/bug-report.js` | Initial submission endpoint - saves to queue |
+| `api/bug-report.js` | Initial submission endpoint - saves to queue, sends email via **system account** (never expires) |
 | `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
 | `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
 | `api/bugs/list.js` | List bugs with filtering/pagination |
@@ -4169,6 +3692,7 @@ CREATE TABLE bug_reports (
   ai_fix_prompt TEXT,
   ai_confidence DECIMAL(3,2), -- 0-1 confidence score
   ai_token_usage JSONB,       -- { prompt_tokens, completion_tokens, total_tokens }
+  ai_filename_slug TEXT,      -- AI-generated short name like "login-button-broken"
 
   -- GitHub
   pr_url TEXT,
@@ -4341,9 +3865,14 @@ Located at **Admin → Bug Todos** (9th tab)
 
 **Actions:**
 - **Download Report** - Downloads complete `.md` file with dual-perspective AI instructions
-- **View PR** - Opens GitHub pull request
+- **Open File** - Downloads and opens `.md` file in system default markdown editor
+- **View PR** (GitHub icon in header) - Opens GitHub pull request
 - **Reanalyze** - Resets to pending for re-processing
 - **Mark Fixed** - Deletes from GitHub + database
+
+**Filenames:** Bug reports use AI-generated descriptive slugs for meaningful filenames:
+- Example: `BR-2026-01-09-0001-login-button-broken.md` instead of just `BR-2026-01-09-0001.md`
+- The AI generates a 2-5 word slug based on the bug description (stored in `ai_filename_slug`)
 
 ### Downloadable Bug Report (.md)
 
@@ -4448,5 +3977,237 @@ The bug processor runs every 3 minutes via Vercel cron:
 5. **Mark fixed** → Admin → Bug Todos → Mark Fixed (deletes .md file)
 
 Or merge the PR and delete the branch.
+
+---
+
+## 2026-01-08
+
+### Unified Skills System (Major Feature)
+
+Consolidated skills as the **single source of truth** for both service ticket categories and employee skill development/tracking.
+
+#### Overview
+
+```
+skill_categories (master)
+├── show_in_service: true/false (filter for service UI)
+├── color, label, icon, description
+│
+├── Service Tickets (filtered by show_in_service=true)
+│   ├── NewTicketForm category buttons
+│   ├── ServiceTicketList filters
+│   └── Technician skill matching (future)
+│
+└── Employee Development (all categories)
+    ├── Admin: Assign skills to employees via SkillsManager
+    ├── Profile: Display skills on Settings page (read-only)
+    └── Training URLs per skill (clickable links)
+```
+
+#### Database Changes
+
+**Migration File:** `database/migrations/20260108_unified_skills.sql`
+
+**Tables:**
+| Table | Purpose |
+|-------|---------|
+| `skill_categories` | Master category list with `show_in_service` flag |
+| `skill_classes` | Intermediate grouping (Category → Class → Skill) |
+| `global_skills` | Individual skills with `training_urls` JSONB array |
+| `employee_skills` | Links employees to skills with proficiency levels |
+
+**New Columns:**
+- `skill_categories.show_in_service` BOOLEAN - Hide categories like "Soft Skills" from service ticket UI
+- `skill_categories.icon` TEXT - Icon name for service ticket display
+- `global_skills.training_urls` JSONB - Array of training resource URLs per skill
+
+**Proficiency Levels:**
+- `training` - Currently learning
+- `proficient` - Can perform independently
+- `expert` - Can train others
+
+**Helper Function:**
+```sql
+SELECT * FROM get_qualified_technicians('network', 'proficient');
+-- Returns technicians qualified for network work at proficient+ level
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/Admin/SkillsManager.js` | Added category color picker, show_in_service toggle, training URLs management |
+| `src/pages/AdminPage.js` | **Removed** Technology Categories tab entirely (consolidated into SkillsManager) |
+| `src/components/Service/NewTicketForm.js` | Now loads categories from `skill_categories` WHERE `show_in_service = true` |
+| `src/components/Service/ServiceTicketList.js` | Dynamic categories from `skill_categories` with colors |
+| `src/components/Service/ServiceTicketDetail.js` | Dynamic categories from database |
+| `src/components/UserSettings/UserSkillsSection.js` | **NEW** - Displays user's skills on Settings page (read-only) |
+| `src/components/SettingsPage.js` | Added UserSkillsSection component |
+
+#### SkillsManager Features
+
+**Category Management:**
+- Color picker with preset colors for category branding
+- `show_in_service` toggle to hide categories from service ticket UI
+- Full CRUD for categories, classes, and skills
+
+**Skill Management:**
+- Training URLs field (comma-separated, stored as JSONB array)
+- Displayed as clickable external links in employee skill lists
+- CSV import with Replace All/Merge/Append modes
+
+**Employee Skills:**
+- Assign skills to employees with proficiency level
+- Certification tracking with date and certifier
+- Notes field for additional context
+
+#### UserSkillsSection Component
+
+**Location:** `src/components/UserSettings/UserSkillsSection.js`
+
+**Features:**
+- Read-only display of user's assigned skills
+- Skills grouped by category (collapsible)
+- Proficiency badges (Training=amber, Proficient=blue, Expert=emerald)
+- Training URLs as clickable external links
+- Summary badges showing count by proficiency level
+- Proficiency level legend at bottom
+
+**Usage:**
+```jsx
+import UserSkillsSection from '../components/UserSettings/UserSkillsSection';
+
+// In SettingsPage.js, after AISettings section
+<UserSkillsSection />
+```
+
+#### Service Ticket Integration
+
+**Before:** Service components used hardcoded `DEFAULT_CATEGORIES` array
+
+**After:** Categories loaded dynamically from `skill_categories` table:
+```javascript
+const { data: categories } = await supabase
+  .from('skill_categories')
+  .select('*')
+  .eq('is_active', true)
+  .neq('show_in_service', false)  // Hide Soft Skills etc.
+  .order('sort_order');
+```
+
+#### Default Categories (Seeded)
+
+| Name | Label | show_in_service | Icon |
+|------|-------|-----------------|------|
+| network | Network | ✅ | wifi |
+| av | Audio/Video | ✅ | tv |
+| shades | Shades | ✅ | blinds |
+| control | Control Systems | ✅ | settings |
+| wiring | Wiring | ✅ | cable |
+| installation | Installation | ✅ | build |
+| maintenance | Maintenance | ✅ | wrench |
+| general | General | ✅ | clipboard |
+| soft_skills | Soft Skills | ❌ | users |
+
+#### Running the Migration
+
+**REQUIRED:** Run the SQL migration in Supabase Dashboard → SQL Editor:
+
+1. Open `database/migrations/20260108_unified_skills.sql`
+2. Copy entire contents
+3. Paste into Supabase SQL Editor
+4. Execute
+
+The migration is idempotent (safe to run multiple times) - it uses `CREATE TABLE IF NOT EXISTS` and `DO $$ IF NOT EXISTS $$` patterns.
+
+---
+
+---
+
+## External Portals (Public/Unauthenticated Access)
+
+When building external-facing portals that don't require user authentication (like `PublicIssuePortal`), follow these patterns:
+
+### SharePoint Images & Thumbnails
+
+**Problem**: SharePoint URLs require authentication. External users cannot access them directly.
+
+**Solution**: Route all SharePoint images through server-side proxy endpoints that handle authentication using app-only credentials.
+
+#### Available Endpoints
+
+1. **`/api/sharepoint-thumbnail`** (Preferred for thumbnails)
+   - Uses Microsoft Graph API to generate thumbnails
+   - Requires: `driveId`, `itemId`, `size` (small/medium/large)
+   - More reliable and faster than image-proxy
+   - Example: `/api/sharepoint-thumbnail?driveId=xxx&itemId=yyy&size=medium`
+
+2. **`/api/image-proxy`** (Fallback for full images or legacy data)
+   - Resolves SharePoint sharing URLs and proxies the actual file
+   - Requires: `url` (the SharePoint URL)
+   - Works with sharing links (`:i:/g/` format)
+   - Example: `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`
+
+#### Implementation Pattern
+
+```jsx
+// In your component
+{photos.map((photo) => {
+  // Use Graph API thumbnail if metadata available, otherwise fallback to image proxy
+  const thumbnailUrl = photo.sharepointDriveId && photo.sharepointItemId
+    ? `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(photo.sharepointDriveId)}&itemId=${encodeURIComponent(photo.sharepointItemId)}&size=medium`
+    : `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+
+  const fullUrl = `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+
+  return (
+    <a href={fullUrl} target="_blank">
+      <img src={thumbnailUrl} alt={photo.fileName} />
+    </a>
+  );
+})}
+```
+
+#### Database Requirements
+
+When fetching photos for external portals, include SharePoint metadata:
+
+```js
+// In your API endpoint
+const { data } = await supabase
+  .from('issue_photos')
+  .select('id, url, file_name, sharepoint_drive_id, sharepoint_item_id, ...')
+  .eq('issue_id', issueId);
+
+// Include in response payload
+base.photos = photos.map((photo) => ({
+  id: photo.id,
+  url: photo.url,
+  fileName: photo.file_name,
+  sharepointDriveId: photo.sharepoint_drive_id,  // For thumbnail API
+  sharepointItemId: photo.sharepoint_item_id,    // For thumbnail API
+  // ...other fields
+}));
+```
+
+### Token-Based Authentication
+
+External portals use token-based access rather than user sessions:
+
+1. **Portal Token**: Long-lived token in URL identifying the resource
+2. **OTP Verification**: 6-digit code sent via email for initial verification
+3. **Session Token**: Created after OTP verification, stored in localStorage
+
+See `src/pages/PublicIssuePortal.js` and `api/public-issue.js` for reference implementation.
+
+### Checklist for New External Portals
+
+- [ ] All SharePoint images routed through proxy endpoints
+- [ ] SharePoint metadata (driveId, itemId) fetched from database
+- [ ] Fallback to image-proxy for legacy data without metadata
+- [ ] Token validation on all API endpoints
+- [ ] Session management with appropriate expiry
+- [ ] CORS headers configured for API endpoints
+- [ ] No sensitive data exposed before verification
 
 ---

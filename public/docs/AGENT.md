@@ -3652,7 +3652,7 @@ User Reports Bug (BugReporter.js)
 | File | Purpose |
 |------|---------|
 | `src/components/BugReporter.js` | Frontend bug report modal (screenshot, voice input, console errors) |
-| `api/bug-report.js` | Initial submission endpoint - saves to queue |
+| `api/bug-report.js` | Initial submission endpoint - saves to queue, sends email via **system account** (never expires) |
 | `api/bugs/analyze.js` | Gemini AI analysis module (multimodal) |
 | `api/bugs/github.js` | GitHub API integration (branches, commits, PRs) |
 | `api/bugs/list.js` | List bugs with filtering/pagination |
@@ -3692,6 +3692,7 @@ CREATE TABLE bug_reports (
   ai_fix_prompt TEXT,
   ai_confidence DECIMAL(3,2), -- 0-1 confidence score
   ai_token_usage JSONB,       -- { prompt_tokens, completion_tokens, total_tokens }
+  ai_filename_slug TEXT,      -- AI-generated short name like "login-button-broken"
 
   -- GitHub
   pr_url TEXT,
@@ -3864,9 +3865,14 @@ Located at **Admin → Bug Todos** (9th tab)
 
 **Actions:**
 - **Download Report** - Downloads complete `.md` file with dual-perspective AI instructions
-- **View PR** - Opens GitHub pull request
+- **Open File** - Downloads and opens `.md` file in system default markdown editor
+- **View PR** (GitHub icon in header) - Opens GitHub pull request
 - **Reanalyze** - Resets to pending for re-processing
 - **Mark Fixed** - Deletes from GitHub + database
+
+**Filenames:** Bug reports use AI-generated descriptive slugs for meaningful filenames:
+- Example: `BR-2026-01-09-0001-login-button-broken.md` instead of just `BR-2026-01-09-0001.md`
+- The AI generates a 2-5 word slug based on the bug description (stored in `ai_filename_slug`)
 
 ### Downloadable Bug Report (.md)
 
@@ -3971,5 +3977,237 @@ The bug processor runs every 3 minutes via Vercel cron:
 5. **Mark fixed** → Admin → Bug Todos → Mark Fixed (deletes .md file)
 
 Or merge the PR and delete the branch.
+
+---
+
+## 2026-01-08
+
+### Unified Skills System (Major Feature)
+
+Consolidated skills as the **single source of truth** for both service ticket categories and employee skill development/tracking.
+
+#### Overview
+
+```
+skill_categories (master)
+├── show_in_service: true/false (filter for service UI)
+├── color, label, icon, description
+│
+├── Service Tickets (filtered by show_in_service=true)
+│   ├── NewTicketForm category buttons
+│   ├── ServiceTicketList filters
+│   └── Technician skill matching (future)
+│
+└── Employee Development (all categories)
+    ├── Admin: Assign skills to employees via SkillsManager
+    ├── Profile: Display skills on Settings page (read-only)
+    └── Training URLs per skill (clickable links)
+```
+
+#### Database Changes
+
+**Migration File:** `database/migrations/20260108_unified_skills.sql`
+
+**Tables:**
+| Table | Purpose |
+|-------|---------|
+| `skill_categories` | Master category list with `show_in_service` flag |
+| `skill_classes` | Intermediate grouping (Category → Class → Skill) |
+| `global_skills` | Individual skills with `training_urls` JSONB array |
+| `employee_skills` | Links employees to skills with proficiency levels |
+
+**New Columns:**
+- `skill_categories.show_in_service` BOOLEAN - Hide categories like "Soft Skills" from service ticket UI
+- `skill_categories.icon` TEXT - Icon name for service ticket display
+- `global_skills.training_urls` JSONB - Array of training resource URLs per skill
+
+**Proficiency Levels:**
+- `training` - Currently learning
+- `proficient` - Can perform independently
+- `expert` - Can train others
+
+**Helper Function:**
+```sql
+SELECT * FROM get_qualified_technicians('network', 'proficient');
+-- Returns technicians qualified for network work at proficient+ level
+```
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/Admin/SkillsManager.js` | Added category color picker, show_in_service toggle, training URLs management |
+| `src/pages/AdminPage.js` | **Removed** Technology Categories tab entirely (consolidated into SkillsManager) |
+| `src/components/Service/NewTicketForm.js` | Now loads categories from `skill_categories` WHERE `show_in_service = true` |
+| `src/components/Service/ServiceTicketList.js` | Dynamic categories from `skill_categories` with colors |
+| `src/components/Service/ServiceTicketDetail.js` | Dynamic categories from database |
+| `src/components/UserSettings/UserSkillsSection.js` | **NEW** - Displays user's skills on Settings page (read-only) |
+| `src/components/SettingsPage.js` | Added UserSkillsSection component |
+
+#### SkillsManager Features
+
+**Category Management:**
+- Color picker with preset colors for category branding
+- `show_in_service` toggle to hide categories from service ticket UI
+- Full CRUD for categories, classes, and skills
+
+**Skill Management:**
+- Training URLs field (comma-separated, stored as JSONB array)
+- Displayed as clickable external links in employee skill lists
+- CSV import with Replace All/Merge/Append modes
+
+**Employee Skills:**
+- Assign skills to employees with proficiency level
+- Certification tracking with date and certifier
+- Notes field for additional context
+
+#### UserSkillsSection Component
+
+**Location:** `src/components/UserSettings/UserSkillsSection.js`
+
+**Features:**
+- Read-only display of user's assigned skills
+- Skills grouped by category (collapsible)
+- Proficiency badges (Training=amber, Proficient=blue, Expert=emerald)
+- Training URLs as clickable external links
+- Summary badges showing count by proficiency level
+- Proficiency level legend at bottom
+
+**Usage:**
+```jsx
+import UserSkillsSection from '../components/UserSettings/UserSkillsSection';
+
+// In SettingsPage.js, after AISettings section
+<UserSkillsSection />
+```
+
+#### Service Ticket Integration
+
+**Before:** Service components used hardcoded `DEFAULT_CATEGORIES` array
+
+**After:** Categories loaded dynamically from `skill_categories` table:
+```javascript
+const { data: categories } = await supabase
+  .from('skill_categories')
+  .select('*')
+  .eq('is_active', true)
+  .neq('show_in_service', false)  // Hide Soft Skills etc.
+  .order('sort_order');
+```
+
+#### Default Categories (Seeded)
+
+| Name | Label | show_in_service | Icon |
+|------|-------|-----------------|------|
+| network | Network | ✅ | wifi |
+| av | Audio/Video | ✅ | tv |
+| shades | Shades | ✅ | blinds |
+| control | Control Systems | ✅ | settings |
+| wiring | Wiring | ✅ | cable |
+| installation | Installation | ✅ | build |
+| maintenance | Maintenance | ✅ | wrench |
+| general | General | ✅ | clipboard |
+| soft_skills | Soft Skills | ❌ | users |
+
+#### Running the Migration
+
+**REQUIRED:** Run the SQL migration in Supabase Dashboard → SQL Editor:
+
+1. Open `database/migrations/20260108_unified_skills.sql`
+2. Copy entire contents
+3. Paste into Supabase SQL Editor
+4. Execute
+
+The migration is idempotent (safe to run multiple times) - it uses `CREATE TABLE IF NOT EXISTS` and `DO $$ IF NOT EXISTS $$` patterns.
+
+---
+
+---
+
+## External Portals (Public/Unauthenticated Access)
+
+When building external-facing portals that don't require user authentication (like `PublicIssuePortal`), follow these patterns:
+
+### SharePoint Images & Thumbnails
+
+**Problem**: SharePoint URLs require authentication. External users cannot access them directly.
+
+**Solution**: Route all SharePoint images through server-side proxy endpoints that handle authentication using app-only credentials.
+
+#### Available Endpoints
+
+1. **`/api/sharepoint-thumbnail`** (Preferred for thumbnails)
+   - Uses Microsoft Graph API to generate thumbnails
+   - Requires: `driveId`, `itemId`, `size` (small/medium/large)
+   - More reliable and faster than image-proxy
+   - Example: `/api/sharepoint-thumbnail?driveId=xxx&itemId=yyy&size=medium`
+
+2. **`/api/image-proxy`** (Fallback for full images or legacy data)
+   - Resolves SharePoint sharing URLs and proxies the actual file
+   - Requires: `url` (the SharePoint URL)
+   - Works with sharing links (`:i:/g/` format)
+   - Example: `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`
+
+#### Implementation Pattern
+
+```jsx
+// In your component
+{photos.map((photo) => {
+  // Use Graph API thumbnail if metadata available, otherwise fallback to image proxy
+  const thumbnailUrl = photo.sharepointDriveId && photo.sharepointItemId
+    ? `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(photo.sharepointDriveId)}&itemId=${encodeURIComponent(photo.sharepointItemId)}&size=medium`
+    : `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+
+  const fullUrl = `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
+
+  return (
+    <a href={fullUrl} target="_blank">
+      <img src={thumbnailUrl} alt={photo.fileName} />
+    </a>
+  );
+})}
+```
+
+#### Database Requirements
+
+When fetching photos for external portals, include SharePoint metadata:
+
+```js
+// In your API endpoint
+const { data } = await supabase
+  .from('issue_photos')
+  .select('id, url, file_name, sharepoint_drive_id, sharepoint_item_id, ...')
+  .eq('issue_id', issueId);
+
+// Include in response payload
+base.photos = photos.map((photo) => ({
+  id: photo.id,
+  url: photo.url,
+  fileName: photo.file_name,
+  sharepointDriveId: photo.sharepoint_drive_id,  // For thumbnail API
+  sharepointItemId: photo.sharepoint_item_id,    // For thumbnail API
+  // ...other fields
+}));
+```
+
+### Token-Based Authentication
+
+External portals use token-based access rather than user sessions:
+
+1. **Portal Token**: Long-lived token in URL identifying the resource
+2. **OTP Verification**: 6-digit code sent via email for initial verification
+3. **Session Token**: Created after OTP verification, stored in localStorage
+
+See `src/pages/PublicIssuePortal.js` and `api/public-issue.js` for reference implementation.
+
+### Checklist for New External Portals
+
+- [ ] All SharePoint images routed through proxy endpoints
+- [ ] SharePoint metadata (driveId, itemId) fetched from database
+- [ ] Fallback to image-proxy for legacy data without metadata
+- [ ] Token validation on all API endpoints
+- [ ] Session management with appropriate expiry
+- [ ] CORS headers configured for API endpoints
+- [ ] No sensitive data exposed before verification
 
 ---
