@@ -225,4 +225,29 @@ export const useAppState = () => {
     return context;
 };
 
+// Optional hook that returns no-op functions when outside provider
+// Use this for components that may be rendered outside the provider (e.g., portals, modals)
+export const useAppStateOptional = () => {
+    const context = useContext(AppStateContext);
+    if (!context) {
+        // Return no-op functions for components outside the provider
+        return {
+            appState: {},
+            getState: () => ({}),
+            publishState: () => {},
+            setView: () => {},
+            setProject: () => {},
+            setShade: () => {},
+            updateFormField: () => {},
+            setActiveField: () => {},
+            registerActions: () => {},
+            unregisterActions: () => {},
+            executeAction: async () => ({ success: false, error: 'Not in AppStateProvider' }),
+            getAvailableActions: () => [],
+            resetState: () => {},
+        };
+    }
+    return context;
+};
+
 export default AppStateContext;

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Trash2, RefreshCcw } from 'lucide-react';
 import CachedSharePointImage from '../CachedSharePointImage';
 import Button from '../ui/Button';
-import { useAppState } from '../../contexts/AppStateContext';
+import { useAppStateOptional } from '../../contexts/AppStateContext';
 
 const formatTimestamp = (value) => {
   if (!value) return '';
@@ -29,7 +29,7 @@ const PhotoViewerModal = ({
   onNavigate = null
 }) => {
   const fileInputRef = useRef(null);
-  const { publishState, registerActions, unregisterActions } = useAppState();
+  const { publishState, registerActions, unregisterActions } = useAppStateOptional();
 
   // Calculate photo count and index for display
   const photoCount = photos?.length || (photo ? 1 : 0);
