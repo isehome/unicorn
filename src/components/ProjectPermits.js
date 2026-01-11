@@ -26,7 +26,6 @@ import {
 function ProjectPermits({ projectId, onMilestoneChange }) {
   const { user } = useAuth();
   const [permits, setPermits] = useState([]);
-  const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -56,7 +55,6 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
       ]);
 
       setPermits(permitsData);
-      setMilestones(milestonesData);
 
       // Auto-populate permit target dates from milestones if not set
       await autoPopulateTargetDates(permitsData, milestonesData);
@@ -304,12 +302,6 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A';
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
   const formatDateTime = (dateStr) => {

@@ -102,7 +102,6 @@ const IssueDetail = () => {
   const [processingUploadId, setProcessingUploadId] = useState(null);
   const [ackExternalWarning, setAckExternalWarning] = useState(false);
   const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
-  const [pendingPublicToggle, setPendingPublicToggle] = useState(false);
   const [showStakeholderDropdown, setShowStakeholderDropdown] = useState(false);
   const [allContacts, setAllContacts] = useState([]);
   const [allRoles, setAllRoles] = useState([]);
@@ -1016,96 +1015,6 @@ const IssueDetail = () => {
       onDelete: () => handleDeletePhoto(photo)
     });
   }, [canUploadPhotos, handleDeletePhoto, handleReplacePhoto, openPhotoViewer, photoActionLoading]);
-
-  const handleTagStakeholder = async (assignmentId) => {
-    if (!assignmentId) return;
-    let issueIdToUse = activeIssueId;
-    if (!issueIdToUse) {
-      try {
-        issueIdToUse = await ensureIssueId();
-      } catch (err) {
-        setError(err.message || 'Failed to save the issue before tagging stakeholders');
-        return;
-      }
-    }
-    if (!issueIdToUse) return;
-    try {
-      setTagging(true);
-      const createdTag = await issueStakeholderTagsService.add(issueIdToUse, assignmentId, 'assigned');
-      const updated = await issueStakeholderTagsService.getDetailed(issueIdToUse);
-      setTags(updated);
-
-      const stakeholder = availableProjectStakeholders.find(p => p.assignment_id === assignmentId);
-      const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
-      const issueContext = resolvedIssue || {
-        id: issueIdToUse,
-        title: newTitle,
-        project_id: projectId
-      };
-      const graphToken = await acquireToken();
-
-      let publicPortalPayload = null;
-      const isExternalStakeholder = stakeholder?.category === 'external' || stakeholder?.role_category === 'external';
-      console.log('[IssueDetail] Stakeholder external check:', {
-        contact_name: stakeholder?.contact_name,
-        category: stakeholder?.category,
-        role_category: stakeholder?.role_category,
-        is_internal: stakeholder?.is_internal,
-        isExternalStakeholder,
-        createdTagId: createdTag?.id
-      });
-      if (isExternalStakeholder && createdTag?.id) {
-        try {
-          const linkDetails = await issuePublicAccessService.ensureLink({
-            issueId: issueIdToUse,
-            projectId,
-            stakeholderTagId: createdTag.id,
-            stakeholder
-          });
-          const shareUrl = typeof window !== 'undefined'
-            ? `${window.location.origin}/public/issues/${linkDetails.token}`
-            : link;
-          publicPortalPayload = {
-            url: shareUrl,
-            otp: linkDetails.otp
-          };
-          console.log('[IssueDetail] Portal link created for external stakeholder:', {
-            shareUrl: shareUrl?.substring(0, 60),
-            hasOtp: !!linkDetails.otp,
-            stakeholderEmail: stakeholder?.email
-          });
-        } catch (portalError) {
-          console.error('Failed to provision public issue link:', portalError);
-        }
-      }
-
-      console.log('[IssueDetail] Calling notifyStakeholderAdded:', {
-        isExternalStakeholder,
-        hasPublicPortal: !!publicPortalPayload,
-        stakeholderEmail: stakeholder?.email,
-        hasGraphToken: !!graphToken
-      });
-      await notifyStakeholderAdded(
-        {
-          issue: issueContext,
-          project: projectInfo,
-          stakeholder,
-          actor: currentUserSummary,
-          issueUrl: link,
-          publicPortal: publicPortalPayload
-        },
-        { authToken: graphToken }
-      );
-      if (publicPortalPayload) {
-        setSuccessMessage(`Shared external portal link with ${stakeholder?.contact_name || stakeholder?.email || 'stakeholder'}`);
-        setTimeout(() => setSuccessMessage(null), 3000);
-      }
-    } catch (e) {
-      setError(e.message || 'Failed to tag stakeholder');
-    } finally {
-      setTagging(false);
-    }
-  };
 
   // New two-step flow: select contact, then select role
   const handleSelectContact = (contact) => {

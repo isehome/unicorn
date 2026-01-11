@@ -495,16 +495,6 @@ const SecureDataPage = () => {
     }
   };
 
-  const loadAuditLogs = async () => {
-    try {
-      const logs = await secureDataService.getAuditLogs(projectId);
-      setAuditLogs(logs || []);
-      setShowAuditModal(true);
-    } catch (err) {
-      console.error('Failed to load audit logs:', err);
-    }
-  };
-
   const typeColors = {
     credentials: palette.accent,
     network: palette.info,

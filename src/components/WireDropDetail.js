@@ -7,7 +7,6 @@ import { useAppState } from '../contexts/AppStateContext';
 import wireDropService from '../services/wireDropService';
 import unifiService from '../services/unifiService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
-import { projectRoomsService } from '../services/projectRoomsService';
 import { supabase } from '../lib/supabase';
 import Button from './ui/Button';
 import CachedSharePointImage from './CachedSharePointImage';
@@ -50,9 +49,6 @@ import { getWireDropBadgeColor, getWireDropBadgeLetter, getWireDropBadgeTextColo
 import labelRenderService from '../services/labelRenderService';
 import { usePrinter } from '../contexts/PrinterContext';
 
-const normalizeRoomName = (value) =>
-  typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, ' ') : '';
-
 const WireDropDetail = () => {
   const { id } = useParams();
   const { theme, mode } = useTheme();
@@ -72,7 +68,6 @@ const WireDropDetail = () => {
 
   // Equipment states
   const [projectEquipment, setProjectEquipment] = useState([]);
-  const [projectRooms, setProjectRooms] = useState([]);
   const [roomEquipmentSelection, setRoomEquipmentSelection] = useState([]);
   const [headEquipmentSelection, setHeadEquipmentSelection] = useState([]);
   const [equipmentLoading, setEquipmentLoading] = useState(false);
@@ -109,8 +104,6 @@ const WireDropDetail = () => {
   const [homeKitViewerLoading, setHomeKitViewerLoading] = useState(false);
   const [completingCommission, setCompletingCommission] = useState(false);
   const [commissionNotes, setCommissionNotes] = useState('');
-  const [savingRoomEquipment, setSavingRoomEquipment] = useState(false);
-  const [savingHeadEquipment, setSavingHeadEquipment] = useState(false);
 
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -392,19 +385,6 @@ const WireDropDetail = () => {
     }
   }, [wireDrop?.project_id, loadProjectEquipmentOptions]);
 
-  const loadProjectRooms = useCallback(
-    async (projectId) => {
-      if (!projectId) return;
-      try {
-        const rooms = await projectRoomsService.fetchRoomsWithAliases(projectId);
-        setProjectRooms(rooms || []);
-      } catch (err) {
-        console.error('Failed to load project rooms:', err);
-      }
-    },
-    []
-  );
-
   const loadSwitches = useCallback(async (projectId) => {
     if (!projectId) return;
 
@@ -544,13 +524,12 @@ const WireDropDetail = () => {
     if (wireDrop?.project_id) {
       loadProjectEquipmentOptions(wireDrop.project_id);
       loadSwitches(wireDrop.project_id);
-      loadProjectRooms(wireDrop.project_id);
       loadProjectShades(wireDrop.project_id);
       loadLinkedShade();
       loadAssociatedIssues();
       loadAvailableIssues();
     }
-  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectRooms, loadProjectShades, loadLinkedShade]);
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectShades, loadLinkedShade]);
 
   useEffect(() => {
     if (!activeViewerPhoto) {
@@ -714,7 +693,7 @@ const WireDropDetail = () => {
 
       if (!navigator.onLine) {
         console.log('[WireDropDetail] Offline - queueing photo upload');
-        const queueId = await enqueueUpload({
+        await enqueueUpload({
           type: 'wire_drop_photo',
           projectId: wireDrop.project_id,
           file: compressedFile,
@@ -1088,104 +1067,6 @@ const WireDropDetail = () => {
     }
   };
 
-  // Legacy toggle function (kept for backward compatibility with existing UI)
-  const toggleRoomEquipment = (equipmentId) => {
-    setRoomEquipmentSelection((prev) => {
-      if (!equipmentId) return prev;
-      return prev.includes(equipmentId)
-        ? prev.filter((idValue) => idValue !== equipmentId)
-        : [...prev, equipmentId];
-    });
-  };
-
-  const handleSetPrimaryRoomEquipment = (equipmentId) => {
-    if (!equipmentId) return;
-    setRoomEquipmentSelection((prev = []) => {
-      if (prev.includes(equipmentId)) {
-        return prev;
-      }
-      return [...prev, equipmentId];
-    });
-    setPrimaryRoomEquipmentId(equipmentId);
-  };
-
-  const toggleHeadEquipment = (equipmentId) => {
-    setHeadEquipmentSelection((prev) => {
-      if (!equipmentId) return prev;
-      return prev.includes(equipmentId)
-        ? prev.filter((idValue) => idValue !== equipmentId)
-        : [...prev, equipmentId];
-    });
-  };
-
-  const roomsById = useMemo(() => {
-    const map = new Map();
-    projectRooms.forEach((room) => {
-      if (room?.id) {
-        map.set(room.id, room);
-      }
-    });
-    return map;
-  }, [projectRooms]);
-
-  const aliasLookup = useMemo(() => {
-    const map = new Map();
-    projectRooms.forEach((room) => {
-      if (!room) return;
-
-      const normalizedName = normalizeRoomName(room.name);
-      if (normalizedName && !map.has(normalizedName)) {
-        map.set(normalizedName, room);
-      }
-
-      if (room.normalized_name && !map.has(room.normalized_name)) {
-        map.set(room.normalized_name, room);
-      }
-
-      (room.project_room_aliases || []).forEach((alias) => {
-        const aliasValue = alias?.alias || alias?.normalized_alias;
-        const normalizedAlias = normalizeRoomName(aliasValue);
-        if (normalizedAlias && !map.has(normalizedAlias)) {
-          map.set(normalizedAlias, room);
-        }
-        if (alias?.normalized_alias && !map.has(alias.normalized_alias)) {
-          map.set(alias.normalized_alias, room);
-        }
-      });
-    });
-    return map;
-  }, [projectRooms]);
-
-  const resolvedDropRoom = useMemo(() => {
-    if (!wireDrop) return null;
-
-    if (wireDrop.project_room_id && roomsById.has(wireDrop.project_room_id)) {
-      return roomsById.get(wireDrop.project_room_id);
-    }
-
-    if (wireDrop.project_room?.id && roomsById.has(wireDrop.project_room.id)) {
-      return roomsById.get(wireDrop.project_room.id);
-    }
-
-    const candidateNames = [
-      wireDrop.room_name,
-      wireDrop.location,
-      wireDrop.wire_drop_room_end?.room_name,
-      wireDrop.wire_drop_head_end?.room_name
-    ].filter(Boolean);
-
-    for (const name of candidateNames) {
-      const normalized = normalizeRoomName(name);
-      if (!normalized) continue;
-      const matchedRoom = aliasLookup.get(normalized);
-      if (matchedRoom) {
-        return matchedRoom;
-      }
-    }
-
-    return null;
-  }, [wireDrop, roomsById, aliasLookup]);
-
   const badgeColor = useMemo(() => getWireDropBadgeColor(wireDrop), [wireDrop]);
   const badgeLetter = useMemo(() => getWireDropBadgeLetter(wireDrop), [wireDrop]);
   const badgeTextColor = useMemo(() => getWireDropBadgeTextColor(badgeColor), [badgeColor]);
@@ -1221,31 +1102,6 @@ const WireDropDetail = () => {
   }, [wireDrop?.name, wireDrop?.drop_name]);
   const showQrCard = useMemo(() => Boolean(wireDrop), [wireDrop]);
 
-  const doesEquipmentMatchRoom = useCallback(
-    (equipment, room) => {
-      if (!equipment || !room) return false;
-
-      if (equipment.room_id && equipment.room_id === room.id) return true;
-      if (equipment.project_rooms?.id && equipment.project_rooms.id === room.id) return true;
-
-      const candidateNames = [
-        equipment.project_rooms?.name,
-        equipment.room_name,
-        equipment.location
-      ].filter(Boolean);
-
-      for (const name of candidateNames) {
-        const normalized = normalizeRoomName(name);
-        if (!normalized) continue;
-        const matchedRoom = aliasLookup.get(normalized);
-        if (matchedRoom?.id === room.id) return true;
-      }
-
-      return false;
-    },
-    [aliasLookup]
-  );
-
   const selectableEquipment = useMemo(
     () =>
       projectEquipment.filter(
@@ -1253,45 +1109,6 @@ const WireDropDetail = () => {
       ),
     [projectEquipment]
   );
-
-  const nonHeadEquipment = useMemo(
-    () => selectableEquipment.filter((item) => !item.project_rooms?.is_headend),
-    [selectableEquipment]
-  );
-
-  const roomEquipmentBuckets = useMemo(() => {
-    const buckets = {
-      matches: [],
-      matchesSelected: [],
-      others: []
-    };
-
-    const selectedSet = new Set(roomEquipmentSelection);
-
-    const sorter = (a, b) => (a.name || '').localeCompare(b.name || '');
-
-    nonHeadEquipment.forEach((item) => {
-      if (resolvedDropRoom && doesEquipmentMatchRoom(item, resolvedDropRoom)) {
-        if (selectedSet.has(item.id)) {
-          buckets.matchesSelected.push(item);
-        } else {
-          buckets.matches.push(item);
-        }
-      } else {
-        buckets.others.push(item);
-      }
-    });
-
-    buckets.matches.sort(sorter);
-    buckets.matchesSelected.sort(sorter);
-    buckets.others.sort(sorter);
-
-    return buckets;
-  }, [nonHeadEquipment, resolvedDropRoom, doesEquipmentMatchRoom, roomEquipmentSelection]);
-
-  const matchingRoomEquipment = roomEquipmentBuckets.matches;
-  const usedRoomEquipment = roomEquipmentBuckets.matchesSelected;
-  const otherRoomEquipment = roomEquipmentBuckets.others;
 
   // Smart sorted equipment for room end selector with single-select behavior
   const sortedRoomEquipment = useMemo(() => {
@@ -1448,34 +1265,6 @@ const WireDropDetail = () => {
       setShowAllHeadEquipment(false);
     }
   }, [headEquipmentCatalog.hasOtherRooms, showAllHeadEquipment]);
-
-  const handleSaveRoomEnd = async () => {
-    try {
-      setSavingRoomEquipment(true);
-      await wireDropService.updateEquipmentLinks(id, 'room_end', roomEquipmentSelection, user?.id);
-      alert('Room end equipment updated');
-      await loadWireDrop();
-    } catch (err) {
-      console.error('Failed to save room end equipment:', err);
-      alert(err.message || 'Failed to save room end equipment');
-    } finally {
-      setSavingRoomEquipment(false);
-    }
-  };
-
-  const handleSaveHeadEnd = async () => {
-    try {
-      setSavingHeadEquipment(true);
-      await wireDropService.updateEquipmentLinks(id, 'head_end', headEquipmentSelection, user?.id);
-      alert('Head end equipment updated');
-      await loadWireDrop();
-    } catch (err) {
-      console.error('Failed to save head end equipment:', err);
-      alert(err.message || 'Failed to save head end equipment');
-    } finally {
-      setSavingHeadEquipment(false);
-    }
-  };
 
   const getStageStatus = (stageType) => {
     if (!wireDrop?.wire_drop_stages) return null;

@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 const InventoryManager = ({ projectId }) => {
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
-  const { user } = useAuth();
+  useAuth(); // Auth context required for authenticated API calls
   const navigate = useNavigate();
   const { publishState, registerActions, unregisterActions } = useAppState();
 
@@ -354,10 +354,6 @@ const InventoryManager = ({ projectId }) => {
   }
 
   const roomGroups = groupByRoom(filteredEquipment);
-  const totalShortage = equipment.reduce((sum, item) => {
-    const status = getInventoryStatus(item);
-    return sum + status.shortage;
-  }, 0);
 
   return (
     <div className="space-y-6">

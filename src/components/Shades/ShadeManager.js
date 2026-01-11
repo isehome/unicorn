@@ -28,13 +28,12 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
     const { projectId: routeProjectId } = useParams();
     const projectId = embeddedProjectId || routeProjectId;
     const navigate = useNavigate();
-    const { theme, mode } = useTheme();
+    const { mode } = useTheme();
     const { user, acquireToken } = useAuth(); // MSAL User
-    const palette = theme.palette;
 
     const [shades, setShades] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [, setError] = useState(null); // Error state - setter used for error handling
     const [importing, setImporting] = useState(false);
     const [project, setProject] = useState(null);
 
@@ -405,26 +404,8 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
         }, {});
     }, [shades, searchQuery, statusFilter]);
 
-    // Dynamic Mount Options
-    const availableMountTypes = useMemo(() => {
-        const types = new Set(['Inside', 'Outside', 'Side']); // Defaults
-        shades.forEach(s => {
-            // Add any existing values from the database to the list
-            if (s.mount_type && s.mount_type.trim()) types.add(s.mount_type.trim());
-            if (s.m1_mount_type && s.m1_mount_type.trim()) types.add(s.m1_mount_type.trim());
-            if (s.m2_mount_type && s.m2_mount_type.trim()) types.add(s.m2_mount_type.trim());
-        });
-        return Array.from(types).sort();
-    }, [shades]);
-
     // AppState for Voice AI integration
     const { publishState, registerActions, unregisterActions } = useAppState();
-
-    // Voice AI Tools for shade list navigation
-    const handleSelectShadeForMeasuring = useCallback((shade) => {
-        // Navigate to the shade detail page
-        navigate(`/projects/${projectId}/shades/${shade.id}`);
-    }, [navigate, projectId]);
 
     // Publish state to AppStateContext for Voice AI
     useEffect(() => {

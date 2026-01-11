@@ -132,7 +132,6 @@ const ShadeDetailPage = () => {
 
         if (allWidths.length >= 6) {
             const minWidth = Math.min(...allWidths);
-            const maxWidth = Math.max(...allWidths);
             const allSame = allWidths.every(w => w === allWidths[0]);
 
             if (allSame) {
@@ -443,16 +442,10 @@ const ShadeDetailPage = () => {
                 updates.updated_at = new Date().toISOString();
 
                 // Use sendBeacon for reliable save on page unload
+                // Note: sendBeacon doesn't support custom headers, so this is best-effort
                 if (navigator.sendBeacon) {
                     const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/project_shades?id=eq.${shadeId}`;
-                    const headers = {
-                        'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
-                        'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
-                        'Content-Type': 'application/json',
-                        'Prefer': 'return=minimal'
-                    };
                     const blob = new Blob([JSON.stringify(updates)], { type: 'application/json' });
-                    // Note: sendBeacon doesn't support custom headers well, so this is best-effort
                     navigator.sendBeacon(url, blob);
                 }
 
@@ -842,11 +835,6 @@ const ShadeDetailPage = () => {
             setMarkingComplete(false);
         }
     };
-
-    // Navigate back to shade list
-    const handleNavigateBack = useCallback(() => {
-        navigate(`/projects/${projectId}/shades`);
-    }, [navigate, projectId]);
 
     // Design Review - Send to designer
     const handleDesignerChange = async (newId) => {

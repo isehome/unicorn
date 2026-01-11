@@ -1239,9 +1239,6 @@ const EquipmentListPage = () => {
     return () => unregisterActions(Object.keys(actions));
   }, [registerActions, unregisterActions, equipment, rooms, projectId, navigate, loadEquipment, setSearchParams]);
 
-  const totalItems = equipment.length;
-  const headEndCount = equipment.filter((item) => item.isHeadend).length;
-
   const toggleStatus = async (equipmentId, field, value) => {
     try {
       // "Ordered" status is read-only and auto-synced with PO system

@@ -54,13 +54,6 @@ const DEFAULT_TECHNOLOGY_CATEGORIES = [
   { id: 'general', name: 'general', label: 'General', color: '#64748B' }
 ];
 
-// Preset colors for category picker
-const PRESET_COLORS = [
-  '#3B82F6', '#8B5CF6', '#F59E0B', '#10B981', '#EF4444',
-  '#EC4899', '#6366F1', '#64748B', '#14B8A6', '#F97316',
-  '#84CC16', '#06B6D4', '#A855F7', '#F43F5E', '#22C55E'
-];
-
 // Proficiency levels
 const PROFICIENCY_LEVELS = [
   { id: 'training', label: 'Training', icon: GraduationCap, color: '#F59E0B', description: 'Currently learning' },
@@ -172,12 +165,6 @@ const AdminPage = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [saving, setSaving] = useState(false);
-
-  // Skills UI state
-  const [expandedCategories, setExpandedCategories] = useState({});
-  const [addingSkill, setAddingSkill] = useState(false);
-  const [newSkill, setNewSkill] = useState({ name: '', category: 'network', description: '' });
-  const [editingSkill, setEditingSkill] = useState(null);
 
   // Employee skills modal
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -420,6 +407,44 @@ const AdminPage = () => {
       hint: `Admin panel - ${activeTab} tab. ${users.length} users, ${globalSkills.length} skills, ${featureFlags.length} feature flags configured.`
     });
   }, [activeTab, users, globalSkills, featureFlags, roleFeatureFlags, qboStatus.connected, publishState]);
+
+  // Feature flag management functions
+  const handleToggleRoleFeature = useCallback(async (role, flagId, currentEnabled) => {
+    try {
+      setSaving(true);
+      const newEnabled = !currentEnabled;
+
+      // Upsert role feature flag
+      const { error } = await supabase
+        .from('role_feature_flags')
+        .upsert({
+          role,
+          feature_flag_id: flagId,
+          enabled: newEnabled
+        }, {
+          onConflict: 'role,feature_flag_id'
+        });
+
+      if (error) throw error;
+
+      // Update local state
+      setRoleFeatureFlags(prev => ({
+        ...prev,
+        [role]: {
+          ...(prev[role] || {}),
+          [flagId]: newEnabled
+        }
+      }));
+
+      setSuccess(`Feature ${newEnabled ? 'enabled' : 'disabled'} for ${role}s`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('[AdminPage] Toggle role feature failed:', err);
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   // Register actions for Voice AI
   useEffect(() => {
@@ -720,87 +745,6 @@ const AdminPage = () => {
     }
   };
 
-  // Skills management functions
-  const toggleCategory = (category) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [category]: !prev[category]
-    }));
-  };
-
-  const handleAddSkill = async () => {
-    if (!newSkill.name.trim() || !newSkill.category) return;
-
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from('global_skills')
-        .insert({
-          name: newSkill.name.trim(),
-          category: newSkill.category,
-          description: newSkill.description.trim() || null,
-          is_active: true
-        });
-
-      if (error) throw error;
-
-      setNewSkill({ name: '', category: 'network', description: '' });
-      setAddingSkill(false);
-      setSuccess('Skill added successfully');
-      setTimeout(() => setSuccess(null), 3000);
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Add skill failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUpdateSkill = async (skill) => {
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from('global_skills')
-        .update({
-          name: skill.name,
-          description: skill.description,
-          is_active: skill.is_active
-        })
-        .eq('id', skill.id);
-
-      if (error) throw error;
-
-      setEditingSkill(null);
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Update skill failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteSkill = async (skillId) => {
-    if (!window.confirm('Delete this skill? This will remove it from all employees.')) return;
-
-    try {
-      setSaving(true);
-      const { error } = await supabase
-        .from('global_skills')
-        .delete()
-        .eq('id', skillId);
-
-      if (error) throw error;
-      await loadData();
-    } catch (err) {
-      console.error('[AdminPage] Delete skill failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleAssignSkill = async (employeeId, skillId, proficiencyLevel) => {
     try {
       setSaving(true);
@@ -865,44 +809,6 @@ const AdminPage = () => {
     id: cat.name || cat.id, // Use name as ID for matching with skills
     skills: globalSkills.filter(s => s.category === (cat.name || cat.id))
   }));
-
-  // Feature flag management functions
-  const handleToggleRoleFeature = useCallback(async (role, flagId, currentEnabled) => {
-    try {
-      setSaving(true);
-      const newEnabled = !currentEnabled;
-
-      // Upsert role feature flag
-      const { error } = await supabase
-        .from('role_feature_flags')
-        .upsert({
-          role,
-          feature_flag_id: flagId,
-          enabled: newEnabled
-        }, {
-          onConflict: 'role,feature_flag_id'
-        });
-
-      if (error) throw error;
-
-      // Update local state
-      setRoleFeatureFlags(prev => ({
-        ...prev,
-        [role]: {
-          ...(prev[role] || {}),
-          [flagId]: newEnabled
-        }
-      }));
-
-      setSuccess(`Feature ${newEnabled ? 'enabled' : 'disabled'} for ${role}s`);
-      setTimeout(() => setSuccess(null), 3000);
-    } catch (err) {
-      console.error('[AdminPage] Toggle role feature failed:', err);
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }, []);
 
   const handleToggleUserFeature = async (userId, flagId, currentEnabled, existingId) => {
     try {
@@ -1743,7 +1649,10 @@ const AdminPage = () => {
       if (!contact.name) {
         errors.push({ row: i + 2, error: 'Missing name' });
         skipped++;
-        setImportProgress(prev => ({ ...prev, current: i + 1, skipped: skipped, errors }));
+        // Capture current values to avoid closure issues
+        const currentSkipped = skipped;
+        const currentIndex = i;
+        setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
         continue;
       }
 
@@ -1783,7 +1692,10 @@ const AdminPage = () => {
         errors.push({ row: i + 2, error: err.message });
       }
 
-      setImportProgress(prev => ({ ...prev, current: i + 1, skipped, errors }));
+      // Capture current values to avoid closure issues
+      const currentSkipped = skipped;
+      const currentIndex = i;
+      setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
     }
 
     setImportStep('done');

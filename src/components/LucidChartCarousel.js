@@ -96,7 +96,6 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
   const [pages, setPages] = useState([]);
   const [thumbnails, setThumbnails] = useState({});
   const [documentId, setDocumentId] = useState(null);
-  const [documentVersion, setDocumentVersion] = useState(null);
   const [loading, setLoading] = useState(false);
   const [thumbnailsLoading, setThumbnailsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -160,7 +159,6 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
         const docVersion = metadata?.version || metadata?.documentVersion || metadata?.revision || null;
 
         setPages(pageData);
-        setDocumentVersion(docVersion);
 
         await loadThumbnails(docId, pageData, docVersion);
       } catch (err) {

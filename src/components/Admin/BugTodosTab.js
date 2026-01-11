@@ -22,8 +22,6 @@ const BugTodosTab = () => {
   const [filter, setFilter] = useState('all');
   const [expandedBug, setExpandedBug] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
-  const [markdownContent, setMarkdownContent] = useState({});
-  const [loadingMarkdown, setLoadingMarkdown] = useState({});
   const [copiedField, setCopiedField] = useState(null);
   const [bugDetails, setBugDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});

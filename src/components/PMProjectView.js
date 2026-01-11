@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
-import { projectsService, timeLogsService, projectProgressService } from '../services/supabaseService';
+import { projectsService, timeLogsService } from '../services/supabaseService';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
@@ -146,9 +146,6 @@ const extractShapeWireType = (shape) =>
   getShapeCustomValue(shape, 'Cable Type') ||
   getShapeCustomValue(shape, 'Cable') ||
   '';
-
-const extractShapeFloor = (shape) =>
-  getShapeCustomValue(shape, 'Floor') || getShapeCustomValue(shape, 'Level') || '';
 
 const extractShapeDevice = (shape) =>
   getShapeCustomValue(shape, 'Device') || '';
@@ -298,15 +295,12 @@ const PMProjectViewEnhanced = () => {
   const [phases, setPhases] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [milestones, setMilestones] = useState([]);
-  const [projectMilestones, setProjectMilestones] = useState([]);
-  const [milestonesLoading, setMilestonesLoading] = useState(false);
   const [timeData, setTimeData] = useState({
     summary: [],
     activeUsers: [],
     totalHours: 0,
     totalMinutes: 0
   });
-  const [projectProgress, setProjectProgress] = useState({ prewire: 0, trim: 0, commission: 0 });
   const [milestonePercentages, setMilestonePercentages] = useState({
     planning_design: 0,
     prewire_prep: 0,
@@ -353,14 +347,11 @@ const PMProjectViewEnhanced = () => {
   const [selectedShapes, setSelectedShapes] = useState(new Set());
   const [existingWireDrops, setExistingWireDrops] = useState([]);
   const [batchCreating, setBatchCreating] = useState(false);
-  const [showLucidSection, setShowLucidSection] = useState(false);
-  const [roomAssociationCollapsed, setRoomAssociationCollapsed] = useState(true);
   const [equipmentStats, setEquipmentStats] = useState({ total: 0, ordered: 0, received: 0 });
   const [procurementIssueCount, setProcurementIssueCount] = useState(0);
   const [issues, setIssues] = useState([]);
   const [showResolvedIssues, setShowResolvedIssues] = useState(false);
   const [laborBudgetCollapsed, setLaborBudgetCollapsed] = useState(true);
-  const [folderInitializing, setFolderInitializing] = useState(false);
   const [folderInitSuccess, setFolderInitSuccess] = useState(null);
   const [projectOwners, setProjectOwners] = useState({ pm: null, technician: null });
   const [laborSummary, setLaborSummary] = useState({
@@ -382,18 +373,15 @@ const PMProjectViewEnhanced = () => {
     phone: ''
   });
   const [projectRooms, setProjectRooms] = useState([]);
-  const [roomsLoading, setRoomsLoading] = useState(false);
   const [unmatchedRoomEntries, setUnmatchedRoomEntries] = useState([]);
   const [roomAssignments, setRoomAssignments] = useState({});
   const [roomAliasSaving, setRoomAliasSaving] = useState(null);
   const [showUnifiApiKey, setShowUnifiApiKey] = useState(false);
-  const [projectStatusHistory, setProjectStatusHistory] = useState([]);
   const [milestoneDates, setMilestoneDates] = useState([]);
   const [phaseMilestonesEditMode, setPhaseMilestonesEditMode] = useState(false);
 
   // Window Treatments / Shades state
   const [projectShades, setProjectShades] = useState([]);
-  const [shadesLoading, setShadesLoading] = useState(false);
 
   // Collapsible sections state - all default to collapsed (true)
   const [sectionsCollapsed, setSectionsCollapsed] = useState({
@@ -423,13 +411,10 @@ const PMProjectViewEnhanced = () => {
   const loadProjectRooms = useCallback(async () => {
     if (!projectId) return;
     try {
-      setRoomsLoading(true);
       const rooms = await projectRoomsService.fetchRoomsWithAliases(projectId);
       setProjectRooms(rooms);
     } catch (error) {
       console.error('Failed to load project rooms:', error);
-    } finally {
-      setRoomsLoading(false);
     }
   }, [projectId]);
 
@@ -437,13 +422,10 @@ const PMProjectViewEnhanced = () => {
   const loadProjectShades = useCallback(async () => {
     if (!projectId) return;
     try {
-      setShadesLoading(true);
       const shades = await projectShadeService.getShades(projectId);
       setProjectShades(shades || []);
     } catch (error) {
       console.error('Failed to load project shades:', error);
-    } finally {
-      setShadesLoading(false);
     }
   }, [projectId]);
 
@@ -490,11 +472,6 @@ const PMProjectViewEnhanced = () => {
         isHeadEnd: room.is_headend
       })),
     [projectRooms]
-  );
-
-  const linkedDropCount = useMemo(
-    () => existingWireDrops.filter((wd) => wd.lucid_shape_id).length,
-    [existingWireDrops]
   );
 
   const suggestRoomMatch = useCallback(
@@ -970,15 +947,6 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
-  const loadProgress = async () => {
-    try {
-      const progress = await projectProgressService.getProjectProgress(projectId);
-      setProjectProgress(progress);
-    } catch (error) {
-      console.error('Failed to load progress:', error);
-      setProjectProgress({ prewire: 0, trim: 0, commission: 0 });
-    }
-  };
 
   const loadEquipmentStats = useCallback(
     async (incomingEquipment) => {
@@ -1123,8 +1091,6 @@ const PMProjectViewEnhanced = () => {
     if (!projectId) return;
 
     try {
-      setMilestonesLoading(true);
-
       // STEP 1: Try to load from cache first (instant display)
       const cachedData = milestoneCacheService.getCached(projectId);
       if (cachedData) {
@@ -1160,13 +1126,6 @@ const PMProjectViewEnhanced = () => {
 
       setMilestonePercentages(percentages);
 
-      // Get milestone data
-      const milestones = await milestoneService.getProjectMilestones(projectId);
-
-      // Format milestones for display
-      const formattedMilestones = milestones.map(m => milestoneService.formatMilestone(m));
-      setProjectMilestones(formattedMilestones);
-
       // Check completion status for all milestones - handle errors gracefully
       try {
         await milestoneService.checkAllMilestones(projectId);
@@ -1176,11 +1135,6 @@ const PMProjectViewEnhanced = () => {
         // based on whether orders AND receiving are both at 100%
         console.log('[PMProjectView] Syncing prep milestone completion status...');
         await milestoneService.autoCompletePrepMilestones(projectId);
-
-        // Reload to get updated completion data
-        const updatedMilestones = await milestoneService.getProjectMilestones(projectId);
-        const formattedUpdated = updatedMilestones.map(m => milestoneService.formatMilestone(m));
-        setProjectMilestones(formattedUpdated);
       } catch (checkError) {
         console.warn('Failed to check milestone completion status:', checkError);
         // Continue with the milestones we have
@@ -1188,7 +1142,6 @@ const PMProjectViewEnhanced = () => {
     } catch (error) {
       console.error('Failed to load project milestones:', error);
       // Ensure we have clean state even on error
-      setProjectMilestones([]);
       setMilestonePercentages({
         planning_design: 0,
         prewire_prep: 0,
@@ -1197,8 +1150,6 @@ const PMProjectViewEnhanced = () => {
         trim: 0,
         commissioning: 0
       });
-    } finally {
-      setMilestonesLoading(false);
     }
   }, [projectId]);
 
@@ -1478,7 +1429,6 @@ const PMProjectViewEnhanced = () => {
       // Initialize SharePoint folder structure if client_folder_url is provided
       if (clientFolderUrlToSave) {
         try {
-          setFolderInitializing(true);
           console.log('Initializing SharePoint folders for:', clientFolderUrlToSave);
 
           const folderResult = await sharePointFolderService.initializeProjectFolders(
@@ -1494,8 +1444,6 @@ const PMProjectViewEnhanced = () => {
           setFolderInitSuccess({ error: folderError.message });
           // Don't fail the whole save - just warn the user
           alert(`Project saved, but folder initialization had an issue: ${folderError.message}`);
-        } finally {
-          setFolderInitializing(false);
         }
       }
 
@@ -1605,7 +1553,6 @@ const PMProjectViewEnhanced = () => {
     loadTimeData();
     loadPhasesAndStatuses();
     loadContacts();
-    loadProgress();
     loadProjectOwners();
     loadMilestoneDates();
     loadProcurementIssues();
@@ -1615,8 +1562,6 @@ const PMProjectViewEnhanced = () => {
     loadProjectMilestones().catch(error => {
       console.error('Failed to load milestones on mount:', error);
       // Ensure clean state so the UI shows empty state instead of disappearing
-      setMilestonesLoading(false);
-      setProjectMilestones([]);
       setMilestonePercentages({
         planning_design: 0,
         prewire_prep: 0,
@@ -2044,15 +1989,6 @@ const PMProjectViewEnhanced = () => {
     console.log('Client selected:', contact);
   };
 
-  const handleClearClient = () => {
-    setFormData(prev => ({
-      ...prev,
-      client: ''
-    }));
-    setSelectedClient(null);
-    setClientSearchTerm('');
-  };
-
   const handleCreateNewContact = async () => {
     try {
       // Validate required fields
@@ -2190,55 +2126,6 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
-  const handlePhaseMilestoneUpdate = async (phaseId, field, value) => {
-    try {
-      const existingMilestone = milestones.find(m => m.phase_id === phaseId);
-
-      if (existingMilestone) {
-        // Update existing milestone
-        const { data, error } = await supabase
-          .from('project_phase_milestones')
-          .update({ [field]: value || null, updated_at: new Date().toISOString() })
-          .eq('id', existingMilestone.id)
-          .select()
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        setMilestones(milestones.map(m =>
-          m.id === existingMilestone.id
-            ? { ...m, [field]: value || null }
-            : m
-        ));
-      } else {
-        // Create new milestone
-        const { data, error } = await supabase
-          .from('project_phase_milestones')
-          .insert([{
-            project_id: projectId,
-            phase_id: phaseId,
-            [field]: value || null
-          }])
-          .select(`
-            *,
-            phase:project_phases(*)
-          `)
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        setMilestones([...milestones, data]);
-      }
-    } catch (error) {
-      console.error('Error in handleMilestoneUpdate:', error);
-      throw error;
-    }
-  };
-
   const formatDuration = (minutes) => {
     if (!minutes) return '0h 0m';
     const hours = Math.floor(minutes / 60);
@@ -2329,7 +2216,6 @@ const PMProjectViewEnhanced = () => {
         .eq('project_id', projectId);
 
       setExistingWireDrops(wireDrops || []);
-      setShowLucidSection(true);
 
     } catch (error) {
       console.error('Failed to fetch Lucid data:', error);
@@ -2616,21 +2502,7 @@ const PMProjectViewEnhanced = () => {
     return existingWireDrops.some(wd => wd.lucid_shape_id === shapeId);
   };
 
-  const getLinkedWireDrop = (shapeId) => {
-    return existingWireDrops.find(wd => wd.lucid_shape_id === shapeId);
-  };
-
   const totalEquipmentPieces = equipmentStats.total || 0;
-  const orderedPieces = equipmentStats.ordered || 0;
-  const receivedPieces = equipmentStats.received || 0;
-  const orderedPercentage =
-    totalEquipmentPieces > 0 ? Math.round((orderedPieces / totalEquipmentPieces) * 100) : 0;
-  const receivedPercentage =
-    totalEquipmentPieces > 0 ? Math.round((receivedPieces / totalEquipmentPieces) * 100) : 0;
-  const orderedHelper =
-    totalEquipmentPieces > 0 ? `${orderedPieces} of ${totalEquipmentPieces} pieces ordered` : undefined;
-  const receivedHelper =
-    totalEquipmentPieces > 0 ? `${receivedPieces} of ${totalEquipmentPieces} pieces onsite` : undefined;
   const totalLaborMinutes = Math.round(Number(laborSummary.totalMinutes || 0));
   const loggedMinutes = Math.round(
     timeData?.totalMinutes !== undefined
@@ -3012,7 +2884,6 @@ const PMProjectViewEnhanced = () => {
                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
                                   {droppableShapes.map((shape) => {
                                     const linked = isShapeLinked(shape.id);
-                                    const wireDrop = getLinkedWireDrop(shape.id);
                                     const roomName = extractShapeRoomName(shape);
                                     const dropType = extractShapeDropType(shape);
 
@@ -4499,7 +4370,6 @@ const PMProjectViewEnhanced = () => {
                 icon={Clock}
                 onClick={() => {
                   loadTimeData();
-                  loadProgress();
                   loadLaborSummary();
                 }}
               >
