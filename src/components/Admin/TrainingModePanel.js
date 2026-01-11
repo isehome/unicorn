@@ -17,7 +17,7 @@ import {
 
 const TrainingModePanel = () => {
   const { mode } = useTheme();
-  const { userRole } = useAuth();
+  useAuth(); // Auth context check
   const {
     isTrainingMode,
     isSessionActive,
@@ -28,7 +28,6 @@ const TrainingModePanel = () => {
     endTrainingSession,
     cancelTrainingSession,
     exitTrainingMode,
-    enterTrainingMode,
     setSessionType,
     getCurrentRouteStatus,
     getPageInfoForCurrentRoute,

@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
-import Button from './ui/Button';
 import DateField from './ui/DateField';
-import { ArrowLeft, RefreshCw, Search, Building, Layers, Package, Box, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2 } from 'lucide-react';
+import { Search, Building, Layers, Package, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2 } from 'lucide-react';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -799,15 +798,6 @@ const mapEquipmentRecord = (item) => {
   };
 };
 
-const withAlpha = (hex, alpha) => {
-  if (!hex || !hex.startsWith('#') || (hex.length !== 7 && hex.length !== 4)) return hex;
-  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
-  const r = parseInt(full.slice(1, 3), 16);
-  const g = parseInt(full.slice(3, 5), 16);
-  const b = parseInt(full.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
 const EquipmentListPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -1251,7 +1241,6 @@ const EquipmentListPage = () => {
 
   const totalItems = equipment.length;
   const headEndCount = equipment.filter((item) => item.isHeadend).length;
-  const roomEndCount = totalItems - headEndCount;
 
   const toggleStatus = async (equipmentId, field, value) => {
     try {

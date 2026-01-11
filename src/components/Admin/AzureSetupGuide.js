@@ -15,7 +15,6 @@ import {
   Check,
   Shield,
   Mail,
-  Calendar,
   FolderOpen,
   Users,
   Bell,

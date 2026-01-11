@@ -6,16 +6,13 @@ import { useAppState } from '../contexts/AppStateContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
 import {
-  ArrowLeft,
   Key,
-  Shield,
   Plus,
   Search,
   Eye,
   EyeOff,
   Copy,
   Edit2,
-  Trash2,
   AlertCircle,
   CheckCircle,
   Package,
@@ -24,7 +21,6 @@ import {
   User,
   Lock,
   Link2,
-  FileText,
   Clock,
   AlertTriangle
 } from 'lucide-react';

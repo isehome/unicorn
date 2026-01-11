@@ -11,7 +11,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { sharePointStorageService } from '../services/sharePointStorageService';
 import { thumbnailCache } from '../lib/thumbnailCache';
 
 // SharePoint thumbnail size configurations

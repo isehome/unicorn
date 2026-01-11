@@ -16,7 +16,6 @@ import {
   FileText,
   Zap,
   ListTodo,
-  AlertTriangle,
   Users,
   ChevronRight,
   Search,
@@ -25,9 +24,6 @@ import {
   Trash2,
   Loader,
   Plus,
-  Image,
-  Folder,
-  Package,
   Mail,
   Phone,
   Building,
@@ -35,8 +31,6 @@ import {
   Check,
   X,
   Pencil,
-  Shield,
-  PackageCheck,
   Printer
 } from 'lucide-react';
 import {

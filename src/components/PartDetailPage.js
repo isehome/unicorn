@@ -4,8 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Save,
   Trash2,
-  Link as LinkIcon,
-  FileText,
   Plus,
   AlertCircle,
   Loader2,
@@ -15,21 +13,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { partsService } from '../services/partsService';
 import { queryKeys } from '../lib/queryClient';
 
-const RESOURCE_TYPES = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'schematic', label: 'Schematic' },
-  { value: 'instruction', label: 'Instructions' },
-  { value: 'datasheet', label: 'Datasheet' },
-  { value: 'video', label: 'Video' },
-  { value: 'link', label: 'Link' },
-  { value: 'other', label: 'Other' },
-];
-
 const PartDetailPage = () => {
   const { partId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { theme, mode } = useTheme();
+  const { theme } = useTheme();
 
   const [formState, setFormState] = useState(null);
   const [formError, setFormError] = useState('');
@@ -127,37 +115,6 @@ const PartDetailPage = () => {
       ...prev,
       [field]: field.startsWith('quantity') ? Number(value) : value,
     }));
-  };
-
-  const handleResourceChange = (index, field, value) => {
-    setFormState((prev) => {
-      const links = [...(prev.resource_links || [])];
-      links[index] = { ...links[index], [field]: value };
-      return { ...prev, resource_links: links };
-    });
-  };
-
-  const handleAddResource = () => {
-    setFormState((prev) => ({
-      ...prev,
-      resource_links: [
-        ...(prev.resource_links || []),
-        {
-          id: undefined,
-          label: '',
-          type: 'manual',
-          url: '',
-        },
-      ],
-    }));
-  };
-
-  const handleRemoveResource = (index) => {
-    setFormState((prev) => {
-      const links = [...(prev.resource_links || [])];
-      links.splice(index, 1);
-      return { ...prev, resource_links: links };
-    });
   };
 
   const handleUrlArrayChange = (field, index, value) => {

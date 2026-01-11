@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bot, Play, Eye, EyeOff, CheckCircle, AlertCircle,
-  Loader2, RefreshCw, Sparkles
+  Loader2, Sparkles
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTrainingMode } from '../../contexts/TrainingModeContext';

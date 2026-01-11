@@ -8,7 +8,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
-  Mic, MicOff, Activity, Clock, Wifi, Volume2,
+  Mic, Activity, Clock, Wifi, Volume2,
   AlertCircle, Settings, Play, Square, BarChart2, X
 } from 'lucide-react';
 
@@ -97,14 +97,14 @@ const VoiceTestPanel = ({ onClose, isModal = false }) => {
 
   // Tool definitions for AI to control settings (matching AIBrainContext format)
   // IMPORTANT: Only HIGH and LOW are supported - MEDIUM causes WebSocket errors!
-  const tools = [
+  const tools = React.useMemo(() => [
     { name: 'set_vad_start_sensitivity', description: 'Set START sensitivity: HIGH (triggers easily on any speech) or LOW (requires clear speech). MEDIUM is NOT supported.', parameters: { type: 'object', properties: { level: { type: 'string', enum: ['HIGH', 'LOW'] } }, required: ['level'] } },
     { name: 'set_vad_end_sensitivity', description: 'Set END sensitivity: HIGH (fast response, quick cutoff) or LOW (waits longer, more patient). MEDIUM is NOT supported.', parameters: { type: 'object', properties: { level: { type: 'string', enum: ['HIGH', 'LOW'] } }, required: ['level'] } },
     { name: 'set_silence_duration', description: 'Set silence wait in ms (300-2000). Lower = faster response.', parameters: { type: 'object', properties: { milliseconds: { type: 'number' } }, required: ['milliseconds'] } },
     { name: 'get_current_settings', description: 'Get current VAD settings and latency metrics.', parameters: { type: 'object', properties: {} } },
     { name: 'apply_preset', description: 'Apply preset: snappy (fast), balanced (sensitive+patient), patient (clear speech), or interview (long pauses).', parameters: { type: 'object', properties: { preset: { type: 'string', enum: ['snappy', 'balanced', 'patient', 'interview'] } }, required: ['preset'] } },
     { name: 'reconnect_with_settings', description: 'Reconnect to apply new settings.', parameters: { type: 'object', properties: {} } },
-  ];
+  ], []);
 
   // Handle tool calls from the AI
   const handleToolCall = useCallback((toolName, args) => {

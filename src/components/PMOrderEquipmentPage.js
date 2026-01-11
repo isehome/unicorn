@@ -8,7 +8,6 @@ import { supabase } from '../lib/supabase';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
 import { poGeneratorService } from '../services/poGeneratorService';
-import { purchaseOrderService } from '../services/purchaseOrderService';
 import { trackingService } from '../services/trackingService';
 import { supplierService } from '../services/supplierService';
 import Button from './ui/Button';
@@ -22,19 +21,13 @@ import {
   Package,
   CheckCircle,
   AlertCircle,
-  ArrowLeft,
   Loader,
   ShoppingCart,
-  DollarSign,
-  List,
-  Grid,
   FileText,
   ChevronDown,
   ChevronRight,
   Truck,
   Building2,
-  Calendar,
-  DollarSign as DollarSignIcon,
   Settings,
   Edit2,
   X

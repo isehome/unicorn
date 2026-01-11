@@ -11,10 +11,7 @@ import {
   Eye,
   EyeOff,
   Key,
-  ChevronRight,
   X,
-  Check,
-  AlertCircle,
   Copy,
   Server
 } from 'lucide-react';

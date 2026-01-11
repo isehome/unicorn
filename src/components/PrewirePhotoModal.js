@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import PropTypes from 'prop-types';
-import { Camera, X, Upload, Loader2 } from 'lucide-react';
+import { Camera, Upload, Loader2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useTheme } from '../contexts/ThemeContext';
 import { compressImage } from '../lib/images';
@@ -114,7 +114,7 @@ const PrewirePhotoModal = ({ isOpen, onClose, wireDrop, onPhotoUploaded, current
             <div className="relative rounded-lg overflow-hidden">
               <img
                 src={previewUrl}
-                alt="Prewire photo preview"
+                alt="Prewire preview"
                 className="w-full h-auto max-h-64 object-contain bg-zinc-900"
               />
             </div>

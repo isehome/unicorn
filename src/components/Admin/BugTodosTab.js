@@ -7,8 +7,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bug, Clock, CheckCircle, AlertCircle, XCircle,
   Loader2, RefreshCw, Trash2, RotateCw,
-  ChevronDown, ChevronUp, FileText, Github, Mail,
-  Copy, Check, Image, User, Link, Code, Monitor, Download
+  ChevronDown, ChevronUp, Github,
+  Copy, Check, Image, Code, Download
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -168,26 +168,6 @@ const BugTodosTab = () => {
       setExpandedBug(bugId);
       // Load full details when expanding
       loadBugDetails(bugId);
-    }
-  };
-
-  /**
-   * Load markdown content from GitHub
-   */
-  const loadMarkdownContent = async (bugId, mdPath) => {
-    if (markdownContent[bugId] || loadingMarkdown[bugId]) return;
-
-    setLoadingMarkdown(prev => ({ ...prev, [bugId]: true }));
-    try {
-      const response = await fetch(`/api/bugs/markdown?path=${encodeURIComponent(mdPath)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setMarkdownContent(prev => ({ ...prev, [bugId]: data.content }));
-      }
-    } catch (err) {
-      console.error('Error loading markdown:', err);
-    } finally {
-      setLoadingMarkdown(prev => ({ ...prev, [bugId]: false }));
     }
   };
 

@@ -235,14 +235,11 @@ export default function BugReporter() {
     let finalTranscript = description;
 
     recognition.onresult = (event) => {
-      let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
           finalTranscript += (finalTranscript ? ' ' : '') + transcript;
           setDescription(finalTranscript);
-        } else {
-          interimTranscript += transcript;
         }
       }
     };

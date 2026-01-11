@@ -11,7 +11,6 @@ import {
   User,
   Phone,
   Mail,
-  MapPin,
   Building,
   X,
   Check,

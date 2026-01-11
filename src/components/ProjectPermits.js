@@ -13,7 +13,6 @@ import {
   Trash2,
   FileText,
   Download,
-  CheckCircle,
   Circle,
   AlertCircle
 } from 'lucide-react';

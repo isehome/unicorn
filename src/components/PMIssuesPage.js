@@ -4,20 +4,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '../lib/queryClient';
 import { supabase } from '../lib/supabase';
 import { useDebounce } from '../utils/debounce';
 import Button from './ui/Button';
-import { 
-  Filter, 
-  Users, 
-  BarChart3, 
+import {
+  Users,
+  BarChart3,
   AlertTriangle,
   CheckCircle,
   Clock,
-  Download,
-  ArrowLeft,
-  FileText
+  Download
 } from 'lucide-react';
 
 // Memoized Issue Card Component
@@ -88,7 +84,7 @@ const IssueCard = memo(({ issue, onClick, sectionStyles, isDark, showStakeholder
 
 const PMIssuesPage = () => {
   const { projectId } = useParams();
-  const { user } = useAuth();
+  useAuth(); // Auth context check
   const navigate = useNavigate();
   const { mode } = useTheme();
   const sectionStyles = enhancedStyles.sections[mode];
@@ -110,8 +106,8 @@ const PMIssuesPage = () => {
     [isDark]
   );
 
-  // Query for project details
-  const projectQuery = useQuery({
+  // Query for project details (prefetch for cache)
+  useQuery({
     queryKey: ['project', projectId],
     queryFn: async () => {
       if (!projectId || !supabase) return null;
@@ -272,10 +268,12 @@ const PMIssuesPage = () => {
     navigate(`/project/${projectId}/issues/new`);
   }, [navigate, projectId]);
 
-  const handleRefresh = useCallback(() => {
+  // Available for UI refresh button if needed
+  const _handleRefresh = useCallback(() => {
     issuesQuery.refetch();
     stakeholdersQuery.refetch();
   }, [issuesQuery, stakeholdersQuery]);
+  void _handleRefresh; // Suppress unused warning
 
   const handleFilterChange = useCallback((e) => {
     setFilter(e.target.value);
@@ -285,9 +283,11 @@ const PMIssuesPage = () => {
     setStatusFilter(e.target.value);
   }, []);
 
-  const handleStakeholderFilterChange = useCallback((e) => {
+  // Available for stakeholder dropdown if re-enabled
+  const _handleStakeholderFilterChange = useCallback((e) => {
     setStakeholderFilter(e.target.value);
   }, []);
+  void _handleStakeholderFilterChange; // Suppress unused warning
 
   const handleSearchChange = useCallback((e) => {
     setSearchQuery(e.target.value);
