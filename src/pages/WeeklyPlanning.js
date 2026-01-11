@@ -10,9 +10,9 @@ import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calenda
 import TechnicianFilterBar from '../components/Service/TechnicianFilterBar';
 import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
-import { weeklyPlanningService, getWeekStart, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
+import { weeklyPlanningService, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
-import { checkUserAvailability, fetchEventsForDate, fetchUserEventsForDate, createServiceAppointmentEvent, updateServiceAppointmentEvent, deleteCalendarEvent, sendMeetingInviteEmail, sendMeetingCancellationEmail } from '../services/microsoftCalendarService';
+import { checkUserAvailability, fetchUserEventsForDate, updateServiceAppointmentEvent, sendMeetingInviteEmail, sendMeetingCancellationEmail } from '../services/microsoftCalendarService';
 import { useAuth } from '../contexts/AuthContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { brandColors } from '../styles/styleSystem';

@@ -16,7 +16,6 @@ import {
   BarChart2,
   TrendingUp,
   ChevronDown,
-  Filter,
   X
 } from 'lucide-react';
 import { serviceReportService } from '../services/serviceReportService';
