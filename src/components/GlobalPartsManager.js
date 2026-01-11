@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, FileText, Package, Edit2, Wrench, ExternalLink } from 'lucide-react';
+import { Search, FileText, Package, Edit2, Wrench, ExternalLink, Sparkles, CheckCircle } from 'lucide-react';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
@@ -21,9 +21,11 @@ const GlobalPartsManager = () => {
   const [error, setError] = useState(null);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
-  const [filter, setFilter] = useState('all'); // 'all', 'prewire', 'trim'
+  const [filter, setFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new'
   const [editingInventory, setEditingInventory] = useState(null); // { partId, quantity }
   const [savingInventory, setSavingInventory] = useState(null); // partId being saved
+  const [newPartsCount, setNewPartsCount] = useState(0);
+  const [markingAllReviewed, setMarkingAllReviewed] = useState(false);
 
   useEffect(() => {
     loadParts();
@@ -37,6 +39,8 @@ const GlobalPartsManager = () => {
       filtered = filtered.filter(part => part.required_for_prewire === true);
     } else if (filter === 'trim') {
       filtered = filtered.filter(part => part.required_for_prewire !== true);
+    } else if (filter === 'new') {
+      filtered = filtered.filter(part => part.needs_review === true);
     }
 
     // Apply search filter
@@ -52,6 +56,10 @@ const GlobalPartsManager = () => {
     }
 
     setFilteredParts(filtered);
+
+    // Update new parts count
+    const newCount = parts.filter(p => p.needs_review === true).length;
+    setNewPartsCount(newCount);
   }, [searchQuery, parts, filter]);
 
   const loadParts = async () => {
@@ -76,7 +84,8 @@ const GlobalPartsManager = () => {
           technical_manual_urls,
           quantity_on_hand,
           reorder_point,
-          warehouse_location
+          warehouse_location,
+          needs_review
         `)
         .order('part_number', { ascending: true });
 
@@ -188,6 +197,50 @@ const GlobalPartsManager = () => {
     const count = [hasSchematic, hasInstall, hasTechnical].filter(Boolean).length;
     return { count, hasSchematic, hasInstall, hasTechnical };
   };
+
+  const handleMarkPartReviewed = useCallback(async (partId) => {
+    try {
+      await partsService.markPartReviewed(partId);
+
+      // Update local state
+      setParts(prev =>
+        prev.map(p =>
+          p.id === partId ? { ...p, needs_review: false } : p
+        )
+      );
+
+      // Dispatch event to update navigation badge
+      window.dispatchEvent(new CustomEvent('parts-reviewed'));
+    } catch (err) {
+      console.error('Failed to mark part as reviewed:', err);
+      alert('Failed to mark part as reviewed: ' + err.message);
+    }
+  }, []);
+
+  const handleMarkAllReviewed = useCallback(async () => {
+    try {
+      setMarkingAllReviewed(true);
+      await partsService.markAllPartsReviewed();
+
+      // Update local state
+      setParts(prev =>
+        prev.map(p => ({ ...p, needs_review: false }))
+      );
+
+      // If we're on the "new" filter, switch to "all" since there won't be any new parts
+      if (filter === 'new') {
+        setFilter('all');
+      }
+
+      // Dispatch event to update navigation badge
+      window.dispatchEvent(new CustomEvent('parts-reviewed'));
+    } catch (err) {
+      console.error('Failed to mark all parts as reviewed:', err);
+      alert('Failed to mark all parts as reviewed: ' + err.message);
+    } finally {
+      setMarkingAllReviewed(false);
+    }
+  }, [filter]);
 
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
@@ -353,7 +406,7 @@ const GlobalPartsManager = () => {
         </div>
 
         {/* Phase Filter */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setFilter('all')}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -363,6 +416,28 @@ const GlobalPartsManager = () => {
             }`}
           >
             All Parts
+          </button>
+          <button
+            onClick={() => setFilter('new')}
+            className={`relative rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              filter === 'new'
+                ? 'bg-amber-500 text-white dark:bg-amber-600'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5" />
+              Show New
+              {newPartsCount > 0 && (
+                <span className={`ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
+                  filter === 'new'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-red-500 text-white'
+                }`}>
+                  {newPartsCount > 99 ? '99+' : newPartsCount}
+                </span>
+              )}
+            </span>
           </button>
           <button
             onClick={() => setFilter('prewire')}
@@ -387,6 +462,26 @@ const GlobalPartsManager = () => {
         </div>
       </div>
 
+      {/* Mark All Reviewed Button - shown when there are new parts */}
+      {newPartsCount > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <span className="text-sm text-amber-800 dark:text-amber-200">
+              {newPartsCount} new {newPartsCount === 1 ? 'part needs' : 'parts need'} review
+            </span>
+          </div>
+          <button
+            onClick={handleMarkAllReviewed}
+            disabled={markingAllReviewed}
+            className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
+          >
+            <CheckCircle className="h-3.5 w-3.5" />
+            {markingAllReviewed ? 'Marking...' : 'Mark All Reviewed'}
+          </button>
+        </div>
+      )}
+
       {/* Parts List */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {filteredParts.map((part) => {
@@ -404,6 +499,12 @@ const GlobalPartsManager = () => {
                     <h3 className="truncate font-medium text-gray-900 dark:text-white">
                       {part.name || 'Unnamed Part'}
                     </h3>
+                    {part.needs_review && (
+                      <span className="shrink-0 flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                        <Sparkles className="h-3 w-3" />
+                        New
+                      </span>
+                    )}
                     {part.required_for_prewire && (
                       <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                         Prewire
@@ -420,14 +521,25 @@ const GlobalPartsManager = () => {
                     </p>
                   )}
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  icon={Edit2}
-                  onClick={() => handleEditDocumentation(part)}
-                >
-                  Edit Docs
-                </Button>
+                <div className="flex items-center gap-2">
+                  {part.needs_review && (
+                    <button
+                      onClick={() => handleMarkPartReviewed(part.id)}
+                      className="flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                      title="Mark as reviewed"
+                    >
+                      <CheckCircle className="h-3 w-3" />
+                    </button>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={Edit2}
+                    onClick={() => handleEditDocumentation(part)}
+                  >
+                    Edit Docs
+                  </Button>
+                </div>
               </div>
 
               {/* Prewire Classification Toggle */}

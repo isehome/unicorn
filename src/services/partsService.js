@@ -24,7 +24,7 @@ const normalizeResourceLinks = (links = []) => {
 };
 
 export const partsService = {
-  async list({ search } = {}) {
+  async list({ search, needsReviewOnly = false } = {}) {
     if (!supabase) return [];
 
     let query = supabase
@@ -45,6 +45,10 @@ export const partsService = {
       );
     }
 
+    if (needsReviewOnly) {
+      query = query.eq('needs_review', true);
+    }
+
     const { data, error } = await query;
 
     if (error) {
@@ -53,6 +57,75 @@ export const partsService = {
     }
 
     return data || [];
+  },
+
+  async getNewPartsCount() {
+    if (!supabase) return 0;
+
+    const { data, error } = await supabase.rpc('get_new_parts_count');
+
+    if (error) {
+      console.error('Failed to get new parts count:', error);
+      // Fallback: query directly
+      const { count, error: countError } = await supabase
+        .from('global_parts')
+        .select('*', { count: 'exact', head: true })
+        .eq('needs_review', true);
+
+      if (countError) {
+        console.error('Fallback count also failed:', countError);
+        return 0;
+      }
+      return count || 0;
+    }
+
+    return data || 0;
+  },
+
+  async markPartReviewed(partId) {
+    if (!supabase || !partId) return false;
+
+    const { data, error } = await supabase.rpc('mark_part_reviewed', {
+      p_part_id: partId
+    });
+
+    if (error) {
+      console.error('Failed to mark part as reviewed:', error);
+      // Fallback: direct update
+      const { error: updateError } = await supabase
+        .from('global_parts')
+        .update({ needs_review: false })
+        .eq('id', partId);
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to mark part as reviewed');
+      }
+      return true;
+    }
+
+    return data;
+  },
+
+  async markAllPartsReviewed() {
+    if (!supabase) return 0;
+
+    const { data, error } = await supabase.rpc('mark_all_parts_reviewed');
+
+    if (error) {
+      console.error('Failed to mark all parts as reviewed:', error);
+      // Fallback: direct update
+      const { error: updateError, count } = await supabase
+        .from('global_parts')
+        .update({ needs_review: false })
+        .eq('needs_review', true);
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to mark all parts as reviewed');
+      }
+      return count || 0;
+    }
+
+    return data || 0;
   },
 
   async getById(id) {
