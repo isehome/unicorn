@@ -8,7 +8,7 @@ import {
   Bug, Clock, CheckCircle, AlertCircle, XCircle,
   Loader2, RefreshCw, Trash2, RotateCw,
   ChevronDown, ChevronUp, FileText, Github, Mail,
-  Copy, Check, Image, User, Link, Code, Monitor, Download, ExternalLink
+  Copy, Check, Image, User, Link, Code, Monitor, Download
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -425,9 +425,9 @@ const BugTodosTab = () => {
   };
 
   /**
-   * Open bug report in native app (uses Web Share API to trigger "Open in..." on mobile)
+   * Copy complete bug report to clipboard for pasting into Antigravity or other apps
    */
-  const openBugReportInApp = async (bug) => {
+  const copyBugReportToClipboard = async (bug) => {
     // Build GitHub raw URL for the screenshot
     let screenshotUrl = null;
     if (bug.bug_report_id && bug.branch_name) {
@@ -436,42 +436,13 @@ const BugTodosTab = () => {
 
     const content = generateCompleteBugReport(bug, screenshotUrl);
 
-    // Use AI-generated slug if available for descriptive filename
-    const slug = bug.ai_filename_slug || (bug.ai_summary || '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').slice(0, 40);
-    const filename = slug ? `${bug.bug_report_id}-${slug}.md` : `${bug.bug_report_id || 'bug-report'}.md`;
-
-    // Create file for sharing
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const file = new File([blob], filename, { type: 'text/markdown' });
-
-    // Check if Web Share API with files is supported (iOS Safari, modern Android)
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: `Bug Report: ${bug.bug_report_id || 'Bug'}`,
-          text: bug.ai_summary || 'Bug report from Unicorn'
-        });
-        return; // Successfully shared
-      } catch (err) {
-        // User cancelled or share failed - fall through to download
-        if (err.name === 'AbortError') {
-          return; // User cancelled, don't do anything
-        }
-        console.log('Share failed, falling back to download:', err);
-      }
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedField(`report-${bug.id}`);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy bug report:', err);
     }
-
-    // Desktop fallback: Open markdown in a new browser tab for viewing
-    // Create a data URL that opens as viewable content
-    const url = URL.createObjectURL(blob);
-
-    // Open in new tab - browser will display the markdown as plain text
-    // This allows copying to clipboard or saving from the browser
-    window.open(url, '_blank');
-
-    // Clean up after a delay (keep it longer since user is viewing)
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
   };
 
   /**
@@ -972,18 +943,29 @@ const BugTodosTab = () => {
                           Download Report
                         </button>
 
-                        {/* Open in native app button */}
+                        {/* Copy full report to clipboard */}
                         <button
-                          onClick={() => openBugReportInApp(bug)}
+                          onClick={() => copyBugReportToClipboard(bug)}
                           className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                            mode === 'dark'
-                              ? 'bg-zinc-700 text-white hover:bg-zinc-600'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            copiedField === `report-${bug.id}`
+                              ? 'bg-green-500 text-white'
+                              : mode === 'dark'
+                                ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                           }`}
-                          title="Download and open in default markdown editor"
+                          title="Copy complete bug report to clipboard"
                         >
-                          <ExternalLink className="w-4 h-4" />
-                          Open File
+                          {copiedField === `report-${bug.id}` ? (
+                            <>
+                              <Check className="w-4 h-4" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4" />
+                              Copy Report
+                            </>
+                          )}
                         </button>
 
                         <button
