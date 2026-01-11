@@ -16,7 +16,7 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { useServiceTimeTracking, formatElapsedTime, formatElapsedTimeHuman } from '../../hooks/useServiceTimeTracking';
+import { useServiceTimeTracking, formatElapsedTime } from '../../hooks/useServiceTimeTracking';
 import ServiceTimeEntryModal from './ServiceTimeEntryModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';

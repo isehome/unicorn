@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, Server, Smartphone, Search, RefreshCw, ArrowRight, CheckCircle, Database, AlertCircle, Trash2 } from 'lucide-react';
+import { Wifi, Server, Search, RefreshCw, ArrowRight, CheckCircle, Database, AlertCircle } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
-import { equipmentService } from '../services/equipmentService'; // Ensure correct path
 
 const UnifiClientImporter = () => {
   const [loading, setLoading] = useState(false);

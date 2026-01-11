@@ -4,7 +4,7 @@
  * Supports drag-drop scheduling, infinite horizontal scroll, and time-based card sizing
  */
 
-import React, { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { memo, useMemo, useState, useCallback, useRef } from 'react';
 import { Clock, AlertCircle, Send } from 'lucide-react';
 import { brandColors } from '../../styles/styleSystem';
 

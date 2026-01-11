@@ -6,9 +6,7 @@
 
 import React, { memo, useState, useMemo } from 'react';
 import { Clock, MapPin, AlertCircle, Search, ExternalLink, GripVertical } from 'lucide-react';
-import { brandColors } from '../../styles/styleSystem';
 import { setDragEstimatedHours, resetDragEstimatedHours } from './WeekCalendarGrid';
-import TechnicianAvatar, { UnassignedAvatar } from '../TechnicianAvatar';
 import TechnicianDropdown from './TechnicianDropdown';
 
 // Constants

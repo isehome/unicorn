@@ -18,8 +18,7 @@ import {
   Loader,
   Package,
   CheckCircle,
-  AlertCircle,
-  MapPin
+  AlertCircle
 } from 'lucide-react';
 
 /**

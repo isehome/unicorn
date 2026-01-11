@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  Calendar,
   Clock,
   DollarSign,
   Users,
@@ -16,7 +15,6 @@ import {
   Loader2,
   BarChart2,
   TrendingUp,
-  Package,
   ChevronDown,
   Filter,
   X

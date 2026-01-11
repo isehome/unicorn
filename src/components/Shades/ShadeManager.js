@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-    ArrowLeft,
     Upload,
     Download,
     Ruler,
@@ -10,14 +9,11 @@ import {
     ChevronRight,
     ChevronDown,
     Search,
-    Filter,
     Settings,
-    ShoppingCart,
-    Package
+    ShoppingCart
 } from 'lucide-react';
 import Papa from 'papaparse';
 import { useTheme } from '../../contexts/ThemeContext';
-import { enhancedStyles } from '../../styles/styleSystem';
 import { useAuth } from '../../contexts/AuthContext';
 import { projectStakeholdersService, projectsService } from '../../services/supabaseService';
 import { projectShadeService } from '../../services/projectShadeService';

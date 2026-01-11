@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { servicePhotoService, PHOTO_CATEGORIES } from '../../services/servicePhotoService';
 import CachedSharePointImage from '../CachedSharePointImage';
-import { brandColors } from '../../styles/styleSystem';
 
 const ServicePhotosManager = ({ ticketId, user, sharePointFolderUrl }) => {
   const [photos, setPhotos] = useState({});

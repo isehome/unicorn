@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
-import { Mic, MessageSquare, Sparkles, UserCog, Copy, Check, ScrollText, Sliders, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Mic, MessageSquare, Sparkles, UserCog, Copy, Check, ScrollText, Sliders, ChevronDown, ChevronRight } from 'lucide-react';
 import { useVoiceCopilot } from '../../contexts/AIBrainContext';
 import VoiceTestPanel from '../Admin/VoiceTestPanel';
 
@@ -11,8 +11,6 @@ const AISettings = () => {
 
     // Voice Copilot context
     const {
-        debugLog,
-        clearDebugLog,
         lastTranscript,
         status,
         audioChunksSent,

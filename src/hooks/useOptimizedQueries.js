@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { queryKeys, invalidateRelatedQueries } from '../lib/queryClient';
+import { queryKeys } from '../lib/queryClient';
 import {
   contactsService,
   projectsService,

@@ -13,12 +13,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Settings, Users, Award, Plus, Trash2, Edit2, Save, X,
-  ChevronDown, ChevronRight, Loader2, CheckCircle, AlertCircle,
+  Settings, Users, Award, X,
+  Loader2, CheckCircle, AlertCircle,
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
-  ArrowRight, RefreshCw, AlertTriangle, Check, Bug
+  ArrowRight, RefreshCw, AlertTriangle, Bug
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';

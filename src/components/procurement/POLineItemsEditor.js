@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import { projectEquipmentService } from '../../services/projectEquipmentService';
@@ -13,7 +13,6 @@ import {
   Loader,
   AlertCircle,
   X,
-  Search,
   Check,
   FileSpreadsheet
 } from 'lucide-react';

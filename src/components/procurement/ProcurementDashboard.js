@@ -14,7 +14,6 @@ import {
   Package,
   Building2,
   ShoppingCart,
-  TrendingUp,
   ChevronRight,
   Plus,
   Loader,

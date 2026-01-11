@@ -6,7 +6,6 @@ import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
 import {
   Mail,
-  Phone,
   User,
   Save,
   Upload,

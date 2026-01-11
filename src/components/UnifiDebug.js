@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Wifi, AlertCircle, CheckCircle, Server, Shield } from 'lucide-react';
+import { Wifi, Server, Shield } from 'lucide-react';
 
 const UnifiDebug = () => {
     const [ip, setIp] = useState('192.168.1.1');
