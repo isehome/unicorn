@@ -16,6 +16,8 @@ import {
   Wrench,
   ClipboardList,
   X,
+  Sparkles,
+  CheckCircle,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -42,7 +44,8 @@ const PartsListPage = () => {
   const [inventoryMode, setInventoryMode] = useState(false);
   const [editedParts, setEditedParts] = useState({});
   const [editedInventory, setEditedInventory] = useState({}); // { partId: quantity }
-  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim'
+  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new'
+  const [markingAllReviewed, setMarkingAllReviewed] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
@@ -139,6 +142,8 @@ const PartsListPage = () => {
       filtered = filtered.filter(part => part.required_for_prewire === true);
     } else if (phaseFilter === 'trim') {
       filtered = filtered.filter(part => part.required_for_prewire !== true);
+    } else if (phaseFilter === 'new') {
+      filtered = filtered.filter(part => part.needs_review === true);
     }
 
     // Apply search filter
@@ -165,6 +170,11 @@ const PartsListPage = () => {
   const categories = useMemo(() => {
     const cats = new Set(parts.map(p => p.category).filter(Boolean));
     return Array.from(cats).sort();
+  }, [parts]);
+
+  // Count new parts needing review
+  const newPartsCount = useMemo(() => {
+    return parts.filter(p => p.needs_review === true).length;
   }, [parts]);
 
   // ══════════════════════════════════════════════════════════════
@@ -361,6 +371,33 @@ const PartsListPage = () => {
     }
     updateInventoryMutation.mutate(editedInventory);
   }, [editedInventory, updateInventoryMutation]);
+
+  const handleMarkPartReviewed = useCallback(async (partId) => {
+    try {
+      await partsService.markPartReviewed(partId);
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+      // Dispatch event to update navigation badge
+      window.dispatchEvent(new CustomEvent('parts-reviewed'));
+    } catch (err) {
+      console.error('Failed to mark part as reviewed:', err);
+    }
+  }, [queryClient]);
+
+  const handleMarkAllReviewed = useCallback(async () => {
+    setMarkingAllReviewed(true);
+    try {
+      await partsService.markAllPartsReviewed();
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+      // Dispatch event to update navigation badge
+      window.dispatchEvent(new CustomEvent('parts-reviewed'));
+      // Switch back to all parts view
+      setPhaseFilter('all');
+    } catch (err) {
+      console.error('Failed to mark all parts as reviewed:', err);
+    } finally {
+      setMarkingAllReviewed(false);
+    }
+  }, [queryClient]);
 
   const renderPartCard = (part) => {
     const quantity = Number(part.quantity_available ?? part.quantity_on_hand ?? 0);
@@ -596,6 +633,11 @@ const PartsListPage = () => {
                     Prewire
                   </span>
                 )}
+                {part.needs_review && (
+                  <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    New
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-semibold mt-1"
                 style={{ color: styles.textPrimary }}
@@ -608,21 +650,36 @@ const PartsListPage = () => {
                 </p>
               )}
             </div>
-            <div
-              className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
-              style={styles.muted}
-            >
-              <span className="font-semibold" style={{ color: styles.textPrimary }}>
-                {quantity}
-              </span>
-              <span className="text-xs" style={{ color: styles.textSecondary }}>
-                Available
-              </span>
-              {reserved > 0 && (
-                <span className="text-[11px]" style={{ color: styles.textSecondary }}>
-                  {`${totalOnHand} on hand • ${reserved} reserved`}
-                </span>
+            <div className="flex items-start gap-2">
+              {part.needs_review && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleMarkPartReviewed(part.id);
+                  }}
+                  className="flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                  title="Mark as reviewed"
+                >
+                  <CheckCircle className="h-3 w-3" />
+                  Review
+                </button>
               )}
+              <div
+                className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
+                style={styles.muted}
+              >
+                <span className="font-semibold" style={{ color: styles.textPrimary }}>
+                  {quantity}
+                </span>
+                <span className="text-xs" style={{ color: styles.textSecondary }}>
+                  Available
+                </span>
+                {reserved > 0 && (
+                  <span className="text-[11px]" style={{ color: styles.textSecondary }}>
+                    {`${totalOnHand} on hand • ${reserved} reserved`}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -754,6 +811,28 @@ const PartsListPage = () => {
           All Parts
         </button>
         <button
+          onClick={() => setPhaseFilter('new')}
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            phaseFilter === 'new'
+              ? 'bg-amber-500 text-white dark:bg-amber-600'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" />
+            Show New
+            {newPartsCount > 0 && (
+              <span className={`ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
+                phaseFilter === 'new'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-red-500 text-white'
+              }`}>
+                {newPartsCount > 99 ? '99+' : newPartsCount}
+              </span>
+            )}
+          </span>
+        </button>
+        <button
           onClick={() => setPhaseFilter('prewire')}
           className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
             phaseFilter === 'prewire'
@@ -791,6 +870,26 @@ const PartsListPage = () => {
           {filteredParts.length} items
         </span>
       </div>
+
+      {/* Mark All Reviewed Banner - shown when viewing new parts */}
+      {phaseFilter === 'new' && newPartsCount > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <span className="text-sm text-amber-800 dark:text-amber-200">
+              {newPartsCount} new {newPartsCount === 1 ? 'part needs' : 'parts need'} review
+            </span>
+          </div>
+          <button
+            onClick={handleMarkAllReviewed}
+            disabled={markingAllReviewed}
+            className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 dark:bg-amber-500 dark:hover:bg-amber-600"
+          >
+            <CheckCircle className="h-3.5 w-3.5" />
+            {markingAllReviewed ? 'Marking...' : 'Mark All Reviewed'}
+          </button>
+        </div>
+      )}
 
       {isError && (
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300">
