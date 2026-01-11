@@ -2,18 +2,23 @@
 
 > **Purpose:** This document maps EVERY page, modal, form field, and interactive element in the Unicorn app for AI voice agent awareness.
 >
-> **Last Updated:** January 9, 2025 (Comprehensive Implementation Complete)
+> **Last Updated:** January 2026
+>
+> **Related Documents:**
+> - [DATABASE-SCHEMA-MAP.md](DATABASE-SCHEMA-MAP.md) - Complete database schema with all tables and fields
+> - [VOICE-AI-REFERENCE.md](VOICE-AI-REFERENCE.md) - Voice AI system architecture and configuration
 
 ---
 
 ## Table of Contents
 1. [Executive Summary](#executive-summary)
-2. [New Capabilities (Jan 2025)](#new-capabilities-jan-2025)
-3. [Orphaned Hooks Audit (Phase 1)](#orphaned-hooks-audit)
-4. [Routes & AppState Status](#routes--appstate-status)
-5. [Modals & Popups Inventory](#modals--popups-inventory)
-6. [Form Fields Inventory](#form-fields-inventory)
-7. [Priority Implementation Order](#priority-implementation-order)
+2. [Database Schema Reference](#database-schema-reference)
+3. [New Capabilities (Jan 2025)](#new-capabilities-jan-2025)
+4. [Orphaned Hooks Audit (Phase 1)](#orphaned-hooks-audit)
+5. [Routes & AppState Status](#routes--appstate-status)
+6. [Modals & Popups Inventory](#modals--popups-inventory)
+7. [Form Fields Inventory](#form-fields-inventory)
+8. [Priority Implementation Order](#priority-implementation-order)
 
 ---
 
@@ -36,6 +41,59 @@
 4. **Phase 4 COMPLETE**: Navigation expanded to 35+ destinations
 5. **Phase 5 COMPLETE**: quick_create tool added for todos, issues, tickets, contacts, notes
 6. **Phase 6 COMPLETE**: Teaching mode integrated via teach_page, get_page_training, answer_page_question tools
+
+---
+
+## Database Schema Reference
+
+For complete database schema documentation, see **[DATABASE-SCHEMA-MAP.md](DATABASE-SCHEMA-MAP.md)**.
+
+### Quick Reference: Core Tables
+
+| Domain | Tables | Purpose |
+|--------|--------|---------|
+| **Projects** | projects, project_team_members, project_phases, project_notes | Project management and team assignments |
+| **Shades** | shades, shade_measurements, shade_status_history, shade_photos | Window treatment tracking and measurements |
+| **Wire Drops** | wire_drops, wire_drop_photos, wire_drop_labels | Prewire installation tracking |
+| **Equipment** | equipment_items, project_parts, global_parts | Equipment and parts inventory |
+| **Service** | service_tickets, ticket_time_entries, ticket_notes | Service CRM and time tracking |
+| **People** | contacts, contact_roles, project_team_members, technicians | Contact and team management |
+| **Procurement** | purchase_orders, po_line_items, suppliers, shipping_addresses | Vendor management and purchasing |
+| **Tasks** | todos, issues, project_stakeholders | Task and issue tracking |
+| **AI/Voice** | ai_conversations, ai_context_snapshots, ai_tool_executions | AI agent awareness and history |
+| **Knowledge** | page_training, page_faqs, knowledge_articles | Training data and knowledge base |
+
+### Key Relationships
+
+```
+projects (1) ──────┬──── (*) shades
+                   ├──── (*) wire_drops
+                   ├──── (*) equipment_items
+                   ├──── (*) todos
+                   ├──── (*) issues
+                   └──── (*) purchase_orders
+
+contacts (1) ──────┬──── (*) service_tickets
+                   └──── (*) projects (via project_contacts)
+
+global_parts (1) ──┬──── (*) project_parts
+                   └──── (*) po_line_items
+
+suppliers (1) ─────┬──── (*) purchase_orders
+                   └──── (*) supplier_part_prices
+```
+
+### Database Functions (RPC)
+
+The AI can call these Supabase RPC functions:
+
+| Function | Purpose |
+|----------|---------|
+| `get_new_parts_count()` | Count of global parts needing review |
+| `mark_part_reviewed(uuid)` | Mark single part as reviewed |
+| `mark_all_parts_reviewed()` | Mark all parts as reviewed |
+| `update_global_part(...)` | Update global part with all fields |
+| `search_global_parts(...)` | Full-text search with filters |
 
 ---
 
