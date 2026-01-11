@@ -8,7 +8,7 @@ import TimeSelectionGrid from './ui/TimeSelectionGrid';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, fetchEventsForDate } from '../services/microsoftCalendarService';
-import { projectStakeholdersService, todoStakeholdersService, projectTodosService } from '../services/supabaseService';
+import { projectStakeholdersService, todoStakeholdersService } from '../services/supabaseService';
 import { stakeholderColors, enhancedStyles } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 

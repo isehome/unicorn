@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { syncService } from '../services/syncService';
 import { getQueueCount } from '../lib/offline';
 

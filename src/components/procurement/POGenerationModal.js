@@ -5,7 +5,6 @@ import { useAppState } from '../../contexts/AppStateContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { poGeneratorService } from '../../services/poGeneratorService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
-import { projectEquipmentService } from '../../services/projectEquipmentService';
 import { pdfExportService } from '../../services/pdfExportService';
 import { csvExportService } from '../../services/csvExportService';
 import { sharePointStorageService } from '../../services/sharePointStorageService';
@@ -18,7 +17,6 @@ import {
   FileText,
   Loader,
   Package,
-  Building2,
   CheckCircle,
   AlertCircle,
   MapPin

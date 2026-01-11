@@ -4,7 +4,7 @@
  * Supports categories: before, during, after, documentation
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Camera,
   Upload,

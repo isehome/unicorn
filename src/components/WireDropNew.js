@@ -5,13 +5,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { wireDropService } from '../services/wireDropService';
 import Button from './ui/Button';
-import { 
-  Save, 
+import {
+  Save,
   X,
-  MapPin,
   Zap,
-  FileText,
-  Hash,
   Loader,
   Home,
   Wifi,

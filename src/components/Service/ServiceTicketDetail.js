@@ -21,7 +21,6 @@ import {
   ChevronDown,
   AlertTriangle,
   CheckCircle,
-  XCircle,
   Wifi,
   Tv,
   Sun,

@@ -15,7 +15,6 @@ import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
 
-import HomeKitQRUpload from './HomeKitQRUpload';
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
 import {
