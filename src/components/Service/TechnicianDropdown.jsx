@@ -29,7 +29,7 @@ const proficiencyColors = {
  * @param {string} props.selectedColor - Optional pre-known avatar color to show before technicians load
  * @param {string} props.category - Ticket category for skill matching (e.g., 'network', 'av')
  * @param {Array} props.technicians - Optional pre-loaded technicians array (if not provided, will fetch)
- * @param {function} props.onChange - Callback when selection changes: (techId, techName) => void
+ * @param {function} props.onChange - Callback when selection changes: (techId, techName, avatarColor) => void
  * @param {string} props.size - Size variant: 'sm' | 'md' (default: 'sm')
  * @param {boolean} props.disabled - Whether dropdown is disabled
  * @param {string} props.placeholder - Placeholder text when no selection
@@ -108,7 +108,7 @@ const TechnicianDropdown = memo(({
 
   // Handle selection
   const handleSelect = (tech) => {
-    onChange?.(tech?.id || null, tech?.full_name || null);
+    onChange?.(tech?.id || null, tech?.full_name || null, tech?.avatar_color || null);
     setIsOpen(false);
   };
 

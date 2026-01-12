@@ -1442,21 +1442,24 @@ const WeeklyPlanning = () => {
                     <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
                     <TechnicianDropdown
                       value={ticketDetailModal.ticket?.assigned_to || ''}
+                      selectedName={ticketDetailModal.ticket?.assigned_to_name}
+                      selectedColor={ticketDetailModal.ticket?.assigned_to_avatar_color}
                       category={ticketDetailModal.ticket?.category || 'general'}
-                      onChange={async (newTechId, techName) => {
+                      onChange={async (newTechId, techName, avatarColor) => {
                         if (ticketDetailModal.ticket?.id) {
                           try {
                             await serviceTicketService.update(ticketDetailModal.ticket.id, {
                               assigned_to: newTechId || null,
                               status: newTechId ? 'triaged' : ticketDetailModal.ticket.status
                             });
-                            // Update the modal state
+                            // Update the modal state with new technician info including avatar color
                             setTicketDetailModal(prev => ({
                               ...prev,
                               ticket: {
                                 ...prev.ticket,
                                 assigned_to: newTechId,
-                                assigned_to_name: techName || null
+                                assigned_to_name: techName || null,
+                                assigned_to_avatar_color: avatarColor || null
                               }
                             }));
                             // Refresh the panels
@@ -1509,8 +1512,10 @@ const WeeklyPlanning = () => {
                       <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
                       <TechnicianDropdown
                         value={ticketDetailModal.schedule.technician_id || ''}
+                        selectedName={ticketDetailModal.schedule.technician_name}
+                        selectedColor={ticketDetailModal.schedule.technician_avatar_color}
                         category={ticketDetailModal.ticket?.category || 'general'}
-                        onChange={async (newTechId, techName) => {
+                        onChange={async (newTechId, techName, avatarColor) => {
                           if (newTechId && ticketDetailModal.schedule?.id) {
                             try {
                               await weeklyPlanningService.moveSchedule(
@@ -1520,13 +1525,14 @@ const WeeklyPlanning = () => {
                                 newTechId,
                                 techName
                               );
-                              // Update the modal state
+                              // Update the modal state with new technician info including avatar color
                               setTicketDetailModal(prev => ({
                                 ...prev,
                                 schedule: {
                                   ...prev.schedule,
                                   technician_id: newTechId,
-                                  technician_name: techName
+                                  technician_name: techName,
+                                  technician_avatar_color: avatarColor
                                 }
                               }));
                               // Refresh calendar

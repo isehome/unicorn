@@ -106,6 +106,7 @@ export const serviceTicketService = {
           *,
           project:projects(id, name, address, status),
           contact:contacts(id, full_name, phone, email, company),
+          assigned_technician:contacts!service_tickets_assigned_to_fkey(id, full_name, email),
           notes:service_ticket_notes(
             id, note_type, content, author_name, is_internal,
             call_duration_seconds, created_at
@@ -126,6 +127,25 @@ export const serviceTicketService = {
       if (error) {
         console.error('[ServiceTicketService] Failed to fetch ticket:', error);
         throw new Error(error.message || 'Failed to fetch service ticket');
+      }
+
+      // If there's an assigned technician, lookup their avatar color from profiles
+      if (data && data.assigned_technician?.email) {
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('avatar_color')
+            .eq('email', data.assigned_technician.email.toLowerCase())
+            .single();
+
+          // Add to result
+          data.assigned_to_name = data.assigned_technician.full_name;
+          data.assigned_to_avatar_color = profile?.avatar_color || null;
+        } catch (profileErr) {
+          // Non-fatal - just won't have avatar color
+          data.assigned_to_name = data.assigned_technician.full_name;
+          data.assigned_to_avatar_color = null;
+        }
       }
 
       return data;
