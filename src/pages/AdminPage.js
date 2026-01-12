@@ -1684,6 +1684,17 @@ const AdminPage = () => {
         continue;
       }
 
+      // Filter to only valid database columns (remove AI-generated fields like is_company)
+      const validColumns = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
+                           'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
+                           'is_internal', 'is_active'];
+      const cleanContact = {};
+      validColumns.forEach(col => {
+        if (contact[col] !== undefined && contact[col] !== null && contact[col] !== '') {
+          cleanContact[col] = contact[col];
+        }
+      });
+
       try {
         // Check for duplicate
         const existing = await checkDuplicate(contact);
@@ -1694,29 +1705,42 @@ const AdminPage = () => {
           } else if (duplicateHandling === 'merge') {
             // Merge: update existing with new non-empty fields
             const updates = {};
-            Object.entries(contact).forEach(([key, value]) => {
+            Object.entries(cleanContact).forEach(([key, value]) => {
               if (value && !existing[key]) {
                 updates[key] = value;
               }
             });
             if (Object.keys(updates).length > 0) {
-              await supabase
+              const { error } = await supabase
                 .from('contacts')
                 .update(updates)
                 .eq('id', existing.id);
+              if (error) {
+                console.error('[AdminPage] Merge error for row', i + 2, ':', error.message, updates);
+                errors.push({ row: i + 2, error: `Merge failed: ${error.message}` });
+              }
             } else {
               skipped++;
             }
           }
           // 'create' will fall through to create new
           else if (duplicateHandling === 'create') {
-            await supabase.from('contacts').insert([contact]);
+            const { error } = await supabase.from('contacts').insert([cleanContact]);
+            if (error) {
+              console.error('[AdminPage] Insert error for row', i + 2, ':', error.message, cleanContact);
+              errors.push({ row: i + 2, error: `Insert failed: ${error.message}` });
+            }
           }
         } else {
           // No duplicate, create new contact
-          await supabase.from('contacts').insert([contact]);
+          const { error } = await supabase.from('contacts').insert([cleanContact]);
+          if (error) {
+            console.error('[AdminPage] Insert error for row', i + 2, ':', error.message, cleanContact);
+            errors.push({ row: i + 2, error: `Insert failed: ${error.message}` });
+          }
         }
       } catch (err) {
+        console.error('[AdminPage] Exception for row', i + 2, ':', err.message, cleanContact);
         errors.push({ row: i + 2, error: err.message });
       }
 

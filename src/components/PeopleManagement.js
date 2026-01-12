@@ -5,7 +5,7 @@ import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
-import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, Camera, CreditCard } from 'lucide-react';
 
 const PeopleManagement = () => {
   const navigate = useNavigate();
@@ -18,6 +18,14 @@ const PeopleManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
   const [filter, setFilter] = useState('all'); // all, internal, external
+
+  // Business card scanner state
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanningCard, setScanningCard] = useState(false);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const videoRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
+  const streamRef = React.useRef(null);
 
   // Fetch all contacts once (no search filter sent to server)
   const contactFilters = useMemo(() => ({
@@ -169,6 +177,114 @@ const PeopleManagement = () => {
     setShowAddModal(false);
     setEditingContact(null);
     setFormData(initialFormState);
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // BUSINESS CARD SCANNER
+  // ══════════════════════════════════════════════════════════════
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+      alert('Unable to access camera. Please ensure camera permissions are granted.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const handleOpenScanner = () => {
+    setShowScanModal(true);
+    setCapturedImage(null);
+    setTimeout(() => startCamera(), 100);
+  };
+
+  const handleCloseScanner = () => {
+    stopCamera();
+    setShowScanModal(false);
+    setCapturedImage(null);
+  };
+
+  const captureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+      setCapturedImage(imageData);
+      stopCamera();
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setCapturedImage(event.target.result);
+        stopCamera();
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const retakePhoto = () => {
+    setCapturedImage(null);
+    startCamera();
+  };
+
+  const processBusinessCard = async () => {
+    if (!capturedImage) return;
+
+    setScanningCard(true);
+    try {
+      const response = await fetch('/api/ai/scan-business-card', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: capturedImage })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process business card');
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.contact) {
+        // Populate form with extracted data
+        setFormData({
+          ...initialFormState,
+          ...result.contact,
+          name: `${result.contact.first_name || ''} ${result.contact.last_name || ''}`.trim() || result.contact.name || ''
+        });
+
+        // Close scanner and open add modal
+        handleCloseScanner();
+        setShowAddModal(true);
+      } else {
+        alert('Could not extract contact information. Please try again or enter manually.');
+      }
+    } catch (err) {
+      console.error('Error processing business card:', err);
+      alert('Error processing business card. Please try again.');
+    } finally {
+      setScanningCard(false);
+    }
   };
 
   // ══════════════════════════════════════════════════════════════
@@ -326,6 +442,14 @@ const PeopleManagement = () => {
               </button>
             </div>
 
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={CreditCard}
+              onClick={handleOpenScanner}
+            >
+              Scan Card
+            </Button>
             <Button
               variant="primary"
               size="sm"
@@ -590,6 +714,125 @@ const PeopleManagement = () => {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Business Card Scanner Modal */}
+      {showScanModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 w-full max-w-lg">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+                <CreditCard className="w-5 h-5" />
+                Scan Business Card
+              </h2>
+              <button
+                onClick={handleCloseScanner}
+                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {!capturedImage ? (
+                <>
+                  {/* Camera Preview */}
+                  <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover"
+                    />
+                    {/* Overlay guide */}
+                    <div className="absolute inset-4 border-2 border-white/30 rounded-lg pointer-events-none">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-white" />
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-white" />
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-white" />
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-white" />
+                    </div>
+                  </div>
+
+                  <p className="text-sm text-zinc-500 text-center">
+                    Position the business card within the frame
+                  </p>
+
+                  <div className="flex gap-3">
+                    <label className="flex-1">
+                      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-100 dark:bg-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors">
+                        <Camera className="w-5 h-5" />
+                        <span>Upload Image</span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        className="hidden"
+                      />
+                    </label>
+                    <Button
+                      variant="primary"
+                      onClick={captureImage}
+                      className="flex-1"
+                    >
+                      <Camera className="w-5 h-5 mr-2" />
+                      Capture
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Captured Image Preview */}
+                  <div className="relative bg-black rounded-lg overflow-hidden">
+                    <img
+                      src={capturedImage}
+                      alt="Captured business card"
+                      className="w-full h-auto"
+                    />
+                    {scanningCard && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <div className="text-center text-white">
+                          <Loader className="w-8 h-8 animate-spin mx-auto mb-2" />
+                          <p>Processing with AI...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="secondary"
+                      onClick={retakePhoto}
+                      className="flex-1"
+                      disabled={scanningCard}
+                    >
+                      Retake
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={processBusinessCard}
+                      className="flex-1"
+                      disabled={scanningCard}
+                    >
+                      {scanningCard ? (
+                        <>
+                          <Loader className="w-4 h-4 animate-spin mr-2" />
+                          Processing...
+                        </>
+                      ) : (
+                        'Extract Contact'
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Hidden canvas for image capture */}
+            <canvas ref={canvasRef} className="hidden" />
           </div>
         </div>
       )}
