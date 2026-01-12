@@ -768,8 +768,8 @@ const PeopleManagement = () => {
                 </div>
               </div>
 
-              {/* Bottom control bar - fixed height, always visible */}
-              <div className="flex-shrink-0 bg-black/80 px-4 py-4 safe-area-pb">
+              {/* Bottom control bar - fixed height, always visible, extra padding for nav bar */}
+              <div className="flex-shrink-0 bg-black/80 px-4 pt-4 pb-24">
                 <div className="flex items-center justify-center gap-4 max-w-lg mx-auto">
                   <label className="flex-shrink-0">
                     <div className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg cursor-pointer transition-colors text-white">
@@ -821,8 +821,8 @@ const PeopleManagement = () => {
                 </button>
               </div>
 
-              {/* Bottom control bar */}
-              <div className="flex-shrink-0 bg-black/80 px-4 py-4 safe-area-pb">
+              {/* Bottom control bar - extra padding for nav bar */}
+              <div className="flex-shrink-0 bg-black/80 px-4 pt-4 pb-24">
                 <div className="flex items-center justify-center gap-4 max-w-lg mx-auto">
                   <Button
                     variant="secondary"
