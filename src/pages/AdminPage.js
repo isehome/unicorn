@@ -18,7 +18,7 @@ import {
   GraduationCap, Star, Sparkles, Shield, UserCog, Crown, Briefcase,
   Wrench, Mail, UserPlus, UserX, ArrowLeft, ToggleLeft, ToggleRight,
   Link2, Link2Off, BookOpen, Bot, Zap, ExternalLink, Upload, FileSpreadsheet,
-  ArrowRight, RefreshCw, AlertTriangle, Bug
+  ArrowRight, RefreshCw, AlertTriangle, Bug, Building2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -31,6 +31,7 @@ import SystemAccountSettings from '../components/Admin/SystemAccountSettings';
 import AITrainingTab from '../components/Admin/AITrainingTab';
 import BugTodosTab from '../components/Admin/BugTodosTab';
 import SkillsManager from '../components/Admin/SkillsManager';
+import CompanySettingsManager from '../components/procurement/CompanySettingsManager';
 
 // Role definitions with hierarchy
 const USER_ROLES = [
@@ -2381,6 +2382,17 @@ const AdminPage = () => {
           <Bug size={16} />
           Bug Todos
         </button>
+        <button
+          onClick={() => setActiveTab('company')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'company'
+              ? 'bg-violet-500 text-white'
+              : 'bg-gray-100 dark:bg-zinc-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-600'
+          }`}
+        >
+          <Building2 size={16} />
+          Company
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -2392,6 +2404,20 @@ const AdminPage = () => {
       {activeTab === 'import' && renderImportTab()}
       {activeTab === 'ai-training' && <AITrainingTab />}
       {activeTab === 'bug-todos' && <BugTodosTab />}
+      {activeTab === 'company' && (
+        <div className="mt-6 p-6 rounded-xl border border-gray-200 dark:border-zinc-700 bg-white dark:bg-zinc-800">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Company Settings</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Manage company information, logo, and contact details</p>
+            </div>
+          </div>
+          <CompanySettingsManager />
+        </div>
+      )}
 
       {/* Modals */}
       {renderEmployeeSkillsModal()}

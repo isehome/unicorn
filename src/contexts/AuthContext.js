@@ -174,6 +174,23 @@ export function AuthProvider({ children }) {
         businessPhones: profile.businessPhones,
       };
 
+      // Load avatar_color from profile BEFORE setting user to prevent color flash
+      if (supabase && enrichedUser.id) {
+        try {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('avatar_color')
+            .eq('id', enrichedUser.id)
+            .single();
+          if (profileData?.avatar_color) {
+            enrichedUser.avatar_color = profileData.avatar_color;
+          }
+        } catch (err) {
+          // Non-critical - continue without avatar color
+          console.log('[Auth] Could not pre-load avatar color:', err.message);
+        }
+      }
+
       setUser(enrichedUser);
 
       // Sync user profile to Supabase profiles table for audit trail lookups
@@ -212,6 +229,8 @@ export function AuthProvider({ children }) {
                 console.log('[Auth] Profile synced successfully');
                 if (upsertData?.avatar_color) {
                   enrichedUser.avatar_color = upsertData.avatar_color;
+                  // Update user state with avatar_color
+                  setUser(prev => ({ ...prev, avatar_color: upsertData.avatar_color }));
                 }
               }
 
@@ -224,6 +243,8 @@ export function AuthProvider({ children }) {
                   .single();
                 if (profileData?.avatar_color) {
                   enrichedUser.avatar_color = profileData.avatar_color;
+                  // Update user state with avatar_color
+                  setUser(prev => ({ ...prev, avatar_color: profileData.avatar_color }));
                 }
               }
             })();

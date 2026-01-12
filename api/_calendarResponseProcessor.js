@@ -177,6 +177,23 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
   const BRAND_PRIMARY = '#8B5CF6';  // Violet - brand primary
   const BRAND_DANGER = '#EF4444';   // Red - decline/cancel
 
+  // Fetch company logo from settings
+  let companyLogoUrl = '';
+  try {
+    const { data: companySettings } = await getSupabase()
+      .from('company_settings')
+      .select('company_logo_url')
+      .single();
+    companyLogoUrl = companySettings?.company_logo_url || '';
+  } catch (err) {
+    console.log('[CalendarProcessor] Could not fetch company logo:', err.message);
+  }
+
+  // Build header HTML - use logo if available, otherwise text
+  const headerHtml = companyLogoUrl
+    ? `<img src="${companyLogoUrl}" alt="Intelligent Systems" style="max-height: 80px; max-width: 300px;" />`
+    : `<h1 style="color: #FAFAFA; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">INTELLIGENT SYSTEMS</h1>`;
+
   // Use table-based layout for maximum email client compatibility
   // Inline styles throughout - no CSS classes
   const emailBody = `<!DOCTYPE html>
@@ -192,11 +209,10 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; background-color: #27272A; border-radius: 12px; overflow: hidden;">
 
-          <!-- Header - Text-based company branding -->
+          <!-- Header - Company logo or text branding -->
           <tr>
             <td style="background: linear-gradient(135deg, #18181B 0%, #27272A 100%); padding: 30px 40px; text-align: center; border-bottom: 3px solid ${BRAND_PRIMARY};">
-              <h1 style="color: #FAFAFA; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">INTELLIGENT SYSTEMS</h1>
-              <p style="color: #A1A1AA; margin: 8px 0 0 0; font-size: 14px;">Smart Home &amp; AV Service</p>
+              ${headerHtml}
             </td>
           </tr>
 

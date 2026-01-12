@@ -17,6 +17,7 @@ import { checkUserAvailability, fetchUserEventsForDate, updateServiceAppointment
 import { useAuth } from '../contexts/AuthContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { brandColors } from '../styles/styleSystem';
+import { supabase } from '../lib/supabase';
 
 // Priority colors
 const priorityColors = {
@@ -409,6 +410,42 @@ const WeeklyPlanning = () => {
       setRefreshing(false);
     }
   };
+
+  // ══════════════════════════════════════════════════════════════
+  // REALTIME SUBSCRIPTION - Auto-refresh when schedules are updated
+  // This ensures the UI updates when the cron job processes calendar responses
+  // ══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    // Subscribe to changes on service_schedules table
+    const subscription = supabase
+      .channel('schedule-status-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'service_schedules'
+        },
+        (payload) => {
+          console.log('[WeeklyPlanning] Realtime update received:', payload);
+          // Refresh data when a schedule changes
+          // Use a short delay to batch multiple rapid updates
+          setTimeout(() => {
+            console.log('[WeeklyPlanning] Auto-refreshing due to schedule change');
+            handleRefresh(false); // false = don't trigger another calendar check
+          }, 500);
+        }
+      )
+      .subscribe((status) => {
+        console.log('[WeeklyPlanning] Realtime subscription status:', status);
+      });
+
+    return () => {
+      console.log('[WeeklyPlanning] Unsubscribing from realtime');
+      supabase.removeChannel(subscription);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWeekStart, selectedTechnician, loadWeekSchedules]); // Re-subscribe when these change
 
   // Load more weeks (infinite scroll)
   const handleLoadMoreWeeks = async () => {
