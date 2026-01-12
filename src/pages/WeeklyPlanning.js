@@ -960,8 +960,17 @@ const WeeklyPlanning = () => {
 
   // Handle completely removing a schedule (returns ticket to unscheduled)
   const handleRemoveSchedule = async (schedule) => {
+    console.log('[WeeklyPlanning] handleRemoveSchedule called with:', schedule);
+
+    if (!schedule || !schedule.id) {
+      console.error('[WeeklyPlanning] No schedule or schedule.id provided');
+      setError('Cannot remove schedule: missing schedule data');
+      return;
+    }
+
     const ticketName = schedule.ticket?.customer_name || schedule.ticket?.title || 'this ticket';
     if (!window.confirm(`Remove "${ticketName}" from the schedule entirely? The ticket will return to the unscheduled panel.`)) {
+      console.log('[WeeklyPlanning] User cancelled removal');
       return;
     }
 

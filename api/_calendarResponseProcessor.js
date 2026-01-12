@@ -458,19 +458,36 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
   };
 
   if (action === 'tech_accepted') {
-    // Tech accepted - record timestamp, status stays at 'tech_accepted'
-    // Customer invite will be sent separately (manually or via sendCustomerInvite API)
+    // Tech accepted - record timestamp
     updates.technician_accepted_at = new Date().toISOString();
     console.log(`[CalendarProcessor] Tech accepted schedule ${schedule.id}, status → tech_accepted`);
 
-    // If no customer email configured, we can auto-confirm since there's no customer to notify
+    // If no customer email configured, auto-confirm since there's no customer to notify
     if (!ticket.customer_email) {
       console.log(`[CalendarProcessor] No customer email, auto-confirming schedule ${schedule.id}`);
       updates.schedule_status = 'confirmed';
+    } else {
+      // AUTO-SEND customer invite when tech accepts
+      // This adds customer to calendar event and sends them the confirmation email
+      console.log(`[CalendarProcessor] Auto-sending customer invite to ${ticket.customer_email}`);
+      try {
+        // Add customer to calendar event
+        if (eventId) {
+          await addCustomerToEvent(token, systemEmail, eventId, ticket.customer_email, ticket.customer_name);
+          console.log(`[CalendarProcessor] Added customer to calendar event`);
+        }
+        // Send customer confirmation email with accept/decline links
+        await sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket);
+        console.log(`[CalendarProcessor] Sent customer confirmation email`);
+
+        // Update status to pending_customer (waiting for customer response)
+        updates.schedule_status = 'pending_customer';
+        updates.customer_invite_sent_at = new Date().toISOString();
+      } catch (customerErr) {
+        console.error(`[CalendarProcessor] Failed to send customer invite:`, customerErr);
+        // Stay at tech_accepted if customer invite fails - user can manually retry
+      }
     }
-    // Otherwise, status stays at 'tech_accepted' and user can:
-    // 1. Manually send customer invite (moves to pending_customer)
-    // 2. Manually mark customer confirmed (moves to confirmed)
   } else if (action === 'customer_accepted') {
     updates.customer_accepted_at = new Date().toISOString();
     try {
