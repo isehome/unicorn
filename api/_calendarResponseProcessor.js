@@ -524,6 +524,7 @@ async function processCalendarResponses(scheduleIds = null) {
   const systemEmail = await getSystemAccountEmail();
 
   console.log(`[CalendarProcessor] Using system account: ${systemEmail}`);
+  console.log(`[CalendarProcessor] scheduleIds param:`, scheduleIds);
 
   // Build query for pending schedules
   let query = getSupabase()
@@ -544,9 +545,11 @@ async function processCalendarResponses(scheduleIds = null) {
     .not('calendar_event_id', 'is', null);
 
   if (scheduleIds && scheduleIds.length > 0) {
+    console.log(`[CalendarProcessor] Filtering by schedule IDs:`, scheduleIds);
     query = query.in('id', scheduleIds);
   } else {
     // Check all statuses that need calendar response monitoring
+    console.log(`[CalendarProcessor] Filtering by statuses: pending_tech, tech_accepted, pending_customer`);
     query = query.in('schedule_status', ['pending_tech', 'tech_accepted', 'pending_customer']);
   }
 
@@ -555,10 +558,14 @@ async function processCalendarResponses(scheduleIds = null) {
     .limit(20);
 
   if (fetchError) {
+    console.error(`[CalendarProcessor] Query error:`, fetchError);
     throw fetchError;
   }
 
   console.log(`[CalendarProcessor] Found ${pendingSchedules?.length || 0} schedules to check`);
+  if (pendingSchedules && pendingSchedules.length > 0) {
+    console.log(`[CalendarProcessor] First schedule:`, JSON.stringify(pendingSchedules[0]));
+  }
 
   // Get technician emails from contacts table (technicians are stored as contacts)
   const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
