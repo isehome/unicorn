@@ -313,6 +313,45 @@ export const weeklyPlanningService = {
         return [];
       }
 
+      // Fetch technician avatar colors from profiles table (via contacts email)
+      const technicianIds = [...new Set(schedules.filter(s => s.technician_id).map(s => s.technician_id))];
+      let technicianMap = {};
+
+      if (technicianIds.length > 0) {
+        // First get contact emails
+        const { data: contacts } = await supabase
+          .from('contacts')
+          .select('id, email')
+          .in('id', technicianIds);
+
+        if (contacts && contacts.length > 0) {
+          // Get avatar colors from profiles via email
+          const emails = contacts.filter(c => c.email).map(c => c.email.toLowerCase());
+          if (emails.length > 0) {
+            const { data: profiles } = await supabase
+              .from('profiles')
+              .select('email, avatar_color')
+              .in('email', emails);
+
+            // Build contact ID -> avatar_color map
+            if (profiles) {
+              const emailToColor = profiles.reduce((acc, p) => {
+                if (p.email && p.avatar_color) {
+                  acc[p.email.toLowerCase()] = p.avatar_color;
+                }
+                return acc;
+              }, {});
+
+              contacts.forEach(c => {
+                if (c.email && emailToColor[c.email.toLowerCase()]) {
+                  technicianMap[c.id] = { avatar_color: emailToColor[c.email.toLowerCase()] };
+                }
+              });
+            }
+          }
+        }
+      }
+
       // Fetch ticket details separately
       const ticketIds = [...new Set(schedules.map(s => s.ticket_id).filter(Boolean))];
       let ticketMap = {};
@@ -332,10 +371,11 @@ export const weeklyPlanningService = {
         }
       }
 
-      // Merge ticket data into schedules
+      // Merge ticket data and technician avatar color into schedules
       return schedules.map(s => ({
         ...s,
-        ticket: ticketMap[s.ticket_id] || null
+        ticket: ticketMap[s.ticket_id] || null,
+        technician_avatar_color: technicianMap[s.technician_id]?.avatar_color || null
       }));
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to fetch all schedules:', error);
