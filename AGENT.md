@@ -453,10 +453,171 @@ Dashboard showing:
 - `id`, `ticket_id`, `technician_id`, `technician_name`
 - `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`
 - `status` (scheduled, in_progress, completed, cancelled)
-- `schedule_status` (tentative, confirmed, cancelled)
+- `schedule_status` (draft, pending_tech, tech_accepted, pending_customer, confirmed, cancelled)
 - `calendar_event_id` (M365 event ID for updates)
 - `confirmed_at`, `confirmed_by`, `confirmation_method`
 - `service_address`, `pre_visit_notes`, `post_visit_notes`
+- `customer_invite_sent_at` - When customer calendar invite was sent
+
+#### 8.8.1 Weekly Planning Calendar Grid - Technical Details
+
+The WeekCalendarGrid component (`src/components/Service/WeekCalendarGrid.jsx`) renders scheduled appointments as positioned blocks on a time-based grid.
+
+**Grid Constants:**
+```javascript
+const HOUR_HEIGHT = 60;      // 60 pixels per hour
+const START_HOUR = 6;        // 6 AM
+const END_HOUR = 22;         // 10 PM
+const MIN_DAY_WIDTH = 120;   // Minimum column width
+const TIME_COLUMN_WIDTH = 60; // Left time labels column
+```
+
+**Block Height Calculation:**
+
+Each schedule block's height is calculated based on duration. The system checks multiple sources in priority order:
+
+```javascript
+// Priority order for determining end time:
+// 1. scheduled_time_end (explicit end time from database)
+// 2. estimated_duration_minutes (on the schedule record)
+// 3. ticket.estimated_hours (from the linked ticket)
+// 4. Default: 2 hours
+
+let endHour;
+if (schedule.scheduled_time_end) {
+  endHour = timeToHour(schedule.scheduled_time_end);
+} else if (schedule.estimated_duration_minutes) {
+  endHour = startHour + (estimated_duration_minutes / 60);
+} else if (ticket.estimated_hours) {
+  endHour = startHour + ticket.estimated_hours;
+} else {
+  endHour = startHour + 2; // Default 2 hours
+}
+
+// Calculate pixel position and height
+const top = (startHour - START_HOUR) * HOUR_HEIGHT;
+const height = (endHour - startHour) * HOUR_HEIGHT;
+```
+
+**Example:** A 1-hour appointment starting at 11:00 AM:
+- `startHour = 11`
+- `endHour = 12` (from scheduled_time_end "12:00:00")
+- `top = (11 - 6) * 60 = 300px`
+- `height = (12 - 11) * 60 = 60px`
+
+**⚠️ Common Issue: Orphan Schedules with Null End Times**
+
+If a schedule has `scheduled_time_end = null`, the system falls back through the priority chain. If no duration source is found, it defaults to 2 hours. This can cause incorrect block heights.
+
+**Symptoms:**
+- Schedule block shows 2-hour height but ticket says "1.0h"
+- Console logs show: `time: "11:00:00-null"`, `height: 120`
+
+**Diagnosis:** Check for duplicate/orphan schedules:
+```sql
+-- Find schedules with null end times
+SELECT id, ticket_id, scheduled_date, scheduled_time_start, scheduled_time_end
+FROM service_schedules
+WHERE scheduled_time_end IS NULL;
+
+-- Find duplicate schedules (same ticket, same date)
+SELECT s1.id, s2.id, s1.ticket_id, s1.scheduled_date
+FROM service_schedules s1
+JOIN service_schedules s2 ON s1.ticket_id = s2.ticket_id
+  AND s1.scheduled_date = s2.scheduled_date
+  AND s1.id != s2.id;
+```
+
+**Fix:** Delete orphan schedules or update with correct end time:
+```sql
+DELETE FROM service_schedules WHERE id = 'orphan-schedule-uuid';
+```
+
+**Status Colors:**
+
+The `scheduleStatusColors` object maps each status to visual styling:
+
+| Status | Background | Border | Label |
+|--------|------------|--------|-------|
+| `draft` | Violet 15% | `#8B5CF6` | Draft |
+| `pending_tech` | Amber 20% | `#F59E0B` | Awaiting Tech |
+| `tech_accepted` | Blue 20% | `#3B82F6` | Tech Accepted |
+| `pending_customer` | Cyan 20% | `#06B6D4` | Awaiting Customer |
+| `confirmed` | Green 20% | `#94AF32` | Confirmed |
+| `cancelled` | Gray 20% | `#71717A` | Cancelled |
+
+#### 8.8.2 Technician Avatar Colors
+
+Avatars throughout the app display the user's **chosen color** from their profile settings. This is stored in the `profiles` table (`avatar_color` column) and linked via email.
+
+**Avatar Color Lookup Pattern:**
+
+```javascript
+// 1. Get technician IDs from schedules
+const technicianIds = schedules.map(s => s.technician_id);
+
+// 2. Get contact emails for those technicians
+const { data: contacts } = await supabase
+  .from('contacts')
+  .select('id, email')
+  .in('id', technicianIds);
+
+// 3. Get avatar colors from profiles via email match
+const emails = contacts.map(c => c.email.toLowerCase());
+const { data: profiles } = await supabase
+  .from('profiles')
+  .select('email, avatar_color')
+  .in('email', emails);
+
+// 4. Build lookup map: contact_id → avatar_color
+const emailToColor = profiles.reduce((acc, p) => {
+  acc[p.email.toLowerCase()] = p.avatar_color;
+  return acc;
+}, {});
+
+// 5. Apply to schedules
+schedules.forEach(s => {
+  const contact = contacts.find(c => c.id === s.technician_id);
+  s.technician_avatar_color = emailToColor[contact?.email?.toLowerCase()];
+});
+```
+
+**Key Files for Avatar Colors:**
+- `src/components/TechnicianAvatar.jsx` - Avatar component with color prop
+- `src/services/weeklyPlanningService.js` - Fetches avatar colors for schedules
+- `database/migrations/20251228_add_avatar_color_to_profiles.sql` - Schema
+
+**Avatar Color Priority:**
+1. `schedule.technician_avatar_color` (user's chosen color from profile)
+2. `getColorFromName(technicianName)` (hash-based fallback color)
+
+**Setting Avatar Color:**
+Users set their avatar color in Settings → Profile. The color is stored as a hex code (e.g., `#F97316` for orange) in `profiles.avatar_color`.
+
+#### 8.8.3 Calendar Response Processing
+
+A cron job (`/api/cron/process-calendar-responses`) polls Microsoft Graph API to check attendee responses and update schedule statuses automatically.
+
+**Processing Flow:**
+```
+Every 3 minutes:
+1. Find schedules in 'pending_tech' or 'pending_customer' status
+2. For each, fetch calendar event from Graph API
+3. Check attendee response statuses
+4. Update service_schedules based on responses:
+   - Tech accepts → status → 'tech_accepted'
+   - Customer accepts → status → 'confirmed'
+   - Anyone declines → status → 'cancelled', ticket → 'unscheduled'
+```
+
+**Manual Trigger:**
+```bash
+curl -X POST https://unicorn-one.vercel.app/api/system-account/check-responses
+```
+
+**Key Files:**
+- `api/cron/process-calendar-responses.js` - Cron endpoint
+- `api/_calendarResponseProcessor.js` - Core processing logic
 
 #### 8.9 Service Routes
 
