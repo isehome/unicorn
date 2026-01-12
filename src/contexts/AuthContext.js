@@ -177,67 +177,65 @@ export function AuthProvider({ children }) {
       setUser(enrichedUser);
 
       // Sync user profile to Supabase profiles table for audit trail lookups
+      // Use a timeout to prevent hanging if Supabase is slow/unreachable
       if (supabase && enrichedUser.id) {
         console.log('[Auth] Attempting profile sync for user:', {
           id: enrichedUser.id,
           email: enrichedUser.email,
           displayName: enrichedUser.displayName
         });
-        try {
-          const { data: upsertData, error: upsertError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: enrichedUser.id,
-              email: enrichedUser.email,
-              full_name: enrichedUser.displayName,
-              updated_at: new Date().toISOString()
-            }, {
-              onConflict: 'id',
-              ignoreDuplicates: false
-            })
-            .select()
-            .single();
 
-          if (upsertError) {
-            console.error('[Auth] Failed to sync profile to Supabase:', upsertError);
-            // Try insert instead of upsert as fallback
-            console.log('[Auth] Attempting insert fallback...');
-            const { error: insertError } = await supabase
-              .from('profiles')
-              .insert({
-                id: enrichedUser.id,
-                email: enrichedUser.email,
-                full_name: enrichedUser.displayName,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-              });
-            if (insertError) {
-              console.error('[Auth] Insert fallback also failed:', insertError);
-            } else {
-              console.log('[Auth] Profile inserted successfully via fallback');
-            }
-          } else {
-            console.log('[Auth] Profile synced successfully:', upsertData);
-            // Include avatar_color in the enriched user
-            if (upsertData?.avatar_color) {
-              enrichedUser.avatar_color = upsertData.avatar_color;
-            }
-          }
+        const syncWithTimeout = async () => {
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Profile sync timeout')), 5000)
+          );
 
-          // If we don't have avatar_color yet, fetch it from the profile
-          if (!enrichedUser.avatar_color) {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('avatar_color')
-              .eq('id', enrichedUser.id)
-              .single();
-            if (profileData?.avatar_color) {
-              enrichedUser.avatar_color = profileData.avatar_color;
-            }
+          try {
+            const syncPromise = (async () => {
+              const { data: upsertData, error: upsertError } = await supabase
+                .from('profiles')
+                .upsert({
+                  id: enrichedUser.id,
+                  email: enrichedUser.email,
+                  full_name: enrichedUser.displayName,
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'id',
+                  ignoreDuplicates: false
+                })
+                .select()
+                .single();
+
+              if (upsertError) {
+                console.error('[Auth] Failed to sync profile to Supabase:', upsertError);
+              } else {
+                console.log('[Auth] Profile synced successfully');
+                if (upsertData?.avatar_color) {
+                  enrichedUser.avatar_color = upsertData.avatar_color;
+                }
+              }
+
+              // Fetch avatar_color if not already set
+              if (!enrichedUser.avatar_color) {
+                const { data: profileData } = await supabase
+                  .from('profiles')
+                  .select('avatar_color')
+                  .eq('id', enrichedUser.id)
+                  .single();
+                if (profileData?.avatar_color) {
+                  enrichedUser.avatar_color = profileData.avatar_color;
+                }
+              }
+            })();
+
+            await Promise.race([syncPromise, timeoutPromise]);
+          } catch (err) {
+            console.warn('[Auth] Profile sync failed or timed out:', err.message);
+            // Don't block login - profile sync is non-critical
           }
-        } catch (syncError) {
-          console.error('[Auth] Error syncing profile:', syncError);
-        }
+        };
+
+        await syncWithTimeout();
       }
 
       return enrichedUser;
