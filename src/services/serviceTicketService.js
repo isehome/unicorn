@@ -1693,7 +1693,7 @@ export const suppliersService = {
 };
 
 // Default export with all services
-export default {
+const serviceTicketServices = {
   tickets: serviceTicketService,
   schedules: serviceScheduleService,
   callLogs: serviceCallLogService,
@@ -1704,3 +1704,4 @@ export default {
   purchaseOrders: servicePOService,
   suppliers: suppliersService
 };
+export default serviceTicketServices;

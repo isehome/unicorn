@@ -7,6 +7,8 @@ const generateId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+// normalizeResourceLinks is reserved for future use when resource_links JSON field is enabled
+// eslint-disable-next-line no-unused-vars
 const normalizeResourceLinks = (links = []) => {
   if (!Array.isArray(links)) return [];
   return links

@@ -520,6 +520,40 @@ const WireDropDetail = () => {
     loadWireDrop();
   }, [loadWireDrop]);
 
+  const loadAssociatedIssues = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('wire_drop_issues')
+        .select(`
+          *,
+          issues:issue_id(*)
+        `)
+        .eq('wire_drop_id', id);
+
+      if (error) throw error;
+      setAssociatedIssues(data || []);
+    } catch (err) {
+      console.error('Failed to load associated issues:', err);
+    }
+  }, [id]);
+
+  const loadAvailableIssues = useCallback(async () => {
+    if (!wireDrop?.project_id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('issues')
+        .select('*')
+        .eq('project_id', wireDrop.project_id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAvailableIssues(data || []);
+    } catch (err) {
+      console.error('Failed to load available issues:', err);
+    }
+  }, [wireDrop?.project_id]);
+
   useEffect(() => {
     if (wireDrop?.project_id) {
       loadProjectEquipmentOptions(wireDrop.project_id);
@@ -529,7 +563,7 @@ const WireDropDetail = () => {
       loadAssociatedIssues();
       loadAvailableIssues();
     }
-  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectShades, loadLinkedShade]);
+  }, [wireDrop?.project_id, loadProjectEquipmentOptions, loadSwitches, loadProjectShades, loadLinkedShade, loadAssociatedIssues, loadAvailableIssues]);
 
   useEffect(() => {
     if (!activeViewerPhoto) {
@@ -553,40 +587,6 @@ const WireDropDetail = () => {
       updatePhotoViewerOptions({ loading: homeKitViewerLoading || uploadingHomeKitQR });
     }
   }, [homeKitViewerActive, homeKitViewerLoading, uploadingHomeKitQR, updatePhotoViewerOptions]);
-
-  const loadAssociatedIssues = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('wire_drop_issues')
-        .select(`
-          *,
-          issues:issue_id(*)
-        `)
-        .eq('wire_drop_id', id);
-
-      if (error) throw error;
-      setAssociatedIssues(data || []);
-    } catch (err) {
-      console.error('Failed to load associated issues:', err);
-    }
-  };
-
-  const loadAvailableIssues = async () => {
-    if (!wireDrop?.project_id) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('issues')
-        .select('*')
-        .eq('project_id', wireDrop.project_id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setAvailableIssues(data || []);
-    } catch (err) {
-      console.error('Failed to load available issues:', err);
-    }
-  };
 
   const handleNotesBlur = async () => {
     setEditingNotes(false);

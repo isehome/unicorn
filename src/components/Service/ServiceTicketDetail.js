@@ -385,6 +385,49 @@ const ServiceTicketDetail = () => {
     }
   }, [ticket?.parts_needed]);
 
+  // Handler functions defined before useEffects that reference them
+  const handleStatusChange = useCallback(async (newStatus) => {
+    if (!ticket) return;
+
+    try {
+      setSaving(true);
+      await serviceTicketService.updateStatus(
+        ticket.id,
+        newStatus,
+        user?.id,
+        user?.name || user?.email || 'User'
+      );
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to update status:', err);
+      setError('Failed to update status');
+    } finally {
+      setSaving(false);
+    }
+  }, [ticket, user, loadTicket]);
+
+  const handleAddNote = useCallback(async (content = noteContent, type = noteType) => {
+    if (!ticket || !content.trim()) return;
+
+    try {
+      setSaving(true);
+      await serviceTicketService.addNote(ticket.id, {
+        note_type: type,
+        content: content.trim(),
+        author_id: user?.id,
+        author_name: user?.name || user?.email || 'User'
+      });
+      setNoteContent('');
+      setShowAddNote(false);
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to add note:', err);
+      setError('Failed to add note');
+    } finally {
+      setSaving(false);
+    }
+  }, [ticket, noteContent, noteType, user, loadTicket]);
+
   // Publish state for AI Brain
   useEffect(() => {
     if (ticket) {
@@ -430,49 +473,7 @@ const ServiceTicketDetail = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [ticket, registerActions, unregisterActions]);
-
-  const handleStatusChange = async (newStatus) => {
-    if (!ticket) return;
-
-    try {
-      setSaving(true);
-      await serviceTicketService.updateStatus(
-        ticket.id,
-        newStatus,
-        user?.id,
-        user?.name || user?.email || 'User'
-      );
-      await loadTicket();
-    } catch (err) {
-      console.error('[ServiceTicketDetail] Failed to update status:', err);
-      setError('Failed to update status');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddNote = async (content = noteContent, type = noteType) => {
-    if (!ticket || !content.trim()) return;
-
-    try {
-      setSaving(true);
-      await serviceTicketService.addNote(ticket.id, {
-        note_type: type,
-        content: content.trim(),
-        author_id: user?.id,
-        author_name: user?.name || user?.email || 'User'
-      });
-      setNoteContent('');
-      setShowAddNote(false);
-      await loadTicket();
-    } catch (err) {
-      console.error('[ServiceTicketDetail] Failed to add note:', err);
-      setError('Failed to add note');
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [ticket, registerActions, unregisterActions, handleAddNote, handleStatusChange]);
 
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
@@ -598,7 +599,7 @@ const ServiceTicketDetail = () => {
   };
 
   // Check technician availability
-  const checkAvailability = async () => {
+  const checkAvailability = useCallback(async () => {
     const { scheduled_date, scheduled_time_start, scheduled_time_end, technician_email } = scheduleForm;
 
     if (!scheduled_date || !scheduled_time_start || !technician_email) {
@@ -633,7 +634,7 @@ const ServiceTicketDetail = () => {
         error: 'Could not check availability'
       });
     }
-  };
+  }, [scheduleForm, user]);
 
   // Auto-check availability when date/time/technician changes
   useEffect(() => {
@@ -646,7 +647,7 @@ const ServiceTicketDetail = () => {
     } else {
       setAvailabilityStatus(null);
     }
-  }, [showSchedule, scheduleForm.scheduled_date, scheduleForm.scheduled_time_start, scheduleForm.scheduled_time_end, scheduleForm.technician_email]);
+  }, [showSchedule, scheduleForm.scheduled_date, scheduleForm.scheduled_time_start, scheduleForm.scheduled_time_end, scheduleForm.technician_email, checkAvailability]);
 
   // Handle ticket assignment
   const handleAssign = async (techId) => {

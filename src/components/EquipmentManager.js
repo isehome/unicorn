@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import {
@@ -87,11 +87,7 @@ const EquipmentManager = ({ projectId, onClose }) => {
     };
   }, [mode]);
 
-  useEffect(() => {
-    loadData();
-  }, [projectId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [equipmentData, categoriesData] = await Promise.all([
@@ -105,7 +101,11 @@ const EquipmentManager = ({ projectId, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const loadCredentials = async (equipmentId) => {
     try {

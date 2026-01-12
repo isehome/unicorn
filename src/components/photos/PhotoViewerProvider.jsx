@@ -41,14 +41,14 @@ export const PhotoViewerProvider = ({ children }) => {
         options.onReplace(file);
       }
     },
-    [options.onReplace]
+    [options]
   );
 
   const handleDelete = useCallback(() => {
     if (typeof options.onDelete === 'function') {
       options.onDelete();
     }
-  }, [options.onDelete]);
+  }, [options]);
 
   return (
     <PhotoViewerContext.Provider value={{ openPhotoViewer, closePhotoViewer, updatePhotoViewerOptions, photo }}>
@@ -61,7 +61,6 @@ export const PhotoViewerProvider = ({ children }) => {
         onDelete={options.onDelete ? handleDelete : undefined}
         canEdit={options.canEdit}
         loading={options.loading}
-        replaceMode={options.replaceMode || 'file'}
         replaceMode={options.replaceMode || 'file'}
       />
     </PhotoViewerContext.Provider>

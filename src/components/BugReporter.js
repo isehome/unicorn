@@ -56,6 +56,30 @@ export default function BugReporter() {
     setSpeechSupported(!!SpeechRecognition);
   }, []);
 
+  const openBugReporter = useCallback(async () => {
+    // Capture screenshot immediately when opening
+    setIsCapturing(true);
+    try {
+      const canvas = await html2canvas(document.body, {
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        scale: 0.5, // Reduce size for email
+        ignoreElements: (element) => {
+          // Don't capture the bug reporter modal or button itself
+          return element.id === 'bug-reporter-modal' || element.id === 'bug-reporter-button';
+        }
+      });
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      setScreenshot(dataUrl);
+    } catch (e) {
+      console.error('[BugReporter] Screenshot capture failed:', e);
+    }
+    setIsCapturing(false);
+    setIsOpen(true);
+    setSubmitStatus(null);
+  }, []);
+
   // Shake detection for mobile
   useEffect(() => {
     let shakeCount = 0;
@@ -139,31 +163,7 @@ export default function BugReporter() {
       window.removeEventListener('devicemotion', handleMotion);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
-
-  const openBugReporter = useCallback(async () => {
-    // Capture screenshot immediately when opening
-    setIsCapturing(true);
-    try {
-      const canvas = await html2canvas(document.body, {
-        logging: false,
-        useCORS: true,
-        allowTaint: true,
-        scale: 0.5, // Reduce size for email
-        ignoreElements: (element) => {
-          // Don't capture the bug reporter modal or button itself
-          return element.id === 'bug-reporter-modal' || element.id === 'bug-reporter-button';
-        }
-      });
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      setScreenshot(dataUrl);
-    } catch (e) {
-      console.error('[BugReporter] Screenshot capture failed:', e);
-    }
-    setIsCapturing(false);
-    setIsOpen(true);
-    setSubmitStatus(null);
-  }, []);
+  }, [openBugReporter]);
 
   const retakeScreenshot = async () => {
     setIsCapturing(true);

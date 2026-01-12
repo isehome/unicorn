@@ -179,10 +179,11 @@ export const getWireDropsWithNetwork = async (projectId) => {
   }
 };
 
-export default {
+const unifiService = {
   syncSites,
   syncSwitches,
   syncSwitchPorts,
   linkWireDropToPort,
   getWireDropsWithNetwork
 };
+export default unifiService;

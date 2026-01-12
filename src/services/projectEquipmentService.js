@@ -339,6 +339,7 @@ const buildLutronEquipmentRecords = (rows, roomMap, projectId, batchId, userId) 
     };
 
     const unitPrice = toNumber(row['List Price']);
+    // eslint-disable-next-line no-unused-vars
     const category = normalizeString(row['Product Type']);
 
     // 5. Instance Creation
@@ -1938,6 +1939,7 @@ export const projectEquipmentService = {
     if (!newRoomId) throw new Error('New room ID is required');
 
     // Ensure userId is valid or null
+    // eslint-disable-next-line no-unused-vars
     const validUserId = userId && typeof userId === 'string' && userId.trim() ? userId.trim() : null;
 
     try {

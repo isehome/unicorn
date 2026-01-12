@@ -165,7 +165,7 @@ class PDFExportService {
    * Add vendor and ship-to sections (two columns)
    */
   addVendorAndShipTo(doc, poData, yPos, pageWidth) {
-    const { po, supplier, project } = poData;
+    const { supplier, project } = poData;
     const colWidth = (pageWidth - 40) / 2;
 
     // Vendor section (left)

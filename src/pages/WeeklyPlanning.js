@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calendar, ExternalLink, Edit3, Trash2 } from 'lucide-react';
 import TechnicianFilterBar from '../components/Service/TechnicianFilterBar';
 import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
@@ -63,7 +63,6 @@ const getCurrentWeekStart = () => {
  * WeeklyPlanning Component
  */
 const WeeklyPlanning = () => {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // useAuth() returns the full context object with accessToken, acquireToken, user, etc.
   // We assign the whole thing to authContext for use with calendar services
@@ -258,6 +257,8 @@ const WeeklyPlanning = () => {
     };
 
     loadData();
+    // Note: technicians.length is used in console.log but loadWeekSchedules already depends on technicians
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWeekStart, selectedTechnician, loadWeekSchedules, loadingTechnicians]);
 
   // ══════════════════════════════════════════════════════════════
@@ -347,6 +348,7 @@ const WeeklyPlanning = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerActions, unregisterActions, technicians, currentWeekStart, viewMode, unscheduledTickets]);
 
   // Refresh data and check for calendar response updates
@@ -695,14 +697,13 @@ const WeeklyPlanning = () => {
 
         // Create each appointment as DRAFT - no calendar invites yet
         for (const appt of appointments) {
-          const scheduleNotes = `Part ${appt.appointmentNumber} of ${appt.totalAppointments} (${appt.hours}h of ${estimatedHours}h total)`;
-
           await weeklyPlanningService.createTentativeSchedule(ticket.id, {
             scheduled_date: appt.date,
             scheduled_time_start: appt.startTime,
             scheduled_time_end: appt.endTime,
             technician_id: technician.id,
-            technician_name: technician.full_name
+            technician_name: technician.full_name,
+            notes: `Part ${appt.appointmentNumber} of ${appt.totalAppointments} (${appt.hours}h of ${estimatedHours}h total)`
           });
         }
 

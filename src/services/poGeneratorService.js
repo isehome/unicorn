@@ -262,7 +262,7 @@ class POGeneratorService {
    */
   async generateBulkPOPreview(projectId, milestoneStage) {
     try {
-      const { grouped, stats } = await this.getEquipmentGroupedForPO(projectId, milestoneStage);
+      const { grouped } = await this.getEquipmentGroupedForPO(projectId, milestoneStage);
 
       const preview = {
         milestoneStage,

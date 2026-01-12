@@ -523,7 +523,7 @@ export async function processPage({ url, manufacturerName, rootUrl }) {
 }
 
 // Export all functions
-export default {
+const knowledgeService = {
     getManufacturers,
     crawlSite,
     importCrawledItems,
@@ -540,3 +540,5 @@ export default {
     processScrapedFile,
     processPage
 };
+
+export default knowledgeService;

@@ -203,8 +203,6 @@ export const prefetchProjectData = async (queryClient, projectId) => {
 };
 
 export const useUserTodosOptimized = (userEmail) => {
-  const queryClient = useQueryClient();
-
   const query = useQuery({
     queryKey: ['user-todos', userEmail],
     queryFn: () => projectTodosService.getAllForUser(userEmail),
@@ -222,8 +220,6 @@ export const useUserTodosOptimized = (userEmail) => {
 };
 
 export const useTodoStakeholders = (todoId) => {
-  const queryClient = useQueryClient();
-
   const query = useQuery({
     queryKey: ['todo-stakeholders', todoId],
     queryFn: () => todoStakeholdersService.getForTodo(todoId),

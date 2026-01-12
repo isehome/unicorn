@@ -337,6 +337,35 @@ const ShadeDetailPage = () => {
         }
     }, [shade, formData, project, publishState]);
 
+    // Track pending saves for flush on unmount - defined before useEffect that uses it
+    const pendingSavesRef = useRef(new Map());
+
+    // Flush all pending saves immediately (for unmount or blur) - defined before useEffect that uses it
+    const flushPendingSaves = useCallback(async () => {
+        const saves = Array.from(pendingSavesRef.current.entries());
+        if (saves.length === 0) return;
+
+        console.log('[ShadeDetailPage] Flushing pending saves:', saves.map(s => s[0]));
+        pendingSavesRef.current.clear();
+
+        try {
+            const updates = {};
+            saves.forEach(([field, value]) => {
+                updates[field] = value;
+            });
+            updates.updated_at = new Date().toISOString();
+
+            await supabase
+                .from('project_shades')
+                .update(updates)
+                .eq('id', shadeId);
+
+            console.log('[ShadeDetailPage] Flushed saves successfully');
+        } catch (err) {
+            console.error('[ShadeDetailPage] Flush save failed:', err);
+        }
+    }, [shadeId]);
+
     // Register action handlers for Voice AI
     useEffect(() => {
         const actions = {
@@ -398,36 +427,7 @@ const ShadeDetailPage = () => {
 
         registerActions(actions);
         return () => unregisterActions(Object.keys(actions));
-    }, [formData, registerActions, unregisterActions]);
-
-    // Track pending saves for flush on unmount
-    const pendingSavesRef = useRef(new Map());
-
-    // Flush all pending saves immediately (for unmount or blur)
-    const flushPendingSaves = useCallback(async () => {
-        const saves = Array.from(pendingSavesRef.current.entries());
-        if (saves.length === 0) return;
-
-        console.log('[ShadeDetailPage] Flushing pending saves:', saves.map(s => s[0]));
-        pendingSavesRef.current.clear();
-
-        try {
-            const updates = {};
-            saves.forEach(([field, value]) => {
-                updates[field] = value;
-            });
-            updates.updated_at = new Date().toISOString();
-
-            await supabase
-                .from('project_shades')
-                .update(updates)
-                .eq('id', shadeId);
-
-            console.log('[ShadeDetailPage] Flushed saves successfully');
-        } catch (err) {
-            console.error('[ShadeDetailPage] Flush save failed:', err);
-        }
-    }, [shadeId]);
+    }, [formData, registerActions, unregisterActions, flushPendingSaves]);
 
     // Handle beforeunload to save pending changes when browser navigates away
     useEffect(() => {

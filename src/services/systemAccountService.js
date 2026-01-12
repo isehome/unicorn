@@ -80,9 +80,10 @@ export async function testPermissions() {
   return await response.json();
 }
 
-export default {
+const systemAccountService = {
   getSystemAccountStatus,
   configureSystemAccount,
   sendTestEmail,
   testPermissions,
 };
+export default systemAccountService;

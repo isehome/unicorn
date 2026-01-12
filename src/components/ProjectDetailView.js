@@ -197,7 +197,6 @@ const ProjectDetailView = () => {
   const [todoError, setTodoError] = useState('');
   const [addingTodo, setAddingTodo] = useState(false);
   const [updatingTodoId, setUpdatingTodoId] = useState(null);
-  const [deletingTodoId, setDeletingTodoId] = useState(null);
   const [dragTodoId, setDragTodoId] = useState(null);
   const [dragOverTodoId, setDragOverTodoId] = useState(null);
   const [dragOverTodoPos, setDragOverTodoPos] = useState(null); // 'before' | 'after'
@@ -387,24 +386,28 @@ const ProjectDetailView = () => {
     }
   }, []);
 
+  const handleNewIssue = useCallback(() => {
+    navigate(`/project/${id}/issues/new`);
+  }, [navigate, id]);
+
   useEffect(() => {
     loadProjectData();
     loadAvailableData();
-    
+
     // Check if we should automatically open the issues section and trigger new issue creation
     const searchParams = new URLSearchParams(location.search);
     const action = searchParams.get('action');
-    
+
     if (action === 'new-issue') {
       // Automatically expand the issues section
       setExpandedSection('issues');
-      
+
       // After a short delay to ensure the section is expanded, trigger the new issue dialog
       setTimeout(() => {
         handleNewIssue();
       }, 500);
     }
-  }, [loadProjectData, loadAvailableData, location.search]);
+  }, [loadProjectData, loadAvailableData, location.search, handleNewIssue]);
 
   useEffect(() => {
     setExpandedSection(null);
@@ -482,7 +485,7 @@ const ProjectDetailView = () => {
       },
       create_issue: async () => {
         setExpandedSection('issues');
-        setTimeout(() => handleNewIssue && handleNewIssue(), 300);
+        setTimeout(() => handleNewIssue(), 300);
         return { success: true, message: 'Opening new issue form' };
       },
       list_todos: async () => {
@@ -509,7 +512,7 @@ const ProjectDetailView = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, id, navigate, todos, issues]);
+  }, [registerActions, unregisterActions, id, navigate, todos, issues, handleNewIssue]);
 
   const toggleSection = (section) => {
     setExpandedSection((prev) => (prev === section ? null : section));
@@ -1368,19 +1371,6 @@ const ProjectDetailView = () => {
     }
   };
 
-  const handleDeleteTodo = async (todoId) => {
-    try {
-      setDeletingTodoId(todoId);
-      setTodoError('');
-      await projectTodosService.remove(todoId);
-      setTodos((prev) => prev.filter((todo) => todo.id !== todoId));
-    } catch (err) {
-      setTodoError(err.message || 'Failed to delete to-do');
-    } finally {
-      setDeletingTodoId(null);
-    }
-  };
-
   const handleUpdateTodoDate = async (todoId, field, value) => {
     try {
       // Persist update
@@ -1431,10 +1421,6 @@ const ProjectDetailView = () => {
     try {
       await projectTodosService.reorder(id, items);
     } catch (_) {}
-  };
-
-  const handleNewIssue = () => {
-    navigate(`/project/${id}/issues/new`);
   };
 
   const handleAddWireDrop = () => {
@@ -1884,7 +1870,6 @@ const ProjectDetailView = () => {
                 <div className="space-y-2">
                   {visibleTodos.map((todo) => {
                     const toggling = updatingTodoId === todo.id;
-                    const deleting = deletingTodoId === todo.id;
                     return (
                       <div
                         key={todo.id}

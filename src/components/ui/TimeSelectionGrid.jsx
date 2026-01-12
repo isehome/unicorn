@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Clock } from 'lucide-react';
 
 const HOUR_HEIGHT = 60;
@@ -74,7 +74,7 @@ const TimeSelectionGrid = ({
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = useCallback(() => {
         if (isDragging && dragStartHour !== null && currentDragHour !== null) {
             const start = Math.min(dragStartHour, currentDragHour);
             const end = Math.max(dragStartHour, currentDragHour);
@@ -86,7 +86,7 @@ const TimeSelectionGrid = ({
         setIsDragging(false);
         setDragStartHour(null);
         setCurrentDragHour(null);
-    };
+    }, [isDragging, dragStartHour, currentDragHour, onSelectSlot]);
 
     // Calculate drag selection visual
     const dragSelection = useMemo(() => {
@@ -112,7 +112,7 @@ const TimeSelectionGrid = ({
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-    }, [isDragging, dragStartHour, currentDragHour]);
+    }, [isDragging, dragStartHour, currentDragHour, handleMouseUp]);
 
     function formatTime(decimalTime) {
         const hours = Math.floor(decimalTime);

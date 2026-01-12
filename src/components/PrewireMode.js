@@ -84,11 +84,7 @@ const PrewireMode = () => {
   ), [user]);
 
   // Load wire drops
-  useEffect(() => {
-    loadWireDrops();
-  }, [projectId]);
-
-  const loadWireDrops = async () => {
+  const loadWireDrops = useCallback(async () => {
     if (!projectId) {
       setError('No project selected. Please access Prewire Mode from a project.');
       setLoading(false);
@@ -135,7 +131,11 @@ const PrewireMode = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadWireDrops();
+  }, [loadWireDrops]);
 
   // Get unique floors for filter
   const availableFloors = useMemo(() => {

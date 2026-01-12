@@ -266,7 +266,7 @@ export const clearQueue = () => {
   return cancelledCount;
 };
 
-export default {
+const bradyPrintService = {
   initializeBradySdk,
   isSupportedBrowser,
   connectPrinter,
@@ -278,3 +278,5 @@ export default {
   getQueueStatus,
   clearQueue,
 };
+
+export default bradyPrintService;

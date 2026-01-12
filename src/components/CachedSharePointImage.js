@@ -147,7 +147,7 @@ const CachedSharePointImage = ({
     return () => {
       isMounted = false;
     };
-  }, [isVisible, sharePointUrl, displayType, size, showingFull]);
+  }, [isVisible, sharePointUrl, displayType, size, showingFull, sharePointDriveId, sharePointItemId]);
 
   // Handle image load error - try fallback
   const handleImageError = async () => {

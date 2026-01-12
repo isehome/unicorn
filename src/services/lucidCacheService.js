@@ -69,14 +69,14 @@ export const getCachedPageImage = async (documentId, pageIndex, pageInfo = {}, o
 
     // Try to upsert cache entry (optional - if table doesn't exist, still return the image)
     try {
-      const { error: upsertError } = await supabase
+      await supabase
         .from('lucid_chart_cache')
         .upsert(cacheData, {
           onConflict: 'document_id,page_index'
         });
 
       // Ignore cache errors - we have the image
-    } catch (dbError) {
+    } catch {
       // Continue anyway - we have the image
     }
 
@@ -169,7 +169,7 @@ export const clearDocumentCache = async (documentId) => {
     // Delete storage files
     if (entries && entries.length > 0) {
       const filePaths = entries.map(e => e.storage_path);
-      const { error: deleteError } = await supabase.storage
+      await supabase.storage
         .from(BUCKET_NAME)
         .remove(filePaths);
 

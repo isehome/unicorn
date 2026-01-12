@@ -172,6 +172,8 @@ const formatIssueContext = (issue, project) => {
   return { issueTitle, projectName };
 };
 
+// collectRecipients is available for future use but currently not called
+// eslint-disable-next-line no-unused-vars
 const collectRecipients = (stakeholders = [], actor) => {
   const emailMap = new Map();
 

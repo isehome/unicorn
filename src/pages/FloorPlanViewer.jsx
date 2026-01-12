@@ -30,6 +30,7 @@ export default function FloorPlanViewer() {
   
   useEffect(() => {
     loadFloorPlanData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wireDropId, projectId]);
   
   async function loadFloorPlanData() {
@@ -108,21 +109,6 @@ export default function FloorPlanViewer() {
   };
   
   const shapePos = getShapePosition();
-  
-  // Calculate initial position to center on the shape
-  const getInitialPosition = () => {
-    if (!shapePos || !imageLoaded) return { x: 0, y: 0 };
-    
-    // Center the shape in the viewport
-    // This is an approximation - may need adjustment based on actual viewport size
-    const centerX = -(shapePos.x / 100) * (floorPlan?.image_width || 1000) * 1.5;
-    const centerY = -(shapePos.y / 100) * (floorPlan?.image_height || 1000) * 1.5;
-    
-    return {
-      x: centerX + (window.innerWidth / 2),
-      y: centerY + (window.innerHeight / 2)
-    };
-  };
 
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
@@ -296,12 +282,11 @@ export default function FloorPlanViewer() {
               <button onClick={() => zoomOut()} title="Zoom Out">−</button>
               <button onClick={() => resetTransform()} title="Reset View">⟲</button>
               {shapePos && (
-                <button 
+                <button
                   onClick={() => {
                     resetTransform();
                     // Center on shape after a brief delay
                     setTimeout(() => {
-                      const pos = getInitialPosition();
                       centerView(1.5, 300);
                     }, 100);
                   }}

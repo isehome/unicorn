@@ -51,30 +51,11 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
   const [projects, setProjects] = useState([]);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [selectedPO, setSelectedPO] = useState(null);
-  const [poDetailsLoading, setPoDetailsLoading] = useState(false);
   const [receivingIssues, setReceivingIssues] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [issueComments, setIssueComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
-
-  useEffect(() => {
-    loadDashboardData();
-
-    // Handle deep linking
-    if (initialView === 'suppliers') {
-      setShowView('suppliers');
-      setIsCollapsed(false);
-
-      // Scroll to procurement section
-      setTimeout(() => {
-        const element = document.getElementById('procurement-dashboard');
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 500);
-    }
-  }, [initialView]);
 
   const loadDashboardData = async () => {
     try {
@@ -116,6 +97,24 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDashboardData();
+
+    // Handle deep linking
+    if (initialView === 'suppliers') {
+      setShowView('suppliers');
+      setIsCollapsed(false);
+
+      // Scroll to procurement section
+      setTimeout(() => {
+        const element = document.getElementById('procurement-dashboard');
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 500);
+    }
+  }, [initialView]);
 
   const loadProjects = async () => {
     try {
@@ -269,14 +268,11 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
 
   const handlePOClick = async (poId) => {
     try {
-      setPoDetailsLoading(true);
       const poDetails = await purchaseOrderService.getPurchaseOrder(poId);
       setSelectedPO(poDetails);
     } catch (error) {
       console.error('Error loading PO details:', error);
       alert('Failed to load purchase order details');
-    } finally {
-      setPoDetailsLoading(false);
     }
   };
 

@@ -216,7 +216,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
     });
   }, [allSuppliers, isCreateMode, supplierId]);
 
-  const handleChange = (field, value) => {
+  const handleChange = useCallback((field, value) => {
     // Special handling for is_internal_inventory toggle
     if (field === 'is_internal_inventory' && value === true) {
       const existingInternalSupplier = getCurrentInternalInventorySupplier();
@@ -258,7 +258,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
 
       return updated;
     });
-  };
+  }, [getCurrentInternalInventorySupplier, checkNameUnique, allSuppliers, supplierId]);
 
   // Send welcome email to new vendor
   const sendVendorWelcomeEmail = async (supplierName, supplierEmail) => {
@@ -312,7 +312,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -384,7 +384,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       setError(err.message || `Failed to ${isCreateMode ? 'create' : 'update'} supplier`);
       setLoading(false);
     }
-  };
+  }, [formData, checkNameUnique, checkShortCodeUnique, isCreateMode, originalEmail, getCurrentInternalInventorySupplier, supplierId, sendVendorWelcomeEmail, onSave, onClose]);
 
   // Register actions for AI
   useEffect(() => {
@@ -450,7 +450,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, formData, isCreateMode, onClose]);
+  }, [registerActions, unregisterActions, formData, isCreateMode, onClose, handleChange, handleSubmit]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

@@ -196,6 +196,36 @@ const TodosListPage = () => {
   // AI VOICE COPILOT INTEGRATION
   // ══════════════════════════════════════════════════════════════
 
+  const visible = useMemo(() => {
+    let list = todos.filter(t => (showCompleted ? true : !t.completed));
+    if (projectFilter !== 'all') list = list.filter(t => t.project_id === projectFilter);
+    // Sort open items first, then by importance, manual sort order, created time
+    return [...list].sort((a, b) => {
+      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
+      const ai = getImportanceRank(a.importance);
+      const bi = getImportanceRank(b.importance);
+      if (ai !== bi) return ai - bi;
+      const ao = a.sortOrder ?? 0;
+      const bo = b.sortOrder ?? 0;
+      if (ao !== bo) return ao - bo;
+      return String(a.created_at).localeCompare(String(b.created_at));
+    });
+  }, [todos, showCompleted, projectFilter]);
+
+  const handleToggleTodo = useCallback(async (todo) => {
+    try {
+      setUpdatingTodoId(todo.id);
+      await projectTodosService.toggleCompletion(todo.id, !todo.completed);
+      setTodos((prev) => prev.map((item) => (
+        item.id === todo.id ? { ...item, completed: !todo.completed } : item
+      )));
+    } catch (err) {
+      setError(err.message || 'Failed to update to-do');
+    } finally {
+      setUpdatingTodoId(null);
+    }
+  }, []);
+
   // Publish state for AI awareness
   useEffect(() => {
     const openTodos = todos.filter(t => !t.completed);
@@ -277,46 +307,6 @@ const TodosListPage = () => {
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
   }, [registerActions, unregisterActions, todos, visible, projects, showCompleted, handleToggleTodo]);
-
-  const visible = useMemo(() => {
-    let list = todos.filter(t => (showCompleted ? true : !t.completed));
-    if (projectFilter !== 'all') list = list.filter(t => t.project_id === projectFilter);
-    // Sort open items first, then by importance, manual sort order, created time
-    return [...list].sort((a, b) => {
-      if (!!a.completed !== !!b.completed) return a.completed ? 1 : -1;
-      const ai = getImportanceRank(a.importance);
-      const bi = getImportanceRank(b.importance);
-      if (ai !== bi) return ai - bi;
-      const ao = a.sortOrder ?? 0;
-      const bo = b.sortOrder ?? 0;
-      if (ao !== bo) return ao - bo;
-      return String(a.created_at).localeCompare(String(b.created_at));
-    });
-  }, [todos, showCompleted, projectFilter]);
-
-  const handleToggleTodo = async (todo) => {
-    try {
-      setUpdatingTodoId(todo.id);
-      await projectTodosService.toggleCompletion(todo.id, !todo.completed);
-      setTodos((prev) => prev.map((item) => (
-        item.id === todo.id ? { ...item, completed: !todo.completed } : item
-      )));
-    } catch (err) {
-      setError(err.message || 'Failed to update to-do');
-    } finally {
-      setUpdatingTodoId(null);
-    }
-  };
-
-  const handleDeleteTodo = async (todoId) => {
-    if (!window.confirm('Are you sure you want to delete this todo?')) return;
-    try {
-      await projectTodosService.remove(todoId);
-      setTodos((prev) => prev.filter((todo) => todo.id !== todoId));
-    } catch (err) {
-      setError(err.message || 'Failed to delete to-do');
-    }
-  };
 
   const handleUpdateTodoImportance = async (todoId, value) => {
     try {

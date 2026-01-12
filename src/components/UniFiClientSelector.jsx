@@ -128,7 +128,8 @@ const UniFiClientSelector = ({
     if (equipmentData || (!equipment && !equipmentId)) {
       refreshClients();
     }
-  }, [equipmentData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [equipmentData, equipment, equipmentId]);
 
   const formatMac = (mac) => {
     if (!mac) return 'N/A';

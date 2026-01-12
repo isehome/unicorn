@@ -236,6 +236,27 @@ const ContactDetailPage = () => {
     });
   }, [publishState, contact, secureData, projects]);
 
+  // Contact edit handler (defined before AI actions that reference it)
+  const handleEditContact = useCallback(() => {
+    if (!contact) return;
+    setContactFormData({
+      first_name: contact.first_name || '',
+      last_name: contact.last_name || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      company: contact.company || '',
+      role: contact.role || '',
+      department: contact.department || '',
+      is_internal: contact.is_internal || false,
+      address1: contact.address1 || '',
+      address2: contact.address2 || '',
+      city: contact.city || '',
+      state: contact.state || '',
+      zip: contact.zip || ''
+    });
+    setShowEditContact(true);
+  }, [contact]);
+
   // Register actions for AI
   useEffect(() => {
     const actions = {
@@ -309,7 +330,7 @@ const ContactDetailPage = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, contact, projects, navigate]);
+  }, [registerActions, unregisterActions, contact, projects, navigate, handleEditContact]);
 
   // Handlers
   const togglePasswordVisibility = async (itemId) => {
@@ -443,27 +464,6 @@ const ContactDetailPage = () => {
     setShowAddForm(false);
     setEditingItem(null);
     setError('');
-  };
-
-  // Contact edit handlers
-  const handleEditContact = () => {
-    if (!contact) return;
-    setContactFormData({
-      first_name: contact.first_name || '',
-      last_name: contact.last_name || '',
-      email: contact.email || '',
-      phone: contact.phone || '',
-      company: contact.company || '',
-      role: contact.role || '',
-      department: contact.department || '',
-      is_internal: contact.is_internal || false,
-      address1: contact.address1 || '',
-      address2: contact.address2 || '',
-      city: contact.city || '',
-      state: contact.state || '',
-      zip: contact.zip || ''
-    });
-    setShowEditContact(true);
   };
 
   const handleSaveContact = async (e) => {

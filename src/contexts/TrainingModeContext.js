@@ -14,7 +14,7 @@ import { supabase } from '../lib/supabase';
 const generateSessionId = () => {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    const v = c === 'x' ? r : ((r & 0x3) | 0x8);
     return v.toString(16);
   });
 };
@@ -89,13 +89,6 @@ export const TrainingModeProvider = ({ children }) => {
   // Check if user can train (admin, director, or owner only)
   const canTrain = userRole === 'admin' || userRole === 'owner' || userRole === 'director';
 
-  // Load page context when route changes (while in training mode)
-  useEffect(() => {
-    if (isTrainingMode) {
-      loadCurrentPageContext();
-    }
-  }, [location.pathname, isTrainingMode]);
-
   const loadCurrentPageContext = useCallback(async () => {
     try {
       const patternRoute = getPatternRoute(location.pathname);
@@ -106,6 +99,13 @@ export const TrainingModeProvider = ({ children }) => {
       setCurrentPageContext(null);
     }
   }, [location.pathname]);
+
+  // Load page context when route changes (while in training mode)
+  useEffect(() => {
+    if (isTrainingMode) {
+      loadCurrentPageContext();
+    }
+  }, [location.pathname, isTrainingMode, loadCurrentPageContext]);
 
   /**
    * Enter training mode
@@ -292,7 +292,7 @@ export const TrainingModeProvider = ({ children }) => {
       console.error('[TrainingMode] Error saving training session:', error);
       throw error;
     }
-  }, [currentTrainingSession, transcript, sessionType, user, sessionId]);
+  }, [currentTrainingSession, transcript, sessionType, user]);
 
   /**
    * Cancel training session without saving

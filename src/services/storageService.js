@@ -24,13 +24,13 @@ export async function uploadFloorPlanImage(imageBlob, projectId, pageId) {
   
   try {
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { error } = await supabase.storage
       .from(FLOOR_PLANS_BUCKET)
       .upload(fileName, imageBlob, {
         contentType: 'image/png',
         upsert: true // Overwrite if exists
       });
-    
+
     if (error) {
       throw error;
     }

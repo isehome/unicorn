@@ -69,7 +69,8 @@ const PartsReceivingPageNew = () => {
       loadPurchaseOrders();
       loadShades();
     }
-  }, [projectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]); // Load functions are defined below and stable
 
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
@@ -240,7 +241,8 @@ const PartsReceivingPageNew = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, purchaseOrders, shades, phaseFilter, shadesExpanded]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerActions, unregisterActions, purchaseOrders, shades, phaseFilter, shadesExpanded]); // Handler functions are stable
 
   // Load shades that are ordered (for receiving)
   const loadShades = async () => {

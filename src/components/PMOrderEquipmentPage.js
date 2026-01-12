@@ -85,6 +85,7 @@ const PMOrderEquipmentPageEnhanced = () => {
   // Load project info and default shipping address on mount
   useEffect(() => {
     loadProjectInfo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {
@@ -95,11 +96,13 @@ const PMOrderEquipmentPageEnhanced = () => {
       loadReceivingIssues();
     }
     // No data loading needed for 'inventory' tab
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, tab]);
 
   // Also load issues on initial mount to show/hide Issues tab
   useEffect(() => {
     loadReceivingIssues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // No longer need to load vendor grouping - checkbox view uses equipment directly

@@ -30,8 +30,7 @@ const SettingsPage = () => {
     sdkInitialized,
     isIOSSafari,
     connectPrinter,
-    disconnectPrinter,
-    printLabel
+    disconnectPrinter
   } = usePrinter();
 
   // Default workspace mode - stored in localStorage
@@ -142,7 +141,7 @@ const SettingsPage = () => {
   }, []);
 
   // Handle logout
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       setLoggingOut(true);
       await logout();
@@ -151,15 +150,15 @@ const SettingsPage = () => {
       console.error('Logout failed:', error);
       setLoggingOut(false);
     }
-  };
+  }, [logout, navigate]);
 
-  const handleConnectPrinter = async () => {
+  const handleConnectPrinter = useCallback(async () => {
     await connectPrinter();
-  };
+  }, [connectPrinter]);
 
-  const handleDisconnectPrinter = async () => {
+  const handleDisconnectPrinter = useCallback(async () => {
     await disconnectPrinter();
-  };
+  }, [disconnectPrinter]);
 
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
@@ -259,7 +258,7 @@ const SettingsPage = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, mode, toggleTheme, hasAdminAccess, navigate, connected, supported, isIOSSafari, handleDefaultWorkspaceChange]);
+  }, [registerActions, unregisterActions, mode, toggleTheme, hasAdminAccess, navigate, connected, supported, isIOSSafari, handleDefaultWorkspaceChange, handleConnectPrinter, handleDisconnectPrinter, handleLogout]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 pb-24 space-y-4">

@@ -294,7 +294,7 @@ const IssueDetail = () => {
     } finally {
       setLoading(false);
     }
-  }, [projectId, issueId, isNew, loadExternalUploads]);
+  }, [projectId, issueId, isNew, loadExternalUploads, acquireToken]);
 
   useEffect(() => {
     loadData();
@@ -578,8 +578,7 @@ const IssueDetail = () => {
     projectId,
     projectInfo,
     resolvedIssue,
-    resolveNotificationStakeholders,
-    tags
+    resolveNotificationStakeholders
   ]);
 
   const appendStatusChangeComment = useCallback(async (nextStatusLabel, options = {}) => {
@@ -649,7 +648,6 @@ const IssueDetail = () => {
     resolveNotificationStakeholders,
     projectId,
     issueLink,
-    notifyIssueComment,
     projectInfo,
     currentUserSummary
   ]);

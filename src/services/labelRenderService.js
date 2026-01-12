@@ -338,7 +338,9 @@ const wrapText = (ctx, text, maxWidth) => {
 
 /**
  * Truncate text to fit within specified width
+ * Note: Currently unused but kept for potential future label designs
  */
+// eslint-disable-next-line no-unused-vars
 const truncateText = (ctx, text, maxWidth) => {
   let truncated = text;
   while (ctx.measureText(truncated).width > maxWidth && truncated.length > 0) {
@@ -361,8 +363,10 @@ export const generateLabelPreview = async (wireDrop) => {
   return bitmap;
 };
 
-export default {
+const labelRenderService = {
   generateWireDropLabelBitmap,
   generateLabelPreview,
   generateCalibrationLabelBitmap
 };
+
+export default labelRenderService;

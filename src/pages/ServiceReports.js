@@ -57,7 +57,7 @@ const ServiceReports = () => {
       setStartDate(preset.startDate);
       setEndDate(preset.endDate);
     }
-  }, [datePreset]);
+  }, [datePreset, presets]);
 
   // Load filter options on mount
   useEffect(() => {
@@ -119,23 +119,23 @@ const ServiceReports = () => {
   }, [loadReportData]);
 
   // Export handlers (defined before actions useEffect so they can be referenced)
-  const handleExportTickets = () => {
+  const handleExportTickets = useCallback(() => {
     if (reportData.length === 0) return;
     const filename = `service_tickets_${startDate}_to_${endDate}.csv`;
     serviceReportService.exportToCSV(reportData, filename);
-  };
+  }, [reportData, startDate, endDate]);
 
-  const handleExportTechnicians = () => {
+  const handleExportTechnicians = useCallback(() => {
     if (technicianHours.length === 0) return;
     const filename = `technician_hours_${startDate}_to_${endDate}.csv`;
     serviceReportService.exportToCSV(technicianHours, filename);
-  };
+  }, [technicianHours, startDate, endDate]);
 
-  const handleExportCustomers = () => {
+  const handleExportCustomers = useCallback(() => {
     if (customerHours.length === 0) return;
     const filename = `customer_summary_${startDate}_to_${endDate}.csv`;
     serviceReportService.exportToCSV(customerHours, filename);
-  };
+  }, [customerHours, startDate, endDate]);
 
   // Clear filters
   const clearFilters = () => {
@@ -283,7 +283,8 @@ const ServiceReports = () => {
   }, [
     activeTab, datePreset, startDate, endDate, customerId, technicianId,
     summary, reportData, technicianHours, customerHours, customers, technicians,
-    presets, loadReportData, registerActions, unregisterActions
+    presets, loadReportData, registerActions, unregisterActions,
+    handleExportTickets, handleExportTechnicians, handleExportCustomers
   ]);
 
   const hasFilters = customerId || technicianId;

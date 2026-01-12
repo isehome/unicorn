@@ -37,19 +37,6 @@ const getHourFromTime = (timeString) => {
 };
 
 /**
- * Format time for display
- */
-const formatTime = (timeString) => {
-  if (!timeString) return '';
-  try {
-    const date = new Date(timeString);
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-};
-
-/**
  * Format date for header display
  */
 const formatDateHeader = (date) => {
@@ -65,22 +52,6 @@ const formatDateHeader = (date) => {
   if (diffDays === -1) return 'Yesterday';
 
   return date.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
-};
-
-/**
- * Convert pixel position to hour (decimal)
- */
-const pixelToHour = (pixels) => {
-  return START_HOUR + (pixels / HOUR_HEIGHT);
-};
-
-/**
- * Convert hour (decimal) to time string (HH:MM)
- */
-const hourToTimeString = (hour) => {
-  const h = Math.floor(hour);
-  const m = Math.round((hour - h) * 60);
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
 };
 
 /**

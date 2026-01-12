@@ -964,6 +964,7 @@ export const fetchClientsWithEndpoint = async (siteId, controllerUrl, endpoint =
       return null;
     };
 
+    // eslint-disable-next-line no-unused-vars
     const consoleId = extractConsoleIdFromUrl(controllerUrl);
     const proxyUrl = resolveProxyUrl();
 
@@ -1052,7 +1053,7 @@ export const testConnection = async (controllerUrl, apiKey = null) => {
   }
 };
 
-export default {
+const unifiApi = {
   fetchSites,
   fetchLocalSites,
   fetchDevices,
@@ -1065,3 +1066,4 @@ export default {
   extractClientsFromDevices,
   parseUnifiUrl
 };
+export default unifiApi;

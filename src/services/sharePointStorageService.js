@@ -450,12 +450,13 @@ class SharePointStorageService {
 
     // Decode first to handle already-encoded URLs, then encode to prevent double-encoding
     // This handles cases where user enters URL with %20 or actual spaces
+    let graphSafeRootUrl;
     try {
       const decodedUrl = decodeURIComponent(cleanedRootUrl);
-      var graphSafeRootUrl = encodeURI(decodedUrl);
+      graphSafeRootUrl = encodeURI(decodedUrl);
     } catch (e) {
       // If decoding fails, just encode as-is
-      var graphSafeRootUrl = encodeURI(cleanedRootUrl);
+      graphSafeRootUrl = encodeURI(cleanedRootUrl);
     }
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

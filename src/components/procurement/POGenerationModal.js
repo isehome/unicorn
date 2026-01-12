@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppState } from '../../contexts/AppStateContext';
-import { enhancedStyles } from '../../styles/styleSystem';
 import { poGeneratorService } from '../../services/poGeneratorService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { pdfExportService } from '../../services/pdfExportService';
@@ -43,10 +41,8 @@ const POGenerationModal = ({
   onSuccess,
   projectDefaultShippingId = null
 }) => {
-  const { mode } = useTheme();
   const { user } = useAuth();
   const { publishState, registerActions, unregisterActions } = useAppState();
-  const sectionStyles = enhancedStyles.sections[mode];
 
   // Version log to verify new code is loading
   console.log('🔄 POGenerationModal v2.1 loaded - cache should be clear if you see this');
@@ -144,6 +140,7 @@ const POGenerationModal = ({
     } else {
       console.log('⏸️ Modal conditions not met (isOpen:', isOpen, 'supplierId:', supplierId, ')');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, supplierId, projectDefaultShippingId]);
 
   // Collect form data for AppState publishing

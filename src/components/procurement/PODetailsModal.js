@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppState } from '../../contexts/AppStateContext';
-import { enhancedStyles } from '../../styles/styleSystem';
 import { supabase } from '../../lib/supabase';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
 import { pdfExportService } from '../../services/pdfExportService';
@@ -46,10 +45,9 @@ import {
  * - Add tracking numbers manually
  */
 const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
-  const { mode } = useTheme();
+  useTheme(); // For theme context
   const { user, acquireToken } = useAuth();
   const { publishState, registerActions, unregisterActions } = useAppState();
-  const sectionStyles = enhancedStyles.sections[mode];
 
   // State
   const [loading, setLoading] = useState(true);
@@ -76,6 +74,51 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
 
   // Edit state
   const [editData, setEditData] = useState({});
+
+  const loadPODetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await purchaseOrderService.getPurchaseOrder(poId);
+      setPO(data);
+      setEditData({
+        order_date: data.order_date,
+        requested_delivery_date: data.requested_delivery_date,
+        tax_amount: data.tax_amount || 0,
+        shipping_cost: data.shipping_cost || 0,
+        internal_notes: data.internal_notes || '',
+        supplier_notes: data.supplier_notes || '',
+        shipping_address_id: data.shipping_address_id || null
+      });
+
+      // Load shipping address if exists
+      if (data.shipping_address_id) {
+        const { data: addressData, error: addressError } = await supabase
+          .from('shipping_addresses')
+          .select('*')
+          .eq('id', data.shipping_address_id)
+          .single();
+
+        if (!addressError && addressData) {
+          setShippingAddress(addressData);
+        } else {
+          console.warn('Failed to load shipping address:', addressError);
+          setShippingAddress(null);
+        }
+      } else {
+        setShippingAddress(null);
+      }
+
+      // Load tracking data
+      const trackingData = await trackingService.getPOTracking(poId);
+      setTracking(trackingData);
+    } catch (err) {
+      console.error('Failed to load PO:', err);
+      setError('Failed to load purchase order details');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && poId) {
@@ -266,51 +309,6 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
   }, [isOpen, po, isEditing, editData, poId, onClose, onUpdate, registerActions, unregisterActions]);
-
-  const loadPODetails = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await purchaseOrderService.getPurchaseOrder(poId);
-      setPO(data);
-      setEditData({
-        order_date: data.order_date,
-        requested_delivery_date: data.requested_delivery_date,
-        tax_amount: data.tax_amount || 0,
-        shipping_cost: data.shipping_cost || 0,
-        internal_notes: data.internal_notes || '',
-        supplier_notes: data.supplier_notes || '',
-        shipping_address_id: data.shipping_address_id || null
-      });
-
-      // Load shipping address if exists
-      if (data.shipping_address_id) {
-        const { data: addressData, error: addressError } = await supabase
-          .from('shipping_addresses')
-          .select('*')
-          .eq('id', data.shipping_address_id)
-          .single();
-
-        if (!addressError && addressData) {
-          setShippingAddress(addressData);
-        } else {
-          console.warn('Failed to load shipping address:', addressError);
-          setShippingAddress(null);
-        }
-      } else {
-        setShippingAddress(null);
-      }
-
-      // Load tracking data
-      const trackingData = await trackingService.getPOTracking(poId);
-      setTracking(trackingData);
-    } catch (err) {
-      console.error('Failed to load PO:', err);
-      setError('Failed to load purchase order details');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSave = async () => {
     if (!po) {

@@ -4,7 +4,7 @@
  * Supports categories: before, during, after, documentation
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Camera,
   Upload,
@@ -35,14 +35,8 @@ const ServicePhotosManager = ({ ticketId, user, sharePointFolderUrl }) => {
   const [captionText, setCaptionText] = useState('');
   const fileInputRef = useRef(null);
 
-  // Load photos on mount
-  useEffect(() => {
-    if (ticketId) {
-      loadPhotos();
-    }
-  }, [ticketId]);
-
-  const loadPhotos = async () => {
+  // Load photos function - defined before useEffect that uses it
+  const loadPhotos = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -58,7 +52,15 @@ const ServicePhotosManager = ({ ticketId, user, sharePointFolderUrl }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [ticketId]);
+
+  // Load photos on mount
+  useEffect(() => {
+    if (ticketId) {
+      loadPhotos();
+    }
+  }, [ticketId, loadPhotos]);
+
 
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files || []);

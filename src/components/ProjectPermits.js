@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { permitService } from '../services/permitService';
 import { milestoneService } from '../services/milestoneService';
@@ -37,13 +37,7 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
     final: { open: false, permitId: null, date: '' }
   });
 
-  useEffect(() => {
-    if (projectId) {
-      loadPermitsAndMilestones();
-    }
-  }, [projectId]);
-
-  const loadPermitsAndMilestones = async () => {
+  const loadPermitsAndMilestones = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -64,7 +58,13 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (projectId) {
+      loadPermitsAndMilestones();
+    }
+  }, [projectId, loadPermitsAndMilestones]);
 
   const loadPermits = async () => {
     // Keep this method for compatibility with existing handlers

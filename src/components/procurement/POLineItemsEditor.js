@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import { projectEquipmentService } from '../../services/projectEquipmentService';
 import { purchaseOrderService } from '../../services/purchaseOrderService';
@@ -32,11 +31,8 @@ const POLineItemsEditor = ({
   projectId,
   items = [],
   isDraft = false,
-  onItemsChange,
-  onSave,
-  onExportCSV
+  onSave
 }) => {
-  const { mode } = useTheme();
 
   // Local state for edited items
   const [editedItems, setEditedItems] = useState([]);
@@ -65,9 +61,9 @@ const POLineItemsEditor = ({
 
   // CSV Import state
   const [showImportModal, setShowImportModal] = useState(false);
+  const [, setImportFile] = useState(null);
   const [importLoading, setImportLoading] = useState(false);
   const [importPreview, setImportPreview] = useState(null);
-  const [importFile, setImportFile] = useState(null);
 
   // Consolidate items by part number
   const consolidateItems = (rawItems) => {
@@ -433,7 +429,7 @@ const POLineItemsEditor = ({
     reader.onload = (event) => {
       const csvText = event.target?.result;
       if (typeof csvText === 'string') {
-        const { headers, rows } = parseCSV(csvText);
+        const { rows } = parseCSV(csvText);
 
         // Map CSV rows to preview data
         const preview = rows.map(row => {

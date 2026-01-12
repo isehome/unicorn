@@ -135,6 +135,32 @@ const SecureDataPage = () => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Filter secure data
+  const filteredSecureData = useMemo(() => {
+    let filtered = [...secureData];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(item =>
+        item.name?.toLowerCase().includes(query) ||
+        item.username?.toLowerCase().includes(query) ||
+        item.url?.toLowerCase().includes(query) ||
+        item.notes?.toLowerCase().includes(query)
+      );
+    }
+
+    // Equipment filter
+    if (selectedEquipment !== 'all') {
+      filtered = filtered.filter(item => {
+        const linkedEquipment = item.equipment_secure_links || [];
+        return linkedEquipment.some(link => link.equipment_id === selectedEquipment);
+      });
+    }
+
+    return filtered;
+  }, [secureData, searchQuery, selectedEquipment]);
+
   // Publish state to AppState for AI context
   useEffect(() => {
     const credentialsByType = {
@@ -264,32 +290,6 @@ const SecureDataPage = () => {
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
   }, [registerActions, unregisterActions, projectId, navigate, loadData, secureData, equipment]);
-
-  // Filter secure data
-  const filteredSecureData = useMemo(() => {
-    let filtered = [...secureData];
-    
-    // Search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(item => 
-        item.name?.toLowerCase().includes(query) ||
-        item.username?.toLowerCase().includes(query) ||
-        item.url?.toLowerCase().includes(query) ||
-        item.notes?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Equipment filter
-    if (selectedEquipment !== 'all') {
-      filtered = filtered.filter(item => {
-        const linkedEquipment = item.equipment_secure_links || [];
-        return linkedEquipment.some(link => link.equipment_id === selectedEquipment);
-      });
-    }
-    
-    return filtered;
-  }, [secureData, searchQuery, selectedEquipment]);
 
   // Group by equipment
   const groupedSecureData = useMemo(() => {

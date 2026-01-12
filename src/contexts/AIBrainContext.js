@@ -584,9 +584,9 @@ ${buildContextString(state)}`;
     };
 
     // Downsample to Gemini's expected 16kHz
-    const downsampleForGemini = (inputData, inputSampleRate) => {
+    const downsampleForGemini = useCallback((inputData, inputSampleRate) => {
         return resampleAudio(inputData, inputSampleRate, GEMINI_INPUT_SAMPLE_RATE);
-    };
+    }, []);
 
     // Convert base64 PCM (int16) to Float32 for playback
     const base64ToFloat32 = (base64) => {
@@ -793,10 +793,7 @@ ${buildContextString(state)}`;
             addDebugLog('Web Audio test scheduled');
 
             // Method 2: HTML5 Audio Element (Fallback)
-            // Simple beep data URI
-            const beepUrl = 'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'; // (Truncated for brevity, using a real short beep)
-            // Using a generated oscillator beep data URI would be better, but for now let's just log.
-            // Actually, let's create a temporary audio element.
+            // Using an external beep sound for cross-browser compatibility
             const audio = new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg');
             audio.volume = 1.0;
             audio.onplay = () => addDebugLog('HTML5 Audio: Playing...', 'audio');
@@ -1054,7 +1051,7 @@ ${buildContextString(state)}`;
 
         // Start speech recognition for transcription (in parallel)
         startSpeechRecognition();
-    }, [addDebugLog, startSpeechRecognition]);
+    }, [addDebugLog, startSpeechRecognition, downsampleForGemini]);
 
     const stopAudioCapture = useCallback(() => {
         recordingActive.current = false;

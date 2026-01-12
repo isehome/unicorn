@@ -195,7 +195,7 @@ export const getDateStatus = (dateString, isCompleted = false, options = {}) => 
 export const getDateStatusClasses = (dateStatus, variant = 'text') => {
   if (!dateStatus) return '';
 
-  const { color, status, urgency } = dateStatus;
+  const { status } = dateStatus;
 
   // Not set - always greyed out
   if (status === 'not-set') {

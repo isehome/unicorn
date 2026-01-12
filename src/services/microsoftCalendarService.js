@@ -1316,7 +1316,9 @@ export const updateServiceAppointmentEvent = async (authContext, eventId, update
 
 /**
  * Generate an ICS calendar file content for a meeting invite
+ * Note: Currently unused as we use Graph API to create events directly
  */
+// eslint-disable-next-line no-unused-vars
 const generateICSContent = (eventDetails) => {
   const {
     uid,
@@ -1534,7 +1536,7 @@ export const sendMeetingCancellationEmail = async (authContext, scheduleDetails)
   }
 };
 
-export default {
+const microsoftCalendarService = {
   fetchTodayEvents,
   fetchEventsForDate,
   fetchUserEventsForDate,
@@ -1555,3 +1557,5 @@ export default {
   sendMeetingInviteEmail,
   sendMeetingCancellationEmail,
 };
+
+export default microsoftCalendarService;

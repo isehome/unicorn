@@ -62,12 +62,11 @@ export const useContacts = (filters = {}) => {
   const [error, setError] = useState(null);
   const abortControllerRef = useRef(null);
   const mountedRef = useRef(true);
-  const serializedFilters = useMemo(() => JSON.stringify(filters || {}), [filters]);
   const stableFilters = useMemo(() => {
     if (!filters || typeof filters !== 'object') return {};
     // Create a shallow clone to ensure consistent reference for downstream logic
     return { ...filters };
-  }, [serializedFilters]);
+  }, [filters]);
 
   const fetchContacts = useCallback(async (forceRefresh = false) => {
     // Cancel any ongoing request

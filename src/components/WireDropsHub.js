@@ -62,7 +62,7 @@ const WireDropsHub = () => {
       optionCount: hubItems.length,
       hint: 'Wire drops navigation hub. Can open wire drops list or Lucid Chart integration.'
     });
-  }, [publishState]);
+  }, [publishState, hubItems]);
 
   // Register actions for AI
   useEffect(() => {

@@ -15,7 +15,7 @@ const UnifiClientImporter = () => {
 
   useEffect(() => {
     const fetchProjects = async () => {
-      const { data, error } = await supabase.from('projects').select('id, name').order('name');
+      const { data } = await supabase.from('projects').select('id, name').order('name');
       if (data) setProjects(data);
     };
     fetchProjects();
@@ -27,7 +27,6 @@ const UnifiClientImporter = () => {
 
   // Selection & Assignment State
   const [selectedClients, setSelectedClients] = useState(new Set());
-  const [assigning, setAssigning] = useState(false);
 
   // Configuration State
   const [controllerIp, setControllerIp] = useState(localStorage.getItem('unifi_controller_ip') || '192.168.1.1');

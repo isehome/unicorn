@@ -27,7 +27,6 @@ const WireDropNew = () => {
   const [project, setProject] = useState(null);
   const [projectRooms, setProjectRooms] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [generatedName, setGeneratedName] = useState('');
   const [namePreview, setNamePreview] = useState('');
   const [form, setForm] = useState({
     project_id: projectId || '',
@@ -123,6 +122,7 @@ const WireDropNew = () => {
     if (projectId) {
       loadProjectData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {
@@ -132,6 +132,7 @@ const WireDropNew = () => {
     } else {
       setNamePreview('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.room_name, form.drop_type]);
 
   const loadProjectData = async () => {

@@ -117,6 +117,8 @@ export function AuthProvider({ children }) {
     } finally {
       isAcquiringTokenRef.current = false;
     }
+    // Note: scheduleTokenRefresh is intentionally omitted to avoid circular dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scheduleTokenRefresh = useCallback((expiresOn) => {
@@ -394,7 +396,9 @@ export function AuthProvider({ children }) {
       if (tokenRefreshTimerRef.current) clearTimeout(tokenRefreshTimerRef.current);
       initRef.current = false;
     };
-  }, [acquireToken, loadUserProfile, scheduleTokenRefresh]); // REMOVED 'loading' from deps!
+    // Note: 'loading' is intentionally omitted to prevent infinite re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [acquireToken, loadUserProfile, scheduleTokenRefresh]);
 
   const login = useCallback(async () => {
     try {

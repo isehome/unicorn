@@ -86,7 +86,7 @@ const InventoryManager = ({ projectId }) => {
     });
   };
 
-  const handleSaveChanges = async () => {
+  const handleSaveChanges = useCallback(async () => {
     if (pendingChanges.size === 0) return;
 
     setSaving(true);
@@ -129,11 +129,11 @@ const InventoryManager = ({ projectId }) => {
     } finally {
       setSaving(false);
     }
-  };
+  }, [pendingChanges, equipment, loadInventory]);
 
-  const handleDiscardChanges = () => {
+  const handleDiscardChanges = useCallback(() => {
     setPendingChanges(new Map());
-  };
+  }, []);
 
   const getInventoryStatus = useCallback((item) => {
     const pendingChange = pendingChanges.get(item.id);

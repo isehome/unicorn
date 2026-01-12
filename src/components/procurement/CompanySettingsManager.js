@@ -1,6 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
-import { enhancedStyles } from '../../styles/styleSystem';
 import { companySettingsService } from '../../services/companySettingsService';
 import { supabase } from '../../lib/supabase';
 import Button from '../ui/Button';
@@ -23,14 +21,10 @@ import {
  * - Company logo (for use in PO generation)
  */
 const CompanySettingsManager = () => {
-  const { mode } = useTheme();
-  const sectionStyles = enhancedStyles.sections[mode];
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [settings, setSettings] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Form state
@@ -58,7 +52,6 @@ const CompanySettingsManager = () => {
       const data = await companySettingsService.getCompanySettings();
 
       if (data) {
-        setSettings(data);
         setFormData({
           company_name: data.company_name || '',
           orders_contact_name: data.orders_contact_name || '',
@@ -104,7 +97,7 @@ const CompanySettingsManager = () => {
       const filePath = `company/${fileName}`;
 
       // Upload to Supabase storage bucket (using 'photos' bucket which has working policies)
-      const { data, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('photos')
         .upload(filePath, file, {
           cacheControl: '3600',

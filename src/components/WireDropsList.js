@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -22,8 +22,6 @@ const WireDropsList = () => {
   const [allDrops, setAllDrops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [project, setProject] = useState(null);
-  const [showFloorFilter, setShowFloorFilter] = useState(false);
   const [deletingDropId, setDeletingDropId] = useState(null);
 
   // Bulk selection states
@@ -35,31 +33,7 @@ const WireDropsList = () => {
   const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
   const [printingDropId, setPrintingDropId] = useState(null);
 
-  // Reload data on mount and whenever we return to this page
-  useEffect(() => {
-    loadWireDrops();
-
-    // Also reload when navigating back to this page or window regains focus
-    const handleFocus = () => {
-      loadWireDrops();
-    };
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        loadWireDrops();
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [projectId]); // Reload whenever projectId changes OR component remounts
-
-  const loadWireDrops = async () => {
+  const loadWireDrops = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -84,19 +58,6 @@ const WireDropsList = () => {
       // Filter by project if specified
       if (projectId) {
         query = query.eq('project_id', projectId);
-
-        // Also load project info for the header
-        const { data: projectData, error: projectError } = await supabase
-          .from('projects')
-          .select('name, id')
-          .eq('id', projectId)
-          .single();
-
-        if (projectError) {
-          console.error('Error loading project:', projectError);
-        } else {
-          setProject(projectData);
-        }
       }
 
       const { data, error: wireDropsError } = await query;
@@ -131,7 +92,31 @@ const WireDropsList = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  // Reload data on mount and whenever we return to this page
+  useEffect(() => {
+    loadWireDrops();
+
+    // Also reload when navigating back to this page or window regains focus
+    const handleFocus = () => {
+      loadWireDrops();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadWireDrops();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadWireDrops]);
 
   const handlePrintSingleLabel = async (wireDrop, e) => {
     e.stopPropagation(); // Prevent navigation to detail view

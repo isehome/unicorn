@@ -294,7 +294,6 @@ const PMProjectViewEnhanced = () => {
   const [project, setProject] = useState(null);
   const [phases, setPhases] = useState([]);
   const [statuses, setStatuses] = useState([]);
-  const [milestones, setMilestones] = useState([]);
   const [timeData, setTimeData] = useState({
     summary: [],
     activeUsers: [],
@@ -869,16 +868,7 @@ const PMProjectViewEnhanced = () => {
           unifi_site_name: currentProject.unifi_site_name || ''
         });
 
-        // Load milestones
-        const { data: milestonesData } = await supabase
-          .from('project_phase_milestones')
-          .select(`
-            *,
-            phase:project_phases(*)
-          `)
-          .eq('project_id', projectId);
-
-        setMilestones(milestonesData || []);
+        // Milestones are loaded elsewhere via loadMilestones()
       }
     } catch (error) {
       console.error('Failed to load project:', error);

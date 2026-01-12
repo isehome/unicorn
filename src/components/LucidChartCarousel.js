@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Compass,
   Loader,
@@ -107,72 +107,7 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     page: null
   });
 
-  // Only load data when section is expanded AND we haven't loaded yet
-  useEffect(() => {
-    if (!documentUrl || !isExpanded || hasLoaded) {
-      return;
-    }
-
-    const load = async () => {
-      setHasLoaded(true); // Mark as loaded to prevent re-fetching
-      setLoading(true);
-      setError(null);
-      setThumbnails({});
-
-      try {
-        const docId = extractDocumentIdFromUrl(documentUrl);
-        if (!docId) {
-          throw new Error('Invalid Lucid Chart URL');
-        }
-
-        setDocumentId(docId);
-
-        let metadata = null;
-        try {
-          metadata = await fetchDocumentMetadata(docId);
-        } catch (metaError) {
-          console.warn('Failed to fetch Lucid metadata, falling back to contents:', metaError);
-        }
-
-        let pageData = [];
-        if (metadata?.pages?.length) {
-          pageData = metadata.pages.map((page, index) => ({
-            id: page.id,
-            title: page.title || `Page ${index + 1}`,
-            index
-          }));
-        }
-
-        if (pageData.length === 0) {
-          const contents = await fetchDocumentContents(docId);
-          if (!contents?.pages?.length) {
-            throw new Error('This Lucid document does not have any pages.');
-          }
-
-          pageData = contents.pages.map((page, index) => ({
-            id: page.id,
-            title: page.title || `Page ${index + 1}`,
-            index
-          }));
-        }
-
-        const docVersion = metadata?.version || metadata?.documentVersion || metadata?.revision || null;
-
-        setPages(pageData);
-
-        await loadThumbnails(docId, pageData, docVersion);
-      } catch (err) {
-        console.error('Failed to load Lucid pages:', err);
-        setError(err.message || 'Failed to load Lucid document');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
-  }, [documentUrl, isExpanded, hasLoaded]);
-
-  const loadThumbnails = async (docId, pageData, version) => {
+  const loadThumbnails = useCallback(async (docId, pageData, version) => {
     if (!pageData.length) {
       return;
     }
@@ -248,7 +183,72 @@ const LucidChartCarousel = ({ documentUrl, projectName }) => {
     } finally {
       setThumbnailsLoading(false);
     }
-  };
+  }, [mode]);
+
+  // Only load data when section is expanded AND we haven't loaded yet
+  useEffect(() => {
+    if (!documentUrl || !isExpanded || hasLoaded) {
+      return;
+    }
+
+    const load = async () => {
+      setHasLoaded(true); // Mark as loaded to prevent re-fetching
+      setLoading(true);
+      setError(null);
+      setThumbnails({});
+
+      try {
+        const docId = extractDocumentIdFromUrl(documentUrl);
+        if (!docId) {
+          throw new Error('Invalid Lucid Chart URL');
+        }
+
+        setDocumentId(docId);
+
+        let metadata = null;
+        try {
+          metadata = await fetchDocumentMetadata(docId);
+        } catch (metaError) {
+          console.warn('Failed to fetch Lucid metadata, falling back to contents:', metaError);
+        }
+
+        let pageData = [];
+        if (metadata?.pages?.length) {
+          pageData = metadata.pages.map((page, index) => ({
+            id: page.id,
+            title: page.title || `Page ${index + 1}`,
+            index
+          }));
+        }
+
+        if (pageData.length === 0) {
+          const contents = await fetchDocumentContents(docId);
+          if (!contents?.pages?.length) {
+            throw new Error('This Lucid document does not have any pages.');
+          }
+
+          pageData = contents.pages.map((page, index) => ({
+            id: page.id,
+            title: page.title || `Page ${index + 1}`,
+            index
+          }));
+        }
+
+        const docVersion = metadata?.version || metadata?.documentVersion || metadata?.revision || null;
+
+        setPages(pageData);
+
+        await loadThumbnails(docId, pageData, docVersion);
+      } catch (err) {
+        console.error('Failed to load Lucid pages:', err);
+        setError(err.message || 'Failed to load Lucid document');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [documentUrl, isExpanded, hasLoaded, loadThumbnails]);
 
   const handleOpenPage = (page) => {
     if (!documentId) {
