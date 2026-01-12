@@ -152,9 +152,9 @@ async function finalizeEvent(token, userEmail, eventId) {
 // Send customer confirmation email with accept/decline links
 // This works around Apple Calendar/iCloud interoperability issues
 async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket) {
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : (process.env.APP_URL || 'https://unicorn-one.vercel.app');
+  // Always use the production domain for email links
+  // VERCEL_URL can be deployment-specific (preview URLs), so we hardcode the production domain
+  const baseUrl = process.env.APP_URL || 'https://unicorn-one.vercel.app';
 
   const acceptToken = generateResponseToken(schedule.id, 'accept');
   const declineToken = generateResponseToken(schedule.id, 'decline');
@@ -177,9 +177,6 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
   const BRAND_PRIMARY = '#8B5CF6';  // Violet - brand primary
   const BRAND_DANGER = '#EF4444';   // Red - decline/cancel
 
-  // Logo URL - use production domain for email compatibility
-  const logoUrl = 'https://unicorn-one.vercel.app/android-chrome-192x192.png';
-
   // Use table-based layout for maximum email client compatibility
   // Inline styles throughout - no CSS classes
   const emailBody = `<!DOCTYPE html>
@@ -195,12 +192,11 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
       <td align="center" style="padding: 40px 20px;">
         <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; background-color: #27272A; border-radius: 12px; overflow: hidden;">
 
-          <!-- Header with Logo -->
+          <!-- Header - Text-based company branding -->
           <tr>
             <td style="background: linear-gradient(135deg, #18181B 0%, #27272A 100%); padding: 30px 40px; text-align: center; border-bottom: 3px solid ${BRAND_PRIMARY};">
-              <img src="${logoUrl}" alt="Intelligent Systems" width="60" height="60" style="display: block; margin: 0 auto 16px auto; border-radius: 12px;">
-              <h1 style="color: #FAFAFA; margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px;">INTELLIGENT SYSTEMS</h1>
-              <p style="color: #A1A1AA; margin: 8px 0 0 0; font-size: 14px;">Field Operations</p>
+              <h1 style="color: #FAFAFA; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">INTELLIGENT SYSTEMS</h1>
+              <p style="color: #A1A1AA; margin: 8px 0 0 0; font-size: 14px;">Smart Home &amp; AV Service</p>
             </td>
           </tr>
 
@@ -424,7 +420,8 @@ async function processSchedule(token, systemEmail, schedule, ticket) {
     newStatus = 'cancelled';
   }
   // Check for tech acceptance (Step 1 → Step 2: pending_tech → tech_accepted)
-  else if (currentStatus === 'pending_tech' && (techResponse === 'accepted' || techResponse === 'tentativelyaccepted')) {
+  // Only trigger if technician_accepted_at is not already set (prevents duplicate processing)
+  else if (currentStatus === 'pending_tech' && (techResponse === 'accepted' || techResponse === 'tentativelyaccepted') && !schedule.technician_accepted_at) {
     action = 'tech_accepted';
     newStatus = 'tech_accepted';  // Intermediate status - customer invite not yet sent
   }
@@ -554,6 +551,8 @@ async function processCalendarResponses(scheduleIds = null) {
       technician_name,
       tech_calendar_response,
       customer_calendar_response,
+      technician_accepted_at,
+      customer_invite_sent_at,
       scheduled_date,
       scheduled_time_start,
       scheduled_time_end
