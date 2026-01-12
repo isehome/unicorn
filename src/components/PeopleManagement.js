@@ -5,7 +5,7 @@ import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
-import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, Camera, CreditCard } from 'lucide-react';
+import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, Camera, CreditCard, Upload } from 'lucide-react';
 
 const PeopleManagement = () => {
   const navigate = useNavigate();
@@ -732,124 +732,128 @@ const PeopleManagement = () => {
         </div>
       )}
 
-      {/* Business Card Scanner Modal */}
+      {/* Business Card Scanner Modal - Full screen for landscape support */}
       {showScanModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-zinc-800 rounded-xl p-6 w-full max-w-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                <CreditCard className="w-5 h-5" />
-                Scan Business Card
-              </h2>
-              <button
-                onClick={handleCloseScanner}
-                className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+          {!capturedImage ? (
+            <>
+              {/* Camera fills the screen */}
+              <div className="flex-1 relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                {/* Business card guide overlay - centered */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="relative border-2 border-white/60 rounded-lg shadow-lg" style={{ width: '80%', maxWidth: '500px', aspectRatio: '3.5/2' }}>
+                    <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-lg" />
+                    <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-lg" />
+                    <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-lg" />
+                    <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-lg" />
+                  </div>
+                </div>
+                {/* Close button - top right, always visible */}
+                <button
+                  onClick={handleCloseScanner}
+                  className="absolute top-4 right-4 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white z-10"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+                {/* Instructions - top center */}
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/50 px-4 py-2 rounded-full">
+                  <p className="text-white text-sm whitespace-nowrap">Position card in frame</p>
+                </div>
+              </div>
 
-            <div className="space-y-4">
-              {!capturedImage ? (
-                <>
-                  {/* Camera Preview - landscape aspect ratio for business cards */}
-                  <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover"
+              {/* Bottom control bar - fixed height, always visible */}
+              <div className="flex-shrink-0 bg-black/80 px-4 py-4 safe-area-pb">
+                <div className="flex items-center justify-center gap-4 max-w-lg mx-auto">
+                  <label className="flex-shrink-0">
+                    <div className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg cursor-pointer transition-colors text-white">
+                      <Upload className="w-5 h-5" />
+                      <span className="hidden sm:inline">Upload</span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
                     />
-                    {/* Business card guide overlay - 3.5:2 aspect ratio */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="relative border-2 border-white/50 rounded-lg" style={{ width: '85%', aspectRatio: '3.5/2' }}>
-                        <div className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-3 border-l-3 border-white rounded-tl" />
-                        <div className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-3 border-r-3 border-white rounded-tr" />
-                        <div className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-3 border-l-3 border-white rounded-bl" />
-                        <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-3 border-r-3 border-white rounded-br" />
-                      </div>
+                  </label>
+                  {/* Large capture button */}
+                  <button
+                    onClick={captureImage}
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white hover:bg-zinc-200 active:bg-zinc-300 flex items-center justify-center transition-colors shadow-lg"
+                  >
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-4 border-zinc-900" />
+                  </button>
+                  {/* Spacer to balance layout */}
+                  <div className="w-[72px] sm:w-[88px]" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Captured image preview - fills screen */}
+              <div className="flex-1 relative bg-black flex items-center justify-center">
+                <img
+                  src={capturedImage}
+                  alt="Captured business card"
+                  className="max-w-full max-h-full object-contain"
+                />
+                {scanningCard && (
+                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                    <div className="text-center text-white">
+                      <Loader className="w-10 h-10 animate-spin mx-auto mb-3" />
+                      <p className="text-lg">Processing with AI...</p>
                     </div>
                   </div>
+                )}
+                {/* Close button */}
+                <button
+                  onClick={handleCloseScanner}
+                  className="absolute top-4 right-4 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white z-10"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
 
-                  <p className="text-sm text-zinc-500 text-center">
-                    Hold phone horizontally and position the business card within the frame
-                  </p>
-
-                  <div className="flex gap-3">
-                    <label className="flex-1">
-                      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-zinc-100 dark:bg-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors">
-                        <Camera className="w-5 h-5" />
-                        <span>Upload Image</span>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                    </label>
-                    <Button
-                      variant="primary"
-                      onClick={captureImage}
-                      className="flex-1"
-                    >
-                      <Camera className="w-5 h-5 mr-2" />
-                      Capture
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Captured Image Preview */}
-                  <div className="relative bg-black rounded-lg overflow-hidden">
-                    <img
-                      src={capturedImage}
-                      alt="Captured business card"
-                      className="w-full h-auto"
-                    />
-                    {scanningCard && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <div className="text-center text-white">
-                          <Loader className="w-8 h-8 animate-spin mx-auto mb-2" />
-                          <p>Processing with AI...</p>
-                        </div>
-                      </div>
+              {/* Bottom control bar */}
+              <div className="flex-shrink-0 bg-black/80 px-4 py-4 safe-area-pb">
+                <div className="flex items-center justify-center gap-4 max-w-lg mx-auto">
+                  <Button
+                    variant="secondary"
+                    onClick={retakePhoto}
+                    disabled={scanningCard}
+                    className="flex-1 py-3"
+                  >
+                    Retake
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={processBusinessCard}
+                    disabled={scanningCard}
+                    className="flex-1 py-3"
+                  >
+                    {scanningCard ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Extract Contact'
                     )}
-                  </div>
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
 
-                  <div className="flex gap-3">
-                    <Button
-                      variant="secondary"
-                      onClick={retakePhoto}
-                      className="flex-1"
-                      disabled={scanningCard}
-                    >
-                      Retake
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={processBusinessCard}
-                      className="flex-1"
-                      disabled={scanningCard}
-                    >
-                      {scanningCard ? (
-                        <>
-                          <Loader className="w-4 h-4 animate-spin mr-2" />
-                          Processing...
-                        </>
-                      ) : (
-                        'Extract Contact'
-                      )}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Hidden canvas for image capture */}
-            <canvas ref={canvasRef} className="hidden" />
-          </div>
+          {/* Hidden canvas for image capture */}
+          <canvas ref={canvasRef} className="hidden" />
         </div>
       )}
     </div>
