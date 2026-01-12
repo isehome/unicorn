@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/process-calendar-responses",
-      "schedule": "*/3 * * * *"
+      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/refresh-graph-subscriptions",

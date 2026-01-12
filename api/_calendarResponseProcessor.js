@@ -448,7 +448,7 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
   const { action, newStatus, eventId } = result;
 
   if (action === 'no_change' || action === 'skipped') {
-    return { applied: false };
+    return { applied: false, finalStatus: newStatus };
   }
 
   const updates = {
@@ -456,6 +456,8 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
     tech_calendar_response: result.techResponse,
     customer_calendar_response: result.customerResponse
   };
+
+  let customerInviteSent = false;
 
   if (action === 'tech_accepted') {
     // Tech accepted - record timestamp
@@ -478,13 +480,15 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
         }
         // Send customer confirmation email with accept/decline links
         await sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket);
-        console.log(`[CalendarProcessor] Sent customer confirmation email`);
+        console.log(`[CalendarProcessor] Sent customer confirmation email successfully`);
 
         // Update status to pending_customer (waiting for customer response)
         updates.schedule_status = 'pending_customer';
         updates.customer_invite_sent_at = new Date().toISOString();
+        customerInviteSent = true;
       } catch (customerErr) {
-        console.error(`[CalendarProcessor] Failed to send customer invite:`, customerErr);
+        console.error(`[CalendarProcessor] Failed to send customer invite:`, customerErr.message);
+        console.error(`[CalendarProcessor] Full error:`, customerErr);
         // Stay at tech_accepted if customer invite fails - user can manually retry
       }
     }
@@ -521,11 +525,11 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
 
   if (error) {
     console.error(`[CalendarProcessor] Failed to update schedule:`, error);
-    return { applied: false, error: error.message };
+    return { applied: false, error: error.message, finalStatus: newStatus };
   }
 
   console.log(`[CalendarProcessor] Updated schedule ${schedule.id}: ${action} → ${updates.schedule_status}`);
-  return { applied: true, action };
+  return { applied: true, action, finalStatus: updates.schedule_status, customerInviteSent };
 }
 
 /**
@@ -629,12 +633,16 @@ async function processCalendarResponses(scheduleIds = null) {
       else if (result.action.includes('declined') || result.action === 'event_deleted') results.declined++;
       else results.noChange++;
 
+      // Get the actual final status from the applied result
+      const finalStatus = applied.finalStatus || result.newStatus;
+
       results.schedules.push({
         id: schedule.id,
         action: result.action,
-        newStatus: result.newStatus,
+        newStatus: finalStatus,
         techResponse: result.techResponse,
-        customerResponse: result.customerResponse
+        customerResponse: result.customerResponse,
+        customerInviteSent: applied.customerInviteSent || false
       });
 
     } catch (error) {
