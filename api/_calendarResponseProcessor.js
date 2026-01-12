@@ -21,10 +21,10 @@ const { getAppToken, getSystemAccountEmail } = require('./_systemGraph');
 
 // Create fresh Supabase client each time to avoid stale state issues in serverless
 function getSupabase() {
-  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  console.log(`[CalendarProcessor] getSupabase using URL: ${url?.substring(0, 30)}..., key exists: ${!!key}`);
-  return createClient(url, key);
+  return createClient(
+    process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 }
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
@@ -520,7 +520,6 @@ async function processCalendarResponses(scheduleIds = null) {
   const systemEmail = await getSystemAccountEmail();
 
   console.log(`[CalendarProcessor] Using system account: ${systemEmail}`);
-  console.log(`[CalendarProcessor] scheduleIds param:`, scheduleIds);
 
   // Build query for pending schedules
   let query = getSupabase()
@@ -541,11 +540,9 @@ async function processCalendarResponses(scheduleIds = null) {
     .not('calendar_event_id', 'is', null);
 
   if (scheduleIds && scheduleIds.length > 0) {
-    console.log(`[CalendarProcessor] Filtering by schedule IDs:`, scheduleIds);
     query = query.in('id', scheduleIds);
   } else {
     // Check all statuses that need calendar response monitoring
-    console.log(`[CalendarProcessor] Filtering by statuses: pending_tech, tech_accepted, pending_customer`);
     query = query.in('schedule_status', ['pending_tech', 'tech_accepted', 'pending_customer']);
   }
 
@@ -559,20 +556,6 @@ async function processCalendarResponses(scheduleIds = null) {
   }
 
   console.log(`[CalendarProcessor] Found ${pendingSchedules?.length || 0} schedules to check`);
-  console.log(`[CalendarProcessor] Raw query result:`, JSON.stringify(pendingSchedules));
-  if (pendingSchedules && pendingSchedules.length > 0) {
-    console.log(`[CalendarProcessor] First schedule:`, JSON.stringify(pendingSchedules[0]));
-  }
-
-  // DEBUG: If scheduleIds were provided but no results, do a direct query to see what's there
-  if (scheduleIds && scheduleIds.length > 0 && (!pendingSchedules || pendingSchedules.length === 0)) {
-    console.log(`[CalendarProcessor] No schedules found with filter, doing direct query...`);
-    const { data: directResult, error: directError } = await getSupabase()
-      .from('service_schedules')
-      .select('id, schedule_status, calendar_event_id')
-      .in('id', scheduleIds);
-    console.log(`[CalendarProcessor] Direct query result:`, JSON.stringify(directResult), directError);
-  }
 
   // Get technician emails from contacts table (technicians are stored as contacts)
   const technicianIds = [...new Set(pendingSchedules?.map(s => s.technician_id).filter(Boolean) || [])];
@@ -589,8 +572,6 @@ async function processCalendarResponses(scheduleIds = null) {
     }
   }
 
-  console.log(`[CalendarProcessor] Loaded emails for ${Object.keys(technicianEmails).length} technicians:`, technicianEmails);
-
   const results = {
     checked: 0,
     techAccepted: 0,
@@ -601,24 +582,15 @@ async function processCalendarResponses(scheduleIds = null) {
     schedules: []
   };
 
-  console.log(`[CalendarProcessor] Starting loop over ${pendingSchedules?.length || 0} schedules`);
-
   for (const schedule of pendingSchedules || []) {
-    console.log(`[CalendarProcessor] Processing schedule ${schedule.id}`);
     try {
       schedule.technician_email = technicianEmails[schedule.technician_id] || null;
-      console.log(`[CalendarProcessor] Set technician_email to ${schedule.technician_email}`);
 
-      const ticketSupabase = getSupabase();
-      console.log(`[CalendarProcessor] About to query service_tickets for ticket_id: ${schedule.ticket_id}`);
-
-      const { data: ticket, error: ticketError } = await ticketSupabase
+      const { data: ticket, error: ticketError } = await getSupabase()
         .from('service_tickets')
         .select('id, customer_email, customer_name, customer_phone, title, customer_address')
         .eq('id', schedule.ticket_id)
         .single();
-
-      console.log(`[CalendarProcessor] Ticket lookup: ${ticket?.id || 'not found'}, error: ${JSON.stringify(ticketError)}`);
 
       if (!ticket) {
         console.log(`[CalendarProcessor] No ticket found for schedule ${schedule.id}, skipping`);
@@ -626,19 +598,13 @@ async function processCalendarResponses(scheduleIds = null) {
           id: schedule.id,
           action: 'skipped',
           reason: 'no_ticket',
-          ticket_id: schedule.ticket_id,
-          ticketError: ticketError?.message || ticketError?.code || 'unknown'
+          ticketError: ticketError?.message || 'unknown'
         });
         continue;
       }
 
-      console.log(`[CalendarProcessor] Calling processSchedule...`);
       const result = await processSchedule(token, systemEmail, schedule, ticket);
-      console.log(`[CalendarProcessor] processSchedule result:`, JSON.stringify(result));
-
-      console.log(`[CalendarProcessor] Calling applyResult...`);
       const applied = await applyResult(token, systemEmail, result, schedule, ticket);
-      console.log(`[CalendarProcessor] applyResult done`);
 
       results.checked++;
       if (result.action === 'tech_accepted') results.techAccepted++;
@@ -664,13 +630,6 @@ async function processCalendarResponses(scheduleIds = null) {
       });
     }
   }
-
-  // Add debug info to results
-  results.debug = {
-    scheduleIdsParam: scheduleIds,
-    rawQueryResult: pendingSchedules,
-    systemEmail
-  };
 
   return results;
 }
