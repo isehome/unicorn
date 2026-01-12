@@ -1487,15 +1487,19 @@ const AdminPage = () => {
     setCsvData(data);
 
     // Auto-map fields by matching header names with common variations
+    // Priority: exact matches > specific patterns > includes patterns
     const headerAliases = {
-      name: ['name', 'full name', 'fullname', 'contact name', 'customer name', 'customer full name', 'client name', 'display name'],
+      // Name - prefer "full name" alone over "customer full name" (which is company in QuickBooks)
+      name: ['name', 'full name', 'fullname', 'contact name', 'client name', 'display name'],
       first_name: ['first name', 'firstname', 'first', 'given name'],
       last_name: ['last name', 'lastname', 'last', 'surname', 'family name'],
       email: ['email', 'email address', 'e-mail', 'mail'],
       phone: ['phone', 'phone number', 'phone numbers', 'telephone', 'tel', 'mobile', 'cell', 'primary phone', 'work phone'],
-      company: ['company', 'company name', 'organization', 'org', 'business', 'business name', 'employer'],
+      // Company - "customer full name" in QuickBooks is typically the company/customer, not a person's name
+      company: ['company', 'company name', 'organization', 'org', 'business', 'business name', 'employer', 'customer full name', 'customer name'],
       role: ['role', 'title', 'job title', 'position', 'job', 'occupation'],
-      address: ['address', 'full address', 'street address', 'mailing address'],
+      // Address - prefer billing address over shipping (typically more permanent)
+      address: ['address', 'full address', 'street address', 'mailing address', 'bill address', 'billing address', 'ship address', 'shipping address', 'service address'],
       address1: ['address 1', 'address1', 'street', 'street 1', 'address line 1'],
       address2: ['address 2', 'address2', 'street 2', 'apt', 'suite', 'unit', 'address line 2'],
       city: ['city', 'town'],
@@ -1504,18 +1508,28 @@ const AdminPage = () => {
     };
 
     const autoMapping = {};
+
+    // First pass: exact matches only (highest priority)
     headers.forEach(header => {
       const lowerHeader = header.toLowerCase().trim();
       Object.entries(headerAliases).forEach(([fieldKey, aliases]) => {
-        if (aliases.some(alias => lowerHeader === alias || lowerHeader.includes(alias))) {
-          // Only set if not already mapped (prefer exact matches)
-          if (!autoMapping[fieldKey]) {
-            autoMapping[fieldKey] = header;
-          }
+        if (!autoMapping[fieldKey] && aliases.some(alias => lowerHeader === alias)) {
+          autoMapping[fieldKey] = header;
         }
       });
     });
-    console.log('[AdminPage] Auto-mapping:', autoMapping);
+
+    // Second pass: includes matches for remaining fields
+    headers.forEach(header => {
+      const lowerHeader = header.toLowerCase().trim();
+      Object.entries(headerAliases).forEach(([fieldKey, aliases]) => {
+        if (!autoMapping[fieldKey] && aliases.some(alias => lowerHeader.includes(alias))) {
+          autoMapping[fieldKey] = header;
+        }
+      });
+    });
+
+    console.log('[AdminPage] Auto-mapping:', autoMapping, 'Headers:', headers);
     setFieldMapping(autoMapping);
     setImportStep('map');
   };
@@ -1538,6 +1552,13 @@ const AdminPage = () => {
       });
       return mapped;
     });
+
+    // Debug: log first mapped contact to verify address is captured
+    if (mappedData.length > 0) {
+      console.log('[AdminPage] Field mapping:', fieldMapping);
+      console.log('[AdminPage] First mapped contact:', mappedData[0]);
+      console.log('[AdminPage] Address value:', mappedData[0]?.address);
+    }
 
     if (useAIProcessing) {
       // Use AI to parse and clean the data
@@ -1636,6 +1657,12 @@ const AdminPage = () => {
       });
       return mapped;
     });
+
+    // Debug: log first contact being imported to verify address
+    if (dataToImport.length > 0) {
+      console.log('[AdminPage] First contact to import:', dataToImport[0]);
+      console.log('[AdminPage] Address being imported:', dataToImport[0]?.address);
+    }
 
     setImportStep('importing');
     setImportProgress({ current: 0, total: dataToImport.length, skipped: 0, errors: [] });
