@@ -563,8 +563,19 @@ async function processCalendarResponses(scheduleIds = null) {
   }
 
   console.log(`[CalendarProcessor] Found ${pendingSchedules?.length || 0} schedules to check`);
+  console.log(`[CalendarProcessor] Raw query result:`, JSON.stringify(pendingSchedules));
   if (pendingSchedules && pendingSchedules.length > 0) {
     console.log(`[CalendarProcessor] First schedule:`, JSON.stringify(pendingSchedules[0]));
+  }
+
+  // DEBUG: If scheduleIds were provided but no results, do a direct query to see what's there
+  if (scheduleIds && scheduleIds.length > 0 && (!pendingSchedules || pendingSchedules.length === 0)) {
+    console.log(`[CalendarProcessor] No schedules found with filter, doing direct query...`);
+    const { data: directResult, error: directError } = await getSupabase()
+      .from('service_schedules')
+      .select('id, schedule_status, calendar_event_id')
+      .in('id', scheduleIds);
+    console.log(`[CalendarProcessor] Direct query result:`, JSON.stringify(directResult), directError);
   }
 
   // Get technician emails from contacts table (technicians are stored as contacts)
@@ -636,6 +647,13 @@ async function processCalendarResponses(scheduleIds = null) {
       });
     }
   }
+
+  // Add debug info to results
+  results.debug = {
+    scheduleIdsParam: scheduleIds,
+    rawQueryResult: pendingSchedules,
+    systemEmail
+  };
 
   return results;
 }
