@@ -19,16 +19,12 @@ const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { getAppToken, getSystemAccountEmail } = require('./_systemGraph');
 
-// Lazy-initialized Supabase client
-let _supabase = null;
+// Create fresh Supabase client each time to avoid stale state issues in serverless
 function getSupabase() {
-  if (!_supabase) {
-    _supabase = createClient(
-      process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
-  }
-  return _supabase;
+  const url = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  console.log(`[CalendarProcessor] getSupabase using URL: ${url?.substring(0, 30)}..., key exists: ${!!key}`);
+  return createClient(url, key);
 }
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
