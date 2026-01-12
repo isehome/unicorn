@@ -194,7 +194,7 @@ const AdminPage = () => {
   const [importStep, setImportStep] = useState('upload'); // upload, map, preview, ai-processing, importing, done
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, skipped: 0, errors: [] });
   const [duplicateHandling, setDuplicateHandling] = useState('skip'); // skip, merge, create
-  const [useAIProcessing, setUseAIProcessing] = useState(false); // Disabled by default for faster imports
+  const [useAIProcessing, setUseAIProcessing] = useState(true); // AI helps parse names, phones, detect companies
   const [aiProcessedData, setAiProcessedData] = useState([]); // Data after AI processing
 
   // Available contact fields for mapping (matches contacts table schema)
