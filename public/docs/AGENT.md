@@ -382,8 +382,7 @@ Dashboard showing:
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service module dashboard |
-| ServiceTicketList | `src/components/Service/ServiceTicketList.js` | Ticket list with filters |
+| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service dashboard with integrated ticket list, search, and filters |
 | ServiceTicketDetail | `src/components/Service/ServiceTicketDetail.js` | Full ticket detail page |
 | NewTicketForm | `src/components/Service/NewTicketForm.js` | Create new service ticket |
 | WeekCalendarGrid | `src/components/Service/WeekCalendarGrid.jsx` | Week view calendar grid |
@@ -432,11 +431,12 @@ Dashboard showing:
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/service` | ServiceDashboard | Service module home |
-| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service` | ServiceDashboard | Service dashboard with integrated ticket list, search, filters |
 | `/service/tickets/new` | NewTicketForm | Create new ticket |
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
+
+**Note:** As of 2026-01-12, ServiceTicketList was merged into ServiceDashboard. The `/service/tickets` route was removed - all ticket listing functionality is now on `/service`.
 
 #### 8.10 QuickBooks Online Integration
 
@@ -3582,12 +3582,11 @@ npm install intuit-oauth
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/service` | ServiceDashboard | Service module home |
-| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service` | ServiceDashboard | Service dashboard with integrated ticket list, search, filters |
 | `/service/tickets/new` | NewTicketForm | Create new ticket |
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail (photos, time, QBO) |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
-| `/service/reports` | ServiceReports | **NEW** - Reporting dashboard |
+| `/service/reports` | ServiceReports | Reporting dashboard |
 
 ---
 
@@ -3980,6 +3979,47 @@ Or merge the PR and delete the branch.
 
 ---
 
+## 2026-01-12
+
+### Service Dashboard Consolidation
+
+Merged `ServiceTicketList` into `ServiceDashboard` for a unified service page at `/service`.
+
+**Changes:**
+- **ServiceDashboard.js** now includes:
+  - Full ticket list (not just "Recent 5")
+  - Search input with real-time filtering
+  - Filter by status, priority, category
+  - URL parameter support for filter persistence
+  - Dynamic categories from `skill_categories` table
+  - Direct navigation to ticket details
+
+- **Removed:**
+  - `ServiceTicketList.js` component (deleted)
+  - `/service/tickets` route (merged into `/service`)
+
+- **Updated Files:**
+  - `src/App.js` - Removed ServiceTicketList route
+  - `src/components/AppHeader.js` - Removed `/service/tickets` title
+  - `src/config/pageRegistry.js` - Removed `/service/tickets` entry
+  - `src/components/Service/index.js` - Removed ServiceTicketList export
+  - `src/contexts/AIBrainContext.js` - Updated navigation aliases
+  - `src/components/Service/NewTicketForm.js` - Updated cancel navigation to `/service`
+  - `src/components/Service/ServiceTicketDetail.js` - Updated delete navigation to `/service`
+  - `src/pages/ServiceReports.js` - Removed custom back button (per AGENT.md guidelines)
+
+### Weekly Planning Dropdown Fix
+
+Fixed TechnicianDropdown not working for unscheduled tickets in the Weekly Planning sidebar.
+
+**Root Cause:** The `TicketCard` component had `overflow-hidden` CSS which clipped the dropdown menu that extends below the card.
+
+**Fix:** Removed `overflow-hidden` from TicketCard and changed `height` to `minHeight` so the dropdown can expand beyond the card boundaries.
+
+**File:** `src/components/Service/UnscheduledTicketsPanel.jsx`
+
+---
+
 ## 2026-01-08
 
 ### Unified Skills System (Major Feature)
@@ -3995,7 +4035,7 @@ skill_categories (master)
 │
 ├── Service Tickets (filtered by show_in_service=true)
 │   ├── NewTicketForm category buttons
-│   ├── ServiceTicketList filters
+│   ├── ServiceDashboard filters (integrated ticket list)
 │   └── Technician skill matching (future)
 │
 └── Employee Development (all categories)
@@ -4039,7 +4079,7 @@ SELECT * FROM get_qualified_technicians('network', 'proficient');
 | `src/components/Admin/SkillsManager.js` | Added category color picker, show_in_service toggle, training URLs management |
 | `src/pages/AdminPage.js` | **Removed** Technology Categories tab entirely (consolidated into SkillsManager) |
 | `src/components/Service/NewTicketForm.js` | Now loads categories from `skill_categories` WHERE `show_in_service = true` |
-| `src/components/Service/ServiceTicketList.js` | Dynamic categories from `skill_categories` with colors |
+| `src/components/Service/ServiceDashboard.js` | Dynamic categories from `skill_categories` with colors (merged from ServiceTicketList) |
 | `src/components/Service/ServiceTicketDetail.js` | Dynamic categories from database |
 | `src/components/UserSettings/UserSkillsSection.js` | **NEW** - Displays user's skills on Settings page (read-only) |
 | `src/components/SettingsPage.js` | Added UserSkillsSection component |

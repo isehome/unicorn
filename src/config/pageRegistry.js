@@ -126,21 +126,10 @@ export const PAGE_REGISTRY = {
     pageTitle: 'Service Dashboard',
     targetUsers: ['technician', 'manager', 'admin'],
     staticContext: {
-      purpose: 'Overview of service operations',
-      keyFeatures: ['Open tickets', 'Today\'s schedule', 'Quick stats'],
+      purpose: 'Service operations hub with ticket list, filtering, and scheduling',
+      keyFeatures: ['Open tickets', 'Today\'s schedule', 'Quick stats', 'Search & filters', 'Full ticket list'],
     },
-    teachableElements: ['ticket-summary', 'schedule-view', 'quick-actions'],
-  },
-
-  '/service/tickets': {
-    componentName: 'ServiceTicketList',
-    pageTitle: 'Service Tickets',
-    targetUsers: ['technician', 'manager', 'admin'],
-    staticContext: {
-      purpose: 'List of all service tickets with filtering',
-      keyFeatures: ['Status filter', 'Technician filter', 'Priority sorting', 'Quick view'],
-    },
-    teachableElements: ['filter-bar', 'ticket-list', 'status-badges', 'priority-indicators'],
+    teachableElements: ['ticket-summary', 'schedule-view', 'quick-actions', 'filter-bar', 'ticket-list', 'status-badges'],
   },
 
   '/service/tickets/new': {

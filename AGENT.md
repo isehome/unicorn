@@ -272,9 +272,9 @@ A drag-and-drop scheduling interface for dispatching service technicians with a 
         style="border-radius: 8px;"></iframe>
 ```
 
-#### 8.3 Three-Step Approval Workflow
+#### 8.3 Four-Step Approval Workflow
 
-The scheduling system uses a 3-step workflow to ensure both technician and customer confirm appointments:
+The scheduling system uses a 4-step workflow to ensure both technician and customer confirm appointments:
 
 ```
 ┌─────────────┐    Drag-Drop    ┌─────────────┐    Commit    ┌─────────────────┐
@@ -286,12 +286,22 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
                                        ▼                              │
                                 ┌─────────────┐                       ▼
                                 │  Can Move   │◀──────────┐  ┌────────────────────┐
-                                │  or Delete  │           │  │ AWAITING CUSTOMER  │
-                                └─────────────┘           │  │  (Customer Invite) │
+                                │  or Delete  │           │  │   TECH ACCEPTED    │
+                                └─────────────┘           │  │  (Customer Invite  │
+                                                          │  │    Not Sent Yet)   │
                                                           │  └─────────┬──────────┘
                                                           │            │
-                                                   Reset to           Customer
-                                                    Draft            Accepts
+                                                          │  Send Customer Invite
+                                                          │  OR Mark Confirmed
+                                                          │            │
+                                                          │            ▼
+                                                          │  ┌────────────────────┐
+                                                          │  │ AWAITING CUSTOMER  │
+                                                          │  │  (Customer Invite) │
+                                                          │  └─────────┬──────────┘
+                                                          │            │
+                                                   Reset to    Customer Accepts
+                                                    Draft     OR Mark Confirmed
                                                           │            │
                                                           │            ▼
                                                           │   ┌─────────────────┐
@@ -314,13 +324,24 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
 - Status transitions to `pending_tech`
 - Subject: `[PENDING] Service: Customer Name (#ticket_number)`
 
-**Step 3: Awaiting Customer (Blue)**
+**Step 3: Tech Accepted (Blue)**
 - When technician accepts calendar invite
-- Customer receives their invite
-- Status transitions to `pending_customer`
+- Status transitions to `tech_accepted`
+- **Customer invite NOT automatically sent** - gives dispatcher control
+- Available actions:
+  - **Send Customer Invite** → transitions to `pending_customer`
+  - **Mark Customer Confirmed** → skips customer invite, goes directly to `confirmed`
 
-**Step 4: Confirmed (Green)**
-- When customer confirms
+**Step 4: Awaiting Customer (Cyan)**
+- After clicking "Send Customer Invite"
+- Customer receives calendar invite + email link
+- Status transitions to `pending_customer`
+- Available actions:
+  - Wait for customer to accept calendar invite
+  - **Mark Customer Confirmed** → manually confirm without customer response
+
+**Step 5: Confirmed (Green)**
+- When customer accepts OR staff manually confirms
 - All parties aligned
 - Status transitions to `confirmed`
 
@@ -329,7 +350,8 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
 |-------------------|-------|-----------|-------------|
 | `draft` | Violet | ✅ Yes | Not yet committed, can be moved |
 | `pending_tech` | Amber | ❌ No | Waiting for technician to accept invite |
-| `pending_customer` | Blue | ❌ No | Tech accepted, waiting for customer |
+| `tech_accepted` | Blue | ❌ No | Tech accepted, customer invite pending |
+| `pending_customer` | Cyan | ❌ No | Customer invite sent, waiting for response |
 | `confirmed` | Green | ❌ No | All parties confirmed |
 | `cancelled` | Gray | ❌ No | Appointment cancelled |
 
@@ -343,6 +365,8 @@ When the organizer (logged-in user) assigns themselves as the technician:
 **Schedule Actions (in Ticket Detail Modal):**
 | Action | Available When | What It Does |
 |--------|----------------|--------------|
+| **Send Customer Invite** | `tech_accepted` | Sends invite to customer, transitions to `pending_customer` |
+| **Mark Customer Confirmed** | `tech_accepted` or `pending_customer` | Manually confirms without customer response |
 | **Reset to Draft** | Any non-draft status | Unlocks schedule for editing, clears calendar event ID |
 | **Remove from Schedule** | Any status | Deletes schedule, returns ticket to unscheduled panel |
 
@@ -356,10 +380,17 @@ When committing a schedule:
 6. Event marked as tentative (`showAs: 'tentative'`)
 7. `calendar_event_id` stored on schedule for future updates
 
-#### 8.4 Customer Confirmation (Planned)
+#### 8.4 Customer Confirmation
 
-Customer-facing portal for appointment confirmation:
-1. Schedule created as `tentative`
+**Manual Confirmation (Current):**
+Staff can manually confirm on behalf of customers using "Mark Customer Confirmed" button:
+- Available in WeeklyPlanning ticket detail modal
+- Available in ServiceTicketDetail page (schedule section)
+- Records who confirmed and when
+
+**Customer Portal Confirmation (Planned):**
+Customer-facing portal for self-service appointment confirmation:
+1. Schedule created, customer invite sent
 2. System sends email + SMS with confirmation link
 3. Customer clicks link → `/public/service-confirm/:token`
 4. OTP verification (phone or email)
@@ -382,8 +413,7 @@ Dashboard showing:
 
 | Component | File | Purpose |
 |-----------|------|---------|
-| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service module dashboard |
-| ServiceTicketList | `src/components/Service/ServiceTicketList.js` | Ticket list with filters |
+| ServiceDashboard | `src/components/Service/ServiceDashboard.js` | Main service dashboard with integrated ticket list, search, and filters |
 | ServiceTicketDetail | `src/components/Service/ServiceTicketDetail.js` | Full ticket detail page |
 | NewTicketForm | `src/components/Service/NewTicketForm.js` | Create new service ticket |
 | WeekCalendarGrid | `src/components/Service/WeekCalendarGrid.jsx` | Week view calendar grid |
@@ -432,11 +462,12 @@ Dashboard showing:
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/service` | ServiceDashboard | Service module home |
-| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service` | ServiceDashboard | Service dashboard with integrated ticket list, search, filters |
 | `/service/tickets/new` | NewTicketForm | Create new ticket |
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail/edit |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
+
+**Note:** As of 2026-01-12, ServiceTicketList was merged into ServiceDashboard. The `/service/tickets` route was removed - all ticket listing functionality is now on `/service`.
 
 #### 8.10 QuickBooks Online Integration
 
@@ -3582,12 +3613,11 @@ npm install intuit-oauth
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/service` | ServiceDashboard | Service module home |
-| `/service/tickets` | ServiceTicketList | All tickets list |
+| `/service` | ServiceDashboard | Service dashboard with integrated ticket list, search, filters |
 | `/service/tickets/new` | NewTicketForm | Create new ticket |
 | `/service/tickets/:id` | ServiceTicketDetail | Ticket detail (photos, time, QBO) |
 | `/service/weekly-planning` | WeeklyPlanning | Drag-drop scheduling |
-| `/service/reports` | ServiceReports | **NEW** - Reporting dashboard |
+| `/service/reports` | ServiceReports | Reporting dashboard |
 
 ---
 
@@ -3980,6 +4010,47 @@ Or merge the PR and delete the branch.
 
 ---
 
+## 2026-01-12
+
+### Service Dashboard Consolidation
+
+Merged `ServiceTicketList` into `ServiceDashboard` for a unified service page at `/service`.
+
+**Changes:**
+- **ServiceDashboard.js** now includes:
+  - Full ticket list (not just "Recent 5")
+  - Search input with real-time filtering
+  - Filter by status, priority, category
+  - URL parameter support for filter persistence
+  - Dynamic categories from `skill_categories` table
+  - Direct navigation to ticket details
+
+- **Removed:**
+  - `ServiceTicketList.js` component (deleted)
+  - `/service/tickets` route (merged into `/service`)
+
+- **Updated Files:**
+  - `src/App.js` - Removed ServiceTicketList route
+  - `src/components/AppHeader.js` - Removed `/service/tickets` title
+  - `src/config/pageRegistry.js` - Removed `/service/tickets` entry
+  - `src/components/Service/index.js` - Removed ServiceTicketList export
+  - `src/contexts/AIBrainContext.js` - Updated navigation aliases
+  - `src/components/Service/NewTicketForm.js` - Updated cancel navigation to `/service`
+  - `src/components/Service/ServiceTicketDetail.js` - Updated delete navigation to `/service`
+  - `src/pages/ServiceReports.js` - Removed custom back button (per AGENT.md guidelines)
+
+### Weekly Planning Dropdown Fix
+
+Fixed TechnicianDropdown not working for unscheduled tickets in the Weekly Planning sidebar.
+
+**Root Cause:** The `TicketCard` component had `overflow-hidden` CSS which clipped the dropdown menu that extends below the card.
+
+**Fix:** Removed `overflow-hidden` from TicketCard and changed `height` to `minHeight` so the dropdown can expand beyond the card boundaries.
+
+**File:** `src/components/Service/UnscheduledTicketsPanel.jsx`
+
+---
+
 ## 2026-01-08
 
 ### Unified Skills System (Major Feature)
@@ -3995,7 +4066,7 @@ skill_categories (master)
 │
 ├── Service Tickets (filtered by show_in_service=true)
 │   ├── NewTicketForm category buttons
-│   ├── ServiceTicketList filters
+│   ├── ServiceDashboard filters (integrated ticket list)
 │   └── Technician skill matching (future)
 │
 └── Employee Development (all categories)
@@ -4039,7 +4110,7 @@ SELECT * FROM get_qualified_technicians('network', 'proficient');
 | `src/components/Admin/SkillsManager.js` | Added category color picker, show_in_service toggle, training URLs management |
 | `src/pages/AdminPage.js` | **Removed** Technology Categories tab entirely (consolidated into SkillsManager) |
 | `src/components/Service/NewTicketForm.js` | Now loads categories from `skill_categories` WHERE `show_in_service = true` |
-| `src/components/Service/ServiceTicketList.js` | Dynamic categories from `skill_categories` with colors |
+| `src/components/Service/ServiceDashboard.js` | Dynamic categories from `skill_categories` with colors (merged from ServiceTicketList) |
 | `src/components/Service/ServiceTicketDetail.js` | Dynamic categories from database |
 | `src/components/UserSettings/UserSkillsSection.js` | **NEW** - Displays user's skills on Settings page (read-only) |
 | `src/components/SettingsPage.js` | Added UserSkillsSection component |

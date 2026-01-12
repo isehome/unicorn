@@ -6,7 +6,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  ArrowLeft,
   Search,
   User,
   Phone,
@@ -244,17 +243,8 @@ const NewTicketForm = () => {
     <div className="min-h-screen bg-zinc-900 p-4 md:p-6 pb-20">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => navigate('/service/tickets')}
-            className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h1 className="text-xl font-bold text-white">New Service Ticket</h1>
-            <p className="text-sm text-zinc-400">Create a new support ticket</p>
-          </div>
+        <div className="mb-6">
+          <p className="text-sm text-zinc-400">Create a new support ticket</p>
         </div>
 
         {error && (
@@ -555,7 +545,7 @@ const NewTicketForm = () => {
           <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => navigate('/service/tickets')}
+              onClick={() => navigate('/service')}
               className="flex-1 px-4 py-3 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-white transition-colors"
             >
               Cancel

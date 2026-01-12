@@ -69,7 +69,6 @@ const KnowledgeManagementPanel = lazy(() => import('./components/knowledge/Knowl
 
 // Service CRM
 const ServiceDashboard = lazy(() => import('./components/Service/ServiceDashboard'));
-const ServiceTicketList = lazy(() => import('./components/Service/ServiceTicketList'));
 const ServiceTicketDetail = lazy(() => import('./components/Service/ServiceTicketDetail'));
 const NewTicketForm = lazy(() => import('./components/Service/NewTicketForm'));
 const WeeklyPlanning = lazy(() => import('./pages/WeeklyPlanning'));
@@ -399,14 +398,6 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <ServiceDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/service/tickets"
-                element={
-                  <ProtectedRoute>
-                    <ServiceTicketList />
                   </ProtectedRoute>
                 }
               />

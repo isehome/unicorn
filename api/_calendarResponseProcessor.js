@@ -2,7 +2,13 @@
  * Calendar Response Processor
  *
  * Shared logic for checking calendar event attendee responses
- * and advancing the 3-step scheduling workflow.
+ * and advancing the 4-step scheduling workflow.
+ *
+ * Workflow:
+ * 1. Draft → pending_tech (on commit & send invite)
+ * 2. pending_tech → tech_accepted (when tech accepts calendar invite)
+ * 3. tech_accepted → pending_customer (when customer invite is sent)
+ * 4. pending_customer → confirmed (when customer accepts)
  *
  * Used by:
  * - /api/cron/process-calendar-responses (cron job)
@@ -421,12 +427,12 @@ async function processSchedule(token, systemEmail, schedule, ticket) {
     action = 'customer_declined';
     newStatus = 'cancelled';
   }
-  // Check for tech acceptance (Step 1 → Step 2)
+  // Check for tech acceptance (Step 1 → Step 2: pending_tech → tech_accepted)
   else if (currentStatus === 'pending_tech' && (techResponse === 'accepted' || techResponse === 'tentativelyaccepted')) {
     action = 'tech_accepted';
-    newStatus = 'pending_customer';
+    newStatus = 'tech_accepted';  // Intermediate status - customer invite not yet sent
   }
-  // Check for customer acceptance (Step 2 → Step 3)
+  // Check for customer acceptance (Step 3 → Step 4: pending_customer → confirmed)
   else if (currentStatus === 'pending_customer' && (customerResponse === 'accepted' || customerResponse === 'tentativelyaccepted')) {
     action = 'customer_accepted';
     newStatus = 'confirmed';
@@ -456,28 +462,19 @@ async function applyResult(token, systemEmail, result, schedule, ticket) {
   };
 
   if (action === 'tech_accepted') {
+    // Tech accepted - record timestamp, status stays at 'tech_accepted'
+    // Customer invite will be sent separately (manually or via sendCustomerInvite API)
     updates.technician_accepted_at = new Date().toISOString();
+    console.log(`[CalendarProcessor] Tech accepted schedule ${schedule.id}, status → tech_accepted`);
 
-    if (ticket.customer_email) {
-      // Add customer to calendar event
-      try {
-        await addCustomerToEvent(token, systemEmail, eventId, ticket.customer_email, ticket.customer_name);
-        console.log(`[CalendarProcessor] Added customer ${ticket.customer_email} to event ${eventId}`);
-      } catch (err) {
-        console.error(`[CalendarProcessor] Failed to add customer to event:`, err);
-      }
-
-      // Also send email with accept/decline links (for Apple Calendar/iCloud users)
-      try {
-        await sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket);
-      } catch (err) {
-        console.error(`[CalendarProcessor] Failed to send customer confirmation email:`, err);
-        // Don't fail the whole operation - calendar invite was still sent
-      }
-    } else {
+    // If no customer email configured, we can auto-confirm since there's no customer to notify
+    if (!ticket.customer_email) {
       console.log(`[CalendarProcessor] No customer email, auto-confirming schedule ${schedule.id}`);
       updates.schedule_status = 'confirmed';
     }
+    // Otherwise, status stays at 'tech_accepted' and user can:
+    // 1. Manually send customer invite (moves to pending_customer)
+    // 2. Manually mark customer confirmed (moves to confirmed)
   } else if (action === 'customer_accepted') {
     updates.customer_accepted_at = new Date().toISOString();
     try {
@@ -549,7 +546,8 @@ async function processCalendarResponses(scheduleIds = null) {
   if (scheduleIds && scheduleIds.length > 0) {
     query = query.in('id', scheduleIds);
   } else {
-    query = query.in('schedule_status', ['pending_tech', 'pending_customer']);
+    // Check all statuses that need calendar response monitoring
+    query = query.in('schedule_status', ['pending_tech', 'tech_accepted', 'pending_customer']);
   }
 
   const { data: pendingSchedules, error: fetchError } = await query
@@ -635,10 +633,152 @@ async function processCalendarResponses(scheduleIds = null) {
   return results;
 }
 
+/**
+ * Send customer invite for a schedule that's in tech_accepted status
+ * This moves the schedule from tech_accepted → pending_customer
+ */
+async function sendCustomerInviteForSchedule(scheduleId) {
+  const token = await getAppToken();
+  const systemEmail = await getSystemAccountEmail();
+
+  // Get the schedule
+  const { data: schedule, error: scheduleError } = await getSupabase()
+    .from('service_schedules')
+    .select(`
+      id,
+      ticket_id,
+      calendar_event_id,
+      schedule_status,
+      technician_id,
+      technician_name,
+      scheduled_date,
+      scheduled_time_start,
+      scheduled_time_end
+    `)
+    .eq('id', scheduleId)
+    .single();
+
+  if (scheduleError || !schedule) {
+    throw new Error(`Schedule not found: ${scheduleId}`);
+  }
+
+  if (schedule.schedule_status !== 'tech_accepted') {
+    throw new Error(`Schedule ${scheduleId} is not in tech_accepted status (current: ${schedule.schedule_status})`);
+  }
+
+  // Get the ticket
+  const { data: ticket, error: ticketError } = await getSupabase()
+    .from('service_tickets')
+    .select('id, customer_email, customer_name, customer_phone, title, service_address')
+    .eq('id', schedule.ticket_id)
+    .single();
+
+  if (ticketError || !ticket) {
+    throw new Error(`Ticket not found for schedule ${scheduleId}`);
+  }
+
+  if (!ticket.customer_email) {
+    throw new Error('No customer email configured on ticket');
+  }
+
+  const eventId = schedule.calendar_event_id;
+
+  // Add customer to calendar event
+  if (eventId) {
+    try {
+      await addCustomerToEvent(token, systemEmail, eventId, ticket.customer_email, ticket.customer_name);
+      console.log(`[CalendarProcessor] Added customer ${ticket.customer_email} to event ${eventId}`);
+    } catch (err) {
+      console.error(`[CalendarProcessor] Failed to add customer to event:`, err);
+      // Continue anyway - we'll still send email
+    }
+  }
+
+  // Send email with accept/decline links
+  await sendCustomerConfirmationEmail(token, systemEmail, schedule, ticket);
+
+  // Update schedule status to pending_customer
+  const { error: updateError } = await getSupabase()
+    .from('service_schedules')
+    .update({
+      schedule_status: 'pending_customer',
+      customer_invite_sent_at: new Date().toISOString()
+    })
+    .eq('id', scheduleId);
+
+  if (updateError) {
+    throw new Error(`Failed to update schedule status: ${updateError.message}`);
+  }
+
+  console.log(`[CalendarProcessor] Sent customer invite for schedule ${scheduleId}, status → pending_customer`);
+
+  return { success: true, scheduleId, newStatus: 'pending_customer' };
+}
+
+/**
+ * Manually mark customer as confirmed for a schedule
+ * This moves the schedule from pending_customer → confirmed (or tech_accepted → confirmed)
+ */
+async function markCustomerConfirmed(scheduleId, confirmedBy) {
+  const token = await getAppToken();
+  const systemEmail = await getSystemAccountEmail();
+
+  // Get the schedule
+  const { data: schedule, error: scheduleError } = await getSupabase()
+    .from('service_schedules')
+    .select('id, calendar_event_id, schedule_status')
+    .eq('id', scheduleId)
+    .single();
+
+  if (scheduleError || !schedule) {
+    throw new Error(`Schedule not found: ${scheduleId}`);
+  }
+
+  // Allow manual confirmation from tech_accepted or pending_customer status
+  if (!['tech_accepted', 'pending_customer'].includes(schedule.schedule_status)) {
+    throw new Error(`Schedule ${scheduleId} cannot be confirmed (current: ${schedule.schedule_status})`);
+  }
+
+  // Finalize the calendar event if it exists
+  const eventId = schedule.calendar_event_id;
+  if (eventId) {
+    try {
+      await finalizeEvent(token, systemEmail, eventId);
+      console.log(`[CalendarProcessor] Finalized event ${eventId}`);
+    } catch (err) {
+      console.error(`[CalendarProcessor] Failed to finalize event:`, err);
+      // Continue anyway - the confirmation is more important
+    }
+  }
+
+  // Update schedule status to confirmed
+  const { error: updateError } = await getSupabase()
+    .from('service_schedules')
+    .update({
+      schedule_status: 'confirmed',
+      customer_calendar_response: 'accepted',
+      customer_accepted_at: new Date().toISOString(),
+      confirmed_at: new Date().toISOString(),
+      confirmed_by: confirmedBy || 'manual',
+      confirmation_method: 'internal'
+    })
+    .eq('id', scheduleId);
+
+  if (updateError) {
+    throw new Error(`Failed to update schedule status: ${updateError.message}`);
+  }
+
+  console.log(`[CalendarProcessor] Manually confirmed schedule ${scheduleId}, status → confirmed`);
+
+  return { success: true, scheduleId, newStatus: 'confirmed' };
+}
+
 module.exports = {
   processCalendarResponses,
   getEventDetails,
   addCustomerToEvent,
   finalizeEvent,
-  cancelEvent
+  cancelEvent,
+  sendCustomerInviteForSchedule,
+  markCustomerConfirmed
 };

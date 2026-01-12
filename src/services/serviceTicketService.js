@@ -112,7 +112,7 @@ export const serviceTicketService = {
           ),
           schedules:service_schedules(
             id, scheduled_date, scheduled_time_start, scheduled_time_end,
-            technician_id, technician_name, status, service_address,
+            technician_id, technician_name, status, schedule_status, service_address,
             pre_visit_notes, post_visit_notes, customer_confirmed
           ),
           call_logs:service_call_logs(

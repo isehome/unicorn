@@ -29,7 +29,7 @@ const AppHeader = () => {
       : '0 16px 28px rgba(0, 0, 0, 0.08)'
   }), [sectionStyles, mode]);
 
-  const showBackButton = !['/', '/pm-dashboard', '/login'].includes(location.pathname);
+  const showBackButton = !['/', '/pm-dashboard', '/login', '/service'].includes(location.pathname);
 
   const pageTitle = useMemo(() => {
     const p = location.pathname;
@@ -59,6 +59,14 @@ const AppHeader = () => {
     if (p.startsWith('/unifi-test')) return 'UniFi API Test';
     if (p.startsWith('/settings')) return 'Settings';
     if (p.startsWith('/login')) return 'Sign In';
+    // Service CRM routes
+    if (p === '/service') return 'Service Dashboard';
+    if (p === '/service/tickets/new') return 'New Service Ticket';
+    if (p.startsWith('/service/tickets/')) return 'Service Ticket Details';
+    if (p.startsWith('/service/weekly-planning')) return 'Weekly Planning';
+    if (p.startsWith('/service/reports')) return 'Service Reports';
+    if (p.startsWith('/service/ai-test')) return 'Voice AI Test';
+    if (p.startsWith('/service')) return 'Service';
     return 'Field Operations';
   }, [location.pathname]);
 

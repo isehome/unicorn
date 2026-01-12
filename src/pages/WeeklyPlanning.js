@@ -6,10 +6,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calendar, ExternalLink, Edit3, Trash2 } from 'lucide-react';
+import { Loader2, AlertCircle, X, Phone, Mail, MapPin, Clock, Tag, User, Calendar, ExternalLink, Edit3, Trash2, Send, CheckCircle } from 'lucide-react';
 import TechnicianFilterBar from '../components/Service/TechnicianFilterBar';
 import WeekCalendarGrid from '../components/Service/WeekCalendarGrid';
 import UnscheduledTicketsPanel from '../components/Service/UnscheduledTicketsPanel';
+import TechnicianDropdown from '../components/Service/TechnicianDropdown';
 import { weeklyPlanningService, formatDate, BUFFER_MINUTES } from '../services/weeklyPlanningService';
 import { technicianService, serviceTicketService, serviceScheduleService } from '../services/serviceTicketService';
 import { checkUserAvailability, fetchUserEventsForDate, updateServiceAppointmentEvent, sendMeetingInviteEmail, sendMeetingCancellationEmail } from '../services/microsoftCalendarService';
@@ -95,6 +96,7 @@ const WeeklyPlanning = () => {
 
   // Unscheduled tickets
   const [unscheduledTickets, setUnscheduledTickets] = useState([]);
+  const [allScheduledTickets, setAllScheduledTickets] = useState([]); // For panel sidebar
   const [loadingTickets, setLoadingTickets] = useState(false);
 
   // Conflict checking modal
@@ -239,14 +241,22 @@ const WeeklyPlanning = () => {
 
         setWeeks([weekData, nextWeekData]);
 
-        // Load unscheduled tickets
+        // Load unscheduled tickets AND all scheduled tickets for the panel
         setLoadingTickets(true);
-        console.log('[WeeklyPlanning] Loading unscheduled tickets, selectedTechnician:', selectedTechnician);
-        const tickets = await weeklyPlanningService.getUnscheduledTickets({
-          technicianId: selectedTechnician
-        });
-        console.log('[WeeklyPlanning] Loaded unscheduled tickets:', tickets?.length || 0, tickets);
-        setUnscheduledTickets(tickets || []);
+        console.log('[WeeklyPlanning] Loading tickets, selectedTechnician:', selectedTechnician);
+
+        // Fetch both in parallel
+        const [unscheduled, allScheduled] = await Promise.all([
+          weeklyPlanningService.getUnscheduledTickets({
+            technicianId: selectedTechnician
+          }),
+          weeklyPlanningService.getAllActiveSchedules(selectedTechnician)
+        ]);
+
+        console.log('[WeeklyPlanning] Loaded unscheduled tickets:', unscheduled?.length || 0);
+        console.log('[WeeklyPlanning] Loaded all scheduled tickets:', allScheduled?.length || 0);
+        setUnscheduledTickets(unscheduled || []);
+        setAllScheduledTickets(allScheduled || []);
         setLoadingTickets(false);
       } catch (err) {
         console.error('[WeeklyPlanning] Failed to load data:', err);
@@ -384,10 +394,15 @@ const WeeklyPlanning = () => {
       const nextWeekData = await loadWeekSchedules(nextWeekStart, selectedTechnician);
       setWeeks([weekData, nextWeekData]);
 
-      const tickets = await weeklyPlanningService.getUnscheduledTickets({
-        technicianId: selectedTechnician
-      });
-      setUnscheduledTickets(tickets);
+      // Refresh both unscheduled and all scheduled tickets
+      const [unscheduled, allScheduled] = await Promise.all([
+        weeklyPlanningService.getUnscheduledTickets({
+          technicianId: selectedTechnician
+        }),
+        weeklyPlanningService.getAllActiveSchedules(selectedTechnician)
+      ]);
+      setUnscheduledTickets(unscheduled || []);
+      setAllScheduledTickets(allScheduled || []);
     } catch (err) {
       console.error('[WeeklyPlanning] Refresh failed:', err);
     } finally {
@@ -995,6 +1010,48 @@ const WeeklyPlanning = () => {
     }
   };
 
+  // Handle sending customer invite (from tech_accepted → pending_customer)
+  const handleSendCustomerInvite = async (schedule) => {
+    const customerName = schedule.ticket?.customer_name || 'the customer';
+    if (!window.confirm(`Send calendar invite to ${customerName}? This will transition the schedule to "Awaiting Customer" status.`)) {
+      return;
+    }
+
+    try {
+      console.log('[WeeklyPlanning] Sending customer invite for schedule:', schedule.id);
+      await weeklyPlanningService.sendCustomerInvite(schedule.id);
+      console.log('[WeeklyPlanning] Customer invite sent successfully');
+
+      // Close the modal and refresh
+      setTicketDetailModal(null);
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to send customer invite:', err);
+      setError(`Failed to send customer invite: ${err.message}`);
+    }
+  };
+
+  // Handle marking customer as confirmed manually (skips customer calendar acceptance)
+  const handleMarkCustomerConfirmed = async (schedule) => {
+    const customerName = schedule.ticket?.customer_name || 'the customer';
+    if (!window.confirm(`Mark ${customerName} as confirmed? This will transition the schedule to "Confirmed" status without waiting for customer response.`)) {
+      return;
+    }
+
+    try {
+      console.log('[WeeklyPlanning] Marking customer confirmed for schedule:', schedule.id);
+      await weeklyPlanningService.markCustomerConfirmed(schedule.id, user?.displayName || user?.email || 'Staff');
+      console.log('[WeeklyPlanning] Customer marked as confirmed');
+
+      // Close the modal and refresh
+      setTicketDetailModal(null);
+      await handleRefresh();
+    } catch (err) {
+      console.error('[WeeklyPlanning] Failed to mark customer confirmed:', err);
+      setError(`Failed to mark customer confirmed: ${err.message}`);
+    }
+  };
+
   // Handle unscheduling a ticket (dragged back to panel)
   const handleUnschedule = async (scheduleId, ticketData) => {
     if (!window.confirm(`Remove "${ticketData.customer_name || ticketData.title}" from schedule? The ticket will return to the unscheduled panel.`)) {
@@ -1045,14 +1102,31 @@ const WeeklyPlanning = () => {
     }
   };
 
-  // Handle assigning a technician to a ticket from the unscheduled panel
-  const handleAssignTechnician = async (ticketId, techId, techName) => {
+  // Handle assigning a technician to a ticket from the panel
+  // For scheduled tickets, also updates the schedule's technician
+  const handleAssignTechnician = async (ticketId, techId, techName, scheduleId = null) => {
     try {
+      // Update the ticket assignment
       await serviceTicketService.update(ticketId, {
         assigned_to: techId,
         assigned_to_name: techName || null
       });
-      console.log('[WeeklyPlanning] Technician assigned:', { ticketId, techId, techName });
+
+      // If this is a scheduled ticket, also update the schedule's technician
+      if (scheduleId) {
+        const schedule = allScheduledTickets.find(s => s.id === scheduleId);
+        if (schedule) {
+          await weeklyPlanningService.moveSchedule(
+            scheduleId,
+            schedule.scheduled_date,
+            schedule.scheduled_time_start,
+            techId,
+            techName
+          );
+        }
+      }
+
+      console.log('[WeeklyPlanning] Technician assigned:', { ticketId, techId, techName, scheduleId });
       // Refresh the ticket list
       await handleRefresh();
     } catch (err) {
@@ -1118,13 +1192,13 @@ const WeeklyPlanning = () => {
 
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden p-4 gap-4">
-        {/* Unscheduled tickets panel (left sidebar) */}
-        <div className="w-[220px] flex-shrink-0">
+        {/* Tickets panel (left sidebar) - shows both unscheduled and scheduled */}
+        <div className="w-[240px] flex-shrink-0">
           <UnscheduledTicketsPanel
             tickets={unscheduledTickets}
+            scheduledTickets={allScheduledTickets}
             technicians={technicians}
             selectedTechnician={selectedTechnician}
-            onTechnicianChange={handleTechnicianChange}
             onOpenTicket={handleOpenTicket}
             onAssignTechnician={handleAssignTechnician}
             onUnschedule={handleUnschedule}
@@ -1320,11 +1394,10 @@ const WeeklyPlanning = () => {
                   </h5>
                   <div>
                     <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
-                    <select
+                    <TechnicianDropdown
                       value={ticketDetailModal.ticket?.assigned_to || ''}
-                      onChange={async (e) => {
-                        const newTechId = e.target.value;
-                        const newTech = technicians.find(t => t.id === newTechId);
+                      category={ticketDetailModal.ticket?.category || 'general'}
+                      onChange={async (newTechId, techName) => {
                         if (ticketDetailModal.ticket?.id) {
                           try {
                             await serviceTicketService.update(ticketDetailModal.ticket.id, {
@@ -1337,7 +1410,7 @@ const WeeklyPlanning = () => {
                               ticket: {
                                 ...prev.ticket,
                                 assigned_to: newTechId,
-                                assigned_to_name: newTech?.full_name || null
+                                assigned_to_name: techName || null
                               }
                             }));
                             // Refresh the panels
@@ -1348,15 +1421,9 @@ const WeeklyPlanning = () => {
                           }
                         }
                       }}
-                      className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                    >
-                      <option value="">-- Select Technician --</option>
-                      {technicians.map(tech => (
-                        <option key={tech.id} value={tech.id}>
-                          {tech.full_name}
-                        </option>
-                      ))}
-                    </select>
+                      size="md"
+                      placeholder="Select Technician"
+                    />
                     {!ticketDetailModal.ticket?.assigned_to && (
                       <p className="text-xs text-amber-400 mt-2">
                         Assign a technician before scheduling this ticket
@@ -1394,19 +1461,18 @@ const WeeklyPlanning = () => {
                     {/* Technician Dropdown */}
                     <div className="md:col-span-2">
                       <label className="text-xs text-zinc-400 block mb-1">Assigned Technician</label>
-                      <select
+                      <TechnicianDropdown
                         value={ticketDetailModal.schedule.technician_id || ''}
-                        onChange={async (e) => {
-                          const newTechId = e.target.value;
-                          const newTech = technicians.find(t => t.id === newTechId);
-                          if (newTech && ticketDetailModal.schedule?.id) {
+                        category={ticketDetailModal.ticket?.category || 'general'}
+                        onChange={async (newTechId, techName) => {
+                          if (newTechId && ticketDetailModal.schedule?.id) {
                             try {
                               await weeklyPlanningService.moveSchedule(
                                 ticketDetailModal.schedule.id,
                                 ticketDetailModal.schedule.scheduled_date,
                                 ticketDetailModal.schedule.scheduled_time_start,
                                 newTechId,
-                                newTech.full_name
+                                techName
                               );
                               // Update the modal state
                               setTicketDetailModal(prev => ({
@@ -1414,7 +1480,7 @@ const WeeklyPlanning = () => {
                                 schedule: {
                                   ...prev.schedule,
                                   technician_id: newTechId,
-                                  technician_name: newTech.full_name
+                                  technician_name: techName
                                 }
                               }));
                               // Refresh calendar
@@ -1425,15 +1491,10 @@ const WeeklyPlanning = () => {
                             }
                           }
                         }}
-                        className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                      >
-                        <option value="">-- Select Technician --</option>
-                        {technicians.map(tech => (
-                          <option key={tech.id} value={tech.id}>
-                            {tech.full_name}
-                          </option>
-                        ))}
-                      </select>
+                        size="md"
+                        placeholder="Select Technician"
+                        showUnassignOption={false}
+                      />
                     </div>
 
                     {/* Schedule Status */}
@@ -1443,12 +1504,14 @@ const WeeklyPlanning = () => {
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           ticketDetailModal.schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
                           ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
-                          ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'bg-blue-500/20 text-blue-400' :
+                          ticketDetailModal.schedule.schedule_status === 'tech_accepted' ? 'bg-blue-500/20 text-blue-400' :
+                          ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'bg-cyan-500/20 text-cyan-400' :
                           ticketDetailModal.schedule.schedule_status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
                           'bg-zinc-500/20 text-zinc-400'
                         }`}>
                           {ticketDetailModal.schedule.schedule_status === 'draft' ? 'Draft' :
                            ticketDetailModal.schedule.schedule_status === 'pending_tech' ? 'Awaiting Tech' :
+                           ticketDetailModal.schedule.schedule_status === 'tech_accepted' ? 'Tech Accepted' :
                            ticketDetailModal.schedule.schedule_status === 'pending_customer' ? 'Awaiting Customer' :
                            ticketDetailModal.schedule.schedule_status === 'confirmed' ? 'Confirmed' :
                            ticketDetailModal.schedule.schedule_status || 'Unknown'}
@@ -1460,6 +1523,28 @@ const WeeklyPlanning = () => {
                     <div className="md:col-span-2 pt-2 border-t border-zinc-600 mt-2">
                       <label className="text-xs text-zinc-400 block mb-2">Actions</label>
                       <div className="flex flex-wrap gap-2">
+                        {/* Send Customer Invite - only when tech_accepted */}
+                        {ticketDetailModal.schedule.schedule_status === 'tech_accepted' && (
+                          <button
+                            onClick={() => handleSendCustomerInvite(ticketDetailModal.schedule)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-white text-sm"
+                          >
+                            <Send size={14} />
+                            Send Customer Invite
+                          </button>
+                        )}
+                        {/* Mark Customer Confirmed - when tech_accepted or pending_customer */}
+                        {(ticketDetailModal.schedule.schedule_status === 'tech_accepted' ||
+                          ticketDetailModal.schedule.schedule_status === 'pending_customer') && (
+                          <button
+                            onClick={() => handleMarkCustomerConfirmed(ticketDetailModal.schedule)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors text-white text-sm"
+                            style={{ backgroundColor: brandColors.success }}
+                          >
+                            <CheckCircle size={14} />
+                            Mark Customer Confirmed
+                          </button>
+                        )}
                         {/* Reset to Draft - only for non-draft schedules */}
                         {ticketDetailModal.schedule.schedule_status !== 'draft' && (
                           <button

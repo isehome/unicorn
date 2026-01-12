@@ -54,44 +54,37 @@ const TechnicianDropdown = memo(({
   const selectedTech = technicians.find(t => t.id === value);
 
   // Load technicians with skill matching when dropdown opens
+  // ALWAYS fetch fresh skill-qualified data to ensure consistent sorting
   const loadTechnicians = useCallback(async () => {
-    if (propTechnicians) {
-      setTechnicians(propTechnicians);
-      return;
-    }
-
     try {
       setLoading(true);
       const data = await technicianService.getAllWithSkills(category);
       setTechnicians(data || []);
     } catch (err) {
       console.error('[TechnicianDropdown] Failed to load technicians:', err);
-      // Fallback to basic list
-      try {
-        const fallbackData = await technicianService.getAll();
-        setTechnicians(fallbackData || []);
-      } catch (fallbackErr) {
-        console.error('[TechnicianDropdown] Fallback also failed:', fallbackErr);
-        setTechnicians([]);
+      // Fallback to prop technicians or basic list
+      if (propTechnicians && propTechnicians.length > 0) {
+        setTechnicians(propTechnicians);
+      } else {
+        try {
+          const fallbackData = await technicianService.getAll();
+          setTechnicians(fallbackData || []);
+        } catch (fallbackErr) {
+          console.error('[TechnicianDropdown] Fallback also failed:', fallbackErr);
+          setTechnicians([]);
+        }
       }
     } finally {
       setLoading(false);
     }
   }, [category, propTechnicians]);
 
-  // Load technicians when dropdown opens
+  // Load technicians when dropdown opens - always fetch fresh skill-qualified data
   useEffect(() => {
-    if (isOpen && technicians.length === 0) {
+    if (isOpen) {
       loadTechnicians();
     }
-  }, [isOpen, technicians.length, loadTechnicians]);
-
-  // Update technicians if prop changes
-  useEffect(() => {
-    if (propTechnicians) {
-      setTechnicians(propTechnicians);
-    }
-  }, [propTechnicians]);
+  }, [isOpen, loadTechnicians]);
 
   // Close dropdown when clicking outside
   useEffect(() => {

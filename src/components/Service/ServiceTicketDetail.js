@@ -6,7 +6,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   Clock,
   User,
   Phone,
@@ -33,7 +32,8 @@ import {
   ShoppingCart,
   Camera,
   DollarSign,
-  Loader2
+  Loader2,
+  Send
 } from 'lucide-react';
 import {
   serviceTicketService,
@@ -42,6 +42,7 @@ import {
   servicePartsService,
   servicePOService
 } from '../../services/serviceTicketService';
+import { weeklyPlanningService } from '../../services/weeklyPlanningService';
 import { quickbooksService } from '../../services/quickbooksService';
 import ServiceTriageForm from './ServiceTriageForm';
 import ServicePartsManager from './ServicePartsManager';
@@ -49,6 +50,7 @@ import ServicePOManager from './ServicePOManager';
 import ServiceTimeTracker from './ServiceTimeTracker';
 import ServicePhotosManager from './ServicePhotosManager';
 import TechnicianAvatar from '../TechnicianAvatar';
+import TechnicianDropdown from './TechnicianDropdown';
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -274,8 +276,8 @@ const ServiceTicketDetail = () => {
       await serviceTicketService.remove(ticket.id);
       console.log('[ServiceTicketDetail] Ticket deleted:', ticket.id);
 
-      // Navigate back to tickets list
-      navigate('/service/tickets');
+      // Navigate back to service dashboard
+      navigate('/service');
     } catch (err) {
       console.error('[ServiceTicketDetail] Failed to delete ticket:', err);
       setError('Failed to delete ticket: ' + (err.message || 'Unknown error'));
@@ -720,6 +722,65 @@ const ServiceTicketDetail = () => {
     }
   };
 
+  // Send customer invite (from tech_accepted → pending_customer)
+  const handleSendCustomerInvite = async (schedule) => {
+    const customerName = ticket?.customer_name || 'the customer';
+    if (!window.confirm(`Send calendar invite to ${customerName}? This will transition the schedule to "Awaiting Customer" status.`)) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      console.log('[ServiceTicketDetail] Sending customer invite for schedule:', schedule.id);
+      await weeklyPlanningService.sendCustomerInvite(schedule.id);
+      console.log('[ServiceTicketDetail] Customer invite sent successfully');
+
+      // Add note about invite
+      await serviceTicketService.addNote(ticket.id, {
+        note_type: 'schedule_update',
+        content: `Customer invite sent to ${customerName}`,
+        author_name: user?.name || user?.email || 'User'
+      });
+
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to send customer invite:', err);
+      setError(`Failed to send customer invite: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Mark customer as confirmed manually (skips customer calendar acceptance)
+  const handleMarkCustomerConfirmed = async (schedule) => {
+    const customerName = ticket?.customer_name || 'the customer';
+    if (!window.confirm(`Mark ${customerName} as confirmed? This will transition the schedule to "Confirmed" status without waiting for customer response.`)) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const confirmedBy = user?.displayName || user?.name || user?.email || 'Staff';
+      console.log('[ServiceTicketDetail] Marking customer confirmed for schedule:', schedule.id);
+      await weeklyPlanningService.markCustomerConfirmed(schedule.id, confirmedBy);
+      console.log('[ServiceTicketDetail] Customer marked as confirmed');
+
+      // Add note about confirmation
+      await serviceTicketService.addNote(ticket.id, {
+        note_type: 'schedule_update',
+        content: `Customer manually confirmed by ${confirmedBy}`,
+        author_name: confirmedBy
+      });
+
+      await loadTicket();
+    } catch (err) {
+      console.error('[ServiceTicketDetail] Failed to mark customer confirmed:', err);
+      setError(`Failed to mark customer confirmed: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Export ticket to QuickBooks
   const handleExportToQuickBooks = async () => {
     if (!ticket?.id) return;
@@ -842,13 +903,6 @@ const ServiceTicketDetail = () => {
     return (
       <div className="min-h-screen bg-zinc-900 p-4">
         <div className="max-w-4xl mx-auto">
-          <button
-            onClick={() => navigate('/service/tickets')}
-            className="flex items-center gap-2 text-zinc-400 hover:text-white mb-4"
-          >
-            <ArrowLeft size={18} />
-            Back to Tickets
-          </button>
           <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-4 text-red-400">
             {error || 'Ticket not found'}
           </div>
@@ -864,14 +918,8 @@ const ServiceTicketDetail = () => {
   return (
     <div className="min-h-screen bg-zinc-900 p-4 md:p-6 pb-20">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <button
-            onClick={() => navigate('/service/tickets')}
-            className="p-2 hover:bg-zinc-800 rounded-lg text-zinc-400 hover:text-white"
-          >
-            <ArrowLeft size={20} />
-          </button>
+        {/* Header - No back button here, AppHeader provides it */}
+        <div className="flex items-start gap-4 mb-6">
           <div className="flex-1">
             <div className="flex items-center gap-2 text-sm text-zinc-400 mb-1">
               <span className="font-mono">{ticket.ticket_number}</span>
@@ -915,71 +963,26 @@ const ServiceTicketDetail = () => {
             {/* Assigned Technician - inline in header */}
             <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-zinc-500">Assigned:</span>
-              <select
+              <TechnicianDropdown
                 value={ticket.assigned_to || ''}
-                onChange={async (e) => {
-                  const techId = e.target.value;
-                  if (!techId) return;
-                  const tech = technicians.find(t => t.id === techId);
-                  if (tech) {
-                    try {
-                      await serviceTicketService.assign(
-                        ticket.id,
-                        techId,
-                        tech.full_name || tech.name || tech.email,
-                        user?.name || user?.email || 'User'
-                      );
-                      await loadTicket();
-                    } catch (err) {
-                      console.error('[ServiceTicketDetail] Failed to assign:', err);
-                    }
+                category={ticket.category || 'general'}
+                onChange={async (techId, techName) => {
+                  try {
+                    await serviceTicketService.assign(
+                      ticket.id,
+                      techId,
+                      techName,
+                      user?.name || user?.email || 'User'
+                    );
+                    await loadTicket();
+                  } catch (err) {
+                    console.error('[ServiceTicketDetail] Failed to assign:', err);
                   }
                 }}
-                className="px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-sm text-white focus:outline-none focus:border-zinc-500"
-              >
-                <option value="">-- Unassigned --</option>
-                {/* Qualified technicians first (with skills matching ticket category) */}
-                {technicians.filter(t => t.qualified).length > 0 && (
-                  <optgroup label={`✓ Qualified for ${ticket.category || 'this category'}`}>
-                    {technicians.filter(t => t.qualified).map(tech => (
-                      <option key={tech.id} value={tech.id}>
-                        {tech.highestProficiency === 'expert' ? '★ ' : tech.highestProficiency === 'proficient' ? '● ' : '○ '}
-                        {tech.full_name || tech.name || tech.email}
-                        {tech.skillCount > 0 ? ` (${tech.skillCount} skill${tech.skillCount > 1 ? 's' : ''})` : ''}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {/* Other technicians */}
-                {technicians.filter(t => !t.qualified).length > 0 && (
-                  <optgroup label="Other Technicians">
-                    {technicians.filter(t => !t.qualified).map(tech => (
-                      <option key={tech.id} value={tech.id}>
-                        {tech.full_name || tech.name || tech.email}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                {/* Fallback if no grouping info */}
-                {!technicians.some(t => t.hasOwnProperty('qualified')) && technicians.map(tech => (
-                  <option key={tech.id} value={tech.id}>
-                    {tech.full_name || tech.name || tech.email}
-                  </option>
-                ))}
-              </select>
-              {ticket.assigned_to_name && (() => {
-                const assignedTechnician = technicians.find(t => t.id === ticket.assigned_to);
-                return (
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-zinc-700/50 rounded-lg">
-                    <TechnicianAvatar
-                      name={ticket.assigned_to_name}
-                      color={assignedTechnician?.avatar_color}
-                      size="sm"
-                    />
-                    <span className="text-sm text-zinc-300">{ticket.assigned_to_name}</span>
-                  </div>
-                );
-              })()}
+                size="sm"
+                placeholder="Unassigned"
+                className="min-w-[180px]"
+              />
             </div>
           </div>
           {/* Edit/Save/Cancel buttons */}
@@ -1531,6 +1534,7 @@ const ServiceTicketDetail = () => {
                               {schedule.pre_visit_notes}
                             </div>
                           )}
+                          {/* Visit Status */}
                           <span className={`text-xs px-2 py-0.5 rounded mt-2 inline-block ${
                             schedule.status === 'completed'
                               ? 'bg-green-500/20 text-green-500'
@@ -1540,6 +1544,53 @@ const ServiceTicketDetail = () => {
                           }`}>
                             {schedule.status}
                           </span>
+                          {/* Schedule Workflow Status */}
+                          {schedule.schedule_status && (
+                            <span className={`text-xs px-2 py-0.5 rounded mt-2 ml-2 inline-block ${
+                              schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
+                              schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
+                              schedule.schedule_status === 'tech_accepted' ? 'bg-blue-500/20 text-blue-400' :
+                              schedule.schedule_status === 'pending_customer' ? 'bg-cyan-500/20 text-cyan-400' :
+                              schedule.schedule_status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
+                              'bg-zinc-500/20 text-zinc-400'
+                            }`}>
+                              {schedule.schedule_status === 'draft' ? 'Draft' :
+                               schedule.schedule_status === 'pending_tech' ? 'Awaiting Tech' :
+                               schedule.schedule_status === 'tech_accepted' ? 'Tech Accepted' :
+                               schedule.schedule_status === 'pending_customer' ? 'Awaiting Customer' :
+                               schedule.schedule_status === 'confirmed' ? 'Confirmed' :
+                               schedule.schedule_status}
+                            </span>
+                          )}
+                          {/* Workflow Action Buttons */}
+                          {schedule.status !== 'completed' && schedule.status !== 'cancelled' && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {/* Send Customer Invite - only when tech_accepted */}
+                              {schedule.schedule_status === 'tech_accepted' && (
+                                <button
+                                  onClick={() => handleSendCustomerInvite(schedule)}
+                                  disabled={saving}
+                                  className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-600 hover:bg-cyan-700 transition-colors text-white text-xs disabled:opacity-50"
+                                >
+                                  <Send size={12} />
+                                  Send Customer Invite
+                                </button>
+                              )}
+                              {/* Mark Customer Confirmed - when tech_accepted or pending_customer */}
+                              {(schedule.schedule_status === 'tech_accepted' ||
+                                schedule.schedule_status === 'pending_customer') && (
+                                <button
+                                  onClick={() => handleMarkCustomerConfirmed(schedule)}
+                                  disabled={saving}
+                                  className="flex items-center gap-1 px-2 py-1 rounded transition-colors text-white text-xs disabled:opacity-50"
+                                  style={{ backgroundColor: brandColors.success }}
+                                >
+                                  <CheckCircle size={12} />
+                                  Mark Customer Confirmed
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {/* Edit/Delete buttons - only show for non-completed/cancelled */}
                         {schedule.status !== 'completed' && schedule.status !== 'cancelled' && (

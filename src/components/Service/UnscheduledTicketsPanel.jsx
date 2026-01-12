@@ -1,18 +1,22 @@
 /**
  * UnscheduledTicketsPanel.jsx
- * Left sidebar showing unscheduled service tickets as draggable cards
- * Card height represents the estimated time the service will take
+ * Left sidebar showing ALL service tickets - both unscheduled and scheduled
+ * - Unscheduled tickets appear at top with full card display
+ * - Scheduled tickets appear below in collapsed single-line format with status color
+ * - Cards are uniform size in panel (variable height only when dragged to calendar)
+ * - Scrollable list with sorting options
  */
 
-import React, { memo, useState, useMemo } from 'react';
-import { Clock, MapPin, AlertCircle, Search, ExternalLink, GripVertical } from 'lucide-react';
+import { memo, useState, useMemo } from 'react';
+import { Clock, AlertCircle, Search, ExternalLink, GripVertical, Calendar, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { setDragEstimatedHours, resetDragEstimatedHours } from './WeekCalendarGrid';
 import TechnicianDropdown from './TechnicianDropdown';
 
 // Constants
-const HOUR_HEIGHT = 60; // pixels per hour - matches WeekCalendarGrid
-const MIN_CARD_HEIGHT = 50; // minimum height in pixels
-const MAX_CARD_HEIGHT = 360; // max 6 hours visual
+const HOUR_HEIGHT = 60; // pixels per hour - matches WeekCalendarGrid (used for drag preview)
+const MIN_CARD_HEIGHT = 50; // minimum height for drag preview
+const MAX_CARD_HEIGHT = 360; // max 6 hours visual for drag preview
+const PANEL_CARD_HEIGHT = 140; // Fixed height for cards in the panel
 
 // Priority colors
 const priorityColors = {
@@ -22,7 +26,17 @@ const priorityColors = {
   low: { bg: 'rgba(148, 175, 50, 0.2)', border: '#94AF32', text: '#94AF32', label: 'Low' }
 };
 
-// Category icons (simplified)
+// Schedule status colors (matches WeekCalendarGrid) - 4-step approval workflow
+const scheduleStatusColors = {
+  draft: { bg: 'rgba(139, 92, 246, 0.3)', border: '#8b5cf6', text: '#a78bfa', label: 'Draft' },
+  pending_tech: { bg: 'rgba(245, 158, 11, 0.3)', border: '#f59e0b', text: '#fbbf24', label: 'Awaiting Tech' },
+  tech_accepted: { bg: 'rgba(59, 130, 246, 0.3)', border: '#3b82f6', text: '#60a5fa', label: 'Tech Accepted' },
+  pending_customer: { bg: 'rgba(6, 182, 212, 0.3)', border: '#06b6d4', text: '#22d3ee', label: 'Awaiting Customer' },
+  confirmed: { bg: 'rgba(148, 175, 50, 0.3)', border: '#94AF32', text: '#94AF32', label: 'Confirmed' },
+  cancelled: { bg: 'rgba(113, 113, 122, 0.3)', border: '#71717a', text: '#a1a1aa', label: 'Cancelled' }
+};
+
+// Category labels
 const categoryLabels = {
   network: 'Network',
   av: 'AV',
@@ -30,44 +44,54 @@ const categoryLabels = {
   hvac: 'HVAC',
   shades: 'Shades',
   security: 'Security',
+  control: 'Control',
+  general: 'General',
   other: 'Other'
 };
 
+// Sort options
+const sortOptions = [
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'newest', label: 'Newest First' },
+  { value: 'priority', label: 'Priority' },
+  { value: 'technician', label: 'Technician' }
+];
+
+// Priority order for sorting
+const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+
 /**
- * Calculate card height based on estimated hours
+ * Calculate card height for drag preview based on estimated hours
  */
-const getCardHeight = (estimatedHours) => {
-  const hours = estimatedHours || 2; // Default 2 hours
+const getCardHeightForDrag = (estimatedHours) => {
+  const hours = estimatedHours || 2;
   const height = hours * HOUR_HEIGHT;
   return Math.max(MIN_CARD_HEIGHT, Math.min(height, MAX_CARD_HEIGHT));
 };
 
 /**
- * TicketCard Component
- * Draggable card representing a service ticket
- * Height is proportional to estimated service time
+ * TicketCard Component - Full card for unscheduled tickets
+ * Fixed height in panel, variable height when dragged to calendar
  */
 const TicketCard = memo(({
   ticket,
   technicians = [],
   onOpenTicket,
-  onAssignTechnician,
-  compact = false
+  onAssignTechnician
 }) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const priority = ticket.priority || 'normal';
   const colors = priorityColors[priority] || priorityColors.normal;
-  // Parse estimated_hours as number (database returns NUMERIC as string sometimes)
   const rawHours = ticket.estimated_hours;
   const estimatedHours = typeof rawHours === 'number' ? rawHours : (parseFloat(rawHours) || 2);
-  const cardHeight = getCardHeight(estimatedHours);
+  const dragHeight = getCardHeightForDrag(estimatedHours);
 
   // Handle drag start
   const handleDragStart = (e) => {
     setIsDragging(true);
 
-    // Set the estimated hours for the drop preview (module-level workaround for browser security)
+    // Set the estimated hours for the drop preview
     setDragEstimatedHours(estimatedHours);
 
     // Set ticket data for drop handler
@@ -87,17 +111,16 @@ const TicketCard = memo(({
     e.dataTransfer.setData('text/plain', ticket.ticket_number);
     e.dataTransfer.effectAllowed = 'move';
 
-    // Create drag image with proper sizing
+    // Create drag image with variable sizing based on estimated hours
     const dragEl = e.currentTarget.cloneNode(true);
     dragEl.style.width = '170px';
-    dragEl.style.height = `${cardHeight}px`;
+    dragEl.style.height = `${dragHeight}px`;
     dragEl.style.opacity = '0.8';
     dragEl.style.position = 'absolute';
     dragEl.style.top = '-1000px';
     document.body.appendChild(dragEl);
-    e.dataTransfer.setDragImage(dragEl, 85, cardHeight / 2);
+    e.dataTransfer.setDragImage(dragEl, 85, dragHeight / 2);
 
-    // Cleanup drag image
     setTimeout(() => {
       document.body.removeChild(dragEl);
     }, 0);
@@ -105,8 +128,14 @@ const TicketCard = memo(({
 
   const handleDragEnd = () => {
     setIsDragging(false);
-    // Reset the drag estimated hours back to default
     resetDragEstimatedHours();
+  };
+
+  // Handle card click to open ticket details
+  const handleCardClick = () => {
+    // Don't open if dragging
+    if (isDragging) return;
+    onOpenTicket?.(ticket);
   };
 
   return (
@@ -114,14 +143,14 @@ const TicketCard = memo(({
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onClick={handleCardClick}
       className={`
         group relative rounded-lg border-l-4 px-3 py-2 cursor-grab active:cursor-grabbing
         transition-all hover:shadow-lg
         ${isDragging ? 'opacity-50 scale-95' : 'opacity-100'}
       `}
       style={{
-        height: compact ? 'auto' : `${cardHeight}px`,
-        minHeight: `${MIN_CARD_HEIGHT}px`,
+        minHeight: `${PANEL_CARD_HEIGHT}px`,
         backgroundColor: colors.bg,
         borderLeftColor: colors.border
       }}
@@ -131,15 +160,15 @@ const TicketCard = memo(({
         <GripVertical size={14} className="text-zinc-400" />
       </div>
 
-      {/* Priority badge */}
-      <div className="flex items-center justify-between mb-1">
+      {/* Priority badge and ticket number */}
+      <div className="flex items-center justify-between mb-1.5">
         <span
           className="text-xs font-medium px-1.5 py-0.5 rounded"
           style={{ backgroundColor: colors.border, color: '#000' }}
         >
           {colors.label}
         </span>
-        <span className="text-xs text-zinc-400">#{ticket.ticket_number}</span>
+        <span className="text-xs text-zinc-400 truncate ml-2">#{ticket.ticket_number}</span>
       </div>
 
       {/* Customer name */}
@@ -152,7 +181,7 @@ const TicketCard = memo(({
         {ticket.title || 'Service Request'}
       </div>
 
-      {/* Technician Assignment - with skill matching */}
+      {/* Technician Assignment */}
       <div className="mb-2" onClick={(e) => e.stopPropagation()}>
         <TechnicianDropdown
           value={ticket.assigned_to}
@@ -164,36 +193,20 @@ const TicketCard = memo(({
         />
       </div>
 
-      {/* Time estimate - prominent display */}
-      <div
-        className="flex items-center gap-1 text-sm font-medium mb-2"
-        style={{ color: colors.text }}
-      >
-        <Clock size={14} />
-        <span>{estimatedHours}h estimated</span>
+      {/* Time estimate and category */}
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-1" style={{ color: colors.text }}>
+          <Clock size={12} />
+          <span>{estimatedHours}h</span>
+        </div>
+        {ticket.category && (
+          <span className="text-zinc-500">
+            {categoryLabels[ticket.category] || ticket.category}
+          </span>
+        )}
       </div>
 
-      {/* Additional info for taller cards */}
-      {cardHeight >= 100 && (
-        <>
-          {/* Category */}
-          {ticket.category && (
-            <div className="text-xs text-zinc-400 mb-1">
-              {categoryLabels[ticket.category] || ticket.category}
-            </div>
-          )}
-
-          {/* Location */}
-          {ticket.service_address && cardHeight >= 140 && (
-            <div className="flex items-start gap-1 text-xs text-zinc-400 mb-1">
-              <MapPin size={12} className="flex-shrink-0 mt-0.5" />
-              <span className="truncate">{ticket.service_address}</span>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Edit button - bottom right */}
+      {/* Edit button */}
       <button
         className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-black/20"
         onClick={(e) => {
@@ -211,30 +224,110 @@ const TicketCard = memo(({
 TicketCard.displayName = 'TicketCard';
 
 /**
+ * ScheduledTicketCard Component - Card for scheduled tickets
+ * Shows status color, customer name, date/time, and technician dropdown
+ */
+const ScheduledTicketCard = memo(({
+  ticket,
+  schedule,
+  onOpenTicket,
+  onAssignTechnician
+}) => {
+  const scheduleStatus = schedule?.schedule_status || 'draft';
+  const statusColors = scheduleStatusColors[scheduleStatus] || scheduleStatusColors.draft;
+  const priority = ticket.priority || 'normal';
+  const priorityColor = priorityColors[priority] || priorityColors.normal;
+
+  // Format scheduled date nicely
+  const scheduledDate = schedule?.scheduled_date
+    ? new Date(schedule.scheduled_date + 'T00:00:00').toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric'
+      })
+    : '';
+
+  const scheduledTime = schedule?.scheduled_time_start?.slice(0, 5) || '';
+
+  return (
+    <div
+      className="rounded-lg border-l-4 px-3 py-2 cursor-pointer hover:bg-zinc-700/30 transition-colors"
+      style={{
+        backgroundColor: statusColors.bg,
+        borderLeftColor: statusColors.border
+      }}
+    >
+      {/* Top row: Customer name + Date/Time - clickable to open modal */}
+      <button
+        onClick={() => onOpenTicket?.(schedule || ticket)}
+        className="w-full flex items-center gap-2 text-left mb-2"
+      >
+        {/* Status indicator dot */}
+        <div
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: statusColors.border }}
+        />
+
+        {/* Customer name */}
+        <span className="flex-1 text-sm text-white truncate">
+          {ticket.customer_name || 'Unknown'}
+        </span>
+
+        {/* Date/Time */}
+        <span className="text-xs text-zinc-400 flex-shrink-0">
+          {scheduledDate} {scheduledTime}
+        </span>
+
+        {/* Priority indicator */}
+        <div
+          className="w-1.5 h-4 rounded-full flex-shrink-0"
+          style={{ backgroundColor: priorityColor.border }}
+          title={priorityColor.label}
+        />
+      </button>
+
+      {/* Bottom row: Technician dropdown */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <TechnicianDropdown
+          value={schedule?.technician_id || ticket.assigned_to}
+          category={ticket.category || 'general'}
+          onChange={(techId, techName) => onAssignTechnician?.(ticket.id, techId, techName, schedule?.id)}
+          size="sm"
+          placeholder="Unassigned"
+          showUnassignOption={false}
+        />
+      </div>
+    </div>
+  );
+});
+
+ScheduledTicketCard.displayName = 'ScheduledTicketCard';
+
+/**
  * UnscheduledTicketsPanel - Main Component
+ * Shows all tickets: unscheduled at top, scheduled collapsed below
  */
 const UnscheduledTicketsPanel = ({
-  tickets = [],
+  tickets = [],           // Unscheduled tickets
+  scheduledTickets = [],  // Scheduled tickets (from all weeks)
   technicians = [],
   selectedTechnician,
-  onTechnicianChange,
   onOpenTicket,
-  onAssignTechnician, // Callback to assign a technician to a ticket: (ticketId, techId, techName) => void
-  onUnschedule, // Callback when a scheduled ticket is dropped here
-  isLoading = false,
-  compactMode = false
+  onAssignTechnician,
+  onUnschedule,
+  isLoading = false
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('oldest');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showScheduled, setShowScheduled] = useState(true);
 
   // Handle drag over for drop zone
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // Only show drop indicator if this is a reschedule (from calendar)
     try {
       const types = e.dataTransfer.types;
       if (types.includes('application/json')) {
@@ -272,48 +365,114 @@ const UnscheduledTicketsPanel = ({
     }
   };
 
-  // Filter tickets
-  const filteredTickets = useMemo(() => {
-    let filtered = tickets;
+  // Combine and filter all tickets
+  const { filteredUnscheduled, filteredScheduled, totalHours } = useMemo(() => {
+    // Apply filters to unscheduled tickets
+    let unscheduled = tickets;
+
+    // Deduplicate scheduled tickets by ticket_id (keep earliest schedule per ticket)
+    const scheduledByTicket = new Map();
+    for (const schedule of scheduledTickets) {
+      const ticketId = schedule.ticket_id;
+      if (!ticketId) continue;
+
+      const existing = scheduledByTicket.get(ticketId);
+      if (!existing || new Date(schedule.scheduled_date) < new Date(existing.scheduled_date)) {
+        scheduledByTicket.set(ticketId, schedule);
+      }
+    }
+    let scheduled = Array.from(scheduledByTicket.values());
 
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(t =>
+      const matchesSearch = (t) =>
         (t.customer_name?.toLowerCase().includes(query)) ||
         (t.title?.toLowerCase().includes(query)) ||
-        (t.ticket_number?.toString().includes(query))
-      );
+        (t.ticket_number?.toString().includes(query));
+
+      unscheduled = unscheduled.filter(matchesSearch);
+      scheduled = scheduled.filter(s => {
+        const t = s.ticket || s;
+        return matchesSearch(t);
+      });
     }
 
     // Priority filter
     if (priorityFilter !== 'all') {
-      filtered = filtered.filter(t => t.priority === priorityFilter);
+      unscheduled = unscheduled.filter(t => t.priority === priorityFilter);
+      scheduled = scheduled.filter(s => (s.ticket?.priority || s.priority) === priorityFilter);
     }
 
     // Category filter
     if (categoryFilter !== 'all') {
-      filtered = filtered.filter(t => t.category === categoryFilter);
+      unscheduled = unscheduled.filter(t => t.category === categoryFilter);
+      scheduled = scheduled.filter(s => (s.ticket?.category || s.category) === categoryFilter);
     }
 
     // Technician filter
     if (selectedTechnician && selectedTechnician !== 'all') {
-      filtered = filtered.filter(t => t.assigned_to === selectedTechnician);
+      unscheduled = unscheduled.filter(t => t.assigned_to === selectedTechnician);
+      scheduled = scheduled.filter(s => s.technician_id === selectedTechnician);
     }
 
-    return filtered;
-  }, [tickets, searchQuery, priorityFilter, categoryFilter, selectedTechnician]);
+    // Sort unscheduled tickets
+    const sortTickets = (arr) => {
+      return [...arr].sort((a, b) => {
+        switch (sortBy) {
+          case 'oldest':
+            return new Date(a.created_at) - new Date(b.created_at);
+          case 'newest':
+            return new Date(b.created_at) - new Date(a.created_at);
+          case 'priority':
+            return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+          case 'technician':
+            const nameA = a.assigned_to_name || 'zzz';
+            const nameB = b.assigned_to_name || 'zzz';
+            return nameA.localeCompare(nameB);
+          default:
+            return 0;
+        }
+      });
+    };
 
-  // Get unique categories from tickets
+    // Sort scheduled tickets by scheduled date
+    const sortScheduled = (arr) => {
+      return [...arr].sort((a, b) => {
+        if (sortBy === 'priority') {
+          const pA = a.ticket?.priority || a.priority || 'normal';
+          const pB = b.ticket?.priority || b.priority || 'normal';
+          return (priorityOrder[pA] || 2) - (priorityOrder[pB] || 2);
+        }
+        if (sortBy === 'technician') {
+          const nameA = a.technician_name || 'zzz';
+          const nameB = b.technician_name || 'zzz';
+          return nameA.localeCompare(nameB);
+        }
+        // Default: sort by scheduled date (oldest first)
+        return new Date(a.scheduled_date) - new Date(b.scheduled_date);
+      });
+    };
+
+    const sortedUnscheduled = sortTickets(unscheduled);
+    const sortedScheduled = sortScheduled(scheduled);
+
+    // Calculate total estimated hours for unscheduled
+    const hours = sortedUnscheduled.reduce((sum, t) => sum + (parseFloat(t.estimated_hours) || 2), 0);
+
+    return {
+      filteredUnscheduled: sortedUnscheduled,
+      filteredScheduled: sortedScheduled,
+      totalHours: hours
+    };
+  }, [tickets, scheduledTickets, searchQuery, priorityFilter, categoryFilter, selectedTechnician, sortBy]);
+
+  // Get unique categories from all tickets
   const categories = useMemo(() => {
-    const cats = new Set(tickets.map(t => t.category).filter(Boolean));
+    const allTickets = [...tickets, ...scheduledTickets.map(s => s.ticket || s)];
+    const cats = new Set(allTickets.map(t => t?.category).filter(Boolean));
     return Array.from(cats);
-  }, [tickets]);
-
-  // Calculate total estimated hours
-  const totalHours = useMemo(() => {
-    return filteredTickets.reduce((sum, t) => sum + (t.estimated_hours || 2), 0);
-  }, [filteredTickets]);
+  }, [tickets, scheduledTickets]);
 
   return (
     <div
@@ -334,10 +493,10 @@ const UnscheduledTicketsPanel = ({
       )}
 
       {/* Header */}
-      <div className="p-3 border-b border-zinc-700">
+      <div className="p-3 border-b border-zinc-700 flex-shrink-0">
         <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
           <AlertCircle size={16} className="text-amber-400" />
-          Unscheduled ({filteredTickets.length})
+          Service Tickets
         </h3>
 
         {/* Search */}
@@ -349,11 +508,12 @@ const UnscheduledTicketsPanel = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-7 pr-2 py-1.5 text-sm bg-zinc-700 border border-zinc-600 rounded text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
+            style={{ fontSize: '16px' }}
           />
         </div>
 
         {/* Filters row */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-2">
           {/* Priority filter */}
           <select
             value={priorityFilter}
@@ -380,48 +540,116 @@ const UnscheduledTicketsPanel = ({
           </select>
         </div>
 
+        {/* Sort dropdown */}
+        <div className="flex items-center gap-2">
+          <ArrowUpDown size={12} className="text-zinc-400" />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="flex-1 px-2 py-1 text-xs bg-zinc-700 border border-zinc-600 rounded text-white focus:outline-none focus:border-zinc-500"
+          >
+            {sortOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Stats */}
-        <div className="mt-2 text-xs text-zinc-400 flex items-center gap-2">
-          <Clock size={12} />
-          <span>{totalHours}h total estimated</span>
+        <div className="mt-2 text-xs text-zinc-400 flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <Clock size={12} />
+            <span>{totalHours.toFixed(1)}h unscheduled</span>
+          </div>
+          <span>{filteredUnscheduled.length} pending</span>
         </div>
       </div>
 
-      {/* Tickets list */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      {/* Tickets list - scrollable */}
+      <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="text-center py-8 text-zinc-400">
             <div className="animate-pulse">Loading tickets...</div>
           </div>
-        ) : filteredTickets.length === 0 ? (
-          <div className="text-center py-8 text-zinc-400">
-            <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No unscheduled tickets</p>
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="text-xs text-violet-400 mt-1 hover:underline"
-              >
-                Clear search
-              </button>
-            )}
-          </div>
         ) : (
-          filteredTickets.map(ticket => (
-            <TicketCard
-              key={ticket.id}
-              ticket={ticket}
-              technicians={technicians}
-              onOpenTicket={onOpenTicket}
-              onAssignTechnician={onAssignTechnician}
-              compact={compactMode}
-            />
-          ))
+          <>
+            {/* Unscheduled tickets section */}
+            {filteredUnscheduled.length === 0 && filteredScheduled.length === 0 ? (
+              <div className="text-center py-8 text-zinc-400 px-3">
+                <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No tickets found</p>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="text-xs text-violet-400 mt-1 hover:underline"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Unscheduled tickets */}
+                {filteredUnscheduled.length > 0 && (
+                  <div className="p-2 space-y-2">
+                    <div className="text-xs text-zinc-500 font-medium px-1 flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      Unscheduled ({filteredUnscheduled.length})
+                    </div>
+                    {filteredUnscheduled.map(ticket => (
+                      <TicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        technicians={technicians}
+                        onOpenTicket={onOpenTicket}
+                        onAssignTechnician={onAssignTechnician}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Scheduled tickets section - collapsible */}
+                {filteredScheduled.length > 0 && (
+                  <div className="border-t border-zinc-700">
+                    <button
+                      onClick={() => setShowScheduled(!showScheduled)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs text-zinc-400 hover:bg-zinc-700/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-1">
+                        <Calendar size={12} />
+                        <span>Scheduled ({filteredScheduled.length})</span>
+                      </div>
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform ${showScheduled ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+
+                    {showScheduled && (
+                      <div className="px-2 pb-2 space-y-2">
+                        {filteredScheduled.map(schedule => {
+                          const ticket = schedule.ticket || schedule;
+                          return (
+                            <ScheduledTicketCard
+                              key={schedule.id}
+                              ticket={ticket}
+                              schedule={schedule}
+                              onOpenTicket={onOpenTicket}
+                              onAssignTechnician={onAssignTechnician}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </>
         )}
       </div>
 
       {/* Footer - drag hint */}
-      <div className="p-2 border-t border-zinc-700 text-center">
+      <div className="p-2 border-t border-zinc-700 text-center flex-shrink-0">
         <p className="text-xs text-zinc-500">
           Drag tickets to calendar to schedule
         </p>
@@ -432,5 +660,5 @@ const UnscheduledTicketsPanel = ({
 
 export default memo(UnscheduledTicketsPanel);
 
-// Export TicketCard for potential reuse
-export { TicketCard, getCardHeight, priorityColors };
+// Export for reuse
+export { TicketCard, ScheduledTicketCard, getCardHeightForDrag as getCardHeight, priorityColors, scheduleStatusColors };

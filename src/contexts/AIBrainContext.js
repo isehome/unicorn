@@ -278,8 +278,8 @@ ${buildContextString(state)}`;
             // Service CRM
             service: '/service',
             'service dashboard': '/service',
-            tickets: '/service/tickets',
-            'service tickets': '/service/tickets',
+            tickets: '/service',
+            'service tickets': '/service',
             'new ticket': '/service/tickets/new',
             'create ticket': '/service/tickets/new',
             'weekly planning': '/service/weekly-planning',

@@ -36,7 +36,7 @@ export const resetDragEstimatedHours = () => {
   currentDragEstimatedHours = 2;
 };
 
-// Schedule status colors - 3-step approval workflow
+// Schedule status colors - 4-step approval workflow
 // Text is always white/light for readability; border/badge colors indicate status
 const scheduleStatusColors = {
   // Draft: Not yet committed - can still be moved/adjusted
@@ -59,17 +59,27 @@ const scheduleStatusColors = {
     icon: 'clock',
     isDraggable: false
   },
-  // Step 2: Tech accepted, waiting for customer to accept
-  pending_customer: {
+  // Step 2: Tech accepted calendar invite, customer invite pending
+  tech_accepted: {
     bg: 'rgba(59, 130, 246, 0.2)',   // Blue
     border: '#3B82F6',
     text: '#E4E4E7',                  // Light gray - always readable
     badgeText: '#3B82F6',             // Blue for status badge
+    label: 'Tech Accepted',
+    icon: 'check',
+    isDraggable: false
+  },
+  // Step 3: Customer invite sent, waiting for customer to accept
+  pending_customer: {
+    bg: 'rgba(6, 182, 212, 0.2)',    // Cyan
+    border: '#06B6D4',
+    text: '#E4E4E7',                  // Light gray - always readable
+    badgeText: '#06B6D4',             // Cyan for status badge
     label: 'Awaiting Customer',
     icon: 'clock',
     isDraggable: false
   },
-  // Step 3: All confirmed
+  // Step 4: All confirmed
   confirmed: {
     bg: 'rgba(148, 175, 50, 0.2)',   // Green (brand)
     border: '#94AF32',

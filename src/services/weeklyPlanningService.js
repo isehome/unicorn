@@ -282,6 +282,68 @@ export const weeklyPlanningService = {
   },
 
   /**
+   * Get ALL active schedules (for panel sidebar overview)
+   * Shows schedules regardless of which week they're in
+   */
+  async getAllActiveSchedules(technicianId = null) {
+    if (!supabase) return [];
+
+    try {
+      // Get all non-cancelled schedules
+      let query = supabase
+        .from('service_schedules')
+        .select('*')
+        .neq('status', 'cancelled')
+        .neq('status', 'completed')
+        .order('scheduled_date', { ascending: true })
+        .order('scheduled_time_start', { ascending: true });
+
+      if (technicianId && technicianId !== 'all') {
+        query = query.eq('technician_id', technicianId);
+      }
+
+      const { data: schedules, error } = await query;
+
+      if (error) {
+        console.error('[WeeklyPlanningService] Failed to fetch all schedules:', error);
+        return [];
+      }
+
+      if (!schedules || schedules.length === 0) {
+        return [];
+      }
+
+      // Fetch ticket details separately
+      const ticketIds = [...new Set(schedules.map(s => s.ticket_id).filter(Boolean))];
+      let ticketMap = {};
+
+      if (ticketIds.length > 0) {
+        try {
+          const { data: tickets, error: ticketError } = await supabase
+            .from('service_tickets')
+            .select('*')
+            .in('id', ticketIds);
+
+          if (!ticketError && tickets) {
+            ticketMap = tickets.reduce((acc, t) => ({ ...acc, [t.id]: t }), {});
+          }
+        } catch (ticketFetchError) {
+          console.error('[WeeklyPlanningService] Exception fetching ticket details:', ticketFetchError);
+        }
+      }
+
+      // Merge ticket data into schedules
+      return schedules.map(s => ({
+        ...s,
+        ticket: ticketMap[s.ticket_id] || null
+      }));
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to fetch all schedules:', error);
+      return [];
+    }
+  },
+
+  /**
    * Check for buffer conflicts with existing schedules
    */
   async checkBufferConflicts(technicianId, date, startTime, endTime, excludeScheduleId = null) {
@@ -876,13 +938,14 @@ export const weeklyPlanningService = {
   },
 
   // ============================================================================
-  // 3-STEP APPROVAL WORKFLOW FUNCTIONS
+  // 4-STEP APPROVAL WORKFLOW FUNCTIONS
+  // Workflow: draft → pending_tech → tech_accepted → pending_customer → confirmed
   // ============================================================================
 
   /**
-   * Handle technician acceptance (Step 2 of 3-step workflow)
+   * Handle technician acceptance (Step 2 of 4-step workflow)
    * Called when cron job detects technician accepted calendar invite
-   * Updates status to pending_customer
+   * Updates status to tech_accepted (NOT pending_customer - that comes after sending customer invite)
    */
   async handleTechnicianAccepted(scheduleId) {
     if (!supabase) throw new Error('Supabase not configured');
@@ -891,7 +954,7 @@ export const weeklyPlanningService = {
       const { data, error } = await supabase
         .from('service_schedules')
         .update({
-          schedule_status: 'pending_customer',
+          schedule_status: 'tech_accepted',  // Intermediate status
           tech_calendar_response: 'accepted',
           technician_accepted_at: new Date().toISOString()
         })
@@ -907,10 +970,72 @@ export const weeklyPlanningService = {
         throw error;
       }
 
-      console.log('[WeeklyPlanningService] Technician accepted schedule:', scheduleId);
+      console.log('[WeeklyPlanningService] Technician accepted schedule:', scheduleId, '→ tech_accepted');
       return data;
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to handle tech accepted:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Send customer invite (Step 3 of 4-step workflow)
+   * Moves status from tech_accepted → pending_customer
+   * Triggers API to send customer calendar invite and email
+   */
+  async sendCustomerInvite(scheduleId) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!scheduleId) throw new Error('Schedule ID is required');
+
+    try {
+      // Call the API endpoint to send customer invite
+      const response = await fetch('/api/schedule/send-customer-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduleId })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to send customer invite: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[WeeklyPlanningService] Customer invite sent:', scheduleId, '→ pending_customer');
+      return result;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to send customer invite:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Mark customer as confirmed manually (Step 4 alternative)
+   * Moves status from tech_accepted OR pending_customer → confirmed
+   * Used when staff confirms on behalf of customer (phone call, in-person, etc.)
+   */
+  async markCustomerConfirmed(scheduleId, confirmedBy) {
+    if (!supabase) throw new Error('Supabase not configured');
+    if (!scheduleId) throw new Error('Schedule ID is required');
+
+    try {
+      // Call the API endpoint to mark as confirmed
+      const response = await fetch('/api/schedule/mark-customer-confirmed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scheduleId, confirmedBy })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to mark customer confirmed: ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[WeeklyPlanningService] Customer confirmed manually:', scheduleId, '→ confirmed');
+      return result;
+    } catch (error) {
+      console.error('[WeeklyPlanningService] Failed to mark customer confirmed:', error);
       throw error;
     }
   },

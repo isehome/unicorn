@@ -21,16 +21,16 @@ const getToday = () => {
 };
 
 const getDateRange = (date) => {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
+  // Parse date string as local date (not UTC)
+  // If date is "2026-01-12", we want to query for that local day, not UTC
+  const dateStr = typeof date === 'string' ? date : date.toISOString().split('T')[0];
 
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
+  // Create datetime strings in local timezone format for Graph API
+  // Graph API with Prefer: outlook.timezone will interpret these correctly
+  const start = `${dateStr}T00:00:00`;
+  const end = `${dateStr}T23:59:59`;
 
-  return {
-    start: start.toISOString(),
-    end: end.toISOString(),
-  };
+  return { start, end };
 };
 
 // Use consistent timezone for all calendar operations
