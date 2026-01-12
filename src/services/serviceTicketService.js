@@ -106,7 +106,6 @@ export const serviceTicketService = {
           *,
           project:projects(id, name, address, status),
           contact:contacts(id, full_name, phone, email, company),
-          assigned_technician:contacts!service_tickets_assigned_to_fkey(id, full_name, email),
           notes:service_ticket_notes(
             id, note_type, content, author_name, is_internal,
             call_duration_seconds, created_at
@@ -129,22 +128,33 @@ export const serviceTicketService = {
         throw new Error(error.message || 'Failed to fetch service ticket');
       }
 
-      // If there's an assigned technician, lookup their avatar color from profiles
-      if (data && data.assigned_technician?.email) {
+      // If there's an assigned technician, lookup their name and avatar color
+      if (data && data.assigned_to) {
         try {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('avatar_color')
-            .eq('email', data.assigned_technician.email.toLowerCase())
+          // First get the technician contact
+          const { data: techContact } = await supabase
+            .from('contacts')
+            .select('id, full_name, email')
+            .eq('id', data.assigned_to)
             .single();
 
-          // Add to result
-          data.assigned_to_name = data.assigned_technician.full_name;
-          data.assigned_to_avatar_color = profile?.avatar_color || null;
-        } catch (profileErr) {
-          // Non-fatal - just won't have avatar color
-          data.assigned_to_name = data.assigned_technician.full_name;
-          data.assigned_to_avatar_color = null;
+          if (techContact) {
+            data.assigned_to_name = techContact.full_name;
+
+            // Then lookup avatar color from profiles via email
+            if (techContact.email) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('avatar_color')
+                .eq('email', techContact.email.toLowerCase())
+                .single();
+
+              data.assigned_to_avatar_color = profile?.avatar_color || null;
+            }
+          }
+        } catch (techErr) {
+          // Non-fatal - just won't have technician details
+          console.log('[ServiceTicketService] Could not fetch assigned technician details:', techErr.message);
         }
       }
 
