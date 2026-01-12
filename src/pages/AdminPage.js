@@ -1509,6 +1509,21 @@ const AdminPage = () => {
 
     const autoMapping = {};
 
+    // Exclusion rules: if header contains these words, don't map to certain fields
+    const exclusionRules = {
+      name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+      first_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+      last_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+      company: ['address', 'street', 'city', 'state', 'zip', 'postal'],
+    };
+
+    // Check if header should be excluded from a field
+    const shouldExclude = (fieldKey, lowerHeader) => {
+      const exclusions = exclusionRules[fieldKey];
+      if (!exclusions) return false;
+      return exclusions.some(excl => lowerHeader.includes(excl));
+    };
+
     // First pass: exact matches only (highest priority)
     headers.forEach(header => {
       const lowerHeader = header.toLowerCase().trim();
@@ -1519,11 +1534,13 @@ const AdminPage = () => {
       });
     });
 
-    // Second pass: includes matches for remaining fields
+    // Second pass: includes matches for remaining fields (with exclusion rules)
     headers.forEach(header => {
       const lowerHeader = header.toLowerCase().trim();
       Object.entries(headerAliases).forEach(([fieldKey, aliases]) => {
-        if (!autoMapping[fieldKey] && aliases.some(alias => lowerHeader.includes(alias))) {
+        if (!autoMapping[fieldKey] &&
+            !shouldExclude(fieldKey, lowerHeader) &&
+            aliases.some(alias => lowerHeader.includes(alias))) {
           autoMapping[fieldKey] = header;
         }
       });
