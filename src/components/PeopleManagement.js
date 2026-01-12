@@ -133,21 +133,29 @@ const PeopleManagement = () => {
       // Also set name for compatibility
       payload.name = payload.name || fullName || 'Unknown';
 
-      delete payload.id;
-      delete payload.created_at;
-      delete payload.updated_at;
+      // Filter to only valid database columns (remove any extra fields like 'website' from business card scan)
+      const validColumns = ['name', 'full_name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
+                           'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
+                           'is_internal', 'is_active', 'department'];
+      const cleanPayload = {};
+      validColumns.forEach(col => {
+        if (payload[col] !== undefined && payload[col] !== null) {
+          cleanPayload[col] = payload[col];
+        }
+      });
 
       if (editingContact) {
-        await updateContact(editingContact.id, payload);
+        await updateContact(editingContact.id, cleanPayload);
         setEditingContact(null);
       } else {
-        await createContact(payload);
+        await createContact(cleanPayload);
       }
 
       setShowAddModal(false);
       setFormData(initialFormState);
     } catch (err) {
       console.error('Error saving contact:', err);
+      alert('Error saving contact. Please try again.');
     }
   };
 
@@ -185,8 +193,14 @@ const PeopleManagement = () => {
 
   const startCamera = async () => {
     try {
+      // Request landscape orientation for business cards (wider than tall)
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        video: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          aspectRatio: { ideal: 16/9 }  // Force landscape
+        }
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -738,8 +752,8 @@ const PeopleManagement = () => {
             <div className="space-y-4">
               {!capturedImage ? (
                 <>
-                  {/* Camera Preview */}
-                  <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+                  {/* Camera Preview - landscape aspect ratio for business cards */}
+                  <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
                     <video
                       ref={videoRef}
                       autoPlay
@@ -747,17 +761,19 @@ const PeopleManagement = () => {
                       muted
                       className="w-full h-full object-cover"
                     />
-                    {/* Overlay guide */}
-                    <div className="absolute inset-4 border-2 border-white/30 rounded-lg pointer-events-none">
-                      <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-white" />
-                      <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-white" />
-                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-white" />
-                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-white" />
+                    {/* Business card guide overlay - 3.5:2 aspect ratio */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="relative border-2 border-white/50 rounded-lg" style={{ width: '85%', aspectRatio: '3.5/2' }}>
+                        <div className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-3 border-l-3 border-white rounded-tl" />
+                        <div className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-3 border-r-3 border-white rounded-tr" />
+                        <div className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-3 border-l-3 border-white rounded-bl" />
+                        <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-3 border-r-3 border-white rounded-br" />
+                      </div>
                     </div>
                   </div>
 
                   <p className="text-sm text-zinc-500 text-center">
-                    Position the business card within the frame
+                    Hold phone horizontally and position the business card within the frame
                   </p>
 
                   <div className="flex gap-3">
