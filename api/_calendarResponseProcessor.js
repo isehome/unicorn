@@ -605,23 +605,35 @@ async function processCalendarResponses(scheduleIds = null) {
     schedules: []
   };
 
+  console.log(`[CalendarProcessor] Starting loop over ${pendingSchedules?.length || 0} schedules`);
+
   for (const schedule of pendingSchedules || []) {
+    console.log(`[CalendarProcessor] Processing schedule ${schedule.id}`);
     try {
       schedule.technician_email = technicianEmails[schedule.technician_id] || null;
+      console.log(`[CalendarProcessor] Set technician_email to ${schedule.technician_email}`);
 
-      const { data: ticket } = await getSupabase()
+      const { data: ticket, error: ticketError } = await getSupabase()
         .from('service_tickets')
         .select('id, customer_email, customer_name, customer_phone, title, service_address')
         .eq('id', schedule.ticket_id)
         .single();
 
+      console.log(`[CalendarProcessor] Ticket lookup: ${ticket?.id || 'not found'}, error: ${ticketError?.message || 'none'}`);
+
       if (!ticket) {
-        console.log(`[CalendarProcessor] No ticket found for schedule ${schedule.id}`);
+        console.log(`[CalendarProcessor] No ticket found for schedule ${schedule.id}, skipping`);
+        results.schedules.push({ id: schedule.id, action: 'skipped', reason: 'no_ticket' });
         continue;
       }
 
+      console.log(`[CalendarProcessor] Calling processSchedule...`);
       const result = await processSchedule(token, systemEmail, schedule, ticket);
+      console.log(`[CalendarProcessor] processSchedule result:`, JSON.stringify(result));
+
+      console.log(`[CalendarProcessor] Calling applyResult...`);
       const applied = await applyResult(token, systemEmail, result, schedule, ticket);
+      console.log(`[CalendarProcessor] applyResult done`);
 
       results.checked++;
       if (result.action === 'tech_accepted') results.techAccepted++;
