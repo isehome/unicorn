@@ -1673,19 +1673,34 @@ const AdminPage = () => {
     for (let i = 0; i < dataToImport.length; i++) {
       const contact = { ...dataToImport[i] };
 
-      // Skip if no name
+      // Derive name from available fields if not directly set
+      // Priority: name > first_name + last_name > company
       if (!contact.name) {
-        errors.push({ row: i + 2, error: 'Missing name' });
-        skipped++;
-        // Capture current values to avoid closure issues
-        const currentSkipped = skipped;
-        const currentIndex = i;
-        setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
-        continue;
+        if (contact.first_name || contact.last_name) {
+          contact.name = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
+        } else if (contact.company) {
+          // For company-only entries (QuickBooks customers), use company as name
+          contact.name = contact.company;
+        }
+      }
+
+      // Skip if still no name after derivation (need at least something to identify the contact)
+      if (!contact.name) {
+        // Check if there's any identifiable info at all
+        if (!contact.email && !contact.phone) {
+          errors.push({ row: i + 2, error: 'Missing name, email, and phone - cannot identify contact' });
+          skipped++;
+          const currentSkipped = skipped;
+          const currentIndex = i;
+          setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
+          continue;
+        }
+        // Use email or phone as fallback name
+        contact.name = contact.email || contact.phone || 'Unknown Contact';
       }
 
       // Filter to only valid database columns (remove AI-generated fields like is_company)
-      const validColumns = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
+      const validColumns = ['name', 'full_name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
                            'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
                            'is_internal', 'is_active'];
       const cleanContact = {};
@@ -1694,6 +1709,11 @@ const AdminPage = () => {
           cleanContact[col] = contact[col];
         }
       });
+
+      // Ensure full_name is set (required by database)
+      if (!cleanContact.full_name) {
+        cleanContact.full_name = cleanContact.name;
+      }
 
       try {
         // Check for duplicate
