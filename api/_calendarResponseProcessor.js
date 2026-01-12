@@ -609,17 +609,26 @@ async function processCalendarResponses(scheduleIds = null) {
       schedule.technician_email = technicianEmails[schedule.technician_id] || null;
       console.log(`[CalendarProcessor] Set technician_email to ${schedule.technician_email}`);
 
-      const { data: ticket, error: ticketError } = await getSupabase()
+      const ticketSupabase = getSupabase();
+      console.log(`[CalendarProcessor] About to query service_tickets for ticket_id: ${schedule.ticket_id}`);
+
+      const { data: ticket, error: ticketError } = await ticketSupabase
         .from('service_tickets')
         .select('id, customer_email, customer_name, customer_phone, title, service_address')
         .eq('id', schedule.ticket_id)
         .single();
 
-      console.log(`[CalendarProcessor] Ticket lookup: ${ticket?.id || 'not found'}, error: ${ticketError?.message || 'none'}`);
+      console.log(`[CalendarProcessor] Ticket lookup: ${ticket?.id || 'not found'}, error: ${JSON.stringify(ticketError)}`);
 
       if (!ticket) {
         console.log(`[CalendarProcessor] No ticket found for schedule ${schedule.id}, skipping`);
-        results.schedules.push({ id: schedule.id, action: 'skipped', reason: 'no_ticket' });
+        results.schedules.push({
+          id: schedule.id,
+          action: 'skipped',
+          reason: 'no_ticket',
+          ticket_id: schedule.ticket_id,
+          ticketError: ticketError?.message || ticketError?.code || 'unknown'
+        });
         continue;
       }
 
