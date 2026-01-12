@@ -25,6 +25,8 @@ const proficiencyColors = {
  *
  * @param {Object} props
  * @param {string} props.value - Currently selected technician ID
+ * @param {string} props.selectedName - Optional pre-known name to show before technicians load
+ * @param {string} props.selectedColor - Optional pre-known avatar color to show before technicians load
  * @param {string} props.category - Ticket category for skill matching (e.g., 'network', 'av')
  * @param {Array} props.technicians - Optional pre-loaded technicians array (if not provided, will fetch)
  * @param {function} props.onChange - Callback when selection changes: (techId, techName) => void
@@ -36,6 +38,8 @@ const proficiencyColors = {
  */
 const TechnicianDropdown = memo(({
   value,
+  selectedName,
+  selectedColor,
   category = 'general',
   technicians: propTechnicians,
   onChange,
@@ -50,8 +54,11 @@ const TechnicianDropdown = memo(({
   const [loading, setLoading] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Find currently selected technician
+  // Find currently selected technician from loaded list, or use pre-known props
   const selectedTech = technicians.find(t => t.id === value);
+  // Use pre-known name/color if technician list hasn't loaded yet
+  const displayName = selectedTech?.full_name || selectedName;
+  const displayColor = selectedTech?.avatar_color || selectedColor;
 
   // Load technicians with skill matching when dropdown opens
   // ALWAYS fetch fresh skill-qualified data to ensure consistent sorting
@@ -141,17 +148,17 @@ const TechnicianDropdown = memo(({
         disabled={disabled}
         className={`flex items-center gap-1.5 w-full ${sizeConfig.button} rounded bg-black/20 hover:bg-black/30 transition-colors border border-transparent hover:border-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed`}
       >
-        {selectedTech ? (
+        {displayName ? (
           <TechnicianAvatar
-            name={selectedTech.full_name}
-            color={selectedTech.avatar_color}
+            name={displayName}
+            color={displayColor}
             size={sizeConfig.avatar}
           />
         ) : (
           <UnassignedAvatar size={sizeConfig.avatar} />
         )}
         <span className={`${sizeConfig.text} text-zinc-300 truncate flex-1 text-left`}>
-          {selectedTech?.full_name || placeholder}
+          {displayName || placeholder}
         </span>
         <ChevronDown
           size={size === 'sm' ? 12 : 14}

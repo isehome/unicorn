@@ -289,6 +289,8 @@ const ScheduledTicketCard = memo(({
       <div onClick={(e) => e.stopPropagation()}>
         <TechnicianDropdown
           value={schedule?.technician_id || ticket.assigned_to}
+          selectedName={schedule?.technician_name || ticket.assigned_to_name}
+          selectedColor={schedule?.technician_avatar_color}
           category={ticket.category || 'general'}
           onChange={(techId, techName) => onAssignTechnician?.(ticket.id, techId, techName, schedule?.id)}
           size="sm"
