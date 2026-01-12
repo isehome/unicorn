@@ -194,7 +194,7 @@ const AdminPage = () => {
   const [importStep, setImportStep] = useState('upload'); // upload, map, preview, ai-processing, importing, done
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0, skipped: 0, errors: [] });
   const [duplicateHandling, setDuplicateHandling] = useState('skip'); // skip, merge, create
-  const [useAIProcessing, setUseAIProcessing] = useState(true); // Enable AI-assisted parsing by default
+  const [useAIProcessing, setUseAIProcessing] = useState(false); // Disabled by default for faster imports
   const [aiProcessedData, setAiProcessedData] = useState([]); // Data after AI processing
 
   // Available contact fields for mapping (matches contacts table schema)
@@ -1608,39 +1608,39 @@ const AdminPage = () => {
     setImportStep('preview');
   };
 
-  const checkDuplicate = async (contact) => {
+  // Pre-fetch all existing contacts for fast in-memory duplicate checking
+  const fetchAllExistingContacts = async () => {
+    const { data, error } = await supabase
+      .from('contacts')
+      .select('id, name, email, phone, company');
+    if (error) {
+      console.error('[AdminPage] Failed to fetch existing contacts:', error);
+      return [];
+    }
+    return data || [];
+  };
+
+  // Fast in-memory duplicate check
+  const checkDuplicateInMemory = (contact, existingContacts) => {
     // Check by email first (most reliable)
     if (contact.email) {
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, name, email, phone')
-        .ilike('email', contact.email)
-        .limit(1);
-      if (data?.length > 0) return data[0];
+      const emailLower = contact.email.toLowerCase();
+      const match = existingContacts.find(c => c.email?.toLowerCase() === emailLower);
+      if (match) return match;
     }
 
-    // Then check by phone
+    // Then check by phone (last 7 digits)
     if (contact.phone) {
       const normalizedPhone = contact.phone.replace(/\D/g, '');
       if (normalizedPhone.length >= 7) {
-        const { data } = await supabase
-          .from('contacts')
-          .select('id, name, email, phone')
-          .filter('phone', 'ilike', `%${normalizedPhone.slice(-7)}%`)
-          .limit(1);
-        if (data?.length > 0) return data[0];
+        const last7 = normalizedPhone.slice(-7);
+        const match = existingContacts.find(c => {
+          if (!c.phone) return false;
+          const existingLast7 = c.phone.replace(/\D/g, '').slice(-7);
+          return existingLast7 === last7;
+        });
+        if (match) return match;
       }
-    }
-
-    // Finally check by exact name + company match
-    if (contact.name && contact.company) {
-      const { data } = await supabase
-        .from('contacts')
-        .select('id, name, email, phone')
-        .ilike('name', contact.name)
-        .ilike('company', contact.company)
-        .limit(1);
-      if (data?.length > 0) return data[0];
     }
 
     return null;
@@ -1670,39 +1670,42 @@ const AdminPage = () => {
     const errors = [];
     let skipped = 0;
 
+    // Pre-fetch existing contacts for fast in-memory duplicate checking
+    console.log('[AdminPage] Fetching existing contacts for duplicate checking...');
+    const existingContacts = await fetchAllExistingContacts();
+    console.log('[AdminPage] Found', existingContacts.length, 'existing contacts');
+
+    // Prepare all contacts first (validation + cleaning)
+    const validColumns = ['name', 'full_name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
+                         'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
+                         'is_internal', 'is_active'];
+
+    const contactsToInsert = [];
+    const contactsToMerge = [];
+
     for (let i = 0; i < dataToImport.length; i++) {
       const contact = { ...dataToImport[i] };
 
       // Derive name from available fields if not directly set
-      // Priority: name > first_name + last_name > company
       if (!contact.name) {
         if (contact.first_name || contact.last_name) {
           contact.name = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
         } else if (contact.company) {
-          // For company-only entries (QuickBooks customers), use company as name
           contact.name = contact.company;
         }
       }
 
-      // Skip if still no name after derivation (need at least something to identify the contact)
+      // Skip if still no name after derivation
       if (!contact.name) {
-        // Check if there's any identifiable info at all
         if (!contact.email && !contact.phone) {
           errors.push({ row: i + 2, error: 'Missing name, email, and phone - cannot identify contact' });
           skipped++;
-          const currentSkipped = skipped;
-          const currentIndex = i;
-          setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
           continue;
         }
-        // Use email or phone as fallback name
         contact.name = contact.email || contact.phone || 'Unknown Contact';
       }
 
-      // Filter to only valid database columns (remove AI-generated fields like is_company)
-      const validColumns = ['name', 'full_name', 'first_name', 'last_name', 'email', 'phone', 'company', 'role',
-                           'address', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
-                           'is_internal', 'is_active'];
+      // Filter to only valid database columns
       const cleanContact = {};
       validColumns.forEach(col => {
         if (contact[col] !== undefined && contact[col] !== null && contact[col] !== '') {
@@ -1710,66 +1713,85 @@ const AdminPage = () => {
         }
       });
 
-      // Ensure full_name is set (required by database)
+      // Ensure full_name is set
       if (!cleanContact.full_name) {
         cleanContact.full_name = cleanContact.name;
       }
 
-      try {
-        // Check for duplicate
-        const existing = await checkDuplicate(contact);
+      // Fast in-memory duplicate check
+      const existing = checkDuplicateInMemory(contact, existingContacts);
 
-        if (existing) {
-          if (duplicateHandling === 'skip') {
-            skipped++;
-          } else if (duplicateHandling === 'merge') {
-            // Merge: update existing with new non-empty fields
-            const updates = {};
-            Object.entries(cleanContact).forEach(([key, value]) => {
-              if (value && !existing[key]) {
-                updates[key] = value;
-              }
-            });
-            if (Object.keys(updates).length > 0) {
-              const { error } = await supabase
-                .from('contacts')
-                .update(updates)
-                .eq('id', existing.id);
-              if (error) {
-                console.error('[AdminPage] Merge error for row', i + 2, ':', error.message, updates);
-                errors.push({ row: i + 2, error: `Merge failed: ${error.message}` });
-              }
-            } else {
-              skipped++;
-            }
-          }
-          // 'create' will fall through to create new
-          else if (duplicateHandling === 'create') {
-            const { error } = await supabase.from('contacts').insert([cleanContact]);
-            if (error) {
-              console.error('[AdminPage] Insert error for row', i + 2, ':', error.message, cleanContact);
-              errors.push({ row: i + 2, error: `Insert failed: ${error.message}` });
-            }
-          }
-        } else {
-          // No duplicate, create new contact
-          const { error } = await supabase.from('contacts').insert([cleanContact]);
-          if (error) {
-            console.error('[AdminPage] Insert error for row', i + 2, ':', error.message, cleanContact);
-            errors.push({ row: i + 2, error: `Insert failed: ${error.message}` });
-          }
+      if (existing) {
+        if (duplicateHandling === 'skip') {
+          skipped++;
+        } else if (duplicateHandling === 'merge') {
+          contactsToMerge.push({ row: i + 2, cleanContact, existingId: existing.id, existing });
+        } else if (duplicateHandling === 'create') {
+          contactsToInsert.push({ row: i + 2, cleanContact });
         }
-      } catch (err) {
-        console.error('[AdminPage] Exception for row', i + 2, ':', err.message, cleanContact);
-        errors.push({ row: i + 2, error: err.message });
+      } else {
+        contactsToInsert.push({ row: i + 2, cleanContact });
       }
 
-      // Capture current values to avoid closure issues
-      const currentSkipped = skipped;
-      const currentIndex = i;
-      setImportProgress(prev => ({ ...prev, current: currentIndex + 1, skipped: currentSkipped, errors }));
+      // Update progress during preparation phase
+      if (i % 50 === 0) {
+        setImportProgress(prev => ({ ...prev, current: i + 1, skipped, errors: [...errors] }));
+      }
     }
 
+    console.log('[AdminPage] Prepared:', contactsToInsert.length, 'to insert,', contactsToMerge.length, 'to merge,', skipped, 'skipped');
+
+    // Batch insert new contacts (in chunks of 50)
+    const BATCH_SIZE = 50;
+    for (let i = 0; i < contactsToInsert.length; i += BATCH_SIZE) {
+      const batch = contactsToInsert.slice(i, i + BATCH_SIZE);
+      const contactsData = batch.map(b => b.cleanContact);
+
+      const { error } = await supabase.from('contacts').insert(contactsData);
+      if (error) {
+        console.error('[AdminPage] Batch insert error:', error.message);
+        // On batch error, try individual inserts to identify problematic rows
+        for (const item of batch) {
+          const { error: singleError } = await supabase.from('contacts').insert([item.cleanContact]);
+          if (singleError) {
+            console.error('[AdminPage] Insert error for row', item.row, ':', singleError.message);
+            errors.push({ row: item.row, error: `Insert failed: ${singleError.message}` });
+          }
+        }
+      }
+
+      setImportProgress(prev => ({
+        ...prev,
+        current: dataToImport.length - contactsToMerge.length + Math.min(i + BATCH_SIZE, contactsToInsert.length),
+        skipped,
+        errors: [...errors]
+      }));
+    }
+
+    // Process merges individually (need to update specific fields)
+    for (const { row, cleanContact, existingId, existing } of contactsToMerge) {
+      const updates = {};
+      Object.entries(cleanContact).forEach(([key, value]) => {
+        if (value && !existing[key]) {
+          updates[key] = value;
+        }
+      });
+
+      if (Object.keys(updates).length > 0) {
+        const { error } = await supabase
+          .from('contacts')
+          .update(updates)
+          .eq('id', existingId);
+        if (error) {
+          console.error('[AdminPage] Merge error for row', row, ':', error.message);
+          errors.push({ row, error: `Merge failed: ${error.message}` });
+        }
+      } else {
+        skipped++;
+      }
+    }
+
+    setImportProgress({ current: dataToImport.length, total: dataToImport.length, skipped, errors });
     setImportStep('done');
   };
 
