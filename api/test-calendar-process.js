@@ -15,9 +15,10 @@ function getSupabase() {
 
 module.exports = async (req, res) => {
   const { scheduleId } = req.query;
+  const VERSION = 'v3-debug';
 
   try {
-    console.log('[TestCalendarProcess] Starting test...');
+    console.log(`[TestCalendarProcess] ${VERSION} - Starting test...`);
 
     // First, let's debug what the query returns
     if (scheduleId) {
@@ -64,6 +65,7 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      version: VERSION,
       ...results
     });
 
