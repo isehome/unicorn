@@ -240,9 +240,9 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
                         <td style="padding: 10px 0; color: #71717A; font-size: 14px; vertical-align: top;">👤 Technician:</td>
                         <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${schedule.technician_name}</td>
                       </tr>` : ''}
-                      ${ticket.service_address ? `<tr>
+                      ${ticket.customer_address ? `<tr>
                         <td style="padding: 10px 0; color: #71717A; font-size: 14px; vertical-align: top;">📍 Location:</td>
-                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${ticket.service_address}</td>
+                        <td style="padding: 10px 0; color: #18181B; font-size: 16px; font-weight: bold;">${ticket.customer_address}</td>
                       </tr>` : ''}
                     </table>
                   </td>
@@ -614,7 +614,7 @@ async function processCalendarResponses(scheduleIds = null) {
 
       const { data: ticket, error: ticketError } = await ticketSupabase
         .from('service_tickets')
-        .select('id, customer_email, customer_name, customer_phone, title, service_address')
+        .select('id, customer_email, customer_name, customer_phone, title, customer_address')
         .eq('id', schedule.ticket_id)
         .single();
 
@@ -711,7 +711,7 @@ async function sendCustomerInviteForSchedule(scheduleId) {
   // Get the ticket
   const { data: ticket, error: ticketError } = await getSupabase()
     .from('service_tickets')
-    .select('id, customer_email, customer_name, customer_phone, title, service_address')
+    .select('id, customer_email, customer_name, customer_phone, title, customer_address')
     .eq('id', schedule.ticket_id)
     .single();
 
