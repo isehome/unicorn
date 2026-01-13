@@ -171,7 +171,24 @@ const WeeklyPlanning = () => {
             const allEvents = dayResults.flat();
             console.log(`[WeeklyPlanning] Raw calendar events:`, allEvents);
 
-            blockedEvents = allEvents.map(event => {
+            // Filter out service appointments created by our app
+            // These are shown as ScheduleBlocks, not blocked time
+            const filteredEvents = allEvents.filter(event => {
+              const subject = event.subject || '';
+              // Exclude events that match our service appointment patterns
+              const isServiceAppointment =
+                subject.startsWith('[PENDING]') ||
+                subject.startsWith('[AWAITING CUSTOMER]') ||
+                subject.startsWith('[TENTATIVE]') ||
+                subject.startsWith('Service:');
+              if (isServiceAppointment) {
+                console.log(`[WeeklyPlanning] Filtering out service appointment: "${subject}"`);
+              }
+              return !isServiceAppointment;
+            });
+            console.log(`[WeeklyPlanning] Filtered events: ${filteredEvents.length} (excluded ${allEvents.length - filteredEvents.length} service appointments)`);
+
+            blockedEvents = filteredEvents.map(event => {
               // Graph API returns datetime without timezone suffix - parse as local time
               // Format: "2024-01-15T09:00:00.0000000"
               let startHour = 0;
@@ -482,6 +499,9 @@ const WeeklyPlanning = () => {
 
   // Handle technician change
   const handleTechnicianChange = (techId) => {
+    console.log('[WeeklyPlanning] Technician changed to:', techId);
+    // Clear existing data immediately to show loading state
+    setWeeks([]);
     setSelectedTechnician(techId);
     // Automatically switch view mode based on selection
     // 'all' or null -> show all technicians overlapping
@@ -1210,7 +1230,13 @@ const WeeklyPlanning = () => {
         onTechnicianChange={handleTechnicianChange}
         loadingTechnicians={loadingTechnicians}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode);
+          // When switching to 'all', clear technician filter to show all schedules
+          if (mode === 'all') {
+            setSelectedTechnician(null);
+          }
+        }}
         showWorkWeekOnly={showWorkWeekOnly}
         onWeekModeChange={setShowWorkWeekOnly}
         currentWeekStart={currentWeekStart}

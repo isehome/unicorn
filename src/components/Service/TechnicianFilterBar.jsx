@@ -8,7 +8,6 @@ import React, { memo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
-  Users,
   User,
   Calendar,
   CalendarDays,
@@ -139,34 +138,6 @@ const TechnicianFilterBar = ({
               </option>
             ))}
           </select>
-        </div>
-
-        {/* View mode toggle */}
-        <div className="flex items-center gap-1 bg-zinc-700 rounded-lg p-0.5">
-          <button
-            onClick={() => onViewModeChange?.('single')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
-              viewMode === 'single'
-                ? 'bg-zinc-600 text-white'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-            title="View single technician"
-          >
-            <User size={14} />
-            <span className="hidden sm:inline">Single</span>
-          </button>
-          <button
-            onClick={() => onViewModeChange?.('all')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors ${
-              viewMode === 'all'
-                ? 'bg-zinc-600 text-white'
-                : 'text-zinc-400 hover:text-white'
-            }`}
-            title="View all technicians overlapping"
-          >
-            <Users size={14} />
-            <span className="hidden sm:inline">All</span>
-          </button>
         </div>
 
         {/* Week mode toggle */}

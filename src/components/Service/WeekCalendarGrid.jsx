@@ -323,6 +323,14 @@ const ScheduleBlock = memo(({
     currentDragEstimatedHours = 2;
   };
 
+  // Determine what to show based on block height
+  // Small blocks (30-45px): Just customer name + avatar
+  // Medium blocks (45-75px): + time
+  // Large blocks (75px+): + title + commit button
+  const isSmall = height < 45;
+  const isMedium = height >= 45 && height < 75;
+  const isLarge = height >= 75;
+
   return (
     <div
       draggable={isDraggable}
@@ -339,60 +347,46 @@ const ScheduleBlock = memo(({
         zIndex: isDragging ? 50 : 20
       }}
       onClick={() => onClick?.(schedule)}
+      title={`${displayName}${categoryLabel ? ` • ${categoryLabel}` : ''}\n${schedule.scheduled_time_start?.slice(0, 5)} - ${schedule.scheduled_time_end?.slice(0, 5)} (${getEstimatedHours().toFixed(1)}h)\n${ticket.title || 'Service visit'}`}
     >
-      {/* Header row - customer name, category, and technician avatar */}
+      {/* Row 1: Customer name + tech avatar */}
       <div className="flex items-center justify-between gap-1">
-        <div className="flex items-center gap-1 min-w-0 flex-1">
-          <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: colors.border }}
-          />
-          <span
-            className="text-xs font-medium truncate"
-            style={{ color: colors.text }}
-          >
-            {displayName}
-          </span>
-          {categoryLabel && (
-            <span
-              className="text-xs opacity-70 flex-shrink-0"
-              style={{ color: colors.text }}
-            >
-              • {categoryLabel}
-            </span>
-          )}
-        </div>
-        {/* Technician Avatar - inside card, top right */}
+        <span
+          className="text-xs font-medium truncate flex-1"
+          style={{ color: colors.text }}
+        >
+          {displayName}
+        </span>
+        {/* Technician Avatar */}
         {technicianName && (
           <div
             className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
             style={{ backgroundColor: technicianColor, color: '#fff' }}
-            title={technicianName}
           >
             {technicianInitials}
           </div>
         )}
       </div>
 
-      {/* Time range and duration */}
-      <div className="flex items-center gap-1 text-xs opacity-70" style={{ color: colors.text }}>
-        <Clock size={10} className="flex-shrink-0" />
-        <span className="truncate">
-          {schedule.scheduled_time_start?.slice(0, 5)} - {schedule.scheduled_time_end?.slice(0, 5)}
-          {height >= 40 && ` (${getEstimatedHours().toFixed(1)}h)`}
-        </span>
-      </div>
+      {/* Row 2: Time range (only for medium+ blocks) */}
+      {!isSmall && (
+        <div className="flex items-center gap-1 text-[11px] opacity-80" style={{ color: colors.text }}>
+          <Clock size={10} className="flex-shrink-0" />
+          <span className="truncate">
+            {schedule.scheduled_time_start?.slice(0, 5)} - {schedule.scheduled_time_end?.slice(0, 5)}
+          </span>
+        </div>
+      )}
 
-      {/* Additional info for taller blocks */}
-      {height >= 60 && (
-        <div className="text-xs opacity-60 truncate mt-0.5" style={{ color: colors.text }}>
+      {/* Row 3: Title (only for large blocks) */}
+      {isLarge && (
+        <div className="text-[11px] opacity-60 truncate" style={{ color: colors.text }}>
           {ticket.title || 'Service visit'}
         </div>
       )}
 
-
-      {/* Commit button - prominent for draft schedules with enough height */}
-      {isDraft && height >= 70 && onCommit && (
+      {/* Commit button (only for large draft blocks) */}
+      {isDraft && isLarge && onCommit && (
         <button
           className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors"
           style={{
@@ -406,12 +400,11 @@ const ScheduleBlock = memo(({
           }}
         >
           <Send size={10} />
-          <span>Commit & Send Invite</span>
+          <span>Commit</span>
         </button>
       )}
 
-
-      {/* Reschedule indicator - bottom left to avoid avatar */}
+      {/* Reschedule indicator */}
       {schedule.reschedule_requested_at && (
         <div className="absolute bottom-1 left-1">
           <AlertCircle size={12} className="text-amber-500" title="Reschedule requested" />
