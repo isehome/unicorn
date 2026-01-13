@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { enhancedStyles } from '../../styles/styleSystem';
 import { supplierService } from '../../services/supplierService';
@@ -57,7 +57,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -96,7 +96,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
@@ -114,7 +114,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
         }
       }, 500);
     }
-  }, [initialView]);
+  }, [initialView, loadDashboardData]);
 
   const loadProjects = async () => {
     try {

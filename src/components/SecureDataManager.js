@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import Button from './ui/Button';
 import DateField from './ui/DateField';
@@ -96,11 +96,7 @@ const SecureDataManager = ({ projectId, onClose }) => {
     };
   }, [mode, palette]);
 
-  useEffect(() => {
-    loadData();
-  }, [projectId]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const [secureDataList, equipmentList] = await Promise.all([
@@ -114,7 +110,11 @@ const SecureDataManager = ({ projectId, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const filteredData = useMemo(() => {
     let filtered = secureData;
@@ -205,13 +205,13 @@ const SecureDataManager = ({ projectId, onClose }) => {
         eq.name.toLowerCase().includes(query) ||
         (eq.model && eq.model.toLowerCase().includes(query))
       );
-    }, [equipmentSearch]);
-    
+    }, [equipmentSearch, equipment]);
+
     // Get selected equipment display text
     const selectedEquipment = useMemo(() => {
       if (!formData.equipment_id) return null;
       return equipment.find(eq => eq.id === formData.equipment_id);
-    }, [formData.equipment_id]);
+    }, [formData.equipment_id, equipment]);
 
     const handleSubmit = async (e) => {
       e.preventDefault();

@@ -462,18 +462,27 @@ const ShadeDetailPage = () => {
 
     // Cleanup timers and flush saves on unmount (React navigation)
     useEffect(() => {
+        // Capture ref values inside effect to avoid stale closure warning
+        const pendingSaves = pendingSavesRef.current;
+        const installationNotesTimer = installationNotesTimerRef.current;
+        const pocketTimer = pocketTimerRef.current;
+        const orderedWidthTimer = orderedWidthTimerRef.current;
+        const orderedHeightTimer = orderedHeightTimerRef.current;
+        const orderedDepthTimer = orderedDepthTimerRef.current;
+        const autoSaveTimer = autoSaveTimerRef.current;
+
         return () => {
             // Clear all timers
-            if (installationNotesTimerRef.current) clearTimeout(installationNotesTimerRef.current);
-            if (pocketTimerRef.current) clearTimeout(pocketTimerRef.current);
-            if (orderedWidthTimerRef.current) clearTimeout(orderedWidthTimerRef.current);
-            if (orderedHeightTimerRef.current) clearTimeout(orderedHeightTimerRef.current);
-            if (orderedDepthTimerRef.current) clearTimeout(orderedDepthTimerRef.current);
-            if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+            if (installationNotesTimer) clearTimeout(installationNotesTimer);
+            if (pocketTimer) clearTimeout(pocketTimer);
+            if (orderedWidthTimer) clearTimeout(orderedWidthTimer);
+            if (orderedHeightTimer) clearTimeout(orderedHeightTimer);
+            if (orderedDepthTimer) clearTimeout(orderedDepthTimer);
+            if (autoSaveTimer) clearTimeout(autoSaveTimer);
 
             // Flush any pending saves immediately on unmount
             // Note: This uses a synchronous approach since async doesn't work reliably in cleanup
-            const saves = Array.from(pendingSavesRef.current.entries());
+            const saves = Array.from(pendingSaves.entries());
             if (saves.length > 0 && shadeId) {
                 const updates = {};
                 saves.forEach(([field, value]) => {

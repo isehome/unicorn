@@ -328,7 +328,6 @@ const ScheduleBlock = memo(({
   // Medium blocks (50-90px): + time
   // Large blocks (90px+): + title + full commit button
   const isSmall = height < 50;
-  const isMedium = height >= 50 && height < 90;
   const isLarge = height >= 90;
 
   return (

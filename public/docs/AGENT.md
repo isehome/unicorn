@@ -272,9 +272,9 @@ A drag-and-drop scheduling interface for dispatching service technicians with a 
         style="border-radius: 8px;"></iframe>
 ```
 
-#### 8.3 Three-Step Approval Workflow
+#### 8.3 Four-Step Approval Workflow
 
-The scheduling system uses a 3-step workflow to ensure both technician and customer confirm appointments:
+The scheduling system uses a 4-step workflow to ensure both technician and customer confirm appointments:
 
 ```
 ┌─────────────┐    Drag-Drop    ┌─────────────┐    Commit    ┌─────────────────┐
@@ -286,12 +286,22 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
                                        ▼                              │
                                 ┌─────────────┐                       ▼
                                 │  Can Move   │◀──────────┐  ┌────────────────────┐
-                                │  or Delete  │           │  │ AWAITING CUSTOMER  │
-                                └─────────────┘           │  │  (Customer Invite) │
+                                │  or Delete  │           │  │   TECH ACCEPTED    │
+                                └─────────────┘           │  │  (Customer Invite  │
+                                                          │  │    Not Sent Yet)   │
                                                           │  └─────────┬──────────┘
                                                           │            │
-                                                   Reset to           Customer
-                                                    Draft            Accepts
+                                                          │  Send Customer Invite
+                                                          │  OR Mark Confirmed
+                                                          │            │
+                                                          │            ▼
+                                                          │  ┌────────────────────┐
+                                                          │  │ AWAITING CUSTOMER  │
+                                                          │  │  (Customer Invite) │
+                                                          │  └─────────┬──────────┘
+                                                          │            │
+                                                   Reset to    Customer Accepts
+                                                    Draft     OR Mark Confirmed
                                                           │            │
                                                           │            ▼
                                                           │   ┌─────────────────┐
@@ -314,13 +324,24 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
 - Status transitions to `pending_tech`
 - Subject: `[PENDING] Service: Customer Name (#ticket_number)`
 
-**Step 3: Awaiting Customer (Blue)**
+**Step 3: Tech Accepted (Blue)**
 - When technician accepts calendar invite
-- Customer receives their invite
-- Status transitions to `pending_customer`
+- Status transitions to `tech_accepted`
+- **Customer invite NOT automatically sent** - gives dispatcher control
+- Available actions:
+  - **Send Customer Invite** → transitions to `pending_customer`
+  - **Mark Customer Confirmed** → skips customer invite, goes directly to `confirmed`
 
-**Step 4: Confirmed (Green)**
-- When customer confirms
+**Step 4: Awaiting Customer (Cyan)**
+- After clicking "Send Customer Invite"
+- Customer receives calendar invite + email link
+- Status transitions to `pending_customer`
+- Available actions:
+  - Wait for customer to accept calendar invite
+  - **Mark Customer Confirmed** → manually confirm without customer response
+
+**Step 5: Confirmed (Green)**
+- When customer accepts OR staff manually confirms
 - All parties aligned
 - Status transitions to `confirmed`
 
@@ -329,7 +350,8 @@ The scheduling system uses a 3-step workflow to ensure both technician and custo
 |-------------------|-------|-----------|-------------|
 | `draft` | Violet | ✅ Yes | Not yet committed, can be moved |
 | `pending_tech` | Amber | ❌ No | Waiting for technician to accept invite |
-| `pending_customer` | Blue | ❌ No | Tech accepted, waiting for customer |
+| `tech_accepted` | Blue | ❌ No | Tech accepted, customer invite pending |
+| `pending_customer` | Cyan | ❌ No | Customer invite sent, waiting for response |
 | `confirmed` | Green | ❌ No | All parties confirmed |
 | `cancelled` | Gray | ❌ No | Appointment cancelled |
 
@@ -343,6 +365,8 @@ When the organizer (logged-in user) assigns themselves as the technician:
 **Schedule Actions (in Ticket Detail Modal):**
 | Action | Available When | What It Does |
 |--------|----------------|--------------|
+| **Send Customer Invite** | `tech_accepted` | Sends invite to customer, transitions to `pending_customer` |
+| **Mark Customer Confirmed** | `tech_accepted` or `pending_customer` | Manually confirms without customer response |
 | **Reset to Draft** | Any non-draft status | Unlocks schedule for editing, clears calendar event ID |
 | **Remove from Schedule** | Any status | Deletes schedule, returns ticket to unscheduled panel |
 
@@ -356,10 +380,17 @@ When committing a schedule:
 6. Event marked as tentative (`showAs: 'tentative'`)
 7. `calendar_event_id` stored on schedule for future updates
 
-#### 8.4 Customer Confirmation (Planned)
+#### 8.4 Customer Confirmation
 
-Customer-facing portal for appointment confirmation:
-1. Schedule created as `tentative`
+**Manual Confirmation (Current):**
+Staff can manually confirm on behalf of customers using "Mark Customer Confirmed" button:
+- Available in WeeklyPlanning ticket detail modal
+- Available in ServiceTicketDetail page (schedule section)
+- Records who confirmed and when
+
+**Customer Portal Confirmation (Planned):**
+Customer-facing portal for self-service appointment confirmation:
+1. Schedule created, customer invite sent
 2. System sends email + SMS with confirmation link
 3. Customer clicks link → `/public/service-confirm/:token`
 4. OTP verification (phone or email)
@@ -422,10 +453,171 @@ Dashboard showing:
 - `id`, `ticket_id`, `technician_id`, `technician_name`
 - `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`
 - `status` (scheduled, in_progress, completed, cancelled)
-- `schedule_status` (tentative, confirmed, cancelled)
+- `schedule_status` (draft, pending_tech, tech_accepted, pending_customer, confirmed, cancelled)
 - `calendar_event_id` (M365 event ID for updates)
 - `confirmed_at`, `confirmed_by`, `confirmation_method`
 - `service_address`, `pre_visit_notes`, `post_visit_notes`
+- `customer_invite_sent_at` - When customer calendar invite was sent
+
+#### 8.8.1 Weekly Planning Calendar Grid - Technical Details
+
+The WeekCalendarGrid component (`src/components/Service/WeekCalendarGrid.jsx`) renders scheduled appointments as positioned blocks on a time-based grid.
+
+**Grid Constants:**
+```javascript
+const HOUR_HEIGHT = 60;      // 60 pixels per hour
+const START_HOUR = 6;        // 6 AM
+const END_HOUR = 22;         // 10 PM
+const MIN_DAY_WIDTH = 120;   // Minimum column width
+const TIME_COLUMN_WIDTH = 60; // Left time labels column
+```
+
+**Block Height Calculation:**
+
+Each schedule block's height is calculated based on duration. The system checks multiple sources in priority order:
+
+```javascript
+// Priority order for determining end time:
+// 1. scheduled_time_end (explicit end time from database)
+// 2. estimated_duration_minutes (on the schedule record)
+// 3. ticket.estimated_hours (from the linked ticket)
+// 4. Default: 2 hours
+
+let endHour;
+if (schedule.scheduled_time_end) {
+  endHour = timeToHour(schedule.scheduled_time_end);
+} else if (schedule.estimated_duration_minutes) {
+  endHour = startHour + (estimated_duration_minutes / 60);
+} else if (ticket.estimated_hours) {
+  endHour = startHour + ticket.estimated_hours;
+} else {
+  endHour = startHour + 2; // Default 2 hours
+}
+
+// Calculate pixel position and height
+const top = (startHour - START_HOUR) * HOUR_HEIGHT;
+const height = (endHour - startHour) * HOUR_HEIGHT;
+```
+
+**Example:** A 1-hour appointment starting at 11:00 AM:
+- `startHour = 11`
+- `endHour = 12` (from scheduled_time_end "12:00:00")
+- `top = (11 - 6) * 60 = 300px`
+- `height = (12 - 11) * 60 = 60px`
+
+**⚠️ Common Issue: Orphan Schedules with Null End Times**
+
+If a schedule has `scheduled_time_end = null`, the system falls back through the priority chain. If no duration source is found, it defaults to 2 hours. This can cause incorrect block heights.
+
+**Symptoms:**
+- Schedule block shows 2-hour height but ticket says "1.0h"
+- Console logs show: `time: "11:00:00-null"`, `height: 120`
+
+**Diagnosis:** Check for duplicate/orphan schedules:
+```sql
+-- Find schedules with null end times
+SELECT id, ticket_id, scheduled_date, scheduled_time_start, scheduled_time_end
+FROM service_schedules
+WHERE scheduled_time_end IS NULL;
+
+-- Find duplicate schedules (same ticket, same date)
+SELECT s1.id, s2.id, s1.ticket_id, s1.scheduled_date
+FROM service_schedules s1
+JOIN service_schedules s2 ON s1.ticket_id = s2.ticket_id
+  AND s1.scheduled_date = s2.scheduled_date
+  AND s1.id != s2.id;
+```
+
+**Fix:** Delete orphan schedules or update with correct end time:
+```sql
+DELETE FROM service_schedules WHERE id = 'orphan-schedule-uuid';
+```
+
+**Status Colors:**
+
+The `scheduleStatusColors` object maps each status to visual styling:
+
+| Status | Background | Border | Label |
+|--------|------------|--------|-------|
+| `draft` | Violet 15% | `#8B5CF6` | Draft |
+| `pending_tech` | Amber 20% | `#F59E0B` | Awaiting Tech |
+| `tech_accepted` | Blue 20% | `#3B82F6` | Tech Accepted |
+| `pending_customer` | Cyan 20% | `#06B6D4` | Awaiting Customer |
+| `confirmed` | Green 20% | `#94AF32` | Confirmed |
+| `cancelled` | Gray 20% | `#71717A` | Cancelled |
+
+#### 8.8.2 Technician Avatar Colors
+
+Avatars throughout the app display the user's **chosen color** from their profile settings. This is stored in the `profiles` table (`avatar_color` column) and linked via email.
+
+**Avatar Color Lookup Pattern:**
+
+```javascript
+// 1. Get technician IDs from schedules
+const technicianIds = schedules.map(s => s.technician_id);
+
+// 2. Get contact emails for those technicians
+const { data: contacts } = await supabase
+  .from('contacts')
+  .select('id, email')
+  .in('id', technicianIds);
+
+// 3. Get avatar colors from profiles via email match
+const emails = contacts.map(c => c.email.toLowerCase());
+const { data: profiles } = await supabase
+  .from('profiles')
+  .select('email, avatar_color')
+  .in('email', emails);
+
+// 4. Build lookup map: contact_id → avatar_color
+const emailToColor = profiles.reduce((acc, p) => {
+  acc[p.email.toLowerCase()] = p.avatar_color;
+  return acc;
+}, {});
+
+// 5. Apply to schedules
+schedules.forEach(s => {
+  const contact = contacts.find(c => c.id === s.technician_id);
+  s.technician_avatar_color = emailToColor[contact?.email?.toLowerCase()];
+});
+```
+
+**Key Files for Avatar Colors:**
+- `src/components/TechnicianAvatar.jsx` - Avatar component with color prop
+- `src/services/weeklyPlanningService.js` - Fetches avatar colors for schedules
+- `database/migrations/20251228_add_avatar_color_to_profiles.sql` - Schema
+
+**Avatar Color Priority:**
+1. `schedule.technician_avatar_color` (user's chosen color from profile)
+2. `getColorFromName(technicianName)` (hash-based fallback color)
+
+**Setting Avatar Color:**
+Users set their avatar color in Settings → Profile. The color is stored as a hex code (e.g., `#F97316` for orange) in `profiles.avatar_color`.
+
+#### 8.8.3 Calendar Response Processing
+
+A cron job (`/api/cron/process-calendar-responses`) polls Microsoft Graph API to check attendee responses and update schedule statuses automatically.
+
+**Processing Flow:**
+```
+Every 3 minutes:
+1. Find schedules in 'pending_tech' or 'pending_customer' status
+2. For each, fetch calendar event from Graph API
+3. Check attendee response statuses
+4. Update service_schedules based on responses:
+   - Tech accepts → status → 'tech_accepted'
+   - Customer accepts → status → 'confirmed'
+   - Anyone declines → status → 'cancelled', ticket → 'unscheduled'
+```
+
+**Manual Trigger:**
+```bash
+curl -X POST https://unicorn-one.vercel.app/api/system-account/check-responses
+```
+
+**Key Files:**
+- `api/cron/process-calendar-responses.js` - Cron endpoint
+- `api/_calendarResponseProcessor.js` - Core processing logic
 
 #### 8.9 Service Routes
 
@@ -4249,5 +4441,158 @@ See `src/pages/PublicIssuePortal.js` and `api/public-issue.js` for reference imp
 - [ ] Session management with appropriate expiry
 - [ ] CORS headers configured for API endpoints
 - [ ] No sensitive data exposed before verification
+
+---
+
+## 2026-01-13
+
+### Weekly Planning UI Improvements
+
+Several fixes to the Weekly Planning calendar and service ticket components.
+
+#### Calendar Block Text Overlap Fix
+- **Problem:** Service appointments were appearing twice - as ScheduleBlock (from service_schedules) AND as BlockedTimeBlock (from M365 calendar with `[AWAITING CUSTOMER]` prefix)
+- **Solution:** Filter out M365 calendar events that start with service-related prefixes: `[PENDING]`, `[AWAITING CUSTOMER]`, `[TENTATIVE]`, `Service:`
+- **File:** `src/pages/WeeklyPlanning.js`
+
+#### Simplified ScheduleBlock Layout
+- Redesigned ScheduleBlock with height-based responsive content:
+  - Small blocks (<50px): Customer name + commit icon only
+  - Medium blocks (50-90px): + time display
+  - Large blocks (90px+): + title + full commit button
+- Commit icon now shows for ALL draft blocks regardless of size (was hidden for 1-hour blocks)
+- **File:** `src/components/Service/WeekCalendarGrid.jsx`
+
+#### Removed Single/All View Toggle
+- Removed confusing Single/All buttons from TechnicianFilterBar
+- The technician dropdown already handles view selection (All Technicians vs specific tech)
+- **File:** `src/components/Service/TechnicianFilterBar.jsx`
+
+#### Technician Change Data Reload
+- Fixed issue where changing technicians only loaded partial data
+- Now calls `setWeeks([])` immediately when technician changes to force full data reload
+- **File:** `src/pages/WeeklyPlanning.js`
+
+### Inline Priority Dropdown in ServiceTicketDetail
+
+- **Before:** Priority could only be changed by entering full "Edit" mode
+- **After:** Priority badge is now a clickable dropdown that updates immediately
+- Uses custom chevron icon with `appearance: none` for consistent styling
+- **File:** `src/components/Service/ServiceTicketDetail.js`
+
+### Fixed Priority Filter Mismatch in UnscheduledTicketsPanel
+
+- **Problem:** Priority filter dropdown used `"normal"` but database uses `"medium"`
+- **Solution:** Updated all references from "normal" to "medium":
+  - Filter dropdown options
+  - `priorityColors` object
+  - `priorityOrder` sort mapping
+- Added detailed console logging to debug sort operations
+- **File:** `src/components/Service/UnscheduledTicketsPanel.jsx`
+
+### Service Ticket Priority Values (Standard)
+
+| Value | Label | Color |
+|-------|-------|-------|
+| `urgent` | Urgent | Red |
+| `high` | High | Orange |
+| `medium` | Medium | Blue |
+| `low` | Low | Olive/Green |
+
+**Important:** Always use lowercase values (`medium`, not `Normal` or `normal`). The display label can be capitalized but the database value must be lowercase.
+
+### CSV Contact Import - Address Detection & AI Enhancement
+
+Major fixes to prevent addresses from being imported as contact names when importing from QuickBooks or similar sources.
+
+#### Problem
+QuickBooks CSV exports have complex field mappings:
+- `Customer full name` = Company name (not a person)
+- `Full name` = Person's name (often empty)
+- `Bill address` / `Ship address` = Multi-line address data
+
+When `Full name` was empty, the system was incorrectly using address data as the contact name, creating entries like "100 S. Main Street" or "Longboat Key FL 34228" as contact names.
+
+#### Solution: Two-Layer Protection
+
+**Layer 1: AI Parsing (Gemini)**
+- Updated `api/ai/parse-contacts.js` prompt with explicit address detection rules
+- AI now rejects addresses as names and returns empty string
+- Falls back to deriving name from email prefix if no valid name found
+
+**Layer 2: Code Validation (Fallback)**
+- Added `looksLikeAddress()` function in `src/pages/AdminPage.js`
+- Regex patterns detect: street numbers, zip codes, street types (St, Ave, Blvd), state abbreviations
+- Addresses are rejected even if AI misses them
+
+#### Address Detection Patterns
+```javascript
+const looksLikeAddress = (str) => {
+  return (
+    /^\d+\s/.test(str) ||           // Starts with number "100 Main St"
+    /\d{5}/.test(str) ||             // Contains 5-digit zip
+    /\b(street|st\.|ave|avenue|drive|dr\.|road|rd\.)\b/i.test(str) ||
+    /\b(fl|in|ca|tx|ny|oh)\s+\d{4,5}/i.test(str) ||  // State + zip
+    /,\s*(fl|in|ca|tx|usa|united states)\s*$/i.test(str)  // Ends with state
+  );
+};
+```
+
+#### CSV Header Exclusion Rules
+Prevents wrong column mappings:
+```javascript
+const exclusionRules = {
+  name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  first_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  last_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  company: ['address', 'street', 'city', 'state', 'zip', 'postal'],
+};
+```
+
+#### Performance Improvements
+- **Batch Inserts:** Contacts inserted in chunks of 50 (was one at a time)
+- **In-Memory Duplicate Check:** Pre-fetches all existing contacts for fast comparison
+- **AI Processing:** Enabled by default to help clean data
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `src/pages/AdminPage.js` | Address detection, exclusion rules, batch inserts, in-memory duplicate checking |
+| `api/ai/parse-contacts.js` | Updated AI prompt with address detection rules and examples |
+| `database/scripts/cleanup_address_as_name_contacts.sql` | SQL script to clean up bad imports |
+
+#### Cleanup SQL (for bad imports)
+```sql
+-- Preview contacts with address-like names
+SELECT id, name, email, phone, created_at
+FROM contacts
+WHERE
+  name ~ '^\d+\s' OR name ~ '\d{5}'
+  OR name ~* '\s(st|street|ave|avenue|dr|drive|rd|road|ln|lane|blvd)\b'
+  OR name ~* '\s(fl|in|ca|tx|ny|oh|pa|il|ga|nc)\s*$'
+ORDER BY created_at DESC;
+
+-- Delete if they look like bad imports
+DELETE FROM contacts WHERE created_at > NOW() - INTERVAL '4 hours';
+```
+
+### Business Card Scanner - Landscape Mode Fix
+
+Fixed the business card scanner to work properly when phone is rotated to landscape mode.
+
+#### Problem
+When rotating phone to landscape for business card scanning:
+- Capture button was pushed off-screen
+- Bottom navigation bar overlapped the controls
+- Camera preview didn't fill the screen properly
+
+#### Solution
+- Redesigned to full-screen camera UI with `fixed inset-0`
+- Control bar fixed at bottom with proper padding
+- Added `pb-24` padding to clear bottom navigation bar
+- Large circular capture button always visible
+
+#### File Modified
+`src/components/PeopleManagement.js`
 
 ---

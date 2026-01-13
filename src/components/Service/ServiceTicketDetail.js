@@ -31,7 +31,6 @@ import {
   Package,
   ShoppingCart,
   Camera,
-  Loader2,
   Send
 } from 'lucide-react';
 import {

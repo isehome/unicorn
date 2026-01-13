@@ -111,7 +111,8 @@ const CachedSharePointImage = ({
             return;
           }
 
-          // NEW: If we have SharePoint metadata, use the proper Graph API thumbnail endpoint
+          // Use native Graph API thumbnails - fast and low bandwidth
+          // small=96x96, medium=176x176, large=800x800 (all square)
           if (sharePointDriveId && sharePointItemId) {
             const thumbnailUrl = `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(sharePointDriveId)}&itemId=${encodeURIComponent(sharePointItemId)}&size=${size}`;
             console.log('Using Graph API thumbnail:', thumbnailUrl);

@@ -1779,7 +1779,9 @@ const AdminPage = () => {
 
       // Update progress during preparation phase
       if (i % 50 === 0) {
-        setImportProgress(prev => ({ ...prev, current: i + 1, skipped, errors: [...errors] }));
+        const currentSkipped = skipped;
+        const currentErrors = [...errors];
+        setImportProgress(prev => ({ ...prev, current: i + 1, skipped: currentSkipped, errors: currentErrors }));
       }
     }
 
@@ -1804,11 +1806,13 @@ const AdminPage = () => {
         }
       }
 
+      const currentSkipped = skipped;
+      const currentErrors = [...errors];
       setImportProgress(prev => ({
         ...prev,
         current: dataToImport.length - contactsToMerge.length + Math.min(i + BATCH_SIZE, contactsToInsert.length),
-        skipped,
-        errors: [...errors]
+        skipped: currentSkipped,
+        errors: currentErrors
       }));
     }
 

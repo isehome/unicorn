@@ -5,7 +5,7 @@ import { useAppState } from '../contexts/AppStateContext';
 import { enhancedStyles } from '../styles/styleSystem';
 import { useContacts } from '../hooks/useSupabase';
 import Button from './ui/Button';
-import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, Camera, CreditCard, Upload } from 'lucide-react';
+import { Plus, Trash2, User, Building, Loader, Search, X, ChevronRight, CreditCard, Upload } from 'lucide-react';
 
 const PeopleManagement = () => {
   const navigate = useNavigate();

@@ -261,7 +261,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
   }, [getCurrentInternalInventorySupplier, checkNameUnique, allSuppliers, supplierId]);
 
   // Send welcome email to new vendor
-  const sendVendorWelcomeEmail = async (supplierName, supplierEmail) => {
+  const sendVendorWelcomeEmail = useCallback(async (supplierName, supplierEmail) => {
     if (!supplierEmail) return;
 
     try {
@@ -310,7 +310,7 @@ export const SupplierEditModal = ({ supplierId, supplier: initialSupplier, onClo
       // Don't fail the supplier save if email fails
       console.warn('[SupplierEditModal] Failed to send welcome email:', err);
     }
-  };
+  }, [acquireToken, formData.contact_name]);
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();

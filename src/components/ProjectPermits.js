@@ -37,46 +37,12 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
     final: { open: false, permitId: null, date: '' }
   });
 
-  const loadPermitsAndMilestones = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Load permits and milestones in parallel
-      const [permitsData, milestonesData] = await Promise.all([
-        permitService.getProjectPermits(projectId),
-        milestoneService.getProjectMilestones(projectId)
-      ]);
-
-      setPermits(permitsData);
-
-      // Auto-populate permit target dates from milestones if not set
-      await autoPopulateTargetDates(permitsData, milestonesData);
-    } catch (err) {
-      console.error('Error loading permits and milestones:', err);
-      setError('Failed to load permits. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    if (projectId) {
-      loadPermitsAndMilestones();
-    }
-  }, [projectId, loadPermitsAndMilestones]);
-
-  const loadPermits = async () => {
-    // Keep this method for compatibility with existing handlers
-    await loadPermitsAndMilestones();
-  };
-
   /**
    * Auto-populate permit target dates from milestone target dates
    * - Rough-in target from prewire milestone target
    * - Final inspection target from trim milestone target
    */
-  const autoPopulateTargetDates = async (permitsData, milestonesData) => {
+  const autoPopulateTargetDates = useCallback(async (permitsData, milestonesData) => {
     try {
       const prewireMilestone = milestonesData.find(m => m.milestone_type === 'prewire');
       const trimMilestone = milestonesData.find(m => m.milestone_type === 'trim');
@@ -110,6 +76,40 @@ function ProjectPermits({ projectId, onMilestoneChange }) {
       console.error('Error auto-populating target dates:', err);
       // Don't throw - this is a best-effort enhancement
     }
+  }, [projectId]);
+
+  const loadPermitsAndMilestones = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Load permits and milestones in parallel
+      const [permitsData, milestonesData] = await Promise.all([
+        permitService.getProjectPermits(projectId),
+        milestoneService.getProjectMilestones(projectId)
+      ]);
+
+      setPermits(permitsData);
+
+      // Auto-populate permit target dates from milestones if not set
+      await autoPopulateTargetDates(permitsData, milestonesData);
+    } catch (err) {
+      console.error('Error loading permits and milestones:', err);
+      setError('Failed to load permits. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, autoPopulateTargetDates]);
+
+  useEffect(() => {
+    if (projectId) {
+      loadPermitsAndMilestones();
+    }
+  }, [projectId, loadPermitsAndMilestones]);
+
+  const loadPermits = async () => {
+    // Keep this method for compatibility with existing handlers
+    await loadPermitsAndMilestones();
   };
 
   const handleAddPermit = () => {

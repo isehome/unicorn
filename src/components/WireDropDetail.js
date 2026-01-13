@@ -2224,9 +2224,9 @@ const WireDropDetail = () => {
                               sharePointDriveId={prewireStage.sharepoint_drive_id}
                               sharePointItemId={prewireStage.sharepoint_item_id}
                               displayType="thumbnail"
-                              size="large"
+                              size="medium"
                               alt="Prewire"
-                              className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              className="w-full aspect-square rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               showFullOnClick={false}
                               onClick={() => openStagePhotoViewer('prewire')}
                               objectFit="cover"
@@ -2344,9 +2344,9 @@ const WireDropDetail = () => {
                               sharePointDriveId={trimOutStage.sharepoint_drive_id}
                               sharePointItemId={trimOutStage.sharepoint_item_id}
                               displayType="thumbnail"
-                              size="large"
+                              size="medium"
                               alt="Trim Out"
-                              className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                              className="w-full aspect-square rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               showFullOnClick={false}
                               onClick={() => openStagePhotoViewer('trim_out')}
                               objectFit="cover"
@@ -3579,7 +3579,7 @@ const WireDropDetail = () => {
                       sharePointDriveId={primaryRoomEquipment.homekit_qr_sharepoint_drive_id}
                       sharePointItemId={primaryRoomEquipment.homekit_qr_sharepoint_item_id}
                       displayType="full"
-                      size="large"
+                      size="medium"
                       className="w-full h-auto rounded-lg"
                     />
                   </div>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
@@ -11,7 +11,7 @@ const WireDropsHub = () => {
   const { publishState, registerActions, unregisterActions } = useAppState();
   const sectionStyles = enhancedStyles.sections[mode];
 
-  const hubItems = [
+  const hubItems = useMemo(() => [
     {
       title: 'Wire Drops List',
       description: 'View and manage all wire drops across your projects',
@@ -26,7 +26,7 @@ const WireDropsHub = () => {
       path: '/lucid-test',
       color: 'blue'
     }
-  ];
+  ], []);
 
   const getColorClasses = (color) => {
     const colors = {

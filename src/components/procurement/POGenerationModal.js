@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppState } from '../../contexts/AppStateContext';
 import { poGeneratorService } from '../../services/poGeneratorService';
@@ -144,7 +144,7 @@ const POGenerationModal = ({
   }, [isOpen, supplierId, projectDefaultShippingId]);
 
   // Collect form data for AppState publishing
-  const formData = {
+  const formData = useMemo(() => ({
     orderDate,
     requestedDeliveryDate,
     taxAmount,
@@ -152,7 +152,7 @@ const POGenerationModal = ({
     internalNotes,
     supplierNotes,
     shippingAddressId
-  };
+  }), [orderDate, requestedDeliveryDate, taxAmount, shippingCost, internalNotes, supplierNotes, shippingAddressId]);
 
   // Publish modal state to AppState for AI awareness
   useEffect(() => {

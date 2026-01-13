@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppState } from '../../contexts/AppStateContext';
@@ -75,7 +75,7 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
   // Edit state
   const [editData, setEditData] = useState({});
 
-  const loadPODetails = async () => {
+  const loadPODetails = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -118,13 +118,13 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [poId]);
 
   useEffect(() => {
     if (isOpen && poId) {
       loadPODetails();
     }
-  }, [isOpen, poId]);
+  }, [isOpen, poId, loadPODetails]);
 
   // Publish modal state to AppState for AI awareness
   useEffect(() => {
