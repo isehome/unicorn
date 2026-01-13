@@ -22,7 +22,7 @@ const PANEL_CARD_HEIGHT = 140; // Fixed height for cards in the panel
 const priorityColors = {
   urgent: { bg: 'rgba(239, 68, 68, 0.2)', border: '#ef4444', text: '#ef4444', label: 'Urgent' },
   high: { bg: 'rgba(249, 115, 22, 0.2)', border: '#f97316', text: '#f97316', label: 'High' },
-  normal: { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#3b82f6', label: 'Normal' },
+  medium: { bg: 'rgba(59, 130, 246, 0.2)', border: '#3b82f6', text: '#3b82f6', label: 'Medium' },
   low: { bg: 'rgba(148, 175, 50, 0.2)', border: '#94AF32', text: '#94AF32', label: 'Low' }
 };
 
@@ -58,7 +58,7 @@ const sortOptions = [
 ];
 
 // Priority order for sorting
-const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
+const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
 
 /**
  * Calculate card height for drag preview based on estimated hours
@@ -430,22 +430,32 @@ const UnscheduledTicketsPanel = ({
 
     // Sort unscheduled tickets
     const sortTickets = (arr) => {
-      return [...arr].sort((a, b) => {
+      console.log('[UnscheduledPanel] sortTickets called with sortBy:', sortBy, 'arrLen:', arr.length);
+      const sorted = [...arr].sort((a, b) => {
+        let result;
         switch (sortBy) {
           case 'oldest':
-            return new Date(a.created_at) - new Date(b.created_at);
+            // Oldest tickets first (smallest date value first = most time has passed)
+            result = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            break;
           case 'newest':
-            return new Date(b.created_at) - new Date(a.created_at);
+            // Newest tickets first (largest date value first)
+            result = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            break;
           case 'priority':
-            return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+            result = (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+            break;
           case 'technician':
             const nameA = a.assigned_to_name || 'zzz';
             const nameB = b.assigned_to_name || 'zzz';
-            return nameA.localeCompare(nameB);
+            result = nameA.localeCompare(nameB);
+            break;
           default:
-            return 0;
+            result = 0;
         }
+        return result;
       });
+      return sorted;
     };
 
     // Sort scheduled tickets by scheduled date
@@ -470,9 +480,16 @@ const UnscheduledTicketsPanel = ({
     const sortedScheduled = sortScheduled(scheduled);
 
     console.log('[UnscheduledPanel] After filtering/sorting:', {
+      sortBy,
       unscheduledCount: sortedUnscheduled.length,
       scheduledCount: sortedScheduled.length,
-      firstTwo: sortedUnscheduled.slice(0, 2).map(t => ({ id: t.id, priority: t.priority, created_at: t.created_at }))
+      firstThree: sortedUnscheduled.slice(0, 3).map(t => ({
+        id: t.id?.slice(-8),
+        ticket_number: t.ticket_number,
+        priority: t.priority,
+        created_at: t.created_at,
+        created_date: t.created_at ? new Date(t.created_at).toLocaleDateString() : 'N/A'
+      }))
     });
 
     // Calculate total estimated hours for unscheduled
@@ -541,7 +558,7 @@ const UnscheduledTicketsPanel = ({
             <option value="all">All Priorities</option>
             <option value="urgent">Urgent</option>
             <option value="high">High</option>
-            <option value="normal">Normal</option>
+            <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
 

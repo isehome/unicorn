@@ -896,9 +896,25 @@ const ServiceTicketDetail = () => {
                   >
                     {ticket.status?.replace('_', ' ')}
                   </span>
-                  <span className={`px-2 py-0.5 rounded ${getPriorityStyles(ticket.priority)}`}>
-                    {ticket.priority}
-                  </span>
+                  <select
+                    value={ticket.priority}
+                    onChange={async (e) => {
+                      const newPriority = e.target.value;
+                      try {
+                        await serviceTicketService.update(ticket.id, { priority: newPriority });
+                        await loadTicket();
+                      } catch (err) {
+                        console.error('[ServiceTicketDetail] Failed to update priority:', err);
+                      }
+                    }}
+                    className={`px-2 py-0.5 rounded cursor-pointer ${getPriorityStyles(ticket.priority)}`}
+                    style={{ appearance: 'none', WebkitAppearance: 'none', paddingRight: '1.5rem', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.3rem center' }}
+                  >
+                    <option value="low">low</option>
+                    <option value="medium">medium</option>
+                    <option value="high">high</option>
+                    <option value="urgent">urgent</option>
+                  </select>
                 </>
               )}
             </div>
