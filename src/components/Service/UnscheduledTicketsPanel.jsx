@@ -185,9 +185,11 @@ const TicketCard = memo(({
       <div className="mb-2" onClick={(e) => e.stopPropagation()}>
         <TechnicianDropdown
           value={ticket.assigned_to}
+          selectedName={ticket.assigned_to_name}
+          selectedColor={ticket.assigned_to_avatar_color}
           category={ticket.category || 'general'}
           technicians={technicians}
-          onChange={(techId, techName) => onAssignTechnician?.(ticket.id, techId, techName)}
+          onChange={(techId, techName, avatarColor) => onAssignTechnician?.(ticket.id, techId, techName, null, avatarColor)}
           size="sm"
           placeholder="Unassigned"
         />
@@ -290,9 +292,9 @@ const ScheduledTicketCard = memo(({
         <TechnicianDropdown
           value={schedule?.technician_id || ticket.assigned_to}
           selectedName={schedule?.technician_name || ticket.assigned_to_name}
-          selectedColor={schedule?.technician_avatar_color}
+          selectedColor={schedule?.technician_avatar_color || ticket.assigned_to_avatar_color}
           category={ticket.category || 'general'}
-          onChange={(techId, techName) => onAssignTechnician?.(ticket.id, techId, techName, schedule?.id)}
+          onChange={(techId, techName, avatarColor) => onAssignTechnician?.(ticket.id, techId, techName, schedule?.id, avatarColor)}
           size="sm"
           placeholder="Unassigned"
           showUnassignOption={false}

@@ -273,6 +273,60 @@ export const weeklyPlanningService = {
 
       console.log('[WeeklyPlanningService] Unscheduled tickets:', unscheduledTickets.length);
 
+      // Fetch technician names and avatar colors for assigned tickets
+      const assignedTechIds = [...new Set(unscheduledTickets.filter(t => t.assigned_to).map(t => t.assigned_to))];
+
+      if (assignedTechIds.length > 0) {
+        try {
+          // Get contact info (name, email) for assigned technicians
+          const { data: contacts } = await supabase
+            .from('contacts')
+            .select('id, full_name, email')
+            .in('id', assignedTechIds);
+
+          if (contacts && contacts.length > 0) {
+            // Get avatar colors from profiles via email
+            const emails = contacts.filter(c => c.email).map(c => c.email.toLowerCase());
+            let emailToColor = {};
+
+            if (emails.length > 0) {
+              const { data: profiles } = await supabase
+                .from('profiles')
+                .select('email, avatar_color')
+                .in('email', emails);
+
+              if (profiles) {
+                emailToColor = profiles.reduce((acc, p) => {
+                  if (p.email && p.avatar_color) {
+                    acc[p.email.toLowerCase()] = p.avatar_color;
+                  }
+                  return acc;
+                }, {});
+              }
+            }
+
+            // Build contact ID -> { name, avatar_color } map
+            const techMap = contacts.reduce((acc, c) => {
+              acc[c.id] = {
+                name: c.full_name,
+                avatar_color: c.email ? emailToColor[c.email.toLowerCase()] : null
+              };
+              return acc;
+            }, {});
+
+            // Add technician info to tickets
+            unscheduledTickets.forEach(t => {
+              if (t.assigned_to && techMap[t.assigned_to]) {
+                t.assigned_to_name = techMap[t.assigned_to].name;
+                t.assigned_to_avatar_color = techMap[t.assigned_to].avatar_color;
+              }
+            });
+          }
+        } catch (techErr) {
+          console.log('[WeeklyPlanningService] Could not fetch technician details:', techErr.message);
+        }
+      }
+
       return unscheduledTickets;
     } catch (error) {
       console.error('[WeeklyPlanningService] Failed to fetch unscheduled tickets:', error);
