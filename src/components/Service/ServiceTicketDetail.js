@@ -965,8 +965,10 @@ const ServiceTicketDetail = () => {
               <span className="text-xs text-zinc-500">Assigned:</span>
               <TechnicianDropdown
                 value={ticket.assigned_to || ''}
+                selectedName={ticket.assigned_to_name}
+                selectedColor={ticket.assigned_to_avatar_color}
                 category={ticket.category || 'general'}
-                onChange={async (techId, techName) => {
+                onChange={async (techId, techName, avatarColor) => {
                   try {
                     await serviceTicketService.assign(
                       ticket.id,
