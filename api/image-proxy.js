@@ -103,9 +103,18 @@ module.exports = async (req, res) => {
       const [, tenant, siteName, filePath] = directPathMatch
       console.log('Resolving direct SharePoint path:', { tenant, siteName, filePath })
 
+      // "Shared Documents" is the default document library - strip it from the path
+      // Graph API expects paths relative to the drive root, not including the library name
+      let relativePath = filePath
+      if (relativePath.startsWith('Shared Documents/')) {
+        relativePath = relativePath.substring('Shared Documents/'.length)
+      } else if (relativePath.startsWith('Shared%20Documents/')) {
+        relativePath = relativePath.substring('Shared%20Documents/'.length)
+      }
+
       // Use Graph API to get the file by site-relative path
       // First, need to encode the file path properly for Graph API
-      const encodedPath = encodeURIComponent(filePath).replace(/%2F/g, '/')
+      const encodedPath = encodeURIComponent(relativePath).replace(/%2F/g, '/')
       const graphUrl = `https://graph.microsoft.com/v1.0/sites/${tenant}.sharepoint.com:/sites/${siteName}:/drive/root:/${encodedPath}`
 
       console.log('Graph API URL:', graphUrl)
