@@ -76,6 +76,14 @@ const CachedSharePointImage = ({
         setLoading(true);
         setError(null);
 
+        // DEBUG: Log what we received
+        console.log('[CachedSharePointImage] Loading image:', {
+          url: sharePointUrl?.substring(0, 80) + '...',
+          driveId: sharePointDriveId,
+          itemId: sharePointItemId,
+          displayType
+        });
+
         // Don't load full resolution unless explicitly requested
         if (showingFull || displayType === 'full') {
           // Use proxy for full resolution (requires auth)

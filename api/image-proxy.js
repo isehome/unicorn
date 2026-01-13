@@ -60,14 +60,18 @@ module.exports = async (req, res) => {
 
     // Get token
     const token = await getAppToken()
-    
+
     // Extract share token from SharePoint URL and get item
     let downloadUrl
-    
+
     // Try to parse as SharePoint sharing URL
     // Matches formats like: https://tenant.sharepoint.com/:i:/g/... or :x:, :b:, :v:
     const shareUrlMatch = url.match(/https:\/\/[^\/]+\.sharepoint\.com\/(:i:|:x:|:b:|:v:)\/g\//)
-    
+
+    // Check if it's a direct SharePoint file path (not a sharing URL)
+    // Format: https://tenant.sharepoint.com/sites/SiteName/path/to/file.jpg
+    const directPathMatch = url.match(/https:\/\/([^\/]+)\.sharepoint\.com\/sites\/([^\/]+)\/(.+)/)
+
     if (shareUrlMatch) {
       // This is a sharing URL, resolve it to get the actual file
       const encoded = 'u!' + b64Url(url)
@@ -76,15 +80,45 @@ module.exports = async (req, res) => {
           'Authorization': `Bearer ${token}`
         }
       })
-      
+
       if (!itemResp.ok) {
         throw new Error(`Failed to resolve share link: ${itemResp.status}`)
       }
-      
+
       const item = await itemResp.json()
       downloadUrl = item['@microsoft.graph.downloadUrl']
+    } else if (directPathMatch) {
+      // This is a direct SharePoint file path, use Graph API to resolve it
+      const [, tenant, siteName, filePath] = directPathMatch
+      console.log('Resolving direct SharePoint path:', { tenant, siteName, filePath })
+
+      // Use Graph API to get the file by site-relative path
+      // First, need to encode the file path properly for Graph API
+      const encodedPath = encodeURIComponent(filePath).replace(/%2F/g, '/')
+      const graphUrl = `https://graph.microsoft.com/v1.0/sites/${tenant}.sharepoint.com:/sites/${siteName}:/drive/root:/${encodedPath}`
+
+      console.log('Graph API URL:', graphUrl)
+
+      const itemResp = await fetch(graphUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (!itemResp.ok) {
+        const errorText = await itemResp.text()
+        console.error('Graph API error:', itemResp.status, errorText)
+        throw new Error(`Failed to resolve file path: ${itemResp.status}`)
+      }
+
+      const item = await itemResp.json()
+      downloadUrl = item['@microsoft.graph.downloadUrl']
+
+      if (!downloadUrl) {
+        throw new Error('No download URL in Graph API response')
+      }
     } else {
-      // Assume it's already a download URL
+      // Assume it's already a download URL (blob storage URL, etc.)
       downloadUrl = url
     }
 
