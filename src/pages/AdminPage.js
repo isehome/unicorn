@@ -1700,6 +1700,20 @@ const AdminPage = () => {
     const contactsToInsert = [];
     const contactsToMerge = [];
 
+    // Helper to detect if a string looks like an address (not a name)
+    const looksLikeAddress = (str) => {
+      if (!str) return false;
+      // Check for common address patterns
+      return (
+        /^\d+\s/.test(str) ||  // Starts with number like "100 Main St"
+        /\d{5}/.test(str) ||   // Contains 5-digit zip code
+        /\b(street|st\.|ave|avenue|drive|dr\.|road|rd\.|lane|ln\.|blvd|court|ct\.|way|place|pl\.|highway|hwy)\b/i.test(str) ||
+        /\b(fl|in|ca|tx|ny|oh|pa|il|ga|nc)\s+\d{4,5}/i.test(str) ||  // State + zip
+        /,\s*(fl|in|ca|tx|ny|oh|pa|il|usa|united states)\s*$/i.test(str) ||  // Ends with state/country
+        /\bpo\s*box\b/i.test(str)  // PO Box
+      );
+    };
+
     for (let i = 0; i < dataToImport.length; i++) {
       const contact = { ...dataToImport[i] };
 
@@ -1707,19 +1721,32 @@ const AdminPage = () => {
       if (!contact.name) {
         if (contact.first_name || contact.last_name) {
           contact.name = `${contact.first_name || ''} ${contact.last_name || ''}`.trim();
-        } else if (contact.company) {
+        } else if (contact.company && !looksLikeAddress(contact.company)) {
+          // Only use company as name if it doesn't look like an address
           contact.name = contact.company;
         }
+      }
+
+      // Validate that the derived name doesn't look like an address
+      if (contact.name && looksLikeAddress(contact.name)) {
+        console.warn('[AdminPage] Row', i + 2, ': Name looks like address, clearing:', contact.name.substring(0, 50));
+        contact.name = null;
       }
 
       // Skip if still no name after derivation
       if (!contact.name) {
         if (!contact.email && !contact.phone) {
-          errors.push({ row: i + 2, error: 'Missing name, email, and phone - cannot identify contact' });
+          errors.push({ row: i + 2, error: 'No valid name found (address detected in name field)' });
           skipped++;
           continue;
         }
-        contact.name = contact.email || contact.phone || 'Unknown Contact';
+        // Use email prefix as name (before @), properly capitalized
+        if (contact.email) {
+          const emailPrefix = contact.email.split('@')[0].replace(/[._-]/g, ' ');
+          contact.name = emailPrefix.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        } else {
+          contact.name = contact.phone || 'Unknown Contact';
+        }
       }
 
       // Filter to only valid database columns
