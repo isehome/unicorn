@@ -51,12 +51,15 @@ async function getThumbnail(token, driveId, itemId, size = 'medium') {
     return resp
   }
 
+  // Graph API custom thumbnails require both width and height
+  // Using large dimensions to get the full image scaled down (not cropped)
+  // The API will maintain aspect ratio within these bounds
   const sizeMap = {
-    small: 'c96x0',     // 96px wide, auto height (preserves aspect ratio)
-    medium: 'c300x0',   // 300px wide, auto height
-    large: 'c800x0'     // 800px wide, auto height
+    small: 'c150x150',   // Fits within 150x150 box
+    medium: 'c400x400',  // Fits within 400x400 box
+    large: 'c1200x1200'  // Fits within 1200x1200 box
   }
-  const thumbnailSize = sizeMap[size] || 'c300x0'
+  const thumbnailSize = sizeMap[size] || 'c400x400'
 
   const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/thumbnails/0/${thumbnailSize}/content`
 
