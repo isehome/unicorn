@@ -31,7 +31,6 @@ import {
   Package,
   ShoppingCart,
   Camera,
-  DollarSign,
   Loader2,
   Send
 } from 'lucide-react';
@@ -43,7 +42,6 @@ import {
   servicePOService
 } from '../../services/serviceTicketService';
 import { weeklyPlanningService } from '../../services/weeklyPlanningService';
-import { quickbooksService } from '../../services/quickbooksService';
 import ServiceTriageForm from './ServiceTriageForm';
 import ServicePartsManager from './ServicePartsManager';
 import ServicePOManager from './ServicePOManager';
@@ -139,10 +137,6 @@ const ServiceTicketDetail = () => {
   const [partsCount, setPartsCount] = useState(0);
   const [partsNeededCount, setPartsNeededCount] = useState(0);
   const [posCount, setPosCount] = useState(0);
-
-  // QuickBooks export state
-  const [exportingToQBO, setExportingToQBO] = useState(false);
-  const [qboError, setQboError] = useState(null);
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -781,48 +775,6 @@ const ServiceTicketDetail = () => {
     }
   };
 
-  // Export ticket to QuickBooks
-  const handleExportToQuickBooks = async () => {
-    if (!ticket?.id) return;
-
-    // Confirm export
-    if (!window.confirm(
-      `Export ticket #${ticket.ticket_number} to QuickBooks?\n\n` +
-      `This will create an invoice with:\n` +
-      `- Labor hours logged\n` +
-      `- Parts added to the ticket\n\n` +
-      `Continue?`
-    )) {
-      return;
-    }
-
-    try {
-      setExportingToQBO(true);
-      setQboError(null);
-
-      const result = await quickbooksService.createInvoiceFromTicket(ticket.id);
-
-      // Show success and offer to view invoice
-      if (result.invoiceUrl) {
-        const viewNow = window.confirm(
-          `Invoice #${result.invoiceNumber} created successfully!\n\n` +
-          `Click OK to view in QuickBooks, or Cancel to stay here.`
-        );
-        if (viewNow) {
-          window.open(result.invoiceUrl, '_blank');
-        }
-      }
-
-      // Reload ticket to get updated QBO status
-      await loadTicket();
-    } catch (err) {
-      console.error('[ServiceTicketDetail] QBO export failed:', err);
-      setQboError(err.message || 'Failed to export to QuickBooks');
-    } finally {
-      setExportingToQBO(false);
-    }
-  };
-
   const getStatusStyles = (status) => {
     switch (status) {
       case 'open':
@@ -1157,55 +1109,6 @@ const ServiceTicketDetail = () => {
             )}
           </div>
 
-          {/* Actions - Mobile Collapsible */}
-          <div className="bg-zinc-800 rounded-lg overflow-hidden">
-            <button
-              onClick={() => toggleSection('actions')}
-              className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <Settings size={18} className="text-violet-400" />
-                <h2 className="font-semibold text-white">Quick Actions</h2>
-              </div>
-              {expandedSections.actions ? (
-                <ChevronDown size={18} className="text-zinc-400" />
-              ) : (
-                <ChevronRight size={18} className="text-zinc-400" />
-              )}
-            </button>
-            {expandedSections.actions && (
-              <div className="p-4 pt-0 border-t border-zinc-700">
-                <div className="flex flex-wrap gap-2">
-                  {(ticket.status === 'resolved' || ticket.status === 'closed') && !ticket.qbo_invoice_id && (
-                    <button
-                      onClick={handleExportToQuickBooks}
-                      disabled={exportingToQBO}
-                      className="flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-sm transition-colors disabled:opacity-50"
-                    >
-                      {exportingToQBO ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <DollarSign size={14} />
-                      )}
-                      Export to QuickBooks
-                    </button>
-                  )}
-                  {/* Show message if no actions available */}
-                  {!(ticket.status === 'resolved' || ticket.status === 'closed') && !ticket.qbo_invoice_id && (
-                    <span className="text-zinc-500 text-sm">Schedule visits from Weekly Planning</span>
-                  )}
-                </div>
-                {ticket.qbo_invoice_id && (
-                  <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                    <div className="flex items-center gap-2 text-green-400 text-xs">
-                      <CheckCircle size={12} />
-                      <span>Invoice #{ticket.qbo_invoice_number || ticket.qbo_invoice_id}</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1827,58 +1730,6 @@ const ServiceTicketDetail = () => {
               </div>
             </div>
 
-            {/* Quick Actions - Only show if there are actions available */}
-            {((ticket.status === 'resolved' || ticket.status === 'closed') || ticket.qbo_invoice_id) && (
-              <div className="bg-zinc-800 rounded-lg p-4">
-                <h2 className="font-semibold text-white mb-3">Actions</h2>
-                <div className="space-y-2">
-                  {/* QuickBooks Export - only for resolved/closed tickets */}
-                  {(ticket.status === 'resolved' || ticket.status === 'closed') && (
-                    <>
-                      {ticket.qbo_invoice_id ? (
-                        <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-                          <div className="flex items-center gap-2 text-green-400 text-sm mb-1">
-                            <CheckCircle size={14} />
-                            <span className="font-medium">Exported to QuickBooks</span>
-                          </div>
-                          <div className="text-xs text-zinc-400">
-                            Invoice #{ticket.qbo_invoice_number || ticket.qbo_invoice_id}
-                            {ticket.qbo_synced_at && (
-                              <span className="ml-2">
-                                • {new Date(ticket.qbo_synced_at).toLocaleDateString()}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={handleExportToQuickBooks}
-                          disabled={exportingToQBO}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white text-sm transition-colors disabled:opacity-50"
-                        >
-                          {exportingToQBO ? (
-                            <>
-                              <Loader2 size={16} className="animate-spin" />
-                              Creating Invoice...
-                            </>
-                          ) : (
-                            <>
-                              <DollarSign size={16} />
-                              Export to QuickBooks
-                            </>
-                          )}
-                        </button>
-                      )}
-                      {qboError && (
-                        <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
-                          {qboError}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
