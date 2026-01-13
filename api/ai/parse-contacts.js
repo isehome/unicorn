@@ -36,14 +36,23 @@ module.exports = async (req, res) => {
 
       const prompt = `Parse these contacts into clean structured data. For EACH contact in the input array, output a corresponding object.
 
-RULES:
-1. Split "name" into first_name and last_name (e.g. "John Smith" -> first_name: "John", last_name: "Smith")
-2. For phone fields containing "Phone:" or "Mobile:", extract JUST the number. Example: "Phone:3179833350 Mobile:(317) 432-2463" -> phone: "(317) 983-3350"
-3. Format all phone numbers as (XXX) XXX-XXXX
-4. If name looks like a company (contains Corp, LLC, Inc, University, etc), set is_company: true and leave first_name/last_name empty
-5. If is_company is true, also put the name in the "company" field
-6. Keep the original email value
-7. PRESERVE any address fields exactly as provided - do not modify them: address, address1, address2, city, state, zip
+CRITICAL RULES:
+1. **ADDRESS DETECTION**: If the "name" field contains an ADDRESS (street number, street name, city, state, zip code like "100 S. Main Street" or "Longboat Key FL 34228"), set name to EMPTY STRING. Addresses are NOT names!
+2. Split valid person names into first_name and last_name (e.g. "John Smith" -> first_name: "John", last_name: "Smith")
+3. For phone fields containing "Phone:" or "Mobile:", extract JUST the number. Example: "Phone:3179833350 Mobile:(317) 432-2463" -> phone: "(317) 983-3350"
+4. Format all phone numbers as (XXX) XXX-XXXX
+5. If name looks like a company (contains Corp, LLC, Inc, University, etc), set is_company: true and leave first_name/last_name empty
+6. If is_company is true, also put the name in the "company" field
+7. Keep the original email value
+8. PRESERVE any address fields exactly as provided - do not modify them: address, address1, address2, city, state, zip
+9. If no valid name found but email exists, derive name from email prefix (john.smith@email.com -> "John Smith")
+
+EXAMPLES OF ADDRESSES (NOT valid names - set name to ""):
+- "100 S. Main Street"
+- "5617 N Illinois St"
+- "Longboat Key FL 34228"
+- "123 Oak Ave, Suite 200"
+- "PO Box 1234"
 
 INPUT (${batch.length} contacts):
 ${JSON.stringify(batch)}
