@@ -27,28 +27,50 @@ async function getAppToken() {
 }
 
 async function getThumbnail(token, driveId, itemId, size = 'medium') {
-  // Microsoft Graph thumbnail sizes: small (48x48), medium (176x176), large (800x800)
-  // Or use custom with c{width}x{height} format
-  const sizeMap = {
-    small: 'small',
-    medium: 'medium',
-    large: 'large'
+  // Microsoft Graph thumbnail sizes:
+  // Default sizes (square, cropped): small (48x48), medium (176x176), large (800x800)
+  // Custom sizes preserve aspect ratio: c{width}x{height} or c{width}x0 for auto-height
+  // Using custom sizes to preserve photo aspect ratios
+  // 'full' = download the actual file content (not a thumbnail)
+
+  if (size === 'full') {
+    // Get the full resolution file content
+    const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/content`
+    const resp = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      redirect: 'follow' // Graph API redirects to the actual file
+    })
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new Error(`Full file fetch failed: ${resp.status} ${text}`)
+    }
+
+    return resp
   }
-  const thumbnailSize = sizeMap[size] || 'medium'
-  
+
+  const sizeMap = {
+    small: 'c96x0',     // 96px wide, auto height (preserves aspect ratio)
+    medium: 'c300x0',   // 300px wide, auto height
+    large: 'c800x0'     // 800px wide, auto height
+  }
+  const thumbnailSize = sizeMap[size] || 'c300x0'
+
   const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/thumbnails/0/${thumbnailSize}/content`
-  
+
   const resp = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${token}`
     }
   })
-  
+
   if (!resp.ok) {
     const text = await resp.text()
     throw new Error(`Thumbnail fetch failed: ${resp.status} ${text}`)
   }
-  
+
   return resp
 }
 

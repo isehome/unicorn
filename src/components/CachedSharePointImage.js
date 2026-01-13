@@ -86,10 +86,20 @@ const CachedSharePointImage = ({
 
         // Don't load full resolution unless explicitly requested
         if (showingFull || displayType === 'full') {
-          // Use proxy for full resolution (requires auth)
-          const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
-          if (isMounted) {
-            setImageSrc(proxyUrl);
+          // For full resolution, prefer using driveId/itemId if available (more reliable)
+          if (sharePointDriveId && sharePointItemId) {
+            // Use the thumbnail endpoint with 'full' size to get high-res image
+            const fullUrl = `/api/sharepoint-thumbnail?driveId=${encodeURIComponent(sharePointDriveId)}&itemId=${encodeURIComponent(sharePointItemId)}&size=full`;
+            console.log('Using Graph API for full resolution:', fullUrl);
+            if (isMounted) {
+              setImageSrc(fullUrl);
+            }
+          } else {
+            // Fallback to URL-based proxy
+            const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
+            if (isMounted) {
+              setImageSrc(proxyUrl);
+            }
           }
         } else {
           // First check cache for thumbnail
