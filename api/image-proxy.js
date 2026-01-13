@@ -46,12 +46,23 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { url } = req.query
-    
-    if (!url) {
+    const { url: rawUrl } = req.query
+
+    if (!rawUrl) {
       res.status(400).json({ error: 'Missing url parameter' })
       return
     }
+
+    // Decode URL - it may be double or triple encoded
+    let url = rawUrl
+    // Keep decoding until there are no more encoded characters
+    while (url.includes('%')) {
+      const decoded = decodeURIComponent(url)
+      if (decoded === url) break // No more decoding possible
+      url = decoded
+    }
+
+    console.log('Processing URL:', url)
 
     if (!TENANT || !CLIENT_ID || !CLIENT_SECRET) {
       res.status(500).json({ error: 'Server missing Azure credentials' })
