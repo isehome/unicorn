@@ -2224,11 +2224,12 @@ const WireDropDetail = () => {
                               sharePointDriveId={prewireStage.sharepoint_drive_id}
                               sharePointItemId={prewireStage.sharepoint_item_id}
                               displayType="thumbnail"
-                              size="medium"
+                              size="large"
                               alt="Prewire"
                               className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               showFullOnClick={false}
                               onClick={() => openStagePhotoViewer('prewire')}
+                              objectFit="cover"
                             />
                           )}
                           <Button
@@ -2343,11 +2344,12 @@ const WireDropDetail = () => {
                               sharePointDriveId={trimOutStage.sharepoint_drive_id}
                               sharePointItemId={trimOutStage.sharepoint_item_id}
                               displayType="thumbnail"
-                              size="medium"
+                              size="large"
                               alt="Trim Out"
                               className="w-full h-48 rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
                               showFullOnClick={false}
                               onClick={() => openStagePhotoViewer('trim_out')}
+                              objectFit="cover"
                             />
                           )}
                           <Button
