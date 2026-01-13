@@ -371,8 +371,16 @@ const UnscheduledTicketsPanel = ({
 
   // Combine and filter all tickets
   const { filteredUnscheduled, filteredScheduled, totalHours } = useMemo(() => {
+    console.log('[UnscheduledPanel] Filtering with:', {
+      ticketsCount: tickets.length,
+      sortBy,
+      priorityFilter,
+      categoryFilter,
+      sampleTicket: tickets[0] ? { priority: tickets[0].priority, created_at: tickets[0].created_at } : null
+    });
+
     // Apply filters to unscheduled tickets
-    let unscheduled = tickets;
+    let unscheduled = [...tickets]; // Create a copy to avoid mutating props
 
     // Deduplicate scheduled tickets by ticket_id (keep earliest schedule per ticket)
     const scheduledByTicket = new Map();
@@ -460,6 +468,12 @@ const UnscheduledTicketsPanel = ({
 
     const sortedUnscheduled = sortTickets(unscheduled);
     const sortedScheduled = sortScheduled(scheduled);
+
+    console.log('[UnscheduledPanel] After filtering/sorting:', {
+      unscheduledCount: sortedUnscheduled.length,
+      scheduledCount: sortedScheduled.length,
+      firstTwo: sortedUnscheduled.slice(0, 2).map(t => ({ id: t.id, priority: t.priority, created_at: t.created_at }))
+    });
 
     // Calculate total estimated hours for unscheduled
     const hours = sortedUnscheduled.reduce((sum, t) => sum + (parseFloat(t.estimated_hours) || 2), 0);

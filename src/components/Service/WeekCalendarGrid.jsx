@@ -324,12 +324,12 @@ const ScheduleBlock = memo(({
   };
 
   // Determine what to show based on block height
-  // Small blocks (30-45px): Just customer name + avatar
-  // Medium blocks (45-75px): + time
-  // Large blocks (75px+): + title + commit button
-  const isSmall = height < 45;
-  const isMedium = height >= 45 && height < 75;
-  const isLarge = height >= 75;
+  // Small blocks (30-50px): Customer name + commit icon
+  // Medium blocks (50-90px): + time
+  // Large blocks (90px+): + title + full commit button
+  const isSmall = height < 50;
+  const isMedium = height >= 50 && height < 90;
+  const isLarge = height >= 90;
 
   return (
     <div
@@ -347,9 +347,9 @@ const ScheduleBlock = memo(({
         zIndex: isDragging ? 50 : 20
       }}
       onClick={() => onClick?.(schedule)}
-      title={`${displayName}${categoryLabel ? ` • ${categoryLabel}` : ''}\n${schedule.scheduled_time_start?.slice(0, 5)} - ${schedule.scheduled_time_end?.slice(0, 5)} (${getEstimatedHours().toFixed(1)}h)\n${ticket.title || 'Service visit'}`}
+      title={`${displayName}${categoryLabel ? ` • ${categoryLabel}` : ''}\n${schedule.scheduled_time_start?.slice(0, 5)} - ${schedule.scheduled_time_end?.slice(0, 5)} (${getEstimatedHours().toFixed(1)}h)\n${ticket.title || 'Service visit'}${isDraft ? '\n\nClick to commit & send invite' : ''}`}
     >
-      {/* Row 1: Customer name + tech avatar */}
+      {/* Row 1: Customer name + commit icon (for drafts) or tech avatar */}
       <div className="flex items-center justify-between gap-1">
         <span
           className="text-xs font-medium truncate flex-1"
@@ -357,15 +357,32 @@ const ScheduleBlock = memo(({
         >
           {displayName}
         </span>
-        {/* Technician Avatar */}
-        {technicianName && (
-          <div
-            className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-            style={{ backgroundColor: technicianColor, color: '#fff' }}
-          >
-            {technicianInitials}
-          </div>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Commit icon for draft blocks (all sizes) */}
+          {isDraft && onCommit && (
+            <button
+              className="w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-green-500/30"
+              style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)' }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCommit?.(schedule);
+              }}
+              title="Commit & Send Invite"
+            >
+              <Send size={10} style={{ color: '#22C55E' }} />
+            </button>
+          )}
+          {/* Technician Avatar */}
+          {technicianName && (
+            <div
+              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold"
+              style={{ backgroundColor: technicianColor, color: '#fff' }}
+              title={technicianName}
+            >
+              {technicianInitials}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Row 2: Time range (only for medium+ blocks) */}
@@ -385,10 +402,10 @@ const ScheduleBlock = memo(({
         </div>
       )}
 
-      {/* Commit button (only for large draft blocks) */}
+      {/* Full commit button (only for large draft blocks) */}
       {isDraft && isLarge && onCommit && (
         <button
-          className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors"
+          className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors hover:bg-green-500/30"
           style={{
             backgroundColor: 'rgba(34, 197, 94, 0.2)',
             color: '#22C55E',
@@ -400,7 +417,7 @@ const ScheduleBlock = memo(({
           }}
         >
           <Send size={10} />
-          <span>Commit</span>
+          <span>Commit & Send</span>
         </button>
       )}
 
