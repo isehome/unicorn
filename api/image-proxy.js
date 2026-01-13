@@ -65,7 +65,8 @@ module.exports = async (req, res) => {
     let downloadUrl
     
     // Try to parse as SharePoint sharing URL
-    const shareUrlMatch = url.match(/https:\/\/[^\/]+\.sharepoint\.com\/:i:|:x:|:b:|:v:\/g\//)
+    // Matches formats like: https://tenant.sharepoint.com/:i:/g/... or :x:, :b:, :v:
+    const shareUrlMatch = url.match(/https:\/\/[^\/]+\.sharepoint\.com\/(:i:|:x:|:b:|:v:)\/g\//)
     
     if (shareUrlMatch) {
       // This is a sharing URL, resolve it to get the actual file

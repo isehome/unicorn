@@ -10,15 +10,8 @@
  * - Error handling
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { thumbnailCache } from '../lib/thumbnailCache';
-
-// SharePoint thumbnail size configurations
-const THUMBNAIL_SIZES = {
-  small: { width: 96, height: 96 },
-  medium: { width: 300, height: 300 },
-  large: { width: 800, height: 800 }
-};
 
 const CachedSharePointImage = ({
   sharePointUrl,
@@ -108,23 +101,15 @@ const CachedSharePointImage = ({
               setImageSrc(thumbnailUrl);
             }
           } else {
-            // FALLBACK: Old behavior for photos uploaded before metadata was stored
-            console.warn('No SharePoint metadata available, using fallback thumbnail method');
-            const sizeConfig = THUMBNAIL_SIZES[size] || THUMBNAIL_SIZES.medium;
-            
-            // For embed URLs (format: https://tenant.sharepoint.com/:i:/g/...)
-            // Try adding thumbnail parameters (may not work)
-            let thumbnailUrl;
-            if (sharePointUrl.includes('/:i:/') || sharePointUrl.includes('/:x:/')) {
-              // This is an embed link - try direct thumbnail access
-              thumbnailUrl = `${sharePointUrl}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
-            } else {
-              // For other URLs, try the proxy with size parameters
-              thumbnailUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}&width=${sizeConfig.width}&height=${sizeConfig.height}`;
-            }
+            // FALLBACK: Use image proxy for photos without SharePoint metadata
+            // This handles photos uploaded before metadata columns were added
+            console.warn('No SharePoint metadata available, using image-proxy fallback');
+
+            // Use the image proxy which handles SharePoint authentication server-side
+            const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(sharePointUrl)}`;
 
             if (isMounted) {
-              setImageSrc(thumbnailUrl);
+              setImageSrc(proxyUrl);
             }
           }
         }
