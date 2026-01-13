@@ -110,13 +110,152 @@ When equipment can be fulfilled from warehouse stock (not ordered from external 
 
 This is the standard "allocate on commit" pattern used in warehouse management systems.
 
-### 5. Photo Storage (SharePoint)
+### 5. Photo Storage (SharePoint) - CRITICAL IMPLEMENTATION GUIDE
 
-Photos stored in SharePoint with structure:
+**⚠️ READ THIS BEFORE TOUCHING ANY PHOTO CODE**
+
+All photos in the app are stored in SharePoint and displayed via the `CachedSharePointImage` component. This system uses Microsoft Graph API thumbnails for fast loading.
+
+#### Directory Structure in SharePoint
 ```
-{project_url}/wire_drops/{Room}_{Drop}/PREWIRE_{timestamp}.jpg
-{project_url}/issues/{Issue_Title}/{timestamp}.jpg
+{SharePoint Photos Root}/
+├── wire_drops/
+│   └── {RoomName}_{DropName}/
+│       ├── PREWIRE_{RoomName}_{DropName}.jpg
+│       ├── TRIM_OUT_{RoomName}_{DropName}.jpg
+│       └── COMMISSION_{RoomName}_{DropName}.jpg
+├── issues/
+│   └── {Issue Title}/
+│       └── ISSUE_{Title}_{timestamp}.jpg
+├── shades/
+│   └── {ShadeName}/
+│       └── {m1|m2}_{timestamp}.jpg
+└── floor_plans/
+    └── {Title}/
+        └── FLOORPLAN_{Title}_{timestamp}.png
 ```
+
+#### Key Files
+| Purpose | File |
+|---------|------|
+| Image display component | `src/components/CachedSharePointImage.js` |
+| Thumbnail API endpoint | `api/sharepoint-thumbnail.js` |
+| Full image proxy | `api/image-proxy.js` |
+| Upload service | `src/services/sharePointStorageService.js` |
+| Thumbnail cache | `src/lib/thumbnailCache.js` |
+
+#### Database Requirements - CRITICAL
+
+**Every table that stores photos MUST have these columns:**
+```sql
+photo_url TEXT,                    -- Full SharePoint URL
+sharepoint_drive_id TEXT,          -- Graph API drive ID
+sharepoint_item_id TEXT            -- Graph API item ID
+```
+
+**Tables with photo storage:**
+- `wire_drop_stages` - prewire, trim_out, commission photos
+- `issue_photos` - issue documentation photos
+- `shade_photos` - shade measurement photos
+- `lucid_pages` - floor plan images
+
+#### Upload Flow (How to Store Photos)
+```
+1. User selects file
+2. Call sharePointStorageService.uploadXxxPhoto()
+3. API uploads to SharePoint via Graph API
+4. API returns: { url, driveId, itemId, name, webUrl, size }
+5. ⚠️ STORE ALL METADATA IN DATABASE - not just the URL!
+```
+
+**Example upload code:**
+```javascript
+const result = await sharePointStorageService.uploadWireDropPhoto(
+  projectId, file, stageName, roomName, dropName
+);
+
+// ⚠️ Save ALL metadata - this enables fast thumbnails!
+await supabase.from('wire_drop_stages').update({
+  photo_url: result.url,
+  sharepoint_drive_id: result.driveId,    // REQUIRED!
+  sharepoint_item_id: result.itemId       // REQUIRED!
+}).eq('id', stageId);
+```
+
+#### Display Flow (How to Show Photos)
+
+**Always use `CachedSharePointImage` component:**
+```jsx
+<CachedSharePointImage
+  sharePointUrl={photo.url}
+  sharePointDriveId={photo.sharepoint_drive_id}   // Enables fast thumbnails
+  sharePointItemId={photo.sharepoint_item_id}     // Enables fast thumbnails
+  displayType="thumbnail"                          // or "full"
+  size="medium"                                    // small, medium, large
+  className="w-full aspect-square rounded-lg"     // ⚠️ USE aspect-square!
+  showFullOnClick={false}
+  onClick={() => openFullScreen()}
+  objectFit="cover"
+/>
+```
+
+#### Graph API Thumbnail Sizes - IMPORTANT
+
+**Thumbnails are SQUARE crops centered on the image:**
+| Size | Dimensions | Use Case |
+|------|------------|----------|
+| `small` | 96×96px | Lists, compact views |
+| `medium` | 176×176px | **Default** - Card thumbnails |
+| `large` | 800×800px | Large previews |
+| `full` | Original | Full-screen viewing |
+
+**⚠️ UI containers MUST be square to match:**
+```jsx
+// ✅ CORRECT - Square container matches square thumbnail
+className="w-full aspect-square rounded-lg"
+
+// ❌ WRONG - Rectangular container causes awkward cropping
+className="w-full h-48 rounded-lg"
+```
+
+#### Fallback for Legacy Photos
+
+Photos uploaded before metadata columns existed won't have `driveId`/`itemId`. The component automatically falls back to `image-proxy`:
+
+```
+1. Check if sharepoint_drive_id && sharepoint_item_id exist
+2. If YES: Use Graph API thumbnail (fast, ~10-20KB)
+3. If NO: Use /api/image-proxy with full URL (slower, full file)
+```
+
+#### Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Thumbnail shows cropped/zoomed | UI container not square | Use `aspect-square` class |
+| No thumbnail, just loading | Missing driveId/itemId in DB | Check upload saves metadata |
+| Full screen not working | Missing `size="full"` support | Use `/api/sharepoint-thumbnail?size=full` |
+| Old photos not loading | URL encoding issues | `image-proxy.js` handles this |
+
+#### Adding Photos to a New Feature
+
+1. **Add database columns:**
+```sql
+ALTER TABLE your_table ADD COLUMN IF NOT EXISTS photo_url TEXT;
+ALTER TABLE your_table ADD COLUMN IF NOT EXISTS sharepoint_drive_id TEXT;
+ALTER TABLE your_table ADD COLUMN IF NOT EXISTS sharepoint_item_id TEXT;
+```
+
+2. **Update upload to save all metadata** (see Upload Flow above)
+
+3. **Use CachedSharePointImage with all props** (see Display Flow above)
+
+4. **Use square container** (`aspect-square` class)
+
+#### Reference Documentation
+See `archive/implementation-history/COMPREHENSIVE_SHAREPOINT_THUMBNAILS_COMPLETE.md` for the full implementation history.
+
+---
 
 ### 6. Shade Management System
 
