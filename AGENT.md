@@ -4443,3 +4443,156 @@ See `src/pages/PublicIssuePortal.js` and `api/public-issue.js` for reference imp
 - [ ] No sensitive data exposed before verification
 
 ---
+
+## 2026-01-13
+
+### Weekly Planning UI Improvements
+
+Several fixes to the Weekly Planning calendar and service ticket components.
+
+#### Calendar Block Text Overlap Fix
+- **Problem:** Service appointments were appearing twice - as ScheduleBlock (from service_schedules) AND as BlockedTimeBlock (from M365 calendar with `[AWAITING CUSTOMER]` prefix)
+- **Solution:** Filter out M365 calendar events that start with service-related prefixes: `[PENDING]`, `[AWAITING CUSTOMER]`, `[TENTATIVE]`, `Service:`
+- **File:** `src/pages/WeeklyPlanning.js`
+
+#### Simplified ScheduleBlock Layout
+- Redesigned ScheduleBlock with height-based responsive content:
+  - Small blocks (<50px): Customer name + commit icon only
+  - Medium blocks (50-90px): + time display
+  - Large blocks (90px+): + title + full commit button
+- Commit icon now shows for ALL draft blocks regardless of size (was hidden for 1-hour blocks)
+- **File:** `src/components/Service/WeekCalendarGrid.jsx`
+
+#### Removed Single/All View Toggle
+- Removed confusing Single/All buttons from TechnicianFilterBar
+- The technician dropdown already handles view selection (All Technicians vs specific tech)
+- **File:** `src/components/Service/TechnicianFilterBar.jsx`
+
+#### Technician Change Data Reload
+- Fixed issue where changing technicians only loaded partial data
+- Now calls `setWeeks([])` immediately when technician changes to force full data reload
+- **File:** `src/pages/WeeklyPlanning.js`
+
+### Inline Priority Dropdown in ServiceTicketDetail
+
+- **Before:** Priority could only be changed by entering full "Edit" mode
+- **After:** Priority badge is now a clickable dropdown that updates immediately
+- Uses custom chevron icon with `appearance: none` for consistent styling
+- **File:** `src/components/Service/ServiceTicketDetail.js`
+
+### Fixed Priority Filter Mismatch in UnscheduledTicketsPanel
+
+- **Problem:** Priority filter dropdown used `"normal"` but database uses `"medium"`
+- **Solution:** Updated all references from "normal" to "medium":
+  - Filter dropdown options
+  - `priorityColors` object
+  - `priorityOrder` sort mapping
+- Added detailed console logging to debug sort operations
+- **File:** `src/components/Service/UnscheduledTicketsPanel.jsx`
+
+### Service Ticket Priority Values (Standard)
+
+| Value | Label | Color |
+|-------|-------|-------|
+| `urgent` | Urgent | Red |
+| `high` | High | Orange |
+| `medium` | Medium | Blue |
+| `low` | Low | Olive/Green |
+
+**Important:** Always use lowercase values (`medium`, not `Normal` or `normal`). The display label can be capitalized but the database value must be lowercase.
+
+### CSV Contact Import - Address Detection & AI Enhancement
+
+Major fixes to prevent addresses from being imported as contact names when importing from QuickBooks or similar sources.
+
+#### Problem
+QuickBooks CSV exports have complex field mappings:
+- `Customer full name` = Company name (not a person)
+- `Full name` = Person's name (often empty)
+- `Bill address` / `Ship address` = Multi-line address data
+
+When `Full name` was empty, the system was incorrectly using address data as the contact name, creating entries like "100 S. Main Street" or "Longboat Key FL 34228" as contact names.
+
+#### Solution: Two-Layer Protection
+
+**Layer 1: AI Parsing (Gemini)**
+- Updated `api/ai/parse-contacts.js` prompt with explicit address detection rules
+- AI now rejects addresses as names and returns empty string
+- Falls back to deriving name from email prefix if no valid name found
+
+**Layer 2: Code Validation (Fallback)**
+- Added `looksLikeAddress()` function in `src/pages/AdminPage.js`
+- Regex patterns detect: street numbers, zip codes, street types (St, Ave, Blvd), state abbreviations
+- Addresses are rejected even if AI misses them
+
+#### Address Detection Patterns
+```javascript
+const looksLikeAddress = (str) => {
+  return (
+    /^\d+\s/.test(str) ||           // Starts with number "100 Main St"
+    /\d{5}/.test(str) ||             // Contains 5-digit zip
+    /\b(street|st\.|ave|avenue|drive|dr\.|road|rd\.)\b/i.test(str) ||
+    /\b(fl|in|ca|tx|ny|oh)\s+\d{4,5}/i.test(str) ||  // State + zip
+    /,\s*(fl|in|ca|tx|usa|united states)\s*$/i.test(str)  // Ends with state
+  );
+};
+```
+
+#### CSV Header Exclusion Rules
+Prevents wrong column mappings:
+```javascript
+const exclusionRules = {
+  name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  first_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  last_name: ['address', 'street', 'city', 'state', 'zip', 'postal', 'bill', 'ship'],
+  company: ['address', 'street', 'city', 'state', 'zip', 'postal'],
+};
+```
+
+#### Performance Improvements
+- **Batch Inserts:** Contacts inserted in chunks of 50 (was one at a time)
+- **In-Memory Duplicate Check:** Pre-fetches all existing contacts for fast comparison
+- **AI Processing:** Enabled by default to help clean data
+
+#### Files Modified
+| File | Changes |
+|------|---------|
+| `src/pages/AdminPage.js` | Address detection, exclusion rules, batch inserts, in-memory duplicate checking |
+| `api/ai/parse-contacts.js` | Updated AI prompt with address detection rules and examples |
+| `database/scripts/cleanup_address_as_name_contacts.sql` | SQL script to clean up bad imports |
+
+#### Cleanup SQL (for bad imports)
+```sql
+-- Preview contacts with address-like names
+SELECT id, name, email, phone, created_at
+FROM contacts
+WHERE
+  name ~ '^\d+\s' OR name ~ '\d{5}'
+  OR name ~* '\s(st|street|ave|avenue|dr|drive|rd|road|ln|lane|blvd)\b'
+  OR name ~* '\s(fl|in|ca|tx|ny|oh|pa|il|ga|nc)\s*$'
+ORDER BY created_at DESC;
+
+-- Delete if they look like bad imports
+DELETE FROM contacts WHERE created_at > NOW() - INTERVAL '4 hours';
+```
+
+### Business Card Scanner - Landscape Mode Fix
+
+Fixed the business card scanner to work properly when phone is rotated to landscape mode.
+
+#### Problem
+When rotating phone to landscape for business card scanning:
+- Capture button was pushed off-screen
+- Bottom navigation bar overlapped the controls
+- Camera preview didn't fill the screen properly
+
+#### Solution
+- Redesigned to full-screen camera UI with `fixed inset-0`
+- Control bar fixed at bottom with proper padding
+- Added `pb-24` padding to clear bottom navigation bar
+- Large circular capture button always visible
+
+#### File Modified
+`src/components/PeopleManagement.js`
+
+---
