@@ -31,7 +31,8 @@ import {
   Check,
   X,
   Pencil,
-  Printer
+  Printer,
+  Filter
 } from 'lucide-react';
 import {
   projectsService,
@@ -193,6 +194,13 @@ const ProjectDetailView = () => {
   const [error, setError] = useState(null);
   const [expandedSection, setExpandedSection] = useState(null);
   const [wireDropQuery, setWireDropQuery] = useState('');
+
+  // Stage completion filters - when true, show only drops where that stage is NOT completed
+  const [filterPrewireIncomplete, setFilterPrewireIncomplete] = useState(false);
+  const [filterInstallIncomplete, setFilterInstallIncomplete] = useState(false);
+  const [filterCommIncomplete, setFilterCommIncomplete] = useState(false);
+  const [showStageFilterMenu, setShowStageFilterMenu] = useState(false);
+  const stageFilterMenuRef = useRef(null);
   const [newTodo, setNewTodo] = useState('');
   const [todoError, setTodoError] = useState('');
   const [addingTodo, setAddingTodo] = useState(false);
@@ -425,6 +433,23 @@ const ProjectDetailView = () => {
     }
   }, [expandedSection]);
 
+  // Close stage filter menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (stageFilterMenuRef.current && !stageFilterMenuRef.current.contains(event.target)) {
+        setShowStageFilterMenu(false);
+      }
+    };
+
+    if (showStageFilterMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showStageFilterMenu]);
+
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
   // ══════════════════════════════════════════════════════════════
@@ -526,6 +551,20 @@ const ProjectDetailView = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Helper to get completion status for a drop
+  const getDropCompletionStatus = useCallback((drop) => {
+    const stages = drop.wire_drop_stages || [];
+    const prewireStage = stages.find(s => s.stage_type === 'prewire');
+    const trimOutStage = stages.find(s => s.stage_type === 'trim_out');
+    const commissionStage = stages.find(s => s.stage_type === 'commission');
+
+    return {
+      prewireComplete: Boolean(prewireStage?.completed),
+      installComplete: Boolean(trimOutStage?.completed),
+      commissionComplete: Boolean(commissionStage?.completed)
+    };
+  }, []);
+
   const filteredWireDrops = useMemo(() => {
     const list = Array.isArray(wireDrops) ? [...wireDrops] : [];
     const query = (wireDropQuery || '').trim().toLowerCase();
@@ -546,7 +585,23 @@ const ProjectDetailView = () => {
         .some((value) => String(value).toLowerCase().includes(query));
     };
 
-    const filtered = list.filter(matchesQuery);
+    let filtered = list.filter(matchesQuery);
+
+    // Apply stage completion filters (show drops where selected stages are NOT complete)
+    // If any filter is active, use OR logic - drop is included if it matches ANY active filter
+    const hasStageFilters = filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete;
+    if (hasStageFilters) {
+      filtered = filtered.filter(drop => {
+        const { prewireComplete, installComplete, commissionComplete } = getDropCompletionStatus(drop);
+
+        // Include drop if it matches ANY of the active "incomplete" filters
+        if (filterPrewireIncomplete && !prewireComplete) return true;
+        if (filterInstallIncomplete && !installComplete) return true;
+        if (filterCommIncomplete && !commissionComplete) return true;
+
+        return false; // Drop doesn't match any active filter
+      });
+    }
 
     const getRoomKey = (drop) =>
       (drop.project_room?.name || drop.room_name || '').toLowerCase();
@@ -570,7 +625,7 @@ const ProjectDetailView = () => {
       if (!dropA && dropB) return 1;
       return 0;
     });
-  }, [wireDrops, wireDropQuery]);
+  }, [wireDrops, wireDropQuery, filterPrewireIncomplete, filterInstallIncomplete, filterCommIncomplete, getDropCompletionStatus]);
 
   const openTodos = useMemo(
     () => todos.filter((todo) => !todo.completed),
@@ -1601,17 +1656,125 @@ const ProjectDetailView = () => {
 
           {expandedSection === 'wireDrops' && (
             <div className="mt-3 p-4 rounded-2xl border space-y-4" style={{ ...styles.card, boxShadow: styles.innerShadow }}>
-              <div className="relative">
-                <Search size={18} className="absolute left-3 top-3" style={styles.textSecondary} />
-                <input
-                  type="text"
-                  value={wireDropQuery}
-                  onChange={(event) => setWireDropQuery(event.target.value)}
-                  placeholder="Search wire drops..."
-                  className="w-full pl-10 pr-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-0"
-                  style={styles.input}
-                />
+              {/* Search and Filter Row */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={18} className="absolute left-3 top-3" style={styles.textSecondary} />
+                  <input
+                    type="text"
+                    value={wireDropQuery}
+                    onChange={(event) => setWireDropQuery(event.target.value)}
+                    placeholder="Search wire drops..."
+                    className="w-full pl-10 pr-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-0"
+                    style={styles.input}
+                  />
+                </div>
+                {/* Stage Filter Dropdown */}
+                <div className="relative" ref={stageFilterMenuRef}>
+                  <button
+                    onClick={() => setShowStageFilterMenu(!showStageFilterMenu)}
+                    className={`px-3 py-2 rounded-xl border flex items-center gap-2 transition-colors ${
+                      (filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete)
+                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300'
+                        : 'border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-700'
+                    }`}
+                  >
+                    <Filter size={16} />
+                    <span className="text-sm font-medium hidden sm:inline">Stage</span>
+                    {(filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete) && (
+                      <span className="w-2 h-2 rounded-full bg-violet-500" />
+                    )}
+                  </button>
+                  {showStageFilterMenu && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-gray-200 dark:border-zinc-700 z-20">
+                      <div className="p-3 space-y-2">
+                        <p className="text-xs font-semibold text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-2">
+                          Show Incomplete
+                        </p>
+                        <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700">
+                          <input
+                            type="checkbox"
+                            checked={filterPrewireIncomplete}
+                            onChange={(e) => setFilterPrewireIncomplete(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-zinc-300">Prewire Not Done</span>
+                        </label>
+                        <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700">
+                          <input
+                            type="checkbox"
+                            checked={filterInstallIncomplete}
+                            onChange={(e) => setFilterInstallIncomplete(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-zinc-300">Install Not Done</span>
+                        </label>
+                        <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700">
+                          <input
+                            type="checkbox"
+                            checked={filterCommIncomplete}
+                            onChange={(e) => setFilterCommIncomplete(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-zinc-300">Commission Not Done</span>
+                        </label>
+                        {(filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete) && (
+                          <button
+                            onClick={() => {
+                              setFilterPrewireIncomplete(false);
+                              setFilterInstallIncomplete(false);
+                              setFilterCommIncomplete(false);
+                            }}
+                            className="w-full mt-2 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white border border-gray-200 dark:border-zinc-600 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-700"
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Active filter badges */}
+              {(filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete) && (
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-gray-500 dark:text-zinc-400 self-center">Filtering:</span>
+                  {filterPrewireIncomplete && (
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      Prewire Incomplete
+                      <button
+                        onClick={() => setFilterPrewireIncomplete(false)}
+                        className="ml-1 hover:text-amber-900 dark:hover:text-amber-200"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                  {filterInstallIncomplete && (
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      Install Incomplete
+                      <button
+                        onClick={() => setFilterInstallIncomplete(false)}
+                        className="ml-1 hover:text-amber-900 dark:hover:text-amber-200"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                  {filterCommIncomplete && (
+                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      Commission Incomplete
+                      <button
+                        onClick={() => setFilterCommIncomplete(false)}
+                        className="ml-1 hover:text-amber-900 dark:hover:text-amber-200"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <Button variant="primary" icon={Plus} onClick={handleAddWireDrop} style={{ flex: '1 1 33%' }}>
@@ -1627,7 +1790,9 @@ const ProjectDetailView = () => {
 
               {filteredWireDrops.length === 0 ? (
                 <p className="text-sm" style={styles.textSecondary}>
-                  {wireDropQuery ? 'No matching wire drops.' : 'No wire drops yet.'}
+                  {wireDropQuery || filterPrewireIncomplete || filterInstallIncomplete || filterCommIncomplete
+                    ? 'No matching wire drops.'
+                    : 'No wire drops yet.'}
                 </p>
               ) : (
                 (() => {
