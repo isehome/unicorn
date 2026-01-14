@@ -3531,6 +3531,65 @@ The application needs a proper user capabilities/roles system to control access 
 
 ---
 
+### TodoDetailPage Crash Fix (BR-2026-01-14-0003)
+
+**Bug ID:** BR-2026-01-14-0003
+
+**Problem:** TodoDetailPage crashed with `TypeError: undefined is not an object (evaluating 'M.palette')` when opening a todo item on mobile (iPhone).
+
+**Root Causes Identified:**
+
+1. **Undefined Palette Object** - Components were accessing `palette.textPrimary`, `palette.info`, etc. without defensive checks when the palette object could be undefined during component initialization or when theme context wasn't fully loaded.
+
+2. **Missing Database Columns** - The `project_todos` table was missing the calendar integration columns (`do_by_time`, `planned_hours`, `calendar_event_id`) that were added in migration `2025-12-02_add_todo_calendar_fields.sql`.
+
+3. **Non-existent `updated_at` Column** - Code was trying to set `updated_at` on `project_todos` but this column doesn't exist in the table schema.
+
+**Fixes Applied:**
+
+1. **Defensive Palette Handling** - Added fallback defaults for palette properties in three components:
+   ```javascript
+   // Pattern applied to all components
+   const rawPalette = paletteByMode[mode] || paletteByMode.light || {};
+   const palette = {
+       success: rawPalette.success || '#94AF32',
+       warning: rawPalette.warning || '#F59E0B',
+       info: rawPalette.info || '#3B82F6',
+       primary: rawPalette.primary || '#8B5CF6',
+       textPrimary: rawPalette.textPrimary || (mode === 'dark' ? '#FAFAFA' : '#18181B'),
+       textSecondary: rawPalette.textSecondary || (mode === 'dark' ? '#A1A1AA' : '#52525B'),
+       ...rawPalette
+   };
+   ```
+
+2. **Database Migration** - User ran the migration to add missing columns:
+   - `do_by_time time` - Start time for calendar events
+   - `planned_hours decimal(4,2)` - Duration estimate
+   - `calendar_event_id text` - Microsoft Graph event ID
+
+3. **Removed `updated_at` References** - Removed `updated_at: new Date().toISOString()` from update payloads in `handleSave` and `handleToggleComplete` functions.
+
+4. **Time Format Fix** - Format `do_by_time` as `HH:MM:SS` for PostgreSQL time type:
+   ```javascript
+   const formattedDoByTime = doBy && doByTime ? `${doByTime}:00` : null;
+   ```
+
+**Files Modified:**
+- `src/components/TodoDetailPage.js` - Defensive palette, removed `updated_at`, time format fix
+- `src/components/TodoDetailModal.js` - Defensive palette handling
+- `src/components/ui/TimeSelectionGrid.jsx` - Defensive palette handling
+
+**Migration Required:**
+If encountering schema cache errors, run:
+```sql
+-- database/migrations/2025-12-02_add_todo_calendar_fields.sql
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS planned_hours decimal(4,2);
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS do_by_time time;
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS calendar_event_id text;
+```
+
+---
+
 ## 2025-12-23
 
 ### Azure AI Search RAG Integration (Major Update)

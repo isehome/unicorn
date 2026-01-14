@@ -15,9 +15,20 @@ import { supabase } from '../lib/supabase';
 const TodoDetailPage = () => {
     const { projectId, todoId } = useParams();
     const navigate = useNavigate();
-    const { mode } = useTheme();
+    const themeContext = useTheme();
+    const mode = themeContext?.mode || 'light';
     const authContext = useAuth();
-    const palette = paletteByMode[mode] || {};
+    // Ensure palette is always a valid object with required properties
+    const rawPalette = paletteByMode[mode] || paletteByMode.light || {};
+    const palette = {
+        success: rawPalette.success || '#94AF32',
+        warning: rawPalette.warning || '#F59E0B',
+        info: rawPalette.info || '#3B82F6',
+        primary: rawPalette.primary || '#8B5CF6',
+        textPrimary: rawPalette.textPrimary || (mode === 'dark' ? '#FAFAFA' : '#18181B'),
+        textSecondary: rawPalette.textSecondary || (mode === 'dark' ? '#A1A1AA' : '#52525B'),
+        ...rawPalette
+    };
 
     // Create styles object with borderColor for TimeSelectionGrid compatibility
     const styles = useMemo(() => {
@@ -236,22 +247,38 @@ const TodoDetailPage = () => {
             }
 
             // Save to database
-            const { error: updateError } = await supabase
-                .from('project_todos')
-                .update({
-                    title: title.trim(),
-                    description: description.trim() || null,
-                    due_by: dueBy || null,
-                    do_by: doBy || null,
-                    do_by_time: doBy ? doByTime : null,
-                    planned_hours: plannedHours || null,
-                    calendar_event_id: newCalendarEventId,
-                    importance: importance,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', todoId);
+            // Format time as HH:MM:SS for PostgreSQL time type
+            const formattedDoByTime = doBy && doByTime ? `${doByTime}:00` : null;
 
-            if (updateError) throw updateError;
+            const updatePayload = {
+                title: title.trim(),
+                description: description.trim() || null,
+                due_by: dueBy || null,
+                do_by: doBy || null,
+                do_by_time: formattedDoByTime,
+                planned_hours: plannedHours || null,
+                calendar_event_id: newCalendarEventId,
+                importance: importance
+            };
+            console.log('[TodoDetailPage] Saving todo with payload:', JSON.stringify(updatePayload, null, 2));
+            console.log('[TodoDetailPage] todoId:', todoId);
+
+            const { data: updateData, error: updateError } = await supabase
+                .from('project_todos')
+                .update(updatePayload)
+                .eq('id', todoId)
+                .select();
+
+            console.log('[TodoDetailPage] Update response data:', updateData);
+
+            if (updateError) {
+                console.error('[TodoDetailPage] Update error:', JSON.stringify(updateError, null, 2));
+                console.error('[TodoDetailPage] Error message:', updateError.message);
+                console.error('[TodoDetailPage] Error code:', updateError.code);
+                console.error('[TodoDetailPage] Error details:', updateError.details);
+                console.error('[TodoDetailPage] Error hint:', updateError.hint);
+                throw updateError;
+            }
 
             // Navigate back
             navigate(-1);
@@ -272,8 +299,7 @@ const TodoDetailPage = () => {
                 .update({
                     completed: newCompleted,
                     completed_at: newCompleted ? new Date().toISOString() : null,
-                    completed_by: newCompleted ? authContext.user?.id : null,
-                    updated_at: new Date().toISOString()
+                    completed_by: newCompleted ? authContext.user?.id : null
                 })
                 .eq('id', todoId);
 

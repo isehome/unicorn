@@ -19,9 +19,20 @@ const TodoDetailModal = ({
   onToggleComplete,
   onDelete,
   styles,
-  palette
+  palette: rawPalette
 }) => {
   useTheme(); // Ensure theme context is available
+
+  // Ensure palette is always a valid object with required properties
+  const palette = {
+    success: rawPalette?.success || '#94AF32',
+    warning: rawPalette?.warning || '#F59E0B',
+    info: rawPalette?.info || '#3B82F6',
+    primary: rawPalette?.primary || '#8B5CF6',
+    textSecondary: rawPalette?.textSecondary || '#71717A',
+    textPrimary: rawPalette?.textPrimary || '#18181B',
+    ...rawPalette
+  };
   const authContext = useAuth();
   const { publishState, registerActions, unregisterActions } = useAppState();
 

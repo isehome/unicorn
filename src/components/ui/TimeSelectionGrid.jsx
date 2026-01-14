@@ -13,8 +13,16 @@ const TimeSelectionGrid = ({
     selectedDuration = 1,
     onSelectSlot,
     styles,
-    palette
+    palette: rawPalette
 }) => {
+    // Ensure palette is always a valid object with required properties
+    const palette = {
+        textSecondary: rawPalette?.textSecondary || '#71717A',
+        textPrimary: rawPalette?.textPrimary || '#18181B',
+        info: rawPalette?.info || '#3b82f6',
+        primary: rawPalette?.primary || '#8b5cf6',
+        ...rawPalette
+    };
     // Filter events for the selected date
     const dayEvents = useMemo(() => {
         if (!date) return [];
