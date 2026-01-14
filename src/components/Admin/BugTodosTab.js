@@ -707,7 +707,12 @@ const BugTodosTab = () => {
                     </button>
 
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(bug.id); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Use setTimeout to break out of event handler context
+                        // This allows window.confirm to work properly in Safari
+                        setTimeout(() => handleDelete(bug.id), 0);
+                      }}
                       disabled={actionLoading === bug.id}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         mode === 'dark'
