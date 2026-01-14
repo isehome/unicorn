@@ -12,6 +12,9 @@ import { useVoiceCopilot } from '../contexts/AIBrainContext';
  * - Navigating to wire drop details
  *
  * IMPORTANT: Uses refs for all callbacks to prevent stale closure issues.
+ * NOTE: This hook uses the legacy registerTools pattern. The new AIBrainContext
+ * doesn't expose registerTools/unregisterTools, so voice commands are disabled
+ * until this is migrated to the new AppStateContext.registerActions() pattern.
  */
 export const usePrewireTools = ({
     wireDrops = [],
@@ -27,7 +30,11 @@ export const usePrewireTools = ({
     onSetRoom,
     onNavigateToWireDrop
 }) => {
-    const { registerTools, unregisterTools } = useVoiceCopilot();
+    // Get voice copilot context - may not have registerTools in new architecture
+    // The new AIBrainContext uses AppStateContext.registerActions instead
+    const voiceCopilot = useVoiceCopilot();
+    const registerTools = voiceCopilot?.registerTools;
+    const unregisterTools = voiceCopilot?.unregisterTools;
 
     // ===== REFS FOR STABLE CALLBACKS =====
     const wireDropsRef = useRef(wireDrops);
@@ -419,14 +426,23 @@ export const usePrewireTools = ({
         }
     ], []); // Empty deps - all data accessed via refs
 
-    // Register/unregister tools
+    // Register/unregister tools (only if the legacy voice copilot API is available)
     useEffect(() => {
+        // Check if registerTools is available (legacy VoiceCopilotContext pattern)
+        // The new AIBrainContext uses AppStateContext.registerActions instead
+        if (typeof registerTools !== 'function') {
+            console.log('[usePrewireTools] registerTools not available - voice commands disabled for this page');
+            return;
+        }
+
         console.log('[usePrewireTools] Registering prewire tools');
         registerTools(tools);
 
         return () => {
-            console.log('[usePrewireTools] Unregistering prewire tools');
-            unregisterTools(tools.map(t => t.name));
+            if (typeof unregisterTools === 'function') {
+                console.log('[usePrewireTools] Unregistering prewire tools');
+                unregisterTools(tools.map(t => t.name));
+            }
         };
     }, [tools, registerTools, unregisterTools]);
 };
