@@ -3495,6 +3495,42 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-01-14
+
+### Bug Todos Tab Improvements
+
+**Bug ID:** Session work (multiple bugs fixed)
+
+**Changes Made:**
+
+1. **Action Buttons Moved to Collapsed State**
+   - Download, Copy, Reanalyze, and Fixed buttons now visible without expanding the bug report
+   - Allows faster triage without clicking to expand each item
+   - Added `e.stopPropagation()` to prevent row expansion when clicking buttons
+
+2. **Bug Report Document - AGENT.md Update Instruction**
+   - Added "Step 5: Update Documentation (REQUIRED)" to generated bug reports
+   - Instructs AI tools to update AGENT.md after fixing bugs
+   - Ensures changelog entries are created with: date, bug ID, description, fix details, files modified
+
+3. **Fixed Duplicate Bug Report IDs (Race Condition)**
+   - Problem: Multiple bugs processed simultaneously all got the same ID (e.g., BR-2026-01-14-0003)
+   - Solution: Implemented atomic ID claiming with retry logic in `generateBugId()` function
+   - Uses optimistic locking: UPDATE only if `bug_report_id IS NULL`
+   - Retries up to 5 times with random delay on collision
+   - Falls back to UUID-based suffix if all retries fail
+
+4. **Fixed Safari Confirmation Dialog Issue**
+   - Problem: `window.confirm()` was blocked by Safari when called from event handlers with `stopPropagation()`
+   - Solution: Replaced with custom React modal for delete confirmation
+   - Modal matches dark/light theme and works consistently across browsers
+
+**Files Modified:**
+- `src/components/Admin/BugTodosTab.js` - UI changes, custom modal, action button relocation
+- `api/cron/process-bugs.js` - Race condition fix in `generateBugId()` function
+
+---
+
 ## 2025-12-23
 
 ### Azure AI Search RAG Integration (Major Update)
