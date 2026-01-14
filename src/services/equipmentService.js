@@ -168,31 +168,41 @@ export const equipmentCategoriesService = {
 };
 
 // ============= SECURE DATA SERVICE =============
+// NOTE: Uses encrypted storage with pgsodium. Read operations use decrypted views,
+// write operations use RPC functions that handle encryption automatically.
 export const secureDataService = {
   async getProjectSecureData(projectId) {
     try {
       if (!supabase || !projectId) return [];
-      
+
+      // Use decrypted view for reading (handles decryption automatically)
       const { data, error } = await supabase
-        .from('project_secure_data')
-        .select(`
-          *,
-          equipment_credentials(
-            equipment_id,
-            is_primary
-          )
-        `)
+        .from('project_secure_data_decrypted')
+        .select('*')
         .eq('project_id', projectId)
         .order('name', { ascending: true });
-        
+
       if (error) throw error;
-      
+
+      // Get equipment_credentials links separately since view doesn't include them
+      const secureDataIds = (data || []).map(item => item.id);
+      let equipmentLinks = [];
+
+      if (secureDataIds.length > 0) {
+        const { data: linksData } = await supabase
+          .from('equipment_credentials')
+          .select('secure_data_id, equipment_id, is_primary')
+          .in('secure_data_id', secureDataIds);
+        equipmentLinks = linksData || [];
+      }
+
       // Transform the data to match expected structure
       const transformedData = (data || []).map(item => ({
         ...item,
-        equipment_secure_links: item.equipment_credentials || []
+        equipment_secure_links: equipmentLinks.filter(link => link.secure_data_id === item.id),
+        equipment_credentials: equipmentLinks.filter(link => link.secure_data_id === item.id)
       }));
-      
+
       return transformedData;
     } catch (error) {
       console.error('Failed to fetch secure data:', error);
@@ -208,22 +218,23 @@ export const secureDataService = {
   async getForEquipment(equipmentId) {
     try {
       if (!supabase || !equipmentId) return [];
-      
+
+      // Use decrypted view for reading
       const { data, error } = await supabase
-        .from('project_secure_data')
+        .from('project_secure_data_decrypted')
         .select('*')
         .eq('equipment_id', equipmentId)
         .order('name', { ascending: true });
-        
+
       if (error) throw error;
-      
+
       // Log access for audit
       if (data && data.length > 0) {
-        await Promise.all(data.map(item => 
+        await Promise.all(data.map(item =>
           this.logAccess(item.id, 'view')
         ));
       }
-      
+
       return data || [];
     } catch (error) {
       console.error('Failed to fetch secure data for equipment:', error);
@@ -234,28 +245,33 @@ export const secureDataService = {
   async getById(id) {
     try {
       if (!supabase) return null;
-      
+
+      // Use decrypted view for reading
       const { data, error } = await supabase
-        .from('project_secure_data')
-        .select(`
-          *,
-          equipment:equipment_id(
-            id,
-            uid,
-            name
-          )
-        `)
+        .from('project_secure_data_decrypted')
+        .select('*')
         .eq('id', id)
         .single();
-        
+
       if (error) throw error;
-      
+
+      // Get equipment details separately if equipment_id exists
+      let equipment = null;
+      if (data?.equipment_id) {
+        const { data: equipmentData } = await supabase
+          .from('equipment')
+          .select('id, uid, name')
+          .eq('id', data.equipment_id)
+          .single();
+        equipment = equipmentData;
+      }
+
       // Log access for audit
       if (data) {
         await this.logAccess(data.id, 'view');
       }
-      
-      return data;
+
+      return data ? { ...data, equipment } : null;
     } catch (error) {
       console.error('Failed to fetch secure data item:', error);
       return null;
@@ -265,45 +281,40 @@ export const secureDataService = {
   async create(secureData) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
-      // Ensure data_type is ALWAYS present
-      const dataToInsert = {
-        ...secureData,
-        data_type: secureData.data_type || 'credentials'
-      };
-      
-      console.log('secureDataService.create - data to insert:', dataToInsert);
-      
+
       // Validate required fields
-      if (!dataToInsert.project_id) {
+      if (!secureData.project_id) {
         throw new Error('project_id is required');
       }
-      if (!dataToInsert.name) {
+      if (!secureData.name) {
         throw new Error('name is required');
       }
-      if (!dataToInsert.data_type) {
-        throw new Error('data_type is required');
-      }
-      
-      const { data, error } = await supabase
-        .from('project_secure_data')
-        .insert([dataToInsert])
-        .select(`
-          *,
-          equipment:equipment_id(
-            id,
-            uid,
-            name,
-            model
-          )
-        `)
-        .single();
-        
+
+      console.log('secureDataService.create - using RPC with encryption');
+
+      // Use RPC function that handles encryption automatically
+      const { data: newId, error } = await supabase.rpc('create_project_secure_data', {
+        p_project_id: secureData.project_id,
+        p_equipment_id: secureData.equipment_id || null,
+        p_data_type: secureData.data_type || 'credentials',
+        p_name: secureData.name,
+        p_username: secureData.username || null,
+        p_password: secureData.password || null,
+        p_url: secureData.url || null,
+        p_ip_address: secureData.ip_address || null,
+        p_port: secureData.port || null,
+        p_notes: secureData.notes || null,
+        p_additional_info: secureData.additional_info || null,
+        p_created_by: secureData.created_by || null
+      });
+
       if (error) {
-        console.error('Supabase insert error:', error);
+        console.error('Supabase RPC error:', error);
         throw error;
       }
-      return data;
+
+      // Fetch the created record to return with equipment relationship
+      return this.getById(newId);
     } catch (error) {
       handleError(error, 'Failed to create secure data');
     }
@@ -312,24 +323,25 @@ export const secureDataService = {
   async update(id, updates) {
     try {
       if (!supabase) throw new Error('Supabase not configured');
-      
-      const { data, error } = await supabase
-        .from('project_secure_data')
-        .update(updates)
-        .eq('id', id)
-        .select(`
-          *,
-          equipment:equipment_id(
-            id,
-            uid,
-            name,
-            model
-          )
-        `)
-        .single();
-        
+
+      // Use RPC function that handles encryption automatically
+      const { error } = await supabase.rpc('update_project_secure_data', {
+        p_id: id,
+        p_name: updates.name || null,
+        p_data_type: updates.data_type || null,
+        p_username: updates.username || null,
+        p_password: updates.password || null,
+        p_url: updates.url || null,
+        p_ip_address: updates.ip_address || null,
+        p_port: updates.port || null,
+        p_notes: updates.notes || null,
+        p_additional_info: updates.additional_info || null
+      });
+
       if (error) throw error;
-      return data;
+
+      // Fetch and return the updated record
+      return this.getById(id);
     } catch (error) {
       handleError(error, 'Failed to update secure data');
     }
@@ -483,25 +495,29 @@ export const secureDataService = {
     try {
       if (!supabase || !projectEquipmentId) return [];
 
-      // Get secure data linked via equipment_credentials junction table
+      // Get the links first
       const { data: links, error: linksError } = await supabase
         .from('equipment_credentials')
-        .select(`
-          secure_data_id,
-          is_primary,
-          secure_data:secure_data_id(*)
-        `)
+        .select('secure_data_id, is_primary')
         .eq('equipment_id', projectEquipmentId);
 
       if (linksError) throw linksError;
+      if (!links || links.length === 0) return [];
 
-      // Flatten and return the secure data with is_primary flag
-      return (links || [])
-        .filter(link => link.secure_data)
-        .map(link => ({
-          ...link.secure_data,
-          is_primary: link.is_primary
-        }));
+      // Get the secure data from decrypted view
+      const secureDataIds = links.map(l => l.secure_data_id);
+      const { data: secureData, error: secureError } = await supabase
+        .from('project_secure_data_decrypted')
+        .select('*')
+        .in('id', secureDataIds);
+
+      if (secureError) throw secureError;
+
+      // Merge with is_primary flag
+      return (secureData || []).map(sd => ({
+        ...sd,
+        is_primary: links.find(l => l.secure_data_id === sd.id)?.is_primary || false
+      }));
     } catch (error) {
       console.error('Failed to fetch secure data for project equipment:', error);
       return [];
@@ -552,24 +568,21 @@ export const secureDataService = {
     try {
       if (!supabase) throw new Error('Supabase not configured');
 
-      // First create the secure data entry
-      const dataToInsert = {
-        project_id: projectId,
-        data_type: secureData.data_type || 'credentials',
-        name: secureData.name,
-        username: secureData.username || null,
-        password: secureData.password || null,
-        url: secureData.url || null,
-        notes: secureData.notes || null,
-        additional_info: secureData.additional_info || null,
-        created_by: userId
-      };
-
-      const { data: newSecureData, error: createError } = await supabase
-        .from('project_secure_data')
-        .insert([dataToInsert])
-        .select()
-        .single();
+      // Use RPC function that handles encryption automatically
+      const { data: newId, error: createError } = await supabase.rpc('create_project_secure_data', {
+        p_project_id: projectId,
+        p_equipment_id: null, // Not using direct equipment_id reference
+        p_data_type: secureData.data_type || 'credentials',
+        p_name: secureData.name,
+        p_username: secureData.username || null,
+        p_password: secureData.password || null,
+        p_url: secureData.url || null,
+        p_ip_address: secureData.ip_address || null,
+        p_port: secureData.port || null,
+        p_notes: secureData.notes || null,
+        p_additional_info: secureData.additional_info || null,
+        p_created_by: userId
+      });
 
       if (createError) throw createError;
 
@@ -577,14 +590,15 @@ export const secureDataService = {
       const { error: linkError } = await supabase
         .from('equipment_credentials')
         .insert([{
-          secure_data_id: newSecureData.id,
+          secure_data_id: newId,
           equipment_id: projectEquipmentId,
           is_primary: true
         }]);
 
       if (linkError) throw linkError;
 
-      return newSecureData;
+      // Return the created record
+      return this.getById(newId);
     } catch (error) {
       handleError(error, 'Failed to create secure data for project equipment');
     }
@@ -593,13 +607,16 @@ export const secureDataService = {
 
 // ============= CONTACT SECURE DATA SERVICE =============
 // For storing credentials/sensitive data linked to contacts GLOBALLY (not project-scoped)
+// NOTE: Uses encrypted storage with pgsodium. Read operations use decrypted views,
+// write operations use RPC functions that handle encryption automatically.
 export const contactSecureDataService = {
   async getForContact(contactId) {
     try {
       if (!supabase || !contactId) return [];
 
+      // Use decrypted view for reading (handles decryption automatically)
       const { data, error } = await supabase
-        .from('contact_secure_data')
+        .from('contact_secure_data_decrypted')
         .select('*')
         .eq('contact_id', contactId)
         .order('name', { ascending: true });
@@ -616,23 +633,27 @@ export const contactSecureDataService = {
     try {
       if (!supabase) return null;
 
+      // Use decrypted view for reading
       const { data, error } = await supabase
-        .from('contact_secure_data')
-        .select(`
-          *,
-          contact:contact_id(
-            id,
-            name,
-            full_name,
-            email,
-            company
-          )
-        `)
+        .from('contact_secure_data_decrypted')
+        .select('*')
         .eq('id', id)
         .single();
 
       if (error) throw error;
-      return data;
+
+      // Get contact details separately since view doesn't join
+      let contact = null;
+      if (data?.contact_id) {
+        const { data: contactData } = await supabase
+          .from('contacts')
+          .select('id, name, full_name, email, company')
+          .eq('id', data.contact_id)
+          .single();
+        contact = contactData;
+      }
+
+      return data ? { ...data, contact } : null;
     } catch (error) {
       console.error('Failed to fetch contact secure data item:', error);
       return null;
@@ -650,35 +671,31 @@ export const contactSecureDataService = {
         throw new Error('name is required');
       }
 
-      const dataToInsert = {
-        contact_id: contactId,
-        data_type: secureData.data_type || 'other',
-        name: secureData.name,
-        username: secureData.username || null,
-        password: secureData.password || null,
-        url: secureData.url || null,
-        ip_address: secureData.ip_address || null,
-        port: secureData.port || null,
-        notes: secureData.notes || null,
-        additional_info: secureData.additional_info || null,
-        created_by: secureData.created_by || null
-      };
-
-      const { data, error } = await supabase
-        .from('contact_secure_data')
-        .insert([dataToInsert])
-        .select()
-        .single();
+      // Use RPC function that handles encryption automatically
+      const { data: newId, error } = await supabase.rpc('create_contact_secure_data', {
+        p_contact_id: contactId,
+        p_data_type: secureData.data_type || 'credentials',
+        p_name: secureData.name,
+        p_username: secureData.username || null,
+        p_password: secureData.password || null,
+        p_url: secureData.url || null,
+        p_ip_address: secureData.ip_address || null,
+        p_port: secureData.port || null,
+        p_notes: secureData.notes || null,
+        p_additional_info: secureData.additional_info || null,
+        p_created_by: secureData.created_by || null
+      });
 
       if (error) {
-        console.error('Supabase insert error:', error);
+        console.error('Supabase RPC error:', error);
         throw error;
       }
 
       // Log the create action
-      await this.logAccess(contactId, secureData.created_by, 'create', data.id);
+      await this.logAccess(contactId, secureData.created_by, 'create', newId);
 
-      return data;
+      // Fetch and return the created record
+      return this.getById(newId);
     } catch (error) {
       handleError(error, 'Failed to create contact secure data');
     }
@@ -688,24 +705,32 @@ export const contactSecureDataService = {
     try {
       if (!supabase) throw new Error('Supabase not configured');
 
-      const { data, error } = await supabase
-        .from('contact_secure_data')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
+      // Get existing record to get contact_id for audit log
+      const existing = await this.getById(id);
+
+      // Use RPC function that handles encryption automatically
+      const { error } = await supabase.rpc('update_contact_secure_data', {
+        p_id: id,
+        p_name: updates.name || null,
+        p_data_type: updates.data_type || null,
+        p_username: updates.username || null,
+        p_password: updates.password || null,
+        p_url: updates.url || null,
+        p_ip_address: updates.ip_address || null,
+        p_port: updates.port || null,
+        p_notes: updates.notes || null,
+        p_additional_info: updates.additional_info || null
+      });
 
       if (error) throw error;
 
       // Log the update action
-      if (data) {
-        await this.logAccess(data.contact_id, updates.updated_by, 'update', id);
+      if (existing?.contact_id) {
+        await this.logAccess(existing.contact_id, updates.updated_by, 'update', id);
       }
 
-      return data;
+      // Fetch and return the updated record
+      return this.getById(id);
     } catch (error) {
       handleError(error, 'Failed to update contact secure data');
     }
