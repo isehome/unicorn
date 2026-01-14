@@ -25,6 +25,7 @@ const BugTodosTab = () => {
   const [copiedField, setCopiedField] = useState(null);
   const [bugDetails, setBugDetails] = useState({});
   const [loadingDetails, setLoadingDetails] = useState({});
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // Bug ID to confirm deletion
 
   // Styles
   const textPrimary = mode === 'dark' ? 'text-white' : 'text-gray-900';
@@ -83,17 +84,19 @@ const BugTodosTab = () => {
   }, [loadBugs]);
 
   /**
-   * Delete a bug report
+   * Show delete confirmation modal
+   */
+  const confirmDelete = (bugId) => {
+    console.log('[BugTodosTab] confirmDelete called with bugId:', bugId);
+    setDeleteConfirm(bugId);
+  };
+
+  /**
+   * Actually delete a bug report (called after confirmation)
    */
   const handleDelete = async (bugId) => {
-    console.log('[BugTodosTab] handleDelete called with bugId:', bugId);
-
-    if (!window.confirm('Delete this bug report? This will also close the GitHub PR if one exists.')) {
-      console.log('[BugTodosTab] User cancelled delete');
-      return;
-    }
-
-    console.log('[BugTodosTab] User confirmed delete, calling API...');
+    console.log('[BugTodosTab] handleDelete executing for bugId:', bugId);
+    setDeleteConfirm(null); // Close modal
     setActionLoading(bugId);
     try {
       const response = await fetch(`/api/bugs/${bugId}`, {
@@ -709,9 +712,7 @@ const BugTodosTab = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Use setTimeout to break out of event handler context
-                        // This allows window.confirm to work properly in Safari
-                        setTimeout(() => handleDelete(bug.id), 0);
+                        confirmDelete(bug.id);
                       }}
                       disabled={actionLoading === bug.id}
                       className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -1015,6 +1016,41 @@ const BugTodosTab = () => {
           ))
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className={`${cardBg} rounded-xl border ${borderColor} p-6 max-w-md w-full shadow-xl`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-full bg-red-500/10">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className={`text-lg font-semibold ${textPrimary}`}>Delete Bug Report?</h3>
+            </div>
+            <p className={`${textSecondary} mb-6`}>
+              This will permanently delete the bug report and close any associated GitHub PR. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  mode === 'dark'
+                    ? 'bg-zinc-700 text-white hover:bg-zinc-600'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
