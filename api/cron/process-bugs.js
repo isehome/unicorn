@@ -33,8 +33,8 @@ function loadModules() {
     commitBugReport = github.commitBugReport;
   }
   if (!sendGraphEmail) {
-    const graph = require('../_graphMail');
-    sendGraphEmail = graph.sendGraphEmail;
+    const graph = require('../_systemGraph');
+    sendGraphEmail = graph.systemSendMail;
   }
 }
 
@@ -55,19 +55,66 @@ const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
 const MAX_BUGS_PER_RUN = 3; // Process up to 3 bugs per cron run to avoid timeouts
 
 /**
- * Generate a sequential bug report ID
+ * Generate a sequential bug report ID with retry logic to handle race conditions
+ *
+ * This function tries to claim the next sequential ID. If another process
+ * already claimed it, it retries with the next number.
  */
-async function generateBugId() {
+async function generateBugId(bugReportUuid, maxRetries = 5) {
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const prefix = `BR-${today}-`;
 
-  // Count existing reports for today
-  const { count } = await getSupabase()
-    .from('bug_reports')
-    .select('*', { count: 'exact', head: true })
-    .like('bug_report_id', `BR-${today}-%`);
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Get the highest sequence number for today (including processing ones)
+    const { data: existing } = await getSupabase()
+      .from('bug_reports')
+      .select('bug_report_id')
+      .like('bug_report_id', `${prefix}%`)
+      .not('bug_report_id', 'is', null)
+      .order('bug_report_id', { ascending: false })
+      .limit(1);
 
-  const seq = (count || 0) + 1;
-  return `BR-${today}-${String(seq).padStart(4, '0')}`;
+    let seq = 1;
+    if (existing && existing.length > 0 && existing[0].bug_report_id) {
+      // Extract sequence number from the last ID (e.g., "BR-2026-01-14-0003" -> 3)
+      const lastId = existing[0].bug_report_id;
+      const match = lastId.match(/-(\d{4})$/);
+      if (match) {
+        seq = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    const candidateId = `${prefix}${String(seq).padStart(4, '0')}`;
+
+    // Try to claim this ID atomically by updating only if bug_report_id is still null
+    const { data: updated, error } = await getSupabase()
+      .from('bug_reports')
+      .update({ bug_report_id: candidateId })
+      .eq('id', bugReportUuid)
+      .is('bug_report_id', null)
+      .select('bug_report_id')
+      .single();
+
+    if (error) {
+      console.log(`[generateBugId] Attempt ${attempt + 1}: Update error - ${error.message}`);
+      // If it's a unique constraint violation or update found no rows, retry
+      continue;
+    }
+
+    if (updated && updated.bug_report_id === candidateId) {
+      console.log(`[generateBugId] Successfully claimed ${candidateId}`);
+      return candidateId;
+    }
+
+    // If we get here, another process claimed this bug or the ID
+    // Wait a small random time to reduce collision likelihood
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+  }
+
+  // Fallback: use UUID suffix if all retries failed
+  const fallbackId = `${prefix}${bugReportUuid.substring(0, 4).toUpperCase()}`;
+  console.log(`[generateBugId] All retries failed, using fallback: ${fallbackId}`);
+  return fallbackId;
 }
 
 /**
@@ -185,16 +232,16 @@ async function processBugReport(bugReport) {
   // Load modules on first use
   loadModules();
 
-  const bugId = await generateBugId();
+  // Generate bug ID atomically (this also claims it in the DB)
+  const bugId = await generateBugId(bugReport.id);
 
   console.log(`[ProcessBugs] Processing bug ${bugReport.id} as ${bugId}...`);
 
-  // Update status to processing
+  // Update status to processing (bug_report_id already set by generateBugId)
   await getSupabase()
     .from('bug_reports')
     .update({
-      status: 'processing',
-      bug_report_id: bugId
+      status: 'processing'
     })
     .eq('id', bugReport.id);
 
@@ -241,7 +288,8 @@ async function processBugReport(bugReport) {
       await sendGraphEmail({
         to: [BUG_REPORT_EMAIL],
         subject: `[Bug-${(analysis.severity || 'medium').toUpperCase()}] ${(analysis.summary || bugReport.description).substring(0, 50)}... - AI Analysis`,
-        html: emailHtml
+        body: emailHtml,
+        bodyType: 'HTML'
       });
 
       console.log(`[ProcessBugs] Analysis email sent for ${bugId}`);
