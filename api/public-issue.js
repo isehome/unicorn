@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-const { sendGraphEmail, isGraphConfigured } = require('./_graphMail');
+const { systemSendMail } = require('./_systemGraph');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -244,10 +244,6 @@ async function buildPortalPayload(link, sessionValid) {
 }
 
 async function notifyComment(link, issue, project, text) {
-  if (!isGraphConfigured()) {
-    return;
-  }
-
   const { data: stakeholders } = await supabase
     .from('issue_stakeholder_tags_detailed')
     .select('contact_name, email')
@@ -268,27 +264,22 @@ async function notifyComment(link, issue, project, text) {
   const projectName = project?.name ? ` for project ${project.name}` : '';
   const subject = `New comment on "${issue.title}"${projectName}`;
   const detailsUrl = PUBLIC_SITE_URL ? `${PUBLIC_SITE_URL}/project/${issue.project_id}/issues/${issue.id}` : null;
+
   const html = `
     <p><strong>${actor}</strong> left a new comment on issue <strong>${issue.title}</strong>${projectName}.</p>
     <blockquote style="border-left:4px solid #ccc;padding-left:12px;margin:12px 0;">${text.replace(/\n/g, '<br/>')}</blockquote>
     ${detailsUrl ? `<p><a href="${detailsUrl}">View the issue in Unicorn</a> for full context.</p>` : ''}
   `;
-  const plain = `${actor} left a new comment on issue "${issue.title}"${projectName}.
 
-${text}
-${detailsUrl ? `
-View the issue: ${detailsUrl}` : ''}`;
-
-  await sendGraphEmail({
+  await systemSendMail({
     to: Array.from(recipients),
     subject,
-    html,
-    text: plain
+    body: html,
+    bodyType: 'HTML'
   });
 }
 
 async function notifyUpload(link, issue, project, upload) {
-  if (!isGraphConfigured()) return;
   const { data: stakeholders } = await supabase
     .from('issue_stakeholder_tags_detailed')
     .select('contact_name, email, role_category')
@@ -313,14 +304,12 @@ async function notifyUpload(link, issue, project, upload) {
     <p>Please review and approve it to move into SharePoint.</p>
     ${detailsUrl ? `<p><a href="${detailsUrl}">Open the issue</a> to review pending uploads.</p>` : ''}
   `;
-  const plain = `${actor} uploaded ${upload.file_name} on issue "${issue.title}"${projectName}.
-Please review and approve.${detailsUrl ? `\n${detailsUrl}` : ''}`;
 
-  await sendGraphEmail({
+  await systemSendMail({
     to: Array.from(recipients),
     subject,
-    html,
-    text: plain
+    body: html,
+    bodyType: 'HTML'
   });
 }
 

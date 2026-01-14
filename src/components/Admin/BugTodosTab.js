@@ -86,24 +86,32 @@ const BugTodosTab = () => {
    * Delete a bug report
    */
   const handleDelete = async (bugId) => {
+    console.log('[BugTodosTab] handleDelete called with bugId:', bugId);
+
     if (!window.confirm('Delete this bug report? This will also close the GitHub PR if one exists.')) {
+      console.log('[BugTodosTab] User cancelled delete');
       return;
     }
 
+    console.log('[BugTodosTab] User confirmed delete, calling API...');
     setActionLoading(bugId);
     try {
       const response = await fetch(`/api/bugs/${bugId}`, {
         method: 'DELETE'
       });
+      console.log('[BugTodosTab] Delete response status:', response.status);
 
       if (!response.ok) {
         const data = await response.json();
+        console.error('[BugTodosTab] Delete failed:', data);
         throw new Error(data.error || 'Failed to delete bug report');
       }
 
+      const result = await response.json();
+      console.log('[BugTodosTab] Delete successful:', result);
       await loadBugs();
     } catch (err) {
-      console.error('Error deleting bug:', err);
+      console.error('[BugTodosTab] Error deleting bug:', err);
       alert('Failed to delete: ' + err.message);
     } finally {
       setActionLoading(null);
@@ -114,6 +122,7 @@ const BugTodosTab = () => {
    * Reanalyze a bug report
    */
   const handleReanalyze = async (bugId) => {
+    console.log('[BugTodosTab] handleReanalyze called with bugId:', bugId);
     setActionLoading(bugId);
     try {
       const response = await fetch(`/api/bugs/${bugId}`, {
@@ -121,15 +130,19 @@ const BugTodosTab = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reanalyze' })
       });
+      console.log('[BugTodosTab] Reanalyze response status:', response.status);
 
       if (!response.ok) {
         const data = await response.json();
+        console.error('[BugTodosTab] Reanalyze failed:', data);
         throw new Error(data.error || 'Failed to reanalyze bug report');
       }
 
+      const result = await response.json();
+      console.log('[BugTodosTab] Reanalyze successful:', result);
       await loadBugs();
     } catch (err) {
-      console.error('Error reanalyzing bug:', err);
+      console.error('[BugTodosTab] Error reanalyzing bug:', err);
       alert('Failed to reanalyze: ' + err.message);
     } finally {
       setActionLoading(null);

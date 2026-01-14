@@ -1,4 +1,4 @@
-const { sendGraphEmail } = require('./_graphMail');
+const { systemSendMail } = require('./_systemGraph');
 const { createClient } = require('@supabase/supabase-js');
 
 const BUG_REPORT_EMAIL = process.env.BUG_REPORT_EMAIL || 'stephe@isehome.com';
@@ -121,10 +121,11 @@ module.exports = async function handler(req, res) {
       : `[Bug Report] ${description.substring(0, 50)}${description.length > 50 ? '...' : ''} - ${userName || 'User'}`;
 
     // Use system account (app-only auth) - never expires unlike user tokens
-    await sendGraphEmail({
+    await systemSendMail({
       to: [BUG_REPORT_EMAIL],
       subject: emailSubject,
-      html
+      body: html,
+      bodyType: 'HTML'
     });
 
     // Update the record to mark initial email as sent

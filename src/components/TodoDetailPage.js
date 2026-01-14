@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Calendar, AlertCircle, FileText, CalendarPlus, Info, User, Plus, Trash2, CheckCircle, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, fetchEventsForDate } from '../services/microsoftCalendarService';
 import { projectStakeholdersService, todoStakeholdersService } from '../services/supabaseService';
-import { stakeholderColors, enhancedStyles } from '../styles/styleSystem';
+import { stakeholderColors, enhancedStyles, paletteByMode } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
 
 const TodoDetailPage = () => {
@@ -17,8 +17,35 @@ const TodoDetailPage = () => {
     const navigate = useNavigate();
     const { mode } = useTheme();
     const authContext = useAuth();
-    const styles = enhancedStyles[mode];
-    const palette = styles.palette || {};
+    const palette = paletteByMode[mode] || {};
+
+    // Create styles object with borderColor for TimeSelectionGrid compatibility
+    const styles = useMemo(() => {
+        const sectionStyles = enhancedStyles.sections[mode] || {};
+        const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
+        const borderColor = mode === 'dark' ? '#3F3F46' : '#E5E7EB';
+        const textPrimary = mode === 'dark' ? '#F9FAFB' : '#18181B';
+        const textSecondary = mode === 'dark' ? '#A1A1AA' : '#4B5563';
+
+        return {
+            card: {
+                backgroundColor: cardBackground,
+                borderColor,
+                borderWidth: 1,
+                borderStyle: 'solid',
+                borderRadius: sectionStyles.card?.borderRadius || '0.75rem',
+                boxShadow: sectionStyles.card?.boxShadow || '0 1px 3px rgba(0, 0, 0, 0.05)',
+                color: textPrimary
+            },
+            textPrimary: { color: textPrimary },
+            textSecondary: { color: textSecondary },
+            input: {
+                backgroundColor: mode === 'dark' ? '#18181B' : '#F9FAFB',
+                borderColor,
+                color: textPrimary
+            }
+        };
+    }, [mode]);
 
     // Loading/Error state
     const [loading, setLoading] = useState(true);

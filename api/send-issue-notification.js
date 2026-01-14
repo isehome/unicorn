@@ -1,9 +1,5 @@
-// Serverless function to send issue notifications via Microsoft Graph
-const {
-  sendGraphEmail,
-  getDelegatedTokenFromHeader,
-  isGraphConfigured
-} = require('./_graphMail');
+// Serverless function to send issue notifications via System Account
+const { systemSendMail } = require('./_systemGraph');
 
 module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') {
@@ -21,20 +17,13 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!isGraphConfigured()) {
-    res.status(500).json({ error: 'Missing Azure AD credentials or sender configuration' });
-    return;
-  }
-
   try {
-    const { to, cc, subject, html, text, sendAsUser } = req.body || {};
+    const { to, cc, subject, html, text } = req.body || {};
 
     console.log('[send-issue-notification] Request received:', {
       to,
       cc,
       subject,
-      sendAsUser,
-      hasAuthHeader: !!req.headers?.authorization,
       htmlLength: html?.length,
       textLength: text?.length
     });
@@ -45,23 +34,16 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const delegatedToken = getDelegatedTokenFromHeader(req.headers?.authorization || req.headers?.Authorization);
+    const result = await systemSendMail({
+      to: to.filter(Boolean),
+      cc: Array.isArray(cc) ? cc.filter(Boolean) : [],
+      subject,
+      body: html || text,
+      bodyType: html ? 'HTML' : 'Text'
+    });
 
-    console.log('[send-issue-notification] Delegated token present:', !!delegatedToken, 'sendAsUser:', Boolean(sendAsUser));
-
-    const result = await sendGraphEmail(
-      {
-        to: to.filter(Boolean),
-        cc: Array.isArray(cc) ? cc.filter(Boolean) : [],
-        subject,
-        html,
-        text,
-      },
-      { delegatedToken, sendAsUser: Boolean(sendAsUser) }
-    );
-
-    console.log('[send-issue-notification] Email sent successfully:', result);
-    res.status(200).json({ success: true });
+    console.log('[send-issue-notification] Email sent successfully via system account:', result);
+    res.status(200).json({ success: true, sentFrom: result.sentFrom });
   } catch (error) {
     console.error('[send-issue-notification] Failed to send:', error.message, error.stack);
     res.status(500).json({ error: error.message || 'Failed to send notification' });

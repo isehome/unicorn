@@ -145,7 +145,8 @@ export const servicePhotoService = {
       .from('service_tickets')
       .select(`
         ticket_number,
-        customer:contacts!service_tickets_customer_id_fkey(full_name)
+        title,
+        customer_name
       `)
       .eq('id', ticketId)
       .single();
@@ -153,14 +154,29 @@ export const servicePhotoService = {
     if (ticketError) throw ticketError;
     if (!ticket) throw new Error('Ticket not found');
 
-    const customerName = ticket.customer?.full_name || 'Unknown Customer';
+    // Use customer_name directly from ticket (no join needed)
+    const customerName = ticket.customer_name || 'Unknown Customer';
     const ticketNumber = ticket.ticket_number || ticketId.substring(0, 8);
+
+    // Create descriptive folder name with issue title
+    const sanitizeForFolder = (str) => {
+      if (!str) return '';
+      return str
+        .replace(/[<>:"/\\|?*]/g, '-')  // Replace invalid chars
+        .replace(/\s+/g, '_')            // Replace spaces with underscores
+        .substring(0, 50);               // Limit length
+    };
+
+    const ticketTitle = ticket.title ? sanitizeForFolder(ticket.title) : 'Service';
+    const folderName = `${ticketNumber}-${ticketTitle}`;
 
     // Get SharePoint root
     const rootUrl = await this.getServiceSharePointRoot();
 
-    // Build folder path
-    const folderPath = this.buildFolderPath(customerName, ticketNumber, category);
+    // Build folder path: Service/{CustomerName}/{TicketNumber-Description}/{category}
+    const customerFolder = sanitizeForFolder(customerName);
+    const photoFolder = `${customerFolder}/${folderName}`;
+    const folderPath = category ? `${photoFolder}/${category}` : photoFolder;
 
     // Compress the image
     const compressedFile = await compressImage(file);

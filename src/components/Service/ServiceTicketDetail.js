@@ -1160,6 +1160,24 @@ const ServiceTicketDetail = () => {
               )}
             </div>
 
+            {/* Time Tracking - Prominent placement under description */}
+            <div className="bg-zinc-800 rounded-lg p-4">
+              <h2 className="font-semibold text-white mb-4 flex items-center gap-2">
+                <Clock size={18} className="text-cyan-400" />
+                Time Tracking
+                {ticket.hourly_rate && (
+                  <span className="text-xs text-zinc-400 ml-2">
+                    ${ticket.hourly_rate}/hr
+                  </span>
+                )}
+              </h2>
+              <ServiceTimeTracker
+                ticket={ticket}
+                technicians={technicians}
+                onUpdate={loadTicket}
+              />
+            </div>
+
             {/* Triage Section - Collapsible */}
             <div className="bg-zinc-800 rounded-lg overflow-hidden">
               <button
@@ -1233,38 +1251,6 @@ const ServiceTicketDetail = () => {
                       setPartsCount(parts?.length || 0);
                       setPartsNeededCount(parts?.filter(p => p.status === 'needed').length || 0);
                     }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Time Tracking Section - Collapsible */}
-            <div className="bg-zinc-800 rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection('timeTracking')}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Clock size={18} className="text-cyan-400" />
-                  <h2 className="font-semibold text-white">Time Tracking</h2>
-                  {ticket.hourly_rate && (
-                    <span className="text-xs text-zinc-400">
-                      ${ticket.hourly_rate}/hr
-                    </span>
-                  )}
-                </div>
-                {expandedSections.timeTracking ? (
-                  <ChevronDown size={18} className="text-zinc-400" />
-                ) : (
-                  <ChevronRight size={18} className="text-zinc-400" />
-                )}
-              </button>
-              {expandedSections.timeTracking && (
-                <div className="p-4 pt-0 border-t border-zinc-700">
-                  <ServiceTimeTracker
-                    ticket={ticket}
-                    technicians={technicians}
-                    onUpdate={loadTicket}
                   />
                 </div>
               )}

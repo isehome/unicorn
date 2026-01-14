@@ -4735,3 +4735,121 @@ When rotating phone to landscape for business card scanning:
 `src/components/PeopleManagement.js`
 
 ---
+
+## 2026-01-13 - UNTESTED PUSH (Antigravity Fixes)
+
+**⚠️ STATUS: UNTESTED - May need rollback**
+
+This push contains 7 fixes from the UNICORN-FIXES-ANTIGRAVITY.md specification. If issues occur, rollback to the commit before this one.
+
+### Task 1: Email System Migration (8 API files)
+
+Migrated all email-sending API endpoints from delegated auth (`_graphMail.js`) to system account (`_systemGraph.js`).
+
+**Changes Made:**
+- Import changed from `sendGraphEmail` → `systemSendMail`
+- API signature changed from `{to, subject, html}` → `{to, subject, body, bodyType: 'HTML'}`
+- Removed `isGraphConfigured()` checks
+- Removed delegated token authentication
+
+**Files Modified:**
+| File | Status |
+|------|--------|
+| `api/service-parts-request.js` | ✅ Migrated |
+| `api/process-pending-issue-notifications.js` | ✅ Migrated |
+| `api/process-pending-shade-notifications.js` | ✅ Migrated |
+| `api/cron/process-bugs.js` | ✅ Migrated |
+
+**Rollback:** Revert these files to use `require('./_graphMail')` and `sendGraphEmail({to, subject, html})`.
+
+### Task 2: Project Progress Report Feature
+
+Created new feature to generate and send project progress reports via email.
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `api/project-report/generate.js` | API endpoint - generates HTML report with gauges and issues |
+| `src/components/ProjectReportButton.js` | React component with Preview/Send buttons |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/components/PMProjectView.js` | Added import and ProjectReportButton component |
+
+**Rollback:** Delete the two new files and remove the ProjectReportButton from PMProjectView.js.
+
+### Task 3: Wire Drop "Next Incomplete Drop" Button
+
+Added navigation button to jump to next incomplete wire drop after completing prewire stage.
+
+**File Modified:** `src/components/WireDropDetail.js`
+
+**Changes:**
+- Added `navigateToNextIncomplete` callback function
+- Added "Next Incomplete Drop" button in prewire tab section
+
+**Rollback:** Remove the `navigateToNextIncomplete` function and the button JSX.
+
+### Task 4: Service Photos Query Fix
+
+Fixed broken foreign key join in service photo uploads.
+
+**File Modified:** `src/services/servicePhotoService.js`
+
+**Changes:**
+- Changed query from `customer:contacts!service_tickets_customer_id_fkey(full_name)` to direct `customer_name` field
+- Added `sanitizeForFolder` helper function
+- Updated folder naming to include ticket title: `{ticketNumber}-{ticketTitle}`
+
+**Rollback:** Revert to using the old query pattern (but note: the old query was already broken).
+
+### Task 5: Time Tracking Section Relocation
+
+Moved Time Tracking from a collapsible section to a prominent always-visible position.
+
+**File Modified:** `src/components/Service/ServiceTicketDetail.js`
+
+**Changes:**
+- Added new non-collapsible Time Tracking section after description, before Triage
+- Removed old collapsible Time Tracking section (was around line 1259-1289)
+
+**Rollback:** Remove the new Time Tracking section and restore the collapsible version.
+
+### Task 6: "My Tickets" Filter Button
+
+Added filter to show only tickets assigned to the current user.
+
+**File Modified:** `src/components/Service/ServiceDashboard.js`
+
+**Changes:**
+- Added `useAuth` import
+- Added `showMyTickets` state with URL parameter support (`?my=true`)
+- Added `assignedTo` filter to query builder
+- Added "My Tickets" toggle button between search and filters
+- Updated `clearFilters` and `hasActiveFilters` to include `showMyTickets`
+
+**Rollback:** Remove the `showMyTickets` state, the button JSX, and related filter logic.
+
+### Task 7: Service Parts Lookup (Already Implemented)
+
+**No changes made** - This feature was already fully implemented in `ServicePartsManager.js`:
+- Search input queries `global_parts` table via `partsService.list({ search })`
+- Dropdown shows matching parts
+- Auto-fills form when selecting a part
+- Links service parts to global parts via `global_part_id`
+
+### Quick Rollback Commands
+
+```bash
+# To rollback the entire push:
+git revert HEAD
+
+# To see what files changed:
+git show --stat HEAD
+
+# To checkout specific files from before:
+git checkout HEAD~1 -- path/to/file.js
+```
+
+---

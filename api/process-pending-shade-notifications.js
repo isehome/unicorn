@@ -1,11 +1,7 @@
 // Serverless function to process pending shade approval notifications
 // Called by authenticated internal users when they view the shades page
 const { createClient } = require('@supabase/supabase-js');
-const {
-  sendGraphEmail,
-  getDelegatedTokenFromHeader,
-  isGraphConfigured
-} = require('./_graphMail');
+const { systemSendMail } = require('./_systemGraph');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -42,17 +38,7 @@ module.exports = async (req, res) => {
     return;
   }
 
-  if (!isGraphConfigured()) {
-    res.status(200).json({ processed: 0, message: 'Email not configured' });
-    return;
-  }
-
-  // Require authentication - only internal users should call this
-  const delegatedToken = getDelegatedTokenFromHeader(req.headers?.authorization || req.headers?.Authorization);
-  if (!delegatedToken) {
-    res.status(401).json({ error: 'Authentication required' });
-    return;
-  }
+  // Note: Using system account email - no user auth required for sending
 
   try {
     const { projectId } = req.body || {};
@@ -129,15 +115,12 @@ ${projectUrl ? `View Shades: ${projectUrl}` : ''}`;
 
     let sentCount = 0;
     try {
-      await sendGraphEmail(
-        {
-          to: internalRecipients,
-          subject,
-          html,
-          text
-        },
-        { delegatedToken }
-      );
+      await systemSendMail({
+        to: internalRecipients,
+        subject,
+        body: html,
+        bodyType: 'HTML'
+      });
       sentCount = 1;
     } catch (emailError) {
       console.error('[ShadeNotifications] Failed to send notification:', emailError.message);

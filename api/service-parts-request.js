@@ -1,4 +1,4 @@
-const { sendGraphEmail } = require('./_graphMail');
+const { systemSendMail } = require('./_systemGraph');
 
 const PARTS_REQUEST_EMAIL = process.env.PARTS_REQUEST_EMAIL || 'stephe@isehome.com';
 
@@ -97,12 +97,13 @@ module.exports = async function handler(req, res) {
       </div>
     `;
 
-    // Send the email
-    await sendGraphEmail({
+    // Send the email via system account
+    await systemSendMail({
       to: [PARTS_REQUEST_EMAIL],
       cc: requestedByEmail ? [requestedByEmail] : [],
       subject: `[Parts Request] ${ticketNumber || 'Service'} - ${customerName || 'Customer'} (${parts.length} item${parts.length > 1 ? 's' : ''})`,
-      html
+      body: html,
+      bodyType: 'HTML'
     });
 
     console.log('[ServicePartsRequest] Parts request sent successfully to', PARTS_REQUEST_EMAIL);

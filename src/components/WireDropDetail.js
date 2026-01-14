@@ -756,6 +756,64 @@ const WireDropDetail = () => {
     input.click();
   };
 
+  // Navigate to next incomplete wire drop (sorted by room)
+  const navigateToNextIncomplete = useCallback(async () => {
+    try {
+      const projectId = wireDrop?.project_id;
+      if (!projectId) return;
+
+      // Get all wire drops for this project with their prewire stage status
+      const { data: allDrops, error } = await supabase
+        .from('wire_drops')
+        .select(`
+          id,
+          room,
+          drop_name,
+          wire_drop_stages (
+            stage_type,
+            completed
+          )
+        `)
+        .eq('project_id', projectId)
+        .order('room', { ascending: true })
+        .order('drop_name', { ascending: true });
+
+      if (error) throw error;
+
+      // Find drops that don't have prewire completed
+      const incompleteDrops = (allDrops || []).filter(drop => {
+        const prewireStage = drop.wire_drop_stages?.find(s => s.stage_type === 'prewire');
+        return !prewireStage?.completed;
+      });
+
+      if (incompleteDrops.length === 0) {
+        alert('All wire drops have prewire photos completed!');
+        return;
+      }
+
+      // Find the current drop's position in the incomplete list
+      const currentIndex = incompleteDrops.findIndex(d => d.id === id);
+
+      // Get the next incomplete drop (or first if we're at the end or not in list)
+      let nextDrop;
+      if (currentIndex >= 0 && currentIndex < incompleteDrops.length - 1) {
+        nextDrop = incompleteDrops[currentIndex + 1];
+      } else {
+        // Current drop is complete or at end, go to first incomplete
+        nextDrop = incompleteDrops[0];
+      }
+
+      if (nextDrop && nextDrop.id !== id) {
+        navigate(`/projects/${projectId}/wire-drops/${nextDrop.id}`);
+      } else {
+        alert('No more incomplete wire drops!');
+      }
+    } catch (err) {
+      console.error('[WireDropDetail] Error finding next incomplete:', err);
+      alert('Error finding next drop: ' + err.message);
+    }
+  }, [wireDrop?.project_id, id, navigate]);
+
   const getStageByType = (stageType) =>
     (wireDrop?.wire_drop_stages || []).find(stage => stage.stage_type === stageType);
 
@@ -2282,6 +2340,15 @@ const WireDropDetail = () => {
                 )}
               </div>
             </div>
+
+            {/* Next Incomplete Drop Button - Only show in prewire context */}
+            <button
+              onClick={navigateToNextIncomplete}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-lg font-medium transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+              Next Incomplete Drop
+            </button>
           </div>
         )}
 

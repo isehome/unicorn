@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
-const { sendGraphEmail, isGraphConfigured } = require('./_graphMail');
+const { systemSendMail } = require('./_systemGraph');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -127,7 +127,6 @@ async function buildPortalPayload(link) {
 }
 
 async function notifyTracking(po, project, submissions) {
-  if (!isGraphConfigured()) return;
   const { data: stakeholders } = await supabase
     .from('project_stakeholders_detailed')
     .select('project_id, contact_name, email, role_category')
@@ -143,22 +142,20 @@ async function notifyTracking(po, project, submissions) {
 
   const subject = `Vendor tracking added for PO ${po.po_number}`;
   const listHtml = submissions.map((entry) => `<li><strong>${entry.carrier}</strong> ${entry.tracking_number}${entry.notes ? ` – ${entry.notes}` : ''}</li>`).join('');
-  const listText = submissions.map((entry) => `• ${entry.carrier} ${entry.tracking_number}${entry.notes ? ` – ${entry.notes}` : ''}`).join('\n');
+
   const poUrl = PUBLIC_SITE_URL ? `${PUBLIC_SITE_URL}/projects/${po.project_id}/procurement` : null;
+
   const html = `
     <p>New tracking numbers have been submitted for PO <strong>${po.po_number}</strong>${project?.name ? ` on ${project.name}` : ''}:</p>
     <ul>${listHtml}</ul>
     ${poUrl ? `<p><a href="${poUrl}">Open the procurement view</a> to review.</p>` : ''}
   `;
-  const text = `New tracking numbers submitted for PO ${po.po_number}${project?.name ? ` on ${project.name}` : ''}:
-${listText}
-${poUrl ? `\n${poUrl}` : ''}`;
 
-  await sendGraphEmail({
+  await systemSendMail({
     to: Array.from(recipients),
     subject,
-    html,
-    text
+    body: html,
+    bodyType: 'HTML'
   });
 }
 

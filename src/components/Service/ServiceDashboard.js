@@ -31,6 +31,7 @@ import {
   serviceCallLogService
 } from '../../services/serviceTicketService';
 import { useAppState } from '../../contexts/AppStateContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
 import { supabase } from '../../lib/supabase';
 
@@ -80,6 +81,7 @@ const ServiceDashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { publishState, registerActions, unregisterActions, setView } = useAppState();
+  const { user } = useAuth();
 
   const [stats, setStats] = useState(null);
   const [tickets, setTickets] = useState([]);
@@ -91,6 +93,7 @@ const ServiceDashboard = () => {
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [showFilters, setShowFilters] = useState(false);
+  const [showMyTickets, setShowMyTickets] = useState(searchParams.get('my') === 'true');
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [filters, setFilters] = useState({
     status: searchParams.get('status')?.split(',').filter(Boolean) || [],
@@ -117,6 +120,9 @@ const ServiceDashboard = () => {
       if (searchQuery.trim()) {
         queryFilters.search = searchQuery.trim();
       }
+      if (showMyTickets && user?.id) {
+        queryFilters.assignedTo = user.id;
+      }
 
       const [statsData, ticketsData, scheduleData, callsData] = await Promise.all([
         serviceTicketService.getStats(),
@@ -138,7 +144,7 @@ const ServiceDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, searchQuery]);
+  }, [filters, searchQuery, showMyTickets, user?.id]);
 
   useEffect(() => {
     loadDashboardData();
@@ -173,8 +179,9 @@ const ServiceDashboard = () => {
     if (filters.priority) params.set('priority', filters.priority);
     if (filters.category) params.set('category', filters.category);
     if (searchQuery) params.set('search', searchQuery);
+    if (showMyTickets) params.set('my', 'true');
     setSearchParams(params, { replace: true });
-  }, [filters, searchQuery, setSearchParams]);
+  }, [filters, searchQuery, showMyTickets, setSearchParams]);
 
   // Publish state for AI Brain
   useEffect(() => {
@@ -284,9 +291,10 @@ const ServiceDashboard = () => {
   const clearFilters = () => {
     setFilters({ status: [], priority: '', category: '' });
     setSearchQuery('');
+    setShowMyTickets(false);
   };
 
-  const hasActiveFilters = filters.status.length > 0 || filters.priority || filters.category || searchQuery;
+  const hasActiveFilters = filters.status.length > 0 || filters.priority || filters.category || searchQuery || showMyTickets;
 
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -463,6 +471,18 @@ const ServiceDashboard = () => {
                     className="w-full pl-10 pr-4 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-zinc-500"
                   />
                 </div>
+
+                {/* My Tickets Toggle */}
+                <button
+                  onClick={() => setShowMyTickets(!showMyTickets)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
+                    showMyTickets
+                      ? 'border-violet-500 bg-violet-500/20 text-violet-400'
+                      : 'border-zinc-600 text-zinc-400 hover:text-white hover:border-zinc-500'
+                  }`}
+                >
+                  My Tickets
+                </button>
 
                 {/* Filter Toggle */}
                 <button
