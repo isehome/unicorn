@@ -3724,6 +3724,50 @@ ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS calendar_event_id text;
 
 ---
 
+### Issue Stakeholder Dropdown Fix (BR-2026-01-15-0001)
+
+**Bug ID:** BR-2026-01-15-0001
+
+**Problem:** When adding stakeholders to an issue, the dropdown was showing ALL contacts in the system instead of only stakeholders assigned to the current project.
+
+**Root Cause:** The `IssueDetail.js` component was using `contactsService.getAll()` to populate the dropdown, which returned every contact in the database. The user expected to see only `availableProjectStakeholders` (people already assigned to this project).
+
+**Fix Applied:**
+
+1. **Changed data source for dropdown:**
+   - Before: `filteredContacts` based on `allContacts` (all contacts in system)
+   - After: `filteredStakeholders` based on `availableProjectStakeholders` (project stakeholders only)
+
+2. **Simplified the tagging flow:**
+   - Before: Two-step process (select contact → select role)
+   - After: Single-step (select project stakeholder with their existing role)
+   - Project stakeholders already have roles assigned, so no need for role selection
+
+3. **Added exclusion of already-tagged stakeholders:**
+   - Dropdown now filters out stakeholders already tagged on the current issue
+   - Shows helpful message when all stakeholders are already tagged
+
+4. **Updated UI to show role information:**
+   - Each stakeholder in dropdown now shows their role name
+   - Internal/external indicator with appropriate colors (violet/olive)
+
+5. **Removed unused code:**
+   - Removed `allContacts`, `allRoles`, `selectedContact`, `stakeholderStep` state variables
+   - Removed `handleSelectRole` function
+   - Removed `contactsService` and `stakeholderRolesService` imports
+
+**Files Modified:**
+- `src/components/IssueDetail.js` - Dropdown now filters from project stakeholders, simplified flow
+
+**How to Test:**
+1. Navigate to any issue detail page
+2. Click "Add stakeholder..." dropdown
+3. Verify only project stakeholders appear (not all contacts)
+4. Verify each stakeholder shows their role name
+5. Select a stakeholder and verify they get tagged correctly
+
+---
+
 ## 2025-12-23
 
 ### Azure AI Search RAG Integration (Major Update)

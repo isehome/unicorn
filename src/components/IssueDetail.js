@@ -12,9 +12,7 @@ import {
   issueCommentsService,
   issueStakeholderTagsService,
   projectStakeholdersService,
-  projectsService,
-  contactsService,
-  stakeholderRolesService
+  projectsService
 } from '../services/supabaseService';
 import { supabase } from '../lib/supabase';
 import { sharePointStorageService } from '../services/sharePointStorageService';
@@ -103,11 +101,7 @@ const IssueDetail = () => {
   const [ackExternalWarning, setAckExternalWarning] = useState(false);
   const [showPublicWarningModal, setShowPublicWarningModal] = useState(false);
   const [showStakeholderDropdown, setShowStakeholderDropdown] = useState(false);
-  const [allContacts, setAllContacts] = useState([]);
-  const [allRoles, setAllRoles] = useState([]);
   const [contactSearchTerm, setContactSearchTerm] = useState('');
-  const [selectedContact, setSelectedContact] = useState(null);
-  const [stakeholderStep, setStakeholderStep] = useState('search'); // 'search' | 'role'
   const stakeholderDropdownRef = useRef(null);
   const contactSearchInputRef = useRef(null);
   const { openPhotoViewer, updatePhotoViewerOptions, closePhotoViewer } = usePhotoViewer();
@@ -131,23 +125,29 @@ const IssueDetail = () => {
   );
   const hasExternalStakeholders = externalStakeholders.length > 0;
 
-  // Filter contacts by search term for the stakeholder picker
-  const filteredContacts = useMemo(() => {
-    if (!contactSearchTerm.trim()) return allContacts.slice(0, 20); // Show first 20 when no search
+  // Filter project stakeholders by search term for the stakeholder picker
+  // Only shows stakeholders already assigned to this project (not all contacts)
+  const filteredStakeholders = useMemo(() => {
+    // Filter out stakeholders already tagged on this issue
+    const alreadyTaggedIds = new Set((tags || []).map(t => t.assignment_id));
+    const availableStakeholders = availableProjectStakeholders.filter(
+      s => s.assignment_id && !alreadyTaggedIds.has(s.assignment_id)
+    );
+
+    if (!contactSearchTerm.trim()) return availableStakeholders.slice(0, 20);
     const term = contactSearchTerm.toLowerCase();
-    return allContacts.filter(c => {
-      const name = (c.full_name || c.name || '').toLowerCase();
-      const email = (c.email || '').toLowerCase();
-      const company = (c.company || '').toLowerCase();
-      return name.includes(term) || email.includes(term) || company.includes(term);
+    return availableStakeholders.filter(s => {
+      const name = (s.contact_name || '').toLowerCase();
+      const email = (s.email || '').toLowerCase();
+      const company = (s.company || '').toLowerCase();
+      const role = (s.role_name || '').toLowerCase();
+      return name.includes(term) || email.includes(term) || company.includes(term) || role.includes(term);
     }).slice(0, 20);
-  }, [allContacts, contactSearchTerm]);
+  }, [availableProjectStakeholders, contactSearchTerm, tags]);
 
   // Reset stakeholder picker state when dropdown closes
   const resetStakeholderPicker = useCallback(() => {
     setContactSearchTerm('');
-    setSelectedContact(null);
-    setStakeholderStep('search');
   }, []);
 
   const loadExternalUploads = useCallback(async (targetIssueId) => {
@@ -169,14 +169,6 @@ const IssueDetail = () => {
       setError('');
 
       const projectPromise = projectId ? projectsService.getById(projectId) : Promise.resolve(null);
-
-      // Load contacts and roles for stakeholder picker (used by both new and existing issues)
-      const [contactsList, rolesList] = await Promise.all([
-        contactsService.getAll(),
-        stakeholderRolesService.getAll()
-      ]);
-      setAllContacts(contactsList || []);
-      setAllRoles(rolesList || []);
 
       if (!isNew) {
         const [
@@ -1014,14 +1006,9 @@ const IssueDetail = () => {
     });
   }, [canUploadPhotos, handleDeletePhoto, handleReplacePhoto, openPhotoViewer, photoActionLoading]);
 
-  // New two-step flow: select contact, then select role
-  const handleSelectContact = (contact) => {
-    setSelectedContact(contact);
-    setStakeholderStep('role');
-  };
-
-  const handleSelectRole = async (role) => {
-    if (!selectedContact || !role) return;
+  // Direct stakeholder selection - stakeholder already has a role from project assignment
+  const handleSelectStakeholder = async (stakeholder) => {
+    if (!stakeholder?.assignment_id) return;
 
     let issueIdToUse = activeIssueId;
     if (!issueIdToUse) {
@@ -1037,42 +1024,24 @@ const IssueDetail = () => {
     try {
       setTagging(true);
 
-      // Step 1: Create or find project stakeholder assignment
-      const assignment = await projectStakeholdersService.addToProject(
-        projectId,
-        selectedContact.id,
-        role.id
-      );
-
-      if (!assignment?.id) {
-        throw new Error('Failed to create stakeholder assignment');
-      }
-
-      // Step 2: Tag on this issue
-      const createdTag = await issueStakeholderTagsService.add(issueIdToUse, assignment.id, 'assigned');
+      // Tag the existing project stakeholder on this issue
+      const createdTag = await issueStakeholderTagsService.add(issueIdToUse, stakeholder.assignment_id, 'assigned');
       const updated = await issueStakeholderTagsService.getDetailed(issueIdToUse);
       setTags(updated);
 
       // Build stakeholder object for notifications
-      const stakeholder = {
-        assignment_id: assignment.id,
-        contact_id: selectedContact.id,
-        contact_name: selectedContact.full_name || selectedContact.name,
-        email: selectedContact.email,
-        phone: selectedContact.phone,
-        company: selectedContact.company,
-        role_id: role.id,
-        role_name: role.name,
-        category: role.category,
-        is_internal: role.category === 'internal'
+      const stakeholderData = {
+        assignment_id: stakeholder.assignment_id,
+        contact_id: stakeholder.contact_id,
+        contact_name: stakeholder.contact_name,
+        email: stakeholder.email,
+        phone: stakeholder.phone,
+        company: stakeholder.company,
+        role_id: stakeholder.role_id,
+        role_name: stakeholder.role_name,
+        category: stakeholder.category,
+        is_internal: stakeholder.is_internal !== false && stakeholder.category !== 'external'
       };
-
-      // Update available project stakeholders list
-      setAvailableProjectStakeholders(prev => {
-        const exists = prev.some(p => p.assignment_id === assignment.id);
-        if (exists) return prev;
-        return [...prev, stakeholder];
-      });
 
       const link = issueLink || (typeof window !== 'undefined' ? window.location.href : '');
       const issueContext = resolvedIssue || {
@@ -1083,7 +1052,7 @@ const IssueDetail = () => {
       const graphToken = await acquireToken();
 
       let publicPortalPayload = null;
-      const isExternalStakeholder = role.category === 'external';
+      const isExternalStakeholder = stakeholder.category === 'external' || stakeholder.is_internal === false;
 
       if (isExternalStakeholder && createdTag?.id) {
         try {
@@ -1091,7 +1060,7 @@ const IssueDetail = () => {
             issueId: issueIdToUse,
             projectId,
             stakeholderTagId: createdTag.id,
-            stakeholder
+            stakeholder: stakeholderData
           });
           const shareUrl = typeof window !== 'undefined'
             ? `${window.location.origin}/public/issues/${linkDetails.token}`
@@ -1109,7 +1078,7 @@ const IssueDetail = () => {
         {
           issue: issueContext,
           project: projectInfo,
-          stakeholder,
+          stakeholder: stakeholderData,
           actor: currentUserSummary,
           issueUrl: link,
           publicPortal: publicPortalPayload
@@ -1118,7 +1087,7 @@ const IssueDetail = () => {
       );
 
       if (publicPortalPayload) {
-        setSuccessMessage(`Shared external portal link with ${stakeholder.contact_name || stakeholder.email || 'stakeholder'}`);
+        setSuccessMessage(`Shared external portal link with ${stakeholderData.contact_name || stakeholderData.email || 'stakeholder'}`);
         setTimeout(() => setSuccessMessage(null), 3000);
       }
 
@@ -1653,142 +1622,90 @@ const IssueDetail = () => {
                     borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB'
                   }}
                 >
-                  {stakeholderStep === 'search' ? (
-                    <>
-                      {/* Search input */}
-                      <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
-                        <div className="relative">
-                          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-                          <input
-                            ref={contactSearchInputRef}
-                            type="text"
-                            value={contactSearchTerm}
-                            onChange={(e) => setContactSearchTerm(e.target.value)}
-                            placeholder="Search contacts..."
-                            className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
-                            style={{ fontSize: '16px' }}
-                            autoFocus
-                          />
-                        </div>
+                  {/* Search input */}
+                  <div className="p-2 border-b border-zinc-200 dark:border-zinc-700">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                      <input
+                        ref={contactSearchInputRef}
+                        type="text"
+                        value={contactSearchTerm}
+                        onChange={(e) => setContactSearchTerm(e.target.value)}
+                        placeholder="Search project stakeholders..."
+                        className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                        style={{ fontSize: '16px' }}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  {/* Project stakeholder list */}
+                  <div className="max-h-64 overflow-y-auto">
+                    {filteredStakeholders.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-zinc-500 text-center">
+                        {contactSearchTerm
+                          ? 'No matching project stakeholders'
+                          : availableProjectStakeholders.length === 0
+                            ? 'No stakeholders assigned to this project yet'
+                            : 'All project stakeholders already tagged on this issue'}
                       </div>
-                      {/* Contact list */}
-                      <div className="max-h-64 overflow-y-auto">
-                        {filteredContacts.length === 0 ? (
-                          <div className="px-3 py-4 text-sm text-zinc-500 text-center">
-                            {contactSearchTerm ? 'No contacts found' : 'Start typing to search...'}
-                          </div>
-                        ) : (
-                          filteredContacts.map(contact => (
-                            <button
-                              key={contact.id}
-                              type="button"
-                              onClick={() => handleSelectContact(contact)}
-                              className="w-full px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-3 transition-colors border-b border-zinc-100 dark:border-zinc-800 last:border-0"
+                    ) : (
+                      filteredStakeholders.map(stakeholder => {
+                        const isInternal = stakeholder.is_internal !== false && stakeholder.category !== 'external';
+                        return (
+                          <button
+                            key={stakeholder.assignment_id}
+                            type="button"
+                            onClick={() => handleSelectStakeholder(stakeholder)}
+                            disabled={tagging}
+                            className="w-full px-3 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-3 transition-colors border-b border-zinc-100 dark:border-zinc-800 last:border-0 disabled:opacity-50"
+                          >
+                            <div
+                              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                              style={{
+                                backgroundColor: isInternal
+                                  ? 'rgba(139, 92, 246, 0.1)'
+                                  : 'rgba(148, 175, 50, 0.1)'
+                              }}
                             >
-                              <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                                <span className="text-sm font-medium text-violet-600 dark:text-violet-400">
-                                  {(contact.full_name || contact.name || '?').charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-zinc-900 dark:text-white truncate">
-                                  {contact.full_name || contact.name}
-                                </div>
-                                {(contact.company || contact.email) && (
-                                  <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
-                                    {contact.company || contact.email}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* Role selection step */}
-                      <div className="p-3 border-b border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800">
-                        <button
-                          type="button"
-                          onClick={() => setStakeholderStep('search')}
-                          className="text-xs text-violet-600 dark:text-violet-400 hover:underline mb-1"
-                        >
-                          ← Back to search
-                        </button>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-medium text-violet-600 dark:text-violet-400">
-                              {(selectedContact?.full_name || selectedContact?.name || '?').charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-zinc-900 dark:text-white truncate">
-                              {selectedContact?.full_name || selectedContact?.name}
-                            </div>
-                            <div className="text-xs text-zinc-500">Select their role on this issue:</div>
-                          </div>
-                        </div>
-                      </div>
-                      {/* Role list */}
-                      <div className="max-h-64 overflow-y-auto">
-                        {allRoles.filter(r => r.category === 'internal').length > 0 && (
-                          <>
-                            <div className="px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800">
-                              Internal Roles
-                            </div>
-                            {allRoles.filter(r => r.category === 'internal').map(role => (
-                              <button
-                                key={role.id}
-                                type="button"
-                                onClick={() => handleSelectRole(role)}
-                                disabled={tagging}
-                                className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-2 transition-colors disabled:opacity-50"
+                              <span
+                                className="text-sm font-medium"
+                                style={{
+                                  color: isInternal
+                                    ? stakeholderColors.internal.text
+                                    : stakeholderColors.external.text
+                                }}
                               >
-                                <span
-                                  className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: stakeholderColors.internal.text }}
-                                />
-                                <span className="text-sm text-zinc-900 dark:text-white">
-                                  {role.name}
-                                </span>
-                              </button>
-                            ))}
-                          </>
-                        )}
-                        {allRoles.filter(r => r.category === 'external').length > 0 && (
-                          <>
-                            <div className="px-3 py-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800">
-                              External Roles
+                                {(stakeholder.contact_name || '?').charAt(0).toUpperCase()}
+                              </span>
                             </div>
-                            {allRoles.filter(r => r.category === 'external').map(role => (
-                              <button
-                                key={role.id}
-                                type="button"
-                                onClick={() => handleSelectRole(role)}
-                                disabled={tagging}
-                                className="w-full px-3 py-2 text-left hover:bg-zinc-50 dark:hover:bg-zinc-700 flex items-center gap-2 transition-colors disabled:opacity-50"
-                              >
-                                <span
-                                  className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                                  style={{ backgroundColor: stakeholderColors.external.text }}
-                                />
-                                <span className="text-sm text-zinc-900 dark:text-white">
-                                  {role.name}
-                                </span>
-                              </button>
-                            ))}
-                          </>
-                        )}
-                        {tagging && (
-                          <div className="px-3 py-3 text-center">
-                            <Loader size={16} className="animate-spin inline-block text-violet-500" />
-                            <span className="ml-2 text-sm text-zinc-500">Adding stakeholder...</span>
-                          </div>
-                        )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-zinc-900 dark:text-white truncate">
+                                {stakeholder.contact_name}
+                              </div>
+                              <div className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                                {stakeholder.role_name}
+                                {stakeholder.company && ` • ${stakeholder.company}`}
+                              </div>
+                            </div>
+                            <span
+                              className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                              style={{
+                                backgroundColor: isInternal
+                                  ? stakeholderColors.internal.text
+                                  : stakeholderColors.external.text
+                              }}
+                            />
+                          </button>
+                        );
+                      })
+                    )}
+                    {tagging && (
+                      <div className="px-3 py-3 text-center border-t border-zinc-100 dark:border-zinc-800">
+                        <Loader size={16} className="animate-spin inline-block text-violet-500" />
+                        <span className="ml-2 text-sm text-zinc-500">Adding stakeholder...</span>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </div>
