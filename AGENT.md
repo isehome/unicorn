@@ -322,8 +322,118 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Microsoft 365 Calendar** | Technician calendar sync for service appointments |
 | **Retell AI** | Voice-based service intake (inbound calls) |
 | **QuickBooks Online** | Invoice creation from service tickets |
+| **Home Assistant** | Smart home device monitoring, network diagnostics via Nabu Casa |
 
-#### 7.1 Retell AI Voice Integration
+#### 7.1 Home Assistant Integration
+
+Remote access to customer Home Assistant instances for device monitoring, network diagnostics, and future automation control.
+
+##### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Home Assistant Integration                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Unicorn App (Browser/Vercel)                                   │
+│        │                                                         │
+│        ▼                                                         │
+│  /api/ha/status.js ──────────────────┐                          │
+│  /api/ha/entities.js                  │                          │
+│  /api/ha/command.js                   │                          │
+│        │                              │                          │
+│        ▼                              ▼                          │
+│  Supabase DB                    Nabu Casa Cloud                 │
+│  (encrypted credentials)        (remote access)                 │
+│  project_home_assistant              │                          │
+│        │                              │                          │
+│        └────── decrypt ───────────────┤                          │
+│                                       ▼                          │
+│                              Customer's Home Assistant          │
+│                              (local network)                    │
+│                                       │                          │
+│                              ┌────────┴────────┐                │
+│                              │ UniFi Integration│                │
+│                              │ (device_tracker) │                │
+│                              └─────────────────┘                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+##### Database Schema
+
+**Table: `project_home_assistant`**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | UUID | Primary key |
+| `project_id` | UUID | FK to projects |
+| `ha_url_encrypted` | TEXT | Nabu Casa URL (encrypted) |
+| `access_token_encrypted` | TEXT | Long-lived access token (encrypted) |
+| `instance_name` | TEXT | Friendly name (e.g., "Smith Residence HA") |
+| `nabu_casa_enabled` | BOOLEAN | Using Nabu Casa for remote access |
+| `last_connected_at` | TIMESTAMPTZ | Last successful connection |
+| `last_error` | TEXT | Last error message |
+| `device_count` | INTEGER | Number of entities |
+
+**View: `project_home_assistant_decrypted`** - Auto-decrypts credentials using Vault
+
+**RPC Functions:**
+- `create_project_home_assistant()` - Insert with encryption
+- `update_project_home_assistant()` - Update with encryption
+
+##### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/ha/status` | GET | Test connection, get version/entity count |
+| `/api/ha/entities` | GET | Fetch all entities with states |
+| `/api/ha/command` | POST | Execute service call (turn_on, toggle, etc.) |
+
+##### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/ha/status.js` | Connection test endpoint |
+| `api/ha/entities.js` | Entity list endpoint |
+| `api/ha/command.js` | Command execution endpoint |
+| `src/services/homeAssistantService.js` | Frontend service layer |
+| `src/pages/HomeAssistantPage.js` | HA dashboard/test page |
+| `src/components/HomeAssistantSettings.js` | Config UI in project settings |
+| `database/migrations/20260115_home_assistant_integration.sql` | DB schema |
+
+##### Setup Requirements
+
+1. **Customer needs Nabu Casa subscription** - Required for remote access from Vercel
+2. **Long-lived access token** - Created in HA → Profile → Security
+3. **Nabu Casa Remote UI enabled** - Settings → Home Assistant Cloud → Remote Control ON
+
+##### Connection Flow
+
+```
+1. PM enters Nabu Casa URL + Token in HomeAssistantSettings
+2. Credentials encrypted via Supabase Vault RPC
+3. "Test Connection" calls /api/ha/status
+4. API decrypts credentials from project_home_assistant_decrypted view
+5. API fetches https://{nabu_casa_url}/api/ with Bearer token
+6. Returns HA version, entity count, connection status
+```
+
+##### Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `fetch failed` | Nabu Casa disconnected | Open account.nabucasa.com → Click "Connect" |
+| `401 Unauthorized` | Bad/expired token | Create new Long-Lived Access Token in HA |
+| `Connection timeout` | HA not responding | Check HA is running, internet connected |
+
+##### Future Features (Planned)
+
+1. **UniFi device tracking via HA** - Get IP, switch port, WiFi/wired status for network clients
+2. **Entity dashboard** - View/control lights, switches, covers from Unicorn
+3. **Proactive monitoring** - Alert when critical devices go offline
+4. **Sarah integration** - Voice AI can check device status during calls
+
+#### 7.2 Retell AI Voice Integration
 
 AI-powered phone agent for handling inbound customer service calls.
 
@@ -907,7 +1017,8 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
 | **QuickBooks service** | `src/services/quickbooksService.js` |
 | **Home Assistant service** | `src/services/homeAssistantService.js` |
-| **Home Assistant UI** | `src/components/HomeAssistantSettings.js` |
+| **Home Assistant settings** | `src/components/HomeAssistantSettings.js` |
+| **Home Assistant page** | `src/pages/HomeAssistantPage.js` |
 | **HA status API** | `api/ha/status.js` |
 | **HA entities API** | `api/ha/entities.js` |
 | **HA command API** | `api/ha/command.js` |

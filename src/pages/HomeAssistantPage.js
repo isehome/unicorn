@@ -42,7 +42,8 @@ import {
   Zap,
   Eye,
   EyeOff,
-  Settings
+  Settings,
+  ExternalLink
 } from 'lucide-react';
 
 const withAlpha = (hex, alpha) => {
@@ -602,6 +603,25 @@ function HomeAssistantPage() {
                 Direct (Local)
               </p>
             </div>
+          </div>
+        )}
+
+        {/* Direct Link to HA Dashboard */}
+        {connectionStatus?.connected && connectionStatus.url && (
+          <div className="mb-6">
+            <a
+              href={connectionStatus.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors"
+              style={{
+                backgroundColor: withAlpha(palette.info, 0.15),
+                color: palette.info
+              }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open Home Assistant Dashboard
+            </a>
           </div>
         )}
 
