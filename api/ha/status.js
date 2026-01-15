@@ -101,11 +101,11 @@ module.exports = async (req, res) => {
     } catch (fetchError) {
       clearTimeout(timeout);
 
-      // Update error status in database
-      await supabase.rpc('update_project_home_assistant', {
+      // Update error status in database (fire and forget)
+      supabase.rpc('update_project_home_assistant', {
         p_project_id: project_id,
         p_last_error: fetchError.name === 'AbortError' ? 'Connection timeout' : fetchError.message
-      }).catch(() => {});
+      }).then(() => {}).catch(() => {});
 
       return res.json({
         connected: false,
@@ -118,11 +118,11 @@ module.exports = async (req, res) => {
     clearTimeout(timeout);
 
     if (!haResponse.ok) {
-      // Update error status in database
-      await supabase.rpc('update_project_home_assistant', {
+      // Update error status in database (fire and forget)
+      supabase.rpc('update_project_home_assistant', {
         p_project_id: project_id,
         p_last_error: `HTTP ${haResponse.status}: ${haResponse.statusText}`
-      }).catch(() => {});
+      }).then(() => {}).catch(() => {});
 
       return res.json({
         connected: false,
@@ -152,14 +152,14 @@ module.exports = async (req, res) => {
       console.warn('[HA Status] Could not get states count:', statesError.message);
     }
 
-    // Update success status in database
-    await supabase.rpc('update_project_home_assistant', {
+    // Update success status in database (fire and forget)
+    supabase.rpc('update_project_home_assistant', {
       p_project_id: project_id,
       p_last_connected_at: new Date().toISOString(),
       p_last_error: null,
       p_device_count: deviceCount
-    }).catch((err) => {
-      console.warn('[HA Status] Could not update status:', err.message);
+    }).then(({ error }) => {
+      if (error) console.warn('[HA Status] Could not update status:', error.message);
     });
 
     console.log('[HA Status] Connected! Version:', haData.version, 'Entities:', deviceCount);
@@ -177,12 +177,12 @@ module.exports = async (req, res) => {
     console.error('[HA Status] Unhandled error:', error);
     console.error('[HA Status] Error stack:', error.stack);
 
-    // Update error status
+    // Update error status (fire and forget)
     if (project_id) {
-      await supabase.rpc('update_project_home_assistant', {
+      supabase.rpc('update_project_home_assistant', {
         p_project_id: project_id,
         p_last_error: error.message
-      }).catch(() => {});
+      }).then(() => {}).catch(() => {});
     }
 
     return res.status(500).json({
