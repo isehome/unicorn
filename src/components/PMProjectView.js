@@ -52,11 +52,13 @@ import {
   ShoppingCart,
   Trash2,
   FileBarChart2,
-  AlignJustify
+  AlignJustify,
+  Home
 } from 'lucide-react';
 import { projectShadeService } from '../services/projectShadeService';
 import ShadeManager from './Shades/ShadeManager';
 import ProjectReportButton from './ProjectReportButton';
+import HomeAssistantSettings from './HomeAssistantSettings';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
 
@@ -398,7 +400,8 @@ const PMProjectViewEnhanced = () => {
     buildingPermits: true,  // Start collapsed
     setupAndEdit: true,      // Setup & Configuration section - collapsed by default for existing projects
     shadesSetup: true,      // Window treatments setup (import controls)
-    windowCoverings: true   // Window coverings list (embedded ShadeManager)
+    windowCoverings: true,  // Window coverings list (embedded ShadeManager)
+    homeAssistant: true     // Home Assistant integration - collapsed by default
   });
 
   const toggleSection = (section) => {
@@ -4588,6 +4591,29 @@ const PMProjectViewEnhanced = () => {
               projectId={projectId}
               onMilestoneChange={loadMilestoneDates}
             />
+          </div>
+        )}
+      </div>
+
+      {/* Home Assistant Integration Section */}
+      <div>
+        <button
+          onClick={() => toggleSection('homeAssistant')}
+          className="w-full flex items-center justify-between rounded-2xl border p-4 transition-all duration-200 hover:shadow-md"
+          style={sectionStyles.card}
+        >
+          <div className="flex items-center gap-3">
+            <Home className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
+            <span className="font-medium text-zinc-900 dark:text-zinc-100">Home Assistant</span>
+          </div>
+          <ChevronRight
+            className="w-5 h-5 text-zinc-500 transition-transform duration-200"
+            style={{ transform: sectionsCollapsed.homeAssistant ? 'none' : 'rotate(90deg)' }}
+          />
+        </button>
+        {!sectionsCollapsed.homeAssistant && (
+          <div className="mt-4">
+            <HomeAssistantSettings projectId={projectId} />
           </div>
         )}
       </div>

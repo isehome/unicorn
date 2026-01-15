@@ -66,6 +66,7 @@ const ShadeDetailPage = lazy(() => import('./components/Shades/ShadeDetailPage')
 const TodoDetailPage = lazy(() => import('./components/TodoDetailPage'));
 const HeadEndToolsPage = lazy(() => import('./components/HeadEndToolsPage'));
 const KnowledgeManagementPanel = lazy(() => import('./components/knowledge/KnowledgeManagementPanel'));
+const HomeAssistantPage = lazy(() => import('./pages/HomeAssistantPage'));
 
 // Service CRM
 const ServiceDashboard = lazy(() => import('./components/Service/ServiceDashboard'));
@@ -341,6 +342,14 @@ const AppRoutes = () => {
                 element={
                   <ProtectedRoute>
                     <ShadeDetailPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/projects/:projectId/home-assistant"
+                element={
+                  <ProtectedRoute>
+                    <HomeAssistantPage />
                   </ProtectedRoute>
                 }
               />

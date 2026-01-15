@@ -859,6 +859,7 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `service_schedule_confirmations` | Customer confirmation tokens |
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
+| `project_home_assistant` | **ENCRYPTED** - Home Assistant credentials per project |
 
 ### Secure Data Tables (Encrypted)
 
@@ -905,6 +906,11 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
 | **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
 | **QuickBooks service** | `src/services/quickbooksService.js` |
+| **Home Assistant service** | `src/services/homeAssistantService.js` |
+| **Home Assistant UI** | `src/components/HomeAssistantSettings.js` |
+| **HA status API** | `api/ha/status.js` |
+| **HA entities API** | `api/ha/entities.js` |
+| **HA command API** | `api/ha/command.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 

@@ -13,7 +13,7 @@
  *    - Customer accepts: status → confirmed
  *    - Anyone declines: status → cancelled, ticket → unscheduled
  *
- * Schedule: Every 3 minutes (*/3 * * * *)
+ * Schedule: Every 3 minutes (cron: 0/3 * * * *)
  */
 
 const { processCalendarResponses } = require('../_calendarResponseProcessor');
