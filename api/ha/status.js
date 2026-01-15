@@ -26,6 +26,8 @@ module.exports = async (req, res) => {
 
   try {
     // Get HA credentials from decrypted view
+    console.log('[HA Status] Querying for project_id:', project_id);
+
     const { data: haConfig, error: dbError } = await supabase
       .from('project_home_assistant_decrypted')
       .select('*')
@@ -34,7 +36,7 @@ module.exports = async (req, res) => {
 
     if (dbError && dbError.code !== 'PGRST116') {
       console.error('[HA Status] DB error:', dbError);
-      return res.status(500).json({ error: 'Database error' });
+      return res.status(500).json({ error: 'Database error', details: dbError.message });
     }
 
     if (!haConfig) {
@@ -172,7 +174,8 @@ module.exports = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[HA Status] Error:', error);
+    console.error('[HA Status] Unhandled error:', error);
+    console.error('[HA Status] Error stack:', error.stack);
 
     // Update error status
     if (project_id) {
@@ -182,10 +185,11 @@ module.exports = async (req, res) => {
       }).catch(() => {});
     }
 
-    return res.json({
+    return res.status(500).json({
       connected: false,
       configured: true,
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };
