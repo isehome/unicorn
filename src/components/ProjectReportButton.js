@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Send, Eye, Loader2, Check } from 'lucide-react';
+import { Send, Eye, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 const ProjectReportButton = ({ projectId, projectName }) => {
@@ -13,11 +13,9 @@ const ProjectReportButton = ({ projectId, projectName }) => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [includeTodos, setIncludeTodos] = useState(false);
-  const [sent, setSent] = useState(false);
 
   const handleGenerateReport = async (sendEmail = false) => {
     setLoading(true);
-    setSent(false);
 
     try {
       const response = await fetch('/api/project-report/generate', {
@@ -38,8 +36,8 @@ const ProjectReportButton = ({ projectId, projectName }) => {
       }
 
       if (sendEmail) {
-        setSent(true);
-        setTimeout(() => setSent(false), 3000);
+        // Email sent successfully - just close the modal
+        alert('Report sent successfully!');
       } else {
         setPreviewHtml(data.html);
         setShowPreview(true);
@@ -66,28 +64,6 @@ const ProjectReportButton = ({ projectId, projectName }) => {
             <Eye className="w-4 h-4" />
           )}
           Preview Report
-        </button>
-
-        <button
-          onClick={() => handleGenerateReport(true)}
-          disabled={loading || sent}
-          className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors disabled:opacity-50 ${
-            sent
-              ? 'bg-green-600 text-white'
-              : 'bg-zinc-600 hover:bg-zinc-700 text-white'
-          }`}
-        >
-          {sent ? (
-            <>
-              <Check className="w-4 h-4" />
-              Sent!
-            </>
-          ) : (
-            <>
-              <Send className="w-4 h-4" />
-              Send Report
-            </>
-          )}
         </button>
 
         <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
