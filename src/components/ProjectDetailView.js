@@ -578,7 +578,10 @@ const ProjectDetailView = () => {
         drop.name,
         drop.location,
         drop.uid,
-        drop.type
+        drop.type,
+        drop.drop_type,
+        drop.wire_type,
+        drop.lucid_shape_id
       ];
       return values
         .filter((value) => value !== null && value !== undefined)
@@ -1664,7 +1667,7 @@ const ProjectDetailView = () => {
                     type="text"
                     value={wireDropQuery}
                     onChange={(event) => setWireDropQuery(event.target.value)}
-                    placeholder="Search wire drops..."
+                    placeholder="Search by name, room, UID, Lucid shape ID..."
                     className="w-full pl-10 pr-3 py-2 rounded-xl border focus:outline-none focus:ring-2 focus:ring-violet-400 focus:ring-offset-0"
                     style={styles.input}
                   />

@@ -2290,17 +2290,30 @@ const WireDropDetail = () => {
                               objectFit="cover"
                             />
                           )}
-                          <Button
-                            variant="secondary"
-                            icon={RefreshCw}
-                            size="sm"
-                            onClick={() => promptStagePhotoUpload('prewire', true)}
-                            loading={uploadingStage === 'prewire'}
-                            disabled={uploadingStage === 'prewire'}
-                            className="w-full"
-                          >
-                            Replace Photo
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="secondary"
+                              icon={RefreshCw}
+                              size="sm"
+                              onClick={() => promptStagePhotoUpload('prewire', true)}
+                              loading={uploadingStage === 'prewire'}
+                              disabled={uploadingStage === 'prewire'}
+                              className="flex-1"
+                            >
+                              Replace
+                            </Button>
+                            <Button
+                              variant="danger"
+                              icon={Trash2}
+                              size="sm"
+                              onClick={() => handleDeleteStagePhoto('prewire')}
+                              loading={stageViewerLoading === 'prewire'}
+                              disabled={stageViewerLoading === 'prewire' || prewireStage.isPending}
+                              className="flex-1"
+                            >
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                         {prewireStage.completed_at && (
                           <div className="text-xs space-y-1" style={styles.textSecondary}>
@@ -2419,17 +2432,30 @@ const WireDropDetail = () => {
                               objectFit="cover"
                             />
                           )}
-                          <Button
-                            variant="secondary"
-                            icon={RefreshCw}
-                            size="sm"
-                            onClick={() => promptStagePhotoUpload('trim_out', true)}
-                            loading={uploadingStage === 'trim_out'}
-                            disabled={uploadingStage === 'trim_out'}
-                            className="w-full"
-                          >
-                            Replace Photo
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="secondary"
+                              icon={RefreshCw}
+                              size="sm"
+                              onClick={() => promptStagePhotoUpload('trim_out', true)}
+                              loading={uploadingStage === 'trim_out'}
+                              disabled={uploadingStage === 'trim_out'}
+                              className="flex-1"
+                            >
+                              Replace
+                            </Button>
+                            <Button
+                              variant="danger"
+                              icon={Trash2}
+                              size="sm"
+                              onClick={() => handleDeleteStagePhoto('trim_out')}
+                              loading={stageViewerLoading === 'trim_out'}
+                              disabled={stageViewerLoading === 'trim_out' || trimOutStage.isPending}
+                              className="flex-1"
+                            >
+                              Remove
+                            </Button>
+                          </div>
                         </div>
                         {trimOutStage.completed_at && (
                           <div className="text-xs space-y-1" style={styles.textSecondary}>

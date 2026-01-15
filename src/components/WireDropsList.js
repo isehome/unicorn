@@ -217,7 +217,7 @@ const WireDropsList = () => {
     if (searchTerm) {
       const query = searchTerm.toLowerCase();
       filtered = filtered.filter(drop =>
-        [drop.name, drop.room_name, drop.location, drop.type, drop.projects?.name]
+        [drop.name, drop.drop_name, drop.room_name, drop.location, drop.type, drop.drop_type, drop.wire_type, drop.lucid_shape_id, drop.projects?.name]
           .filter(Boolean)
           .some(value => value.toLowerCase().includes(query))
       );
@@ -525,7 +525,7 @@ const WireDropsList = () => {
               <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by name, room, location, or type..."
+                placeholder="Search by name, room, type, Lucid shape ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500"
