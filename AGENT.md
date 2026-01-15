@@ -851,12 +851,29 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `issues` | Problems/issues |
 | `contacts` | People |
 | `suppliers` | Vendors |
+| `project_secure_data` | **ENCRYPTED** - Project credentials (passwords, usernames, etc.) |
+| `contact_secure_data` | **ENCRYPTED** - Contact credentials (gate codes, etc.) |
 | `service_tickets` | Service ticket records |
 | `service_schedules` | Scheduled service appointments |
 | `service_call_logs` | Call history and notes |
 | `service_schedule_confirmations` | Customer confirmation tokens |
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
+
+### Secure Data Tables (Encrypted)
+
+The `project_secure_data` and `contact_secure_data` tables store sensitive credentials with field-level encryption.
+
+**⚠️ NEVER query these tables directly for sensitive fields!**
+
+| Operation | Correct Approach |
+|-----------|------------------|
+| **READ** | Use `project_secure_data_decrypted` or `contact_secure_data_decrypted` views |
+| **INSERT** | Use `create_project_secure_data()` or `create_contact_secure_data()` RPC |
+| **UPDATE** | Use `update_project_secure_data()` or `update_contact_secure_data()` RPC |
+| **DELETE** | Direct DELETE is fine (no encryption involved) |
+
+See [Secure Data Encryption Implementation](#secure-data-encryption-implementation-workstream-1) in CHANGELOG for full details.
 
 ---
 
@@ -4946,5 +4963,216 @@ git show --stat HEAD
 # To checkout specific files from before:
 git checkout HEAD~1 -- path/to/file.js
 ```
+
+---
+
+## 2026-01-14
+
+### Secure Data Encryption Implementation (Workstream 1)
+
+**Status:** ✅ COMPLETE - Deployed 2026-01-14
+
+Implemented field-level encryption for all sensitive data in `project_secure_data` and `contact_secure_data` tables using **Supabase Vault + pgcrypto**.
+
+**Problem Solved:** Passwords, usernames, URLs, IP addresses, and notes were stored as plaintext in the database. This was a critical security issue.
+
+**Solution:** Server-side encryption using pgcrypto's `pgp_sym_encrypt` with keys stored in Supabase Vault.
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Secure Data Encryption Flow                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  WRITE (Create/Update):                                         │
+│  Browser → HTTPS → Supabase API → RPC Function → encrypt_field()│
+│                                        │                         │
+│                                        ▼                         │
+│                              vault.decrypted_secrets             │
+│                              (gets encryption key)               │
+│                                        │                         │
+│                                        ▼                         │
+│                              pgp_sym_encrypt()                   │
+│                                        │                         │
+│                                        ▼                         │
+│                              Base64 encoded blob                 │
+│                              stored in *_encrypted column        │
+│                                                                  │
+│  READ:                                                           │
+│  Service → decrypted view → decrypt_field() → plaintext         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Security Model
+
+| Layer | Protection |
+|-------|------------|
+| **Transit** | HTTPS/TLS encrypts browser ↔ Supabase |
+| **At Rest** | pgcrypto encrypts data in database |
+| **Key Storage** | Supabase Vault (not accessible via API) |
+| **Access Control** | SECURITY DEFINER functions only |
+
+**Who can decrypt:**
+- ✅ Unicorn app (via decrypted views)
+- ✅ Supabase SQL Editor (dashboard admin)
+- ❌ Direct API access (can't access Vault secrets)
+- ❌ Database dumps (only see encrypted blobs)
+- ❌ Compromised anon key (can't read Vault)
+
+#### Database Schema
+
+**Migration Files:**
+- `database/migrations/20260114_encrypt_secure_data_part1_tables.sql` - Tables, extensions, RLS
+- `database/migrations/20260114_encrypt_secure_data_part2_encryption.sql` - Encryption implementation
+- `database/migrations/20260114_encrypt_secure_data.sql` - Combined (reference only)
+
+**Encrypted Columns (both tables):**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `password_encrypted` | text | Base64-encoded encrypted password |
+| `username_encrypted` | text | Base64-encoded encrypted username |
+| `url_encrypted` | text | Base64-encoded encrypted URL |
+| `ip_address_encrypted` | text | Base64-encoded encrypted IP address |
+| `notes_encrypted` | text | Base64-encoded encrypted notes |
+| `additional_info_encrypted` | text | Base64-encoded encrypted JSON |
+
+**Vault Secrets:**
+| Secret Name | Purpose |
+|-------------|---------|
+| `project_secure_data_key` | Encryption key for project credentials |
+| `contact_secure_data_key` | Encryption key for contact credentials |
+
+**Functions:**
+| Function | Purpose |
+|----------|---------|
+| `encrypt_field(text, text)` | Encrypts plaintext using Vault secret |
+| `decrypt_field(text, text)` | Decrypts ciphertext using Vault secret |
+| `create_project_secure_data(...)` | RPC for encrypted INSERT |
+| `create_contact_secure_data(...)` | RPC for encrypted INSERT |
+| `update_project_secure_data(...)` | RPC for encrypted UPDATE |
+| `update_contact_secure_data(...)` | RPC for encrypted UPDATE |
+| `create_default_secure_entries(uuid)` | Auto-creates Gate/House Code for new contacts |
+
+**Views (auto-decrypt on read):**
+| View | Purpose |
+|------|---------|
+| `project_secure_data_decrypted` | Transparent decryption for project credentials |
+| `contact_secure_data_decrypted` | Transparent decryption for contact credentials |
+
+#### Service Layer
+
+**File:** `src/services/equipmentService.js`
+
+**secureDataService:**
+```javascript
+// READ - Use decrypted views
+.from('project_secure_data_decrypted')
+
+// CREATE - Use RPC
+supabase.rpc('create_project_secure_data', {
+  p_project_id: ...,
+  p_name: ...,
+  p_password: ...,  // Plaintext - RPC encrypts it
+  ...
+});
+
+// UPDATE - Use RPC
+supabase.rpc('update_project_secure_data', {
+  p_id: ...,
+  p_password: ...,  // Plaintext - RPC encrypts it
+  ...
+});
+```
+
+**contactSecureDataService:**
+- Same pattern with `contact_secure_data_decrypted` view
+- Uses `create_contact_secure_data` and `update_contact_secure_data` RPCs
+
+#### Testing Encryption
+
+**Verify raw data is encrypted:**
+```sql
+SELECT
+  name,
+  password AS plaintext_col,
+  password_encrypted AS encrypted_col,
+  CASE WHEN password_encrypted IS NOT NULL THEN 'ENCRYPTED' ELSE 'not encrypted' END as status
+FROM project_secure_data
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+**Expected results:**
+- New entries: `plaintext_col = NULL`, `encrypted_col = 'ww0EBwMC...'` (base64 blob)
+- Old migrated entries: `plaintext_col = 'actual password'`, `encrypted_col = 'ww0EBwMC...'`
+
+**Verify decryption works:**
+```sql
+SELECT name, password, username
+FROM project_secure_data_decrypted
+LIMIT 5;
+```
+
+Should show actual plaintext values.
+
+#### Running the Migration
+
+**Step 1:** Run Part 1 (creates tables, extensions, RLS)
+```sql
+-- Copy contents of: database/migrations/20260114_encrypt_secure_data_part1_tables.sql
+-- Execute in Supabase SQL Editor
+```
+
+**Step 2:** Run Part 2 (encryption implementation)
+```sql
+-- Copy contents of: database/migrations/20260114_encrypt_secure_data_part2_encryption.sql
+-- Execute in Supabase SQL Editor
+```
+
+**Step 3:** Verify
+1. Check raw table has encrypted blobs
+2. Check decrypted view returns plaintext
+3. Test create/update in app UI
+
+#### Plaintext Column Cleanup
+
+**DO NOT RUN until 1 week after successful migration:**
+
+```sql
+-- Only run after full verification!
+ALTER TABLE project_secure_data
+DROP COLUMN IF EXISTS password,
+DROP COLUMN IF EXISTS username,
+DROP COLUMN IF EXISTS url,
+DROP COLUMN IF EXISTS ip_address,
+DROP COLUMN IF EXISTS notes,
+DROP COLUMN IF EXISTS additional_info;
+
+ALTER TABLE contact_secure_data
+DROP COLUMN IF EXISTS password,
+DROP COLUMN IF EXISTS username,
+DROP COLUMN IF EXISTS url,
+DROP COLUMN IF EXISTS ip_address,
+DROP COLUMN IF EXISTS notes,
+DROP COLUMN IF EXISTS additional_info;
+```
+
+#### Rollback Plan
+
+Plaintext columns remain until cleanup. To rollback:
+
+1. **Service layer:** Change `project_secure_data_decrypted` → `project_secure_data` in queries
+2. **Remove RPC calls:** Replace with direct INSERT/UPDATE
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `database/migrations/20260114_encrypt_secure_data_part1_tables.sql` | **NEW** - Tables and extensions |
+| `database/migrations/20260114_encrypt_secure_data_part2_encryption.sql` | **NEW** - Encryption implementation |
+| `database/migrations/20260114_encrypt_secure_data.sql` | **NEW** - Combined reference |
+| `src/services/equipmentService.js` | Use decrypted views and RPC functions |
 
 ---
