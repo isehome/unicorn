@@ -4,7 +4,7 @@
  * Runs every 5 minutes to process incoming emails.
  *
  * Endpoint: POST /api/cron/process-emails
- * Schedule: */5 * * * * (every 5 minutes)
+ * Schedule: every 5 minutes (cron: 0/5 * * * *)
  */
 
 module.exports = async (req, res) => {
