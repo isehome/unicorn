@@ -669,12 +669,28 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
     };
   });
 
+  // Color function matching CircularProgressGauge.js exactly
+  // Uses gradient transitions: red (0%) -> yellow (50%) -> olive (100%)
+  // At 100%: uses violet (#8B5CF6) to indicate completion
   const getGaugeColor = (pct) => {
-    if (pct === 100) return '#8B5CF6';
-    if (pct >= 75) return '#94AF32';
-    if (pct >= 50) return '#3B82F6';
-    if (pct >= 25) return '#F59E0B';
-    return '#EF4444';
+    if (pct === 100) return '#8B5CF6'; // Violet for complete
+    if (pct === 0) return '#64748B';   // Slate gray for 0%
+    if (pct < 50) {
+      // Red to Yellow (0-50%)
+      const ratio = pct / 50;
+      const r = 239;
+      const g = Math.round(68 + (245 - 68) * ratio);
+      const b = Math.round(68 + (11 - 68) * ratio);
+      return `rgb(${r}, ${g}, ${b})`;
+    } else {
+      // Yellow to Brand Success Olive (50-100%)
+      // End color: #94AF32 = rgb(148, 175, 50)
+      const ratio = (pct - 50) / 50;
+      const r = Math.round(245 - (245 - 148) * ratio);
+      const g = Math.round(245 - (245 - 175) * ratio);
+      const b = Math.round(11 + (50 - 11) * ratio);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
   };
 
   const formatDate = (dateStr) => {
