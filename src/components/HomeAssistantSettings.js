@@ -431,12 +431,30 @@ function HomeAssistantSettings({ projectId }) {
           ) : (
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
           )}
-          <span>
-            {testResult.message || (testResult.connected
-              ? `Connected! HA version ${testResult.ha_version}, ${testResult.device_count} entities`
-              : `Connection failed: ${testResult.error}`
+          <div className="flex-1">
+            <span>
+              {testResult.message || (testResult.connected
+                ? `Connected! HA version ${testResult.ha_version}, ${testResult.device_count} entities`
+                : `Connection failed: ${testResult.error}`
+              )}
+            </span>
+            {/* Show Nabu Casa reconnect help for fetch failures */}
+            {!testResult.connected && testResult.error?.includes('fetch failed') && (
+              <div className="mt-2 text-sm">
+                <p className="mb-1">This usually means Nabu Casa remote access is disconnected.</p>
+                <a
+                  href="https://account.nabucasa.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium underline"
+                  style={{ color: palette.info }}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Open Nabu Casa Dashboard → Click "Connect"
+                </a>
+              </div>
             )}
-          </span>
+          </div>
         </div>
       )}
 
