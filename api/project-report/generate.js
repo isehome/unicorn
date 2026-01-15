@@ -141,54 +141,109 @@ module.exports = async (req, res) => {
       .select('milestone_type, target_date, actual_date, completed_manually')
       .eq('project_id', projectId);
 
-    // Fetch issues with external stakeholders
-    const { data: issues } = await supabase
+    // Fetch issues for this project
+    const { data: issues, error: issuesError } = await supabase
       .from('issues')
-      .select(`
-        *,
-        issue_stakeholder_tags (
-          id,
-          contact_id,
-          is_external,
-          contacts (
-            id,
-            name,
-            email,
-            company
-          )
-        )
-      `)
+      .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
 
-    // Separate issues by type
+    if (issuesError) {
+      console.error('[project-report] Error fetching issues:', issuesError);
+    }
+
+    // Fetch stakeholder tags using the detailed view which includes role_category
+    // The view joins issue_stakeholder_tags -> project_stakeholders -> stakeholder_roles
+    // role_category = 'external' means external stakeholder
+    const issueIds = (issues || []).map(i => i.id);
+    let stakeholderTags = [];
+
+    if (issueIds.length > 0) {
+      const { data: tagsData, error: tagsError } = await supabase
+        .from('issue_stakeholder_tags_detailed')
+        .select('*')
+        .in('issue_id', issueIds);
+
+      if (tagsError) {
+        console.error('[project-report] Error fetching stakeholder tags:', tagsError);
+      }
+      stakeholderTags = tagsData || [];
+    }
+
+    console.log('[project-report] Issues query result:', {
+      projectId,
+      issuesFound: issues?.length || 0,
+      stakeholderTagsFound: stakeholderTags.length,
+      tagsSample: stakeholderTags.slice(0, 5).map(t => ({
+        tag_id: t.tag_id,
+        issue_id: t.issue_id,
+        role_category: t.role_category,
+        contact_name: t.contact_name
+      }))
+    });
+
+    // Group stakeholder tags by issue_id and add is_external computed property
+    const tagsByIssue = {};
+    for (const tag of stakeholderTags) {
+      if (!tagsByIssue[tag.issue_id]) {
+        tagsByIssue[tag.issue_id] = [];
+      }
+      // Determine if external: role_category = 'external' is the authoritative source
+      tag.is_external = tag.role_category === 'external';
+      tagsByIssue[tag.issue_id].push(tag);
+    }
+
+    // Attach stakeholder tags to issues
+    for (const issue of (issues || [])) {
+      issue.stakeholder_tags = tagsByIssue[issue.id] || [];
+    }
+
+    // Separate issues by type - now using role_category via is_external
     const externalIssues = (issues || []).filter(issue =>
-      issue.issue_stakeholder_tags?.some(tag => tag.is_external)
+      issue.stakeholder_tags?.some(tag => tag.is_external)
     );
     const internalIssues = (issues || []).filter(issue =>
-      !issue.issue_stakeholder_tags?.some(tag => tag.is_external)
+      !issue.stakeholder_tags?.some(tag => tag.is_external)
     );
     const blockedIssues = (issues || []).filter(issue =>
       (issue.status || '').toLowerCase() === 'blocked'
     );
 
-    // Generate portal links for all issues (for external stakeholder access)
-    // This creates/updates portal tokens so issues can be viewed externally
+    console.log('[project-report] Issues categorized:', {
+      external: externalIssues.length,
+      internal: internalIssues.length,
+      blocked: blockedIssues.length,
+      externalIssueTitles: externalIssues.map(i => i.title)
+    });
+
+    // Generate portal links for issues with external stakeholders
     const issuePortalLinks = {};
     for (const issue of (issues || [])) {
       // Find the first external stakeholder tag to create a link
-      const externalTag = issue.issue_stakeholder_tags?.find(tag => tag.is_external);
+      const externalTag = issue.stakeholder_tags?.find(tag => tag.is_external);
       if (externalTag) {
+        console.log('[project-report] Creating portal link for issue:', issue.id, 'tag:', externalTag.tag_id, 'contact:', externalTag.contact_name);
         try {
-          const token = await getOrCreateIssuePortalLink(issue.id, projectId, externalTag);
+          // Adapt tag structure for getOrCreateIssuePortalLink
+          const tagForLink = {
+            id: externalTag.tag_id,
+            contacts: {
+              email: externalTag.email,
+              name: externalTag.contact_name
+            }
+          };
+          const token = await getOrCreateIssuePortalLink(issue.id, projectId, tagForLink);
           if (token) {
             issuePortalLinks[issue.id] = `${APP_BASE_URL}/public/issues/${token}`;
+            console.log('[project-report] Portal link created:', issuePortalLinks[issue.id]);
           }
         } catch (linkError) {
           console.error(`[project-report] Failed to create link for issue ${issue.id}:`, linkError);
         }
       }
     }
+
+    console.log('[project-report] Portal links created:', Object.keys(issuePortalLinks).length);
 
     // Optionally fetch todos
     let todos = [];
