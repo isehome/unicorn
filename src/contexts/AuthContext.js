@@ -413,7 +413,11 @@ export function AuthProvider({ children }) {
       mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
       if (tokenRefreshTimerRef.current) clearTimeout(tokenRefreshTimerRef.current);
-      initRef.current = false;
+      // NOTE: Do NOT reset initRef.current here!
+      // MSAL should only initialize once per page load.
+      // React StrictMode intentionally double-mounts components,
+      // and resetting this allows double-initialization which causes
+      // race conditions and "interaction_in_progress" errors.
     };
     // Note: 'loading' is intentionally omitted to prevent infinite re-renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
