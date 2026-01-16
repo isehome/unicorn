@@ -112,12 +112,21 @@ export async function downloadSubmittalsPackage(projectId, projectName, manifest
 
   for (const part of manifest.parts) {
     try {
-      // Determine source URL and fetch options
-      const url = part.submittalSharepointUrl || part.submittalPdfUrl;
-      if (!url) continue;
+      // Skip parts without valid file references
+      const hasSharePointFile = part.submittalSharepointUrl && part.submittalSharepointDriveId && part.submittalSharepointItemId;
+      const hasExternalUrl = part.submittalPdfUrl && part.submittalPdfUrl.startsWith('http');
+
+      if (!hasSharePointFile && !hasExternalUrl) {
+        console.log(`[zipDownloadService] Skipping ${part.name} - no valid file reference`);
+        continue;
+      }
+
+      // Prefer SharePoint file if available (has driveId/itemId for reliable download)
+      const useSharePoint = hasSharePointFile;
+      const url = useSharePoint ? part.submittalSharepointUrl : part.submittalPdfUrl;
 
       const fetchOptions = {
-        isSharePoint: !!part.submittalSharepointUrl,
+        isSharePoint: useSharePoint,
         driveId: part.submittalSharepointDriveId,
         itemId: part.submittalSharepointItemId
       };

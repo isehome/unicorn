@@ -80,7 +80,7 @@ class SubmittalsReportService {
       return [];
     }
 
-    // Deduplicate by global_part_id and filter to only parts with submittals
+    // Deduplicate by global_part_id and filter to only parts with ACTUAL submittal files
     const uniqueParts = new Map();
     for (const item of data) {
       const part = item.global_parts;
@@ -89,8 +89,27 @@ class SubmittalsReportService {
       // Skip if we already have this part
       if (uniqueParts.has(part.id)) continue;
 
-      // Skip if part has no submittal documents
-      if (!part.submittal_pdf_url && !part.submittal_sharepoint_url) continue;
+      // Get URLs and trim whitespace - treat empty strings as null
+      const pdfUrl = part.submittal_pdf_url?.trim() || null;
+      const sharepointUrl = part.submittal_sharepoint_url?.trim() || null;
+      const driveId = part.submittal_sharepoint_drive_id?.trim() || null;
+      const itemId = part.submittal_sharepoint_item_id?.trim() || null;
+
+      // Skip if part has no actual submittal documents (must have at least a URL)
+      if (!pdfUrl && !sharepointUrl) {
+        console.log(`[SubmittalsReportService] Skipping part ${part.name} - no submittal URL`);
+        continue;
+      }
+
+      // For SharePoint files, we need driveId and itemId for download
+      const hasValidSharePointFile = sharepointUrl && driveId && itemId;
+      const hasValidExternalUrl = pdfUrl && pdfUrl.startsWith('http');
+
+      // Skip if neither source is valid
+      if (!hasValidSharePointFile && !hasValidExternalUrl) {
+        console.log(`[SubmittalsReportService] Skipping part ${part.name} - incomplete file info`);
+        continue;
+      }
 
       uniqueParts.set(part.id, {
         id: part.id,
@@ -98,12 +117,12 @@ class SubmittalsReportService {
         name: part.name,
         manufacturer: part.manufacturer || 'Unknown',
         model: part.model,
-        submittalPdfUrl: part.submittal_pdf_url,
-        submittalSharepointUrl: part.submittal_sharepoint_url,
-        submittalSharepointDriveId: part.submittal_sharepoint_drive_id,
-        submittalSharepointItemId: part.submittal_sharepoint_item_id,
-        hasExternalUrl: !!part.submittal_pdf_url,
-        hasUploadedFile: !!part.submittal_sharepoint_url
+        submittalPdfUrl: pdfUrl,
+        submittalSharepointUrl: sharepointUrl,
+        submittalSharepointDriveId: driveId,
+        submittalSharepointItemId: itemId,
+        hasExternalUrl: hasValidExternalUrl,
+        hasUploadedFile: hasValidSharePointFile
       });
     }
 
