@@ -5,7 +5,7 @@ import { enhancedStyles } from '../styles/styleSystem';
 import { projectsService, contactsService, projectStakeholdersService, stakeholderRolesService } from '../services/supabaseService';
 import { milestoneService } from '../services/milestoneService';
 import { milestoneCacheService } from '../services/milestoneCacheService';
-import { supabase } from '../lib/supabase';
+import { supabase, testSupabaseConnection, testSupabaseQuery } from '../lib/supabase';
 import Button from './ui/Button';
 import MilestoneGaugesDisplay from './MilestoneGaugesDisplay';
 import ProcurementDashboard from './procurement/ProcurementDashboard';
@@ -266,12 +266,33 @@ const PMDashboard = () => {
 
   const loadProjects = async () => {
     try {
+      console.log('[PMDashboard] loadProjects: Starting...');
       setLoading(true);
+
+      // Test 1: Basic fetch connectivity
+      console.log('[PMDashboard] Test 1: Basic fetch connectivity...');
+      const connTest = await testSupabaseConnection();
+      console.log('[PMDashboard] Test 1 result:', connTest);
+
+      // Test 2: Simple Supabase SDK query
+      console.log('[PMDashboard] Test 2: Supabase SDK query...');
+      const queryTest = await testSupabaseQuery();
+      console.log('[PMDashboard] Test 2 result:', queryTest);
+
+      if (!connTest.success && !queryTest.success) {
+        console.error('[PMDashboard] BOTH connectivity tests FAILED - network issue likely');
+        console.error('[PMDashboard] Try: 1) Incognito mode, 2) Disable extensions, 3) Check network');
+      }
+
+      // Now try the actual projects load
+      console.log('[PMDashboard] Loading projects via projectsService...');
       const data = await projectsService.getAll();
+      console.log('[PMDashboard] loadProjects: Got', data?.length || 0, 'projects');
       setProjects(data);
     } catch (error) {
-      console.error('Failed to load projects:', error);
+      console.error('[PMDashboard] loadProjects: Failed:', error);
     } finally {
+      console.log('[PMDashboard] loadProjects: Complete, setting loading=false');
       setLoading(false);
     }
   };

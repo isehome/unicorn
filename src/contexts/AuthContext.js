@@ -38,6 +38,13 @@ const msalInstance = new PublicClientApplication(msalConfig);
 // IMPORTANT: Initialize MSAL (this returns a promise, but we handle it in useEffect)
 const msalInitPromise = msalInstance.initialize();
 
+// Module-level tracking for auth initialization (persists across StrictMode remounts)
+let authInitStarted = false;
+let authInitCompleteResolver = null;
+const authInitCompletePromise = new Promise(resolve => {
+  authInitCompleteResolver = resolve;
+});
+
 const AuthContext = createContext({
   user: null,
   account: null,
@@ -59,7 +66,8 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState(null);
   const [authState, setAuthState] = useState(AUTH_STATES.INITIALIZING);
   
-  const initRef = useRef(false);
+  const initStartedRef = useRef(false);
+  const initCompletedRef = useRef(false);
   const tokenRefreshTimerRef = useRef(null);
   const isAcquiringTokenRef = useRef(false);
 
@@ -150,17 +158,31 @@ export function AuthProvider({ children }) {
     if (!token) return null;
 
     try {
+      console.log('[Auth] loadUserProfile: Starting Graph API fetch...');
+
+      // Add timeout to prevent hanging indefinitely
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('[Auth] loadUserProfile: Fetch timeout after 10s, aborting...');
+        controller.abort();
+      }, 10000);
+
       const response = await fetch('https://graph.microsoft.com/v1.0/me', {
         headers: {
           Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+      console.log('[Auth] loadUserProfile: Graph API response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to fetch user profile');
+        throw new Error(`Failed to fetch user profile: ${response.status}`);
       }
 
       const profile = await response.json();
+      console.log('[Auth] loadUserProfile: Profile fetched successfully for:', profile.displayName);
       
       const enrichedUser = {
         id: profile.id,
@@ -175,13 +197,22 @@ export function AuthProvider({ children }) {
       };
 
       // Load avatar_color from profile BEFORE setting user to prevent color flash
+      // Use timeout to prevent hanging if Supabase is slow
+      console.log('[Auth] loadUserProfile: Pre-loading avatar color...');
       if (supabase && enrichedUser.id) {
         try {
-          const { data: profileData } = await supabase
+          const avatarPromise = supabase
             .from('profiles')
             .select('avatar_color')
             .eq('id', enrichedUser.id)
             .single();
+
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Avatar color query timeout')), 5000)
+          );
+
+          const { data: profileData, error: avatarError } = await Promise.race([avatarPromise, timeoutPromise]);
+          console.log('[Auth] loadUserProfile: Avatar color query result:', { profileData, avatarError: avatarError?.message });
           if (profileData?.avatar_color) {
             enrichedUser.avatar_color = profileData.avatar_color;
           }
@@ -191,6 +222,7 @@ export function AuthProvider({ children }) {
         }
       }
 
+      console.log('[Auth] loadUserProfile: Setting user state...');
       setUser(enrichedUser);
 
       // Sync user profile to Supabase profiles table for audit trail lookups
@@ -259,25 +291,39 @@ export function AuthProvider({ children }) {
         await syncWithTimeout();
       }
 
+      console.log('[Auth] loadUserProfile: Complete, returning user');
       return enrichedUser;
     } catch (error) {
-      console.error('[Auth] Failed to load user profile:', error);
+      if (error.name === 'AbortError') {
+        console.error('[Auth] loadUserProfile: Request timed out after 10 seconds');
+      } else {
+        console.error('[Auth] loadUserProfile: Failed to load user profile:', error);
+      }
       return null;
     }
   }, []);
 
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
+    // Skip if already initialized - MSAL should only init once per page load
+    // Use module-level variable (not ref) because refs don't persist across StrictMode remounts
+    if (authInitStarted) {
+      console.log('[Auth] Auth init already started, waiting for completion...');
+      // Wait for the first mount's init to complete, then update our loading state
+      authInitCompletePromise.then(() => {
+        console.log('[Auth] Auth init completed (from first mount), setting loading=false');
+        setLoading(false);
+      });
+      return;
+    }
+    authInitStarted = true;
 
-    let mounted = true;
     let timeoutId = null;
 
     const initialize = async () => {
       console.log('[Auth] Initializing MSAL');
 
       timeoutId = setTimeout(() => {
-        if (mounted && loading) {
+        if (loading) {
           console.warn('[Auth] Initialization timeout');
           setAuthState(AUTH_STATES.UNAUTHENTICATED);
           setLoading(false);
@@ -349,8 +395,11 @@ export function AuthProvider({ children }) {
             const token = await acquireToken(false);
 
             if (token) {
+              console.log('[Auth] Token acquired, loading user profile...');
               const userProfile = await loadUserProfile(token);
+              console.log('[Auth] loadUserProfile returned:', userProfile ? 'success' : 'null');
               if (userProfile) {
+                console.log('[Auth] Setting auth state to AUTHENTICATED');
                 setAuthState(AUTH_STATES.AUTHENTICATED);
               } else {
                 console.error('[Auth] Failed to load user profile for existing account');
@@ -399,10 +448,13 @@ export function AuthProvider({ children }) {
           setAuthState(AUTH_STATES.ERROR);
         }
       } finally {
-        if (mounted) {
-          if (timeoutId) clearTimeout(timeoutId);
-          setLoading(false);
-          console.log('[Auth] Initialization complete, loading set to false');
+        initCompletedRef.current = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        setLoading(false);
+        console.log('[Auth] Initialization complete, loading set to false');
+        // Resolve the promise so second mount (StrictMode) can update its loading state
+        if (authInitCompleteResolver) {
+          authInitCompleteResolver();
         }
       }
     };
@@ -410,14 +462,9 @@ export function AuthProvider({ children }) {
     initialize();
 
     return () => {
-      mounted = false;
       if (timeoutId) clearTimeout(timeoutId);
       if (tokenRefreshTimerRef.current) clearTimeout(tokenRefreshTimerRef.current);
-      // NOTE: Do NOT reset initRef.current here!
-      // MSAL should only initialize once per page load.
-      // React StrictMode intentionally double-mounts components,
-      // and resetting this allows double-initialization which causes
-      // race conditions and "interaction_in_progress" errors.
+      // Do NOT reset refs - MSAL should only initialize once per page load
     };
     // Note: 'loading' is intentionally omitted to prevent infinite re-renders
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -428,20 +475,26 @@ export function AuthProvider({ children }) {
       console.log('[Auth] Starting login flow with popup');
       setError(null);
 
-      // Check if there's a stuck interaction and clear it
-      const interactionStatus = sessionStorage.getItem('msal.interaction.status') ||
-                                localStorage.getItem('msal.interaction.status');
-      if (interactionStatus) {
-        console.warn('[Auth] Found stuck interaction status, clearing it');
-        sessionStorage.removeItem('msal.interaction.status');
-        localStorage.removeItem('msal.interaction.status');
-        // Also clear any other potentially stuck MSAL state
-        for (let i = sessionStorage.length - 1; i >= 0; i--) {
-          const key = sessionStorage.key(i);
-          if (key && key.includes('msal.') && key.includes('.request.')) {
-            sessionStorage.removeItem(key);
+      // Clear any stuck interaction state from storage before attempting login
+      // This handles cases where a previous login was interrupted
+      const clearMsalStorage = (storage) => {
+        for (let i = storage.length - 1; i >= 0; i--) {
+          const key = storage.key(i);
+          if (key && (key.startsWith('msal.') || key.includes('msal'))) {
+            // Don't clear account/token caches, only interaction state
+            if (key.includes('interaction') || key.includes('.request.')) {
+              storage.removeItem(key);
+            }
           }
         }
+      };
+
+      const hasStuckInteraction = sessionStorage.getItem('msal.interaction.status') ||
+                                   localStorage.getItem('msal.interaction.status');
+      if (hasStuckInteraction) {
+        console.warn('[Auth] Found stuck interaction status in storage, clearing');
+        clearMsalStorage(sessionStorage);
+        clearMsalStorage(localStorage);
       }
 
       const response = await msalInstance.loginPopup(loginRequest);

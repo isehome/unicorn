@@ -238,15 +238,26 @@ export const projectsService = {
     try {
       if (!supabase) return [];
 
-      const { data, error } = await supabase
+      console.log('[projectsService] getAll: Starting query...');
+
+      // Add timeout to prevent hanging
+      const queryPromise = supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
 
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Projects query timeout after 10s')), 10000)
+      );
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
+
+      console.log('[projectsService] getAll: Query complete, got', data?.length || 0, 'projects');
+
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Failed to fetch projects:', error);
+      console.error('[projectsService] getAll: Failed to fetch projects:', error);
       return [];
     }
   },

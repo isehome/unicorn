@@ -4,9 +4,19 @@ import { createClient } from '@supabase/supabase-js'
 export const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
 
+// Debug logging for Supabase initialization
+console.log('[Supabase] Initializing...', {
+  hasUrl: !!supabaseUrl,
+  urlPrefix: supabaseUrl?.substring(0, 30),
+  hasKey: !!supabaseAnonKey,
+  keyLength: supabaseAnonKey?.length
+})
+
 // Only create client if we have valid URL and key (not placeholder values)
 const isValidUrl = supabaseUrl && supabaseUrl.startsWith('http') && !supabaseUrl.includes('your_supabase_project_url_here')
 const isValidKey = supabaseAnonKey && supabaseAnonKey !== 'your_supabase_anon_key_here'
+
+console.log('[Supabase] Validation:', { isValidUrl, isValidKey })
 
 // Connection retry configuration
 const connectionRetryConfig = {
@@ -20,29 +30,119 @@ const connectionRetryConfig = {
   }
 }
 
-export const supabase = (isValidUrl && isValidKey)
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        flowType: 'pkce',
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        persistSession: true,
-        storageKey: 'supabase.auth.token',
-        storage: window.localStorage
-      },
-      global: {
-        headers: { 'x-client-info': 'unicorn-app' },
-      },
-      db: {
-        schema: 'public'
-      },
-      realtime: {
-        params: {
-          eventsPerSecond: 10
-        }
+const createSupabaseClient = () => {
+  if (!isValidUrl || !isValidKey) {
+    console.log('[Supabase] Client NOT created - invalid config')
+    return null
+  }
+
+  console.log('[Supabase] Creating client...')
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+      storageKey: 'supabase.auth.token',
+      storage: window.localStorage
+    },
+    global: {
+      headers: { 'x-client-info': 'unicorn-app' },
+    },
+    db: {
+      schema: 'public'
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10
       }
+    }
+  })
+  console.log('[Supabase] Client created successfully')
+  return client
+}
+
+export const supabase = createSupabaseClient()
+
+// Test function to check Supabase connectivity
+export const testSupabaseConnection = async () => {
+  if (!supabase) {
+    console.log('[Supabase] Test: No client available')
+    return { success: false, error: 'No client' }
+  }
+
+  const testUrl = `${supabaseUrl}/rest/v1/`
+  console.log('[Supabase] Test: Starting connectivity test to:', testUrl)
+  const startTime = Date.now()
+
+  try {
+    // Simple health check - just try to make any request
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      console.log('[Supabase] Test: Aborting after 5s...')
+      controller.abort()
+    }, 5000)
+
+    console.log('[Supabase] Test: Sending fetch request...')
+    // Use native fetch to test if we can reach Supabase at all
+    const response = await fetch(testUrl, {
+      method: 'HEAD',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${supabaseAnonKey}`
+      },
+      signal: controller.signal
     })
-  : null
+
+    clearTimeout(timeoutId)
+    const elapsed = Date.now() - startTime
+    console.log('[Supabase] Test: Response received in', elapsed, 'ms, status:', response.status, response.statusText)
+
+    return { success: true, elapsed, status: response.status }
+  } catch (error) {
+    const elapsed = Date.now() - startTime
+    console.log('[Supabase] Test: FAILED after', elapsed, 'ms')
+    console.log('[Supabase] Test: Error name:', error.name)
+    console.log('[Supabase] Test: Error message:', error.message)
+    console.log('[Supabase] Test: Error stack:', error.stack)
+    return { success: false, elapsed, error: error.message, errorName: error.name }
+  }
+}
+
+// Alternative test using a simpler approach
+export const testSupabaseQuery = async () => {
+  if (!supabase) {
+    console.log('[Supabase] QueryTest: No client')
+    return { success: false, error: 'No client' }
+  }
+
+  console.log('[Supabase] QueryTest: Starting simple query...')
+  const startTime = Date.now()
+
+  try {
+    // Set up a race between the query and a timeout
+    const queryPromise = supabase.from('projects').select('id').limit(1)
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout after 5s')), 5000)
+    )
+
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise])
+
+    const elapsed = Date.now() - startTime
+    if (error) {
+      console.log('[Supabase] QueryTest: Query error after', elapsed, 'ms:', error)
+      return { success: false, elapsed, error: error.message }
+    }
+
+    console.log('[Supabase] QueryTest: Success in', elapsed, 'ms, got', data?.length || 0, 'rows')
+    return { success: true, elapsed, rowCount: data?.length || 0 }
+  } catch (error) {
+    const elapsed = Date.now() - startTime
+    console.log('[Supabase] QueryTest: FAILED after', elapsed, 'ms:', error.message)
+    return { success: false, elapsed, error: error.message }
+  }
+}
 
 // Retry wrapper for database operations
 async function withRetry(operation, config = connectionRetryConfig) {
