@@ -1,0 +1,230 @@
+# ============================================================================
+# UniFi Network Clients Integration for Home Assistant
+# Add these sections to your configuration.yaml
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# COMMAND LINE SENSOR - Fetches all UniFi client data
+# ----------------------------------------------------------------------------
+# This sensor runs the Python script every 60 seconds and stores the result.
+# The 'clients' attribute contains the full list of connected devices.
+
+sensor:
+  - platform: command_line
+    name: unifi_network_clients
+    # The command passes credentials via environment variables for security
+    command: >
+      UNIFI_HOST={{ states('input_text.unifi_host') | default('!secret unifi_host', true) }}
+      UNIFI_USERNAME=!secret unifi_username
+      UNIFI_PASSWORD=!secret unifi_password
+      UNIFI_SITE=default
+      python3 /config/scripts/unifi_clients.py
+    # How often to poll (in seconds) - adjust based on your needs
+    scan_interval: 60
+    # Timeout for the command (in seconds)
+    command_timeout: 30
+    # The main sensor value shows total client count
+    value_template: "{{ value_json.total_count | default(0) }}"
+    # Store all client data in attributes
+    json_attributes:
+      - clients
+      - total_count
+      - wired_count
+      - wireless_count
+    # Icon for the sensor
+    icon: mdi:lan
+
+
+# ----------------------------------------------------------------------------
+# TEMPLATE SENSORS - Individual device tracking
+# ----------------------------------------------------------------------------
+# Create sensors for specific devices you want to track.
+# Replace MAC addresses with your actual device MACs.
+
+template:
+  # Aggregate stats sensors
+  - sensor:
+      - name: "UniFi Wired Clients"
+        unique_id: unifi_wired_clients_count
+        state: "{{ state_attr('sensor.unifi_network_clients', 'wired_count') | default(0) }}"
+        icon: mdi:ethernet
+        unit_of_measurement: "devices"
+
+      - name: "UniFi Wireless Clients"
+        unique_id: unifi_wireless_clients_count
+        state: "{{ state_attr('sensor.unifi_network_clients', 'wireless_count') | default(0) }}"
+        icon: mdi:wifi
+        unit_of_measurement: "devices"
+
+  # ----- EXAMPLE: Server Switch Port Sensor -----
+  # Tracks which switch port your server is connected to
+  - sensor:
+      - name: "Server Switch Port"
+        unique_id: server_switch_port
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {% set device = clients | selectattr('mac', 'eq', 'aa:bb:cc:dd:ee:ff') | list | first %}
+            {{ device.sw_port if device else 'disconnected' }}
+          {% else %}
+            unavailable
+          {% endif %}
+        icon: mdi:ethernet
+        attributes:
+          switch_name: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', 'aa:bb:cc:dd:ee:ff') | list | first %}
+              {{ device.sw_name if device else 'unknown' }}
+            {% else %}
+              unknown
+            {% endif %}
+          ip_address: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', 'aa:bb:cc:dd:ee:ff') | list | first %}
+              {{ device.ip if device else 'unknown' }}
+            {% else %}
+              unknown
+            {% endif %}
+
+  # ----- EXAMPLE: Security Camera Sensor -----
+  # Tracks a PoE camera's connection status and port
+  - sensor:
+      - name: "Front Camera Status"
+        unique_id: front_camera_unifi_status
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {% set device = clients | selectattr('mac', 'eq', '11:22:33:44:55:66') | list | first %}
+            {{ 'online' if device else 'offline' }}
+          {% else %}
+            unavailable
+          {% endif %}
+        icon: >
+          {% if is_state('sensor.front_camera_status', 'online') %}
+            mdi:cctv
+          {% else %}
+            mdi:cctv-off
+          {% endif %}
+        attributes:
+          switch_port: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', '11:22:33:44:55:66') | list | first %}
+              {{ device.sw_port if device else 'N/A' }}
+            {% else %}
+              N/A
+            {% endif %}
+          switch_name: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', '11:22:33:44:55:66') | list | first %}
+              {{ device.sw_name if device else 'N/A' }}
+            {% else %}
+              N/A
+            {% endif %}
+          ip_address: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', '11:22:33:44:55:66') | list | first %}
+              {{ device.ip if device else 'N/A' }}
+            {% else %}
+              N/A
+            {% endif %}
+          uptime_seconds: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set device = clients | selectattr('mac', 'eq', '11:22:33:44:55:66') | list | first %}
+              {{ device.uptime if device else 0 }}
+            {% else %}
+              0
+            {% endif %}
+
+
+# ----------------------------------------------------------------------------
+# BINARY SENSORS - Device presence detection
+# ----------------------------------------------------------------------------
+# Use these for automations based on device online/offline status
+
+template:
+  - binary_sensor:
+      # Example: Is the NAS online?
+      - name: "NAS Online"
+        unique_id: nas_online_status
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {{ clients | selectattr('mac', 'eq', 'aa:bb:cc:dd:ee:ff') | list | length > 0 }}
+          {% else %}
+            false
+          {% endif %}
+        device_class: connectivity
+        icon: mdi:nas
+
+      # Example: Is a specific IoT device connected?
+      - name: "Smart TV Connected"
+        unique_id: smart_tv_connected
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {{ clients | selectattr('mac', 'eq', '22:33:44:55:66:77') | list | length > 0 }}
+          {% else %}
+            false
+          {% endif %}
+        device_class: connectivity
+
+
+# ----------------------------------------------------------------------------
+# UTILITY SENSORS - Find devices by criteria
+# ----------------------------------------------------------------------------
+
+template:
+  - sensor:
+      # List all devices on a specific switch port
+      - name: "Devices on Port 24"
+        unique_id: unifi_devices_port_24
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {% set devices = clients | selectattr('sw_port', 'eq', 24) | list %}
+            {{ devices | length }}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "devices"
+        attributes:
+          device_list: >
+            {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+            {% if clients %}
+              {% set devices = clients | selectattr('sw_port', 'eq', 24) | list %}
+              {{ devices | map(attribute='hostname') | list }}
+            {% else %}
+              []
+            {% endif %}
+
+      # Find all devices on a specific VLAN
+      - name: "IoT VLAN Devices"
+        unique_id: unifi_iot_vlan_devices
+        state: >
+          {% set clients = state_attr('sensor.unifi_network_clients', 'clients') %}
+          {% if clients %}
+            {% set devices = clients | selectattr('vlan', 'eq', 30) | list %}
+            {{ devices | length }}
+          {% else %}
+            0
+          {% endif %}
+        unit_of_measurement: "devices"
+        icon: mdi:devices
+
+
+# ----------------------------------------------------------------------------
+# INPUT HELPERS (Optional) - For dynamic configuration
+# ----------------------------------------------------------------------------
+# Uncomment if you want to configure the UniFi host via the UI
+
+# input_text:
+#   unifi_host:
+#     name: UniFi Controller IP
+#     initial: "192.168.1.1"
+#     icon: mdi:ip-network
