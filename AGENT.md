@@ -87,6 +87,90 @@ Import from Lucid → Create Wire Drops → Assign Equipment → Complete Stages
 | Trim Stages | % of wire drops with trim photo + equipment |
 | Commissioning | % of wire drops commissioned |
 
+#### Milestone Architecture (Single Source of Truth)
+
+**CRITICAL:** All milestone percentages are calculated from a SINGLE source: `api/_milestoneCalculations.js`
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MILESTONE DATA FLOW (SSOT)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  PMProjectView.js             api/project-report/generate.js    │
+│       │                                    │                     │
+│       └──────────────┬─────────────────────┘                     │
+│                      │                                           │
+│                      ▼                                           │
+│            api/_milestoneCalculations.js                         │
+│            (SINGLE SOURCE OF TRUTH)                              │
+│                      │                                           │
+│                      ▼                                           │
+│            api/milestone-percentages.js (API endpoint)           │
+│                      │                                           │
+│                      ▼                                           │
+│            milestoneCacheService.js (5-min localStorage cache)   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `api/_milestoneCalculations.js` | **SSOT** - All calculation logic lives here |
+| `api/milestone-percentages.js` | API endpoint for fetching percentages |
+| `src/services/milestoneService.js` | Frontend service (calls API) |
+| `src/services/milestoneCacheService.js` | 5-minute localStorage cache |
+
+#### Percentage vs Completion vs Actual Date
+
+**These are THREE separate concepts - DO NOT conflate them:**
+
+| Concept | Meaning | Set By | Example |
+|---------|---------|--------|---------|
+| `percentage === 100` | Calculated work is done | Automatic calculation | All wire drops have prewire photos |
+| `completed_manually === true` | User acknowledged completion | Manual toggle in Phase Milestones table | PM clicked "Completed" dropdown |
+| `actual_date` | Timestamp of manual completion | Set when `completed_manually` toggled ON | "2026-01-15" stored in DB |
+
+**Example Scenario:**
+1. Team uploads all prewire photos → Prewire Stages gauge shows 100%
+2. BUT `completed_manually` is still `false` and `actual_date` is `null`
+3. PM reviews work, clicks "Completed" in Phase Milestones table
+4. NOW `completed_manually = true` and `actual_date = today`
+
+**Report Preview Status Logic:**
+```javascript
+// CORRECT: Only show "Completed" if EXPLICITLY marked complete
+const isManuallyComplete = dates.completed_manually === true;
+
+// WRONG (old buggy code): This fabricates completion dates!
+const isComplete = dates.completed || (percentage === 100);  // DON'T DO THIS
+```
+
+#### Phase Rollup Formula
+
+Phase percentages use a weighted rollup:
+
+```
+Prewire Phase = (Prewire Orders × 25%) + (Prewire Receiving × 25%) + (Prewire Stages × 50%)
+Trim Phase    = (Trim Orders × 25%)    + (Trim Receiving × 25%)    + (Trim Stages × 50%)
+```
+
+Stages are weighted 50% because actual installation work is more significant than procurement.
+
+#### Cache Invalidation
+
+The milestone cache is automatically invalidated when:
+- Wire drop stage completed (prewire/trim/commission photo uploaded)
+- Equipment procurement status changed (ordered/received)
+- Bulk receive executed for a phase
+
+**Manual invalidation (for debugging):**
+```javascript
+import { milestoneCacheService } from '../services/milestoneCacheService';
+milestoneCacheService.invalidate(projectId);  // Single project
+milestoneCacheService.clearAll();              // All projects
+```
+
 ### 4. Procurement (Purchase Orders)
 
 **Flow:**
@@ -3683,6 +3767,117 @@ if (!showPhotoTaken) {
 
 **Files Modified:**
 - `src/components/PrewireMode.js` - Added state, filter logic, UI toggles, voice AI actions
+
+---
+
+### Phase Milestones - Real-Time Status Display
+
+Fixed the Phase Milestones table to show real-time calculated status instead of only displaying static database values.
+
+**Problem:** The Phase Milestones section showed outdated dates because it only read from `project_milestones` table, while the Project Report Preview calculated percentages in real-time.
+
+**Solution:** Updated the Status column to use the already-calculated `milestonePercentages` state:
+- Shows "Completed" (green) when percentage = 100% OR manually marked complete
+- Shows "X%" (blue) when percentage is between 1-99%
+- Shows "Not set" (gray) when percentage is 0 or null
+
+**Implementation Details:**
+
+Added helper function to extract percentage for each milestone type:
+```javascript
+const getPercentageForType = (type) => {
+  const typeMap = {
+    'planning_design': milestonePercentages.planning_design,
+    'prewire_prep': milestonePercentages.prewire_prep,
+    'prewire': typeof milestonePercentages.prewire === 'number'
+      ? milestonePercentages.prewire
+      : milestonePercentages.prewire_phase?.percentage || 0,
+    // ... other milestone types
+  };
+  return typeMap[type] ?? null;
+};
+```
+
+Updated Status column to derive status from calculated percentage:
+```javascript
+const percentage = getPercentageForType(type);
+const isComplete = milestone?.completed_manually || percentage === 100;
+
+if (isComplete) return "Completed";
+if (percentage > 0) return `${percentage}%`;
+return "Not set";
+```
+
+**Files Modified:**
+- `src/components/PMProjectView.js` - Added `getPercentageForType()` helper, updated Status column rendering
+
+---
+
+### Milestone Data Consistency - Single Source of Truth (SSOT)
+
+Major refactoring to fix data inconsistencies between PM Project View and Project Report Preview gauges.
+
+**Problems Fixed:**
+
+1. **Fabricated Actual Dates** - Report showed today's date as "actual date" when percentage=100%, even if milestone wasn't explicitly completed by user.
+
+2. **Duplicate Calculation Code** - `api/project-report/generate.js` had 360+ lines duplicating `milestoneService.js`, leading to calculation drift.
+
+3. **No Single Source of Truth** - Two separate calculation systems produced different results.
+
+4. **Stale Cache** - 5-minute localStorage cache with no invalidation triggers.
+
+**Solution Architecture:**
+
+```
+PMProjectView.js ─────┬────► api/_milestoneCalculations.js (SSOT)
+                      │              │
+generate.js ──────────┘              ▼
+                           api/milestone-percentages.js (API)
+                                     │
+                           milestoneCacheService.js (5-min cache + invalidation)
+```
+
+**Key Changes:**
+
+1. **Fixed Fabricated Dates Bug** (line 891 in generate.js):
+   - Before: `isComplete = dates.completed || (percentage === 100)` - WRONG
+   - After: `isManuallyComplete = dates.completed === true` - CORRECT
+
+2. **Created Shared Calculation Module** (`api/_milestoneCalculations.js`):
+   - Single source of truth for ALL milestone percentage calculations
+   - Exported functions used by both generate.js and milestone-percentages.js API
+
+3. **Removed 360 Lines of Duplicate Code** from generate.js
+
+4. **Added Cache Invalidation Triggers**:
+   - `wireDropService.js` - Invalidates cache when stage completed
+   - `projectEquipmentService.js` - Invalidates cache when procurement status changes
+
+**New API Endpoint:**
+```
+GET /api/milestone-percentages?projectId={uuid}
+
+Response: {
+  success: true,
+  percentages: {
+    planning_design: 100,
+    prewire_phase: { percentage: 68, orders: {...}, receiving: {...}, stages: {...} },
+    trim_phase: { percentage: 25, ... },
+    commissioning: 0
+  }
+}
+```
+
+**Files Created:**
+- `api/_milestoneCalculations.js` - Shared calculation module (SSOT)
+- `api/milestone-percentages.js` - API endpoint
+
+**Files Modified:**
+- `api/project-report/generate.js` - Fixed dates bug, imports from shared module
+- `src/services/wireDropService.js` - Added cache invalidation on stage update
+- `src/services/projectEquipmentService.js` - Added cache invalidation on status change
+- `AGENT.md` - Added milestone architecture documentation
 
 ---
 

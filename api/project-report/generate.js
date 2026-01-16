@@ -2,14 +2,15 @@
  * Generate Project Progress Report
  * Creates HTML email with gauges and issues for external stakeholders
  *
- * Updated 2026-01-15: Now calculates milestone percentages in real-time
- * (matching milestoneService.js logic) instead of reading from database
- * Issues link to external portal for external stakeholders
+ * Updated 2026-01-16: CRITICAL FIX - Fixed fabricated dates bug and
+ * now uses shared milestone calculation module (SSOT) instead of
+ * duplicate code. See api/_milestoneCalculations.js for calculation logic.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { systemSendMail } = require('../_systemGraph');
+const { calculateAllMilestones } = require('../_milestoneCalculations');
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
@@ -303,366 +304,9 @@ module.exports = async (req, res) => {
   }
 };
 
-/**
- * Calculate all milestone percentages (matches milestoneService.js logic)
- */
-async function calculateAllMilestones(projectId, project) {
-  // Calculate Planning & Design
-  const planningDesign = calculatePlanningDesign(project);
-
-  // Calculate Prewire metrics
-  const prewireOrders = await calculatePrewireOrders(projectId);
-  const prewireReceiving = await calculatePrewireReceiving(projectId);
-  const prewireStages = await calculatePrewireStages(projectId);
-
-  // Calculate Prewire Phase rollup (25% orders + 25% receiving + 50% stages)
-  const prewirePhase = Math.round(
-    prewireOrders.percentage * 0.25 +
-    prewireReceiving.percentage * 0.25 +
-    prewireStages.percentage * 0.50
-  );
-
-  // Calculate Trim metrics
-  const trimOrders = await calculateTrimOrders(projectId);
-  const trimReceiving = await calculateTrimReceiving(projectId);
-  const trimStages = await calculateTrimStages(projectId);
-
-  // Calculate Trim Phase rollup (25% orders + 25% receiving + 50% stages)
-  const trimPhase = Math.round(
-    trimOrders.percentage * 0.25 +
-    trimReceiving.percentage * 0.25 +
-    trimStages.percentage * 0.50
-  );
-
-  // Calculate Commissioning
-  const commissioning = await calculateCommissioning(projectId);
-
-  return {
-    planningDesign,
-    prewireOrders,
-    prewireReceiving,
-    prewireStages,
-    prewirePhase,
-    trimOrders,
-    trimReceiving,
-    trimStages,
-    trimPhase,
-    commissioning
-  };
-}
-
-/**
- * Planning & Design: 100% when both URLs exist, 50% for one
- */
-function calculatePlanningDesign(project) {
-  const hasLucid = Boolean(project?.wiring_diagram_url);
-  const hasProposal = Boolean(project?.portal_proposal_url);
-
-  if (hasLucid && hasProposal) return { percentage: 100 };
-  if (hasLucid || hasProposal) return { percentage: 50 };
-  return { percentage: 0 };
-}
-
-/**
- * Prewire Orders: % of prewire parts with submitted POs
- */
-async function calculatePrewireOrders(projectId) {
-  try {
-    // Get equipment with global_part data
-    const { data: equipment } = await supabase
-      .from('project_equipment')
-      .select(`
-        id,
-        planned_quantity,
-        global_part:global_part_id (required_for_prewire)
-      `)
-      .eq('project_id', projectId)
-      .neq('equipment_type', 'Labor');
-
-    // Get submitted prewire POs
-    const { data: pos } = await supabase
-      .from('purchase_orders')
-      .select(`
-        id,
-        status,
-        items:purchase_order_items(project_equipment_id, quantity_ordered)
-      `)
-      .eq('project_id', projectId)
-      .eq('milestone_stage', 'prewire_prep');
-
-    // Map submitted PO quantities
-    const submittedPOMap = new Map();
-    (pos || []).forEach(po => {
-      if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
-        (po.items || []).forEach(item => {
-          const existing = submittedPOMap.get(item.project_equipment_id) || 0;
-          submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
-        });
-      }
-    });
-
-    // Filter to prewire items
-    const prewireItems = (equipment || []).filter(item =>
-      item.global_part?.required_for_prewire === true
-    );
-
-    if (prewireItems.length === 0) {
-      return { percentage: 0, ordered: 0, total: 0 };
-    }
-
-    let totalParts = 0;
-    let orderedParts = 0;
-
-    prewireItems.forEach(item => {
-      const required = item.planned_quantity || 0;
-      const ordered = submittedPOMap.get(item.id) || 0;
-      totalParts += required;
-      orderedParts += Math.min(required, ordered);
-    });
-
-    const percentage = totalParts > 0 ? Math.round((orderedParts / totalParts) * 100) : 0;
-    return { percentage, ordered: orderedParts, total: totalParts };
-  } catch (error) {
-    console.error('Error calculating prewire orders:', error);
-    return { percentage: 0, ordered: 0, total: 0 };
-  }
-}
-
-/**
- * Prewire Receiving: % of prewire parts fully received
- */
-async function calculatePrewireReceiving(projectId) {
-  try {
-    const { data: equipment } = await supabase
-      .from('project_equipment')
-      .select(`
-        id,
-        planned_quantity,
-        received_quantity,
-        global_part:global_part_id (required_for_prewire)
-      `)
-      .eq('project_id', projectId)
-      .neq('equipment_type', 'Labor');
-
-    const prewireItems = (equipment || []).filter(item =>
-      item.global_part?.required_for_prewire === true &&
-      (item.planned_quantity || 0) > 0
-    );
-
-    if (prewireItems.length === 0) {
-      return { percentage: 0, received: 0, total: 0 };
-    }
-
-    let totalParts = 0;
-    let receivedParts = 0;
-
-    prewireItems.forEach(item => {
-      const required = item.planned_quantity || 0;
-      const received = item.received_quantity || 0;
-      totalParts += required;
-      receivedParts += Math.min(required, received);
-    });
-
-    const percentage = totalParts > 0 ? Math.round((receivedParts / totalParts) * 100) : 0;
-    return { percentage, received: receivedParts, total: totalParts };
-  } catch (error) {
-    console.error('Error calculating prewire receiving:', error);
-    return { percentage: 0, received: 0, total: 0 };
-  }
-}
-
-/**
- * Prewire Stages: % of wire drops with prewire photo
- */
-async function calculatePrewireStages(projectId) {
-  try {
-    const { data: wireDrops } = await supabase
-      .from('wire_drops')
-      .select('id')
-      .eq('project_id', projectId);
-
-    const { data: stages } = await supabase
-      .from('wire_drop_stages')
-      .select('wire_drop_id, photo_url')
-      .eq('stage_type', 'prewire')
-      .in('wire_drop_id', (wireDrops || []).map(w => w.id));
-
-    const total = wireDrops?.length || 0;
-    const completed = (stages || []).filter(s => s.photo_url).length;
-
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { percentage, completed, total };
-  } catch (error) {
-    console.error('Error calculating prewire stages:', error);
-    return { percentage: 0, completed: 0, total: 0 };
-  }
-}
-
-/**
- * Trim Orders: % of trim parts with submitted POs
- */
-async function calculateTrimOrders(projectId) {
-  try {
-    const { data: equipment } = await supabase
-      .from('project_equipment')
-      .select(`
-        id,
-        planned_quantity,
-        global_part:global_part_id (required_for_prewire)
-      `)
-      .eq('project_id', projectId)
-      .neq('equipment_type', 'Labor');
-
-    const { data: pos } = await supabase
-      .from('purchase_orders')
-      .select(`
-        id,
-        status,
-        items:purchase_order_items(project_equipment_id, quantity_ordered)
-      `)
-      .eq('project_id', projectId)
-      .eq('milestone_stage', 'trim_prep');
-
-    const submittedPOMap = new Map();
-    (pos || []).forEach(po => {
-      if (['submitted', 'confirmed', 'partially_received', 'received'].includes(po.status)) {
-        (po.items || []).forEach(item => {
-          const existing = submittedPOMap.get(item.project_equipment_id) || 0;
-          submittedPOMap.set(item.project_equipment_id, existing + (item.quantity_ordered || 0));
-        });
-      }
-    });
-
-    // Trim items: required_for_prewire !== true
-    const trimItems = (equipment || []).filter(item =>
-      item.global_part?.required_for_prewire !== true
-    );
-
-    if (trimItems.length === 0) {
-      return { percentage: 0, ordered: 0, total: 0 };
-    }
-
-    let totalParts = 0;
-    let orderedParts = 0;
-
-    trimItems.forEach(item => {
-      const required = item.planned_quantity || 0;
-      const ordered = submittedPOMap.get(item.id) || 0;
-      totalParts += required;
-      orderedParts += Math.min(required, ordered);
-    });
-
-    const percentage = totalParts > 0 ? Math.round((orderedParts / totalParts) * 100) : 0;
-    return { percentage, ordered: orderedParts, total: totalParts };
-  } catch (error) {
-    console.error('Error calculating trim orders:', error);
-    return { percentage: 0, ordered: 0, total: 0 };
-  }
-}
-
-/**
- * Trim Receiving: % of trim parts fully received
- */
-async function calculateTrimReceiving(projectId) {
-  try {
-    const { data: equipment } = await supabase
-      .from('project_equipment')
-      .select(`
-        id,
-        planned_quantity,
-        received_quantity,
-        global_part:global_part_id (required_for_prewire)
-      `)
-      .eq('project_id', projectId)
-      .neq('equipment_type', 'Labor');
-
-    const trimItems = (equipment || []).filter(item =>
-      item.global_part?.required_for_prewire !== true &&
-      (item.planned_quantity || 0) > 0
-    );
-
-    if (trimItems.length === 0) {
-      return { percentage: 0, received: 0, total: 0 };
-    }
-
-    let totalParts = 0;
-    let receivedParts = 0;
-
-    trimItems.forEach(item => {
-      const required = item.planned_quantity || 0;
-      const received = item.received_quantity || 0;
-      totalParts += required;
-      receivedParts += Math.min(required, received);
-    });
-
-    const percentage = totalParts > 0 ? Math.round((receivedParts / totalParts) * 100) : 0;
-    return { percentage, received: receivedParts, total: totalParts };
-  } catch (error) {
-    console.error('Error calculating trim receiving:', error);
-    return { percentage: 0, received: 0, total: 0 };
-  }
-}
-
-/**
- * Trim Stages: % of wire drops with trim_out completed (equipment installed)
- */
-async function calculateTrimStages(projectId) {
-  try {
-    const { data: wireDrops } = await supabase
-      .from('wire_drops')
-      .select('id, is_auxiliary')
-      .eq('project_id', projectId);
-
-    const { data: stages } = await supabase
-      .from('wire_drop_stages')
-      .select('wire_drop_id, completed')
-      .eq('stage_type', 'trim_out')
-      .in('wire_drop_id', (wireDrops || []).map(w => w.id));
-
-    // Auxiliary drops auto-complete, so count them as completed
-    const completedStages = new Set(
-      (stages || []).filter(s => s.completed).map(s => s.wire_drop_id)
-    );
-    const auxiliaryDrops = (wireDrops || []).filter(w => w.is_auxiliary).map(w => w.id);
-    auxiliaryDrops.forEach(id => completedStages.add(id));
-
-    const total = wireDrops?.length || 0;
-    const completed = completedStages.size;
-
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { percentage, completed, total };
-  } catch (error) {
-    console.error('Error calculating trim stages:', error);
-    return { percentage: 0, completed: 0, total: 0 };
-  }
-}
-
-/**
- * Commissioning: % of wire drops with commissioning complete
- */
-async function calculateCommissioning(projectId) {
-  try {
-    const { data: wireDrops } = await supabase
-      .from('wire_drops')
-      .select('id')
-      .eq('project_id', projectId);
-
-    const { data: stages } = await supabase
-      .from('wire_drop_stages')
-      .select('wire_drop_id, completed')
-      .eq('stage_type', 'commission')
-      .in('wire_drop_id', (wireDrops || []).map(w => w.id));
-
-    const total = wireDrops?.length || 0;
-    const completed = (stages || []).filter(s => s.completed).length;
-
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { percentage, completed, total };
-  } catch (error) {
-    console.error('Error calculating commissioning:', error);
-    return { percentage: 0, completed: 0, total: 0 };
-  }
-}
+// Note: calculateAllMilestones is now imported from api/_milestoneCalculations.js
+// This eliminates 360+ lines of duplicate code that previously lived here.
+// See that module for the SINGLE SOURCE OF TRUTH for all milestone calculations.
 
 function generateReportHtml({ project, milestones, milestoneDates, externalIssues, internalIssues, blockedIssues, issuePortalLinks, todos, includeTodos }) {
   // Build milestone date lookup
@@ -888,14 +532,25 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
         <tbody>
           ${scheduleRows.map(row => {
             const dates = dateMap[row.type] || {};
-            const isComplete = dates.completed || (row.percentage === 100);
+            // CRITICAL FIX: Only show "Completed" if EXPLICITLY marked complete in database
+            // percentage=100% means calculated work is done, but doesn't mean user acknowledged completion
+            // These are separate concepts:
+            //   - percentage === 100: Work items are done (automatic calculation)
+            //   - completed === true: User explicitly marked milestone complete (manual toggle)
+            //   - actual_date: Timestamp when user marked it complete
+            const isManuallyComplete = dates.completed === true;
+
+            // Determine visual status dot color
             let dotClass = 'red';
-            if (isComplete) dotClass = 'violet';
+            if (isManuallyComplete) dotClass = 'violet';
+            else if (row.percentage === 100) dotClass = 'green';  // Work done but not officially closed
             else if (row.percentage >= 50) dotClass = 'green';
             else if (row.percentage > 0) dotClass = 'amber';
 
+            // Determine status text
             let statusText = 'Not set';
-            if (isComplete) statusText = 'Completed';
+            if (isManuallyComplete) statusText = 'Completed';
+            else if (row.percentage === 100) statusText = '100% (Pending Close)';
             else if (row.percentage > 0) statusText = `${row.percentage}%`;
 
             return `

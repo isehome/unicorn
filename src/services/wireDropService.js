@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { milestoneCacheService } from './milestoneCacheService';
 
 /**
  * Enhanced Wire Drop Service for 3-stage system
@@ -440,11 +441,36 @@ class WireDropService {
           await this.markLinkedEquipmentInstalled(wireDropId, false, null);
         }
 
+        // Invalidate milestone cache when stage is updated (affects prewire/trim/commissioning gauges)
+        await this.invalidateMilestoneCache(wireDropId);
+
         return data;
       }
     } catch (error) {
       console.error('Failed to update stage:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Invalidate milestone cache for the project that owns this wire drop
+   * Called when stage data changes to ensure gauges show fresh data
+   */
+  async invalidateMilestoneCache(wireDropId) {
+    try {
+      const { data: wireDrop } = await supabase
+        .from('wire_drops')
+        .select('project_id')
+        .eq('id', wireDropId)
+        .single();
+
+      if (wireDrop?.project_id) {
+        milestoneCacheService.invalidate(wireDrop.project_id);
+        console.log(`[wireDropService] Invalidated milestone cache for project ${wireDrop.project_id}`);
+      }
+    } catch (error) {
+      // Don't throw - cache invalidation is not critical
+      console.warn('[wireDropService] Failed to invalidate milestone cache:', error);
     }
   }
 

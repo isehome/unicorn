@@ -2,6 +2,7 @@ import Papa from 'papaparse';
 import { supabase } from '../lib/supabase';
 import { normalizeRoomName } from '../utils/roomUtils';
 import { fuzzyMatchService } from '../utils/fuzzyMatchService';
+import { milestoneCacheService } from './milestoneCacheService';
 
 const HEADEND_KEYWORDS = ['network', 'head', 'equipment', 'rack', 'structured', 'mda', 'server'];
 
@@ -1467,6 +1468,12 @@ export const projectEquipmentService = {
       throw new Error('Equipment not found or update failed');
     }
 
+    // Invalidate milestone cache when equipment status changes (affects orders/receiving gauges)
+    if (data.project_id) {
+      milestoneCacheService.invalidate(data.project_id);
+      console.log(`[projectEquipmentService] Invalidated milestone cache for project ${data.project_id}`);
+    }
+
     return data;
   },
 
@@ -1543,6 +1550,12 @@ export const projectEquipmentService = {
       throw new Error(error.message || 'Failed to update procurement quantities');
     }
 
+    // Invalidate milestone cache when receiving quantity changes (affects receiving gauges)
+    if (data?.project_id) {
+      milestoneCacheService.invalidate(data.project_id);
+      console.log(`[projectEquipmentService] Invalidated milestone cache for project ${data.project_id}`);
+    }
+
     return data;
   },
 
@@ -1605,6 +1618,10 @@ export const projectEquipmentService = {
       console.error('Failed to bulk receive items:', error);
       throw new Error(error.message || 'Failed to bulk receive items');
     }
+
+    // Invalidate milestone cache after bulk receive (affects receiving gauges)
+    milestoneCacheService.invalidate(projectId);
+    console.log(`[projectEquipmentService] Invalidated milestone cache for project ${projectId} after bulk receive`);
 
     return {
       updated: data?.length || 0,

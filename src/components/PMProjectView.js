@@ -801,6 +801,30 @@ const PMProjectViewEnhanced = () => {
     }
   };
 
+  // Helper function to get calculated percentage for a milestone type
+  // Used by Phase Milestones table to show real-time status
+  const getPercentageForType = (type) => {
+    const typeMap = {
+      'planning_design': milestonePercentages.planning_design,
+      'prewire_prep': milestonePercentages.prewire_prep,
+      'prewire': typeof milestonePercentages.prewire === 'number'
+        ? milestonePercentages.prewire
+        : milestonePercentages.prewire_phase?.percentage || 0,
+      'trim_prep': milestonePercentages.trim_prep,
+      'trim': typeof milestonePercentages.trim === 'number'
+        ? milestonePercentages.trim
+        : milestonePercentages.trim_phase?.percentage || 0,
+      'commissioning': typeof milestonePercentages.commissioning === 'number'
+        ? milestonePercentages.commissioning
+        : milestonePercentages.commissioning?.percentage || 0,
+      // Manual-only milestones (no auto-calculation)
+      'rough_in_inspection': null,
+      'final_inspection': null,
+      'handoff_training': null
+    };
+    return typeMap[type] ?? null;
+  };
+
   const loadMilestoneDates = useCallback(async () => {
     if (!projectId) return;
     try {
@@ -4271,20 +4295,33 @@ const PMProjectViewEnhanced = () => {
                           )}
                         </td>
                         <td className="py-3 px-4">
-                          {phaseMilestonesEditMode ? (
-                            <select
-                              value={milestone?.completed_manually ? 'completed' : 'not_set'}
-                              onChange={(e) => handleMilestoneUpdate(type, 'completed_manually', e.target.value === 'completed')}
-                              className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-1.5 text-sm text-zinc-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                            >
-                              <option value="not_set">Not set</option>
-                              <option value="completed">Completed</option>
-                            </select>
-                          ) : milestone?.completed_manually ? (
-                            <span className="text-sm" style={{ color: '#94AF32' }}>Completed</span>
-                          ) : (
-                            <span className="text-sm text-zinc-400 dark:text-zinc-500">Not set</span>
-                          )}
+                          {(() => {
+                            const percentage = getPercentageForType(type);
+                            const isComplete = milestone?.completed_manually || percentage === 100;
+
+                            if (phaseMilestonesEditMode) {
+                              return (
+                                <select
+                                  value={milestone?.completed_manually ? 'completed' : 'not_set'}
+                                  onChange={(e) => handleMilestoneUpdate(type, 'completed_manually', e.target.value === 'completed')}
+                                  className="w-full rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 px-3 py-1.5 text-sm text-zinc-900 dark:text-white focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                >
+                                  <option value="not_set">Not set</option>
+                                  <option value="completed">Completed</option>
+                                </select>
+                              );
+                            }
+
+                            if (isComplete) {
+                              return <span className="text-sm" style={{ color: '#94AF32' }}>Completed</span>;
+                            }
+
+                            if (percentage !== null && percentage > 0) {
+                              return <span className="text-sm" style={{ color: '#3B82F6' }}>{percentage}%</span>;
+                            }
+
+                            return <span className="text-sm text-zinc-400 dark:text-zinc-500">Not set</span>;
+                          })()}
                         </td>
                         <td className="py-3 px-4">
                           <span className="text-xs text-zinc-600 dark:text-zinc-400">
