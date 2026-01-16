@@ -3754,8 +3754,17 @@ New columns added to `global_parts` table:
 | `src/services/partsService.js` | Added submittal fields to create() and update() |
 | `src/components/GlobalPartDocumentationEditor.js` | Added submittal document section (URL or upload) |
 | `src/components/GlobalPartsManager.js` | Added submittal fields to select query |
+| `src/components/PartDetailPage.js` | **Added Submittal Document section** with external URL input and SharePoint upload |
 | `src/pages/ProjectReportsPage.js` | Added Progress and Submittals tabs |
 | `src/components/PMProjectView.js` | Removed standalone Progress Report button |
+
+**Part Detail Page Submittal Section:**
+The Submittal Document field appears in the Part Details page (`/parts/:partId`) after the Technical Manual URLs section:
+- External URL input for manufacturer submittal PDF links
+- OR divider
+- SharePoint upload option for custom submittal PDFs
+- Amber FileCheck icon to distinguish from other documentation types
+- Upload files are stored in SharePoint under: `submittals/{Manufacturer}/{PartNumber}/`
 
 **Reports Page Tabs (Updated):**
 | Tab | Purpose |

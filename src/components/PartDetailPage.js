@@ -7,11 +7,15 @@ import {
   Plus,
   AlertCircle,
   Loader2,
+  FileCheck,
+  Link as LinkIcon,
+  Upload,
 } from 'lucide-react';
 import Button from './ui/Button';
 import { useTheme } from '../contexts/ThemeContext';
 import { partsService } from '../services/partsService';
 import { queryKeys } from '../lib/queryClient';
+import { sharePointStorageService } from '../services/sharePointStorageService';
 
 const PartDetailPage = () => {
   const { partId } = useParams();
@@ -21,6 +25,7 @@ const PartDetailPage = () => {
 
   const [formState, setFormState] = useState(null);
   const [formError, setFormError] = useState('');
+  const [uploadingSubmittal, setUploadingSubmittal] = useState(false);
 
   const {
     data: part,
@@ -51,6 +56,11 @@ const PartDetailPage = () => {
         schematic_url: part.schematic_url || '',
         install_manual_urls: Array.isArray(part.install_manual_urls) ? part.install_manual_urls : [],
         technical_manual_urls: Array.isArray(part.technical_manual_urls) ? part.technical_manual_urls : [],
+        // Submittal document fields
+        submittal_pdf_url: part.submittal_pdf_url || '',
+        submittal_sharepoint_url: part.submittal_sharepoint_url || '',
+        submittal_sharepoint_drive_id: part.submittal_sharepoint_drive_id || '',
+        submittal_sharepoint_item_id: part.submittal_sharepoint_item_id || '',
       });
     }
   }, [part]);
@@ -77,6 +87,11 @@ const PartDetailPage = () => {
         schematic_url: updated.schematic_url || '',
         install_manual_urls: Array.isArray(updated.install_manual_urls) ? updated.install_manual_urls : [],
         technical_manual_urls: Array.isArray(updated.technical_manual_urls) ? updated.technical_manual_urls : [],
+        // Submittal document fields
+        submittal_pdf_url: updated.submittal_pdf_url || '',
+        submittal_sharepoint_url: updated.submittal_sharepoint_url || '',
+        submittal_sharepoint_drive_id: updated.submittal_sharepoint_drive_id || '',
+        submittal_sharepoint_item_id: updated.submittal_sharepoint_item_id || '',
       });
     },
     onError: (mutationError) => {
@@ -138,6 +153,53 @@ const PartDetailPage = () => {
       urls.splice(index, 1);
       return { ...prev, [field]: urls };
     });
+  };
+
+  // Handle submittal PDF file upload to SharePoint
+  const handleSubmittalFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.includes('pdf')) {
+      setFormError('Please upload a PDF file for submittals');
+      return;
+    }
+
+    setUploadingSubmittal(true);
+    setFormError('');
+
+    try {
+      // Create folder name from part info
+      const folderName = `submittals/${formState.manufacturer || 'Unknown'}/${formState.part_number || partId}`;
+
+      // Upload to SharePoint
+      const result = await sharePointStorageService.uploadFile(file, folderName);
+
+      if (result) {
+        setFormState((prev) => ({
+          ...prev,
+          submittal_sharepoint_url: result.webUrl || result.url,
+          submittal_sharepoint_drive_id: result.driveId,
+          submittal_sharepoint_item_id: result.itemId,
+        }));
+      }
+    } catch (err) {
+      console.error('Failed to upload submittal:', err);
+      setFormError('Failed to upload submittal PDF: ' + (err.message || 'Unknown error'));
+    } finally {
+      setUploadingSubmittal(false);
+    }
+  };
+
+  // Clear uploaded submittal
+  const handleClearSubmittalUpload = () => {
+    setFormState((prev) => ({
+      ...prev,
+      submittal_sharepoint_url: '',
+      submittal_sharepoint_drive_id: '',
+      submittal_sharepoint_item_id: '',
+    }));
   };
 
   const handleSubmit = (event) => {
@@ -425,6 +487,115 @@ const PartDetailPage = () => {
             >
               Add Technical Manual
             </Button>
+          </div>
+
+          {/* Submittal Document Section */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+            <label className={styles.label + ' flex items-center gap-2'}>
+              <FileCheck className="h-4 w-4 text-amber-500" />
+              Submittal Document
+              <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                (for end-of-project documentation)
+              </span>
+            </label>
+
+            {/* External URL Option */}
+            <div className="mt-3">
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                External URL (manufacturer website)
+              </label>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="url"
+                  value={formState.submittal_pdf_url || ''}
+                  onChange={(event) => handleFieldChange('submittal_pdf_url', event.target.value)}
+                  className={styles.input}
+                  placeholder="https://manufacturer.com/product-submittal.pdf"
+                />
+                {formState.submittal_pdf_url && (
+                  <a
+                    href={formState.submittal_pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 p-2 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded"
+                    title="Open link"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
+            </div>
+
+            {/* OR divider */}
+            <div className="flex items-center gap-3 my-4">
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+              <span className="text-xs text-gray-400">OR</span>
+              <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+            </div>
+
+            {/* Upload Option */}
+            <div>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                Upload to SharePoint
+              </label>
+
+              {formState.submittal_sharepoint_url ? (
+                <div className="flex items-center gap-2 mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+                  <FileCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span className="flex-1 text-sm text-amber-700 dark:text-amber-300 truncate">
+                    Submittal PDF uploaded
+                  </span>
+                  <a
+                    href={formState.submittal_sharepoint_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                    title="View file"
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleClearSubmittalUpload}
+                    className="p-1 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-1">
+                  <label className="block">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleSubmittalFileUpload}
+                      disabled={uploadingSubmittal}
+                      className="hidden"
+                    />
+                    <div className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-3 cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors dark:border-gray-600 dark:bg-zinc-800/50 dark:hover:border-amber-500 dark:hover:bg-amber-900/20">
+                      {uploadingSubmittal ? (
+                        <>
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Uploading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                            Click to upload submittal PDF
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Submittal documents are product spec sheets included in end-of-project documentation packages
+            </p>
           </div>
         </div>
 
