@@ -976,10 +976,15 @@ const ShadeDetailPage = () => {
         return '#6B7280'; // Gray for pending/partial
     };
 
-    const getStatusBg = (status, isDark) => {
-        if (status === 'exact') return isDark ? 'bg-green-900/30' : 'bg-green-50';
-        if (status === 'review') return isDark ? 'bg-amber-900/30' : 'bg-amber-50';
-        return isDark ? 'bg-zinc-800' : 'bg-zinc-100';
+    const getStatusBg = (status) => {
+        if (status === 'exact') return ''; // Uses inline style with brand olive
+        if (status === 'review') return mode === 'dark' ? 'bg-amber-900/30' : 'bg-amber-50';
+        return mode === 'dark' ? 'bg-zinc-800' : 'bg-zinc-100';
+    };
+
+    const getStatusStyle = (status) => {
+        if (status === 'exact') return { backgroundColor: 'rgba(148, 175, 50, 0.15)' };
+        return {};
     };
 
     return (
@@ -1258,9 +1263,10 @@ const ShadeDetailPage = () => {
                                     disabled={markingComplete}
                                     className={`w-full mt-4 py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
                                         shade?.[`${activeTab}_complete`]
-                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                                            ? ''
                                             : 'bg-violet-500 hover:bg-violet-600 text-white'
                                     } ${markingComplete ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                    style={shade?.[`${activeTab}_complete`] ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
                                 >
                                     {markingComplete ? (
                                         <Loader2 size={18} className="animate-spin" />
@@ -1341,9 +1347,10 @@ const ShadeDetailPage = () => {
                         disabled={!orderedWidth || !orderedHeight || dimensionsValidated}
                         className={`w-full py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
                             dimensionsValidated
-                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                ? ''
                                 : 'bg-violet-500 hover:bg-violet-600 text-white disabled:opacity-50 disabled:cursor-not-allowed'
                         }`}
+                        style={dimensionsValidated ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
                     >
                         <CheckCircle size={18} />
                         {dimensionsValidated ? 'Dimensions Validated' : 'Validate Dimensions for Order'}

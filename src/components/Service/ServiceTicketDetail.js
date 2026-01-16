@@ -1263,7 +1263,7 @@ const ServiceTicketDetail = () => {
                 className="w-full flex items-center justify-between p-4 text-left hover:bg-zinc-700/50 transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <Camera size={18} className="text-green-400" />
+                  <Camera size={18} style={{ color: '#94AF32' }} />
                   <h2 className="font-semibold text-white">Photos</h2>
                 </div>
                 {expandedSections.photos ? (
@@ -1438,25 +1438,30 @@ const ServiceTicketDetail = () => {
                             </div>
                           )}
                           {/* Visit Status */}
-                          <span className={`text-xs px-2 py-0.5 rounded mt-2 inline-block ${
-                            schedule.status === 'completed'
-                              ? 'bg-green-500/20 text-green-500'
-                              : schedule.status === 'cancelled'
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded mt-2 inline-block ${
+                              schedule.status === 'cancelled'
                               ? 'bg-red-500/20 text-red-500'
-                              : 'bg-blue-500/20 text-blue-500'
-                          }`}>
+                              : schedule.status !== 'completed'
+                              ? 'bg-blue-500/20 text-blue-500'
+                              : ''
+                            }`}
+                            style={schedule.status === 'completed' ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' } : {}}
+                          >
                             {schedule.status}
                           </span>
                           {/* Schedule Workflow Status */}
                           {schedule.schedule_status && (
-                            <span className={`text-xs px-2 py-0.5 rounded mt-2 ml-2 inline-block ${
-                              schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
-                              schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
-                              schedule.schedule_status === 'tech_accepted' ? 'bg-blue-500/20 text-blue-400' :
-                              schedule.schedule_status === 'pending_customer' ? 'bg-cyan-500/20 text-cyan-400' :
-                              schedule.schedule_status === 'confirmed' ? 'bg-green-500/20 text-green-400' :
-                              'bg-zinc-500/20 text-zinc-400'
-                            }`}>
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded mt-2 ml-2 inline-block ${
+                                schedule.schedule_status === 'draft' ? 'bg-violet-500/20 text-violet-400' :
+                                schedule.schedule_status === 'pending_tech' ? 'bg-amber-500/20 text-amber-400' :
+                                schedule.schedule_status === 'tech_accepted' ? 'bg-blue-500/20 text-blue-400' :
+                                schedule.schedule_status === 'pending_customer' ? 'bg-cyan-500/20 text-cyan-400' :
+                                schedule.schedule_status !== 'confirmed' ? 'bg-zinc-500/20 text-zinc-400' : ''
+                              }`}
+                              style={schedule.schedule_status === 'confirmed' ? { backgroundColor: 'rgba(148, 175, 50, 0.2)', color: '#94AF32' } : {}}
+                            >
                               {schedule.schedule_status === 'draft' ? 'Draft' :
                                schedule.schedule_status === 'pending_tech' ? 'Awaiting Tech' :
                                schedule.schedule_status === 'tech_accepted' ? 'Tech Accepted' :
@@ -1908,16 +1913,18 @@ const ServiceTicketDetail = () => {
                   availabilityStatus.checking
                     ? 'bg-zinc-700/50 border-zinc-600'
                     : availabilityStatus.available
-                    ? 'bg-green-500/10 border-green-500/30'
+                    ? 'border-[#94AF32]/30'
                     : 'bg-red-500/10 border-red-500/30'
-                }`}>
+                }`}
+                style={availabilityStatus.available && !availabilityStatus.checking ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
+              >
                   {availabilityStatus.checking ? (
                     <div className="flex items-center gap-2 text-zinc-300 text-sm">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-zinc-400" />
                       Checking technician availability...
                     </div>
                   ) : availabilityStatus.available ? (
-                    <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
                       <CheckCircle size={16} />
                       Technician is available (including 30-min buffer)
                     </div>

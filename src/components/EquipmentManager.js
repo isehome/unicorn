@@ -612,11 +612,13 @@ const EquipmentManager = ({ projectId, onClose }) => {
                       </div>
                       <h4 className="font-semibold mt-2" style={styles.textPrimary}>{item.name}</h4>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      item.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                      item.status === 'maintenance' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
-                      'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                    }`}>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        item.status === 'maintenance' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
+                        item.status !== 'active' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : ''
+                      }`}
+                      style={item.status === 'active' ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
+                    >
                       {item.status}
                     </span>
                   </div>

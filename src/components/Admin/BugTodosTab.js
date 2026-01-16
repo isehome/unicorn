@@ -559,7 +559,7 @@ const BugTodosTab = () => {
         <div className={`${cardBg} p-4 rounded-xl border ${borderColor}`}>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-green-500/10">
-              <CheckCircle className="w-5 h-5 text-green-500" />
+              <CheckCircle style={{ color: '#94AF32' }} />
             </div>
             <div>
               <div className={`text-2xl font-bold ${textPrimary}`}>{stats.analyzed}</div>

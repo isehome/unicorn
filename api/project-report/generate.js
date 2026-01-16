@@ -141,11 +141,12 @@ module.exports = async (req, res) => {
       .select('milestone_type, target_date, actual_date, completed_manually')
       .eq('project_id', projectId);
 
-    // Fetch issues for this project
+    // Fetch issues for this project (exclude resolved issues)
     const { data: issues, error: issuesError } = await supabase
       .from('issues')
       .select('*')
       .eq('project_id', projectId)
+      .neq('status', 'resolved')
       .order('created_at', { ascending: false });
 
     if (issuesError) {
@@ -248,13 +249,18 @@ module.exports = async (req, res) => {
     // Optionally fetch todos
     let todos = [];
     if (includeTodos) {
-      const { data: todoData } = await supabase
-        .from('todos')
+      const { data: todoData, error: todoError } = await supabase
+        .from('project_todos')
         .select('*')
         .eq('project_id', projectId)
         .eq('completed', false)
-        .order('due_by', { ascending: true });
+        .order('do_by', { ascending: true, nullsFirst: false });
+
+      if (todoError) {
+        console.error('[project-report] Error fetching todos:', todoError);
+      }
       todos = todoData || [];
+      console.log('[project-report] Todos fetched:', todos.length, 'includeTodos:', includeTodos);
     }
 
     // Generate HTML

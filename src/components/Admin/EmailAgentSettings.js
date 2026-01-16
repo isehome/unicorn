@@ -192,7 +192,7 @@ const EmailAgentSettings = ({ mode = 'light' }) => {
             isDark={isDark}
           />
           <StatCard
-            icon={<CheckCircle className="w-5 h-5 text-green-500" />}
+            icon={<CheckCircle style={{ color: '#94AF32' }} />}
             label="Tickets Created"
             value={stats.by_action?.ticket_created || 0}
             isDark={isDark}

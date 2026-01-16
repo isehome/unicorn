@@ -249,16 +249,24 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
     }).format(amount);
   };
 
+  // Status colors - confirmed/received use brand olive #94AF32
   const getStatusColor = (status) => {
     const colors = {
       draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
       submitted: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300',
-      confirmed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300',
+      confirmed: '', // Uses inline style with brand olive
       partially_received: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300',
-      received: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300',
+      received: '', // Uses inline style with brand olive
       cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
     };
     return colors[status] || colors.draft;
+  };
+
+  const getStatusStyle = (status) => {
+    if (status === 'confirmed' || status === 'received') {
+      return { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' };
+    }
+    return {};
   };
 
   // Filter POs by project
@@ -452,7 +460,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                               <span className="font-medium text-gray-900 dark:text-white text-base">
                                 {po.po_number}
                               </span>
-                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(po.status)}`}>
+                              <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(po.status)}`} style={getStatusStyle(po.status)}>
                                 {po.status.replace('_', ' ')}
                               </span>
                             </div>
@@ -690,7 +698,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                 <div className="space-y-3">
                   {receivingIssues.length === 0 ? (
                     <div className="text-center py-12 bg-gray-50 dark:bg-zinc-800 rounded-lg">
-                      <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                      <CheckCircle style={{ color: '#94AF32' }} />
                       <p className="text-gray-600 dark:text-gray-400">No receiving issues</p>
                     </div>
                   ) : (
@@ -914,7 +922,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                             <span className="font-medium text-gray-900 dark:text-white text-base">
                               {po.po_number}
                             </span>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(po.status)}`}>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(po.status)}`} style={getStatusStyle(po.status)}>
                               {po.status.replace('_', ' ')}
                             </span>
                           </div>
@@ -998,7 +1006,7 @@ const ProcurementDashboard = ({ initialView, returnTo }) => {
                       {selectedPO.po_number}
                     </h2>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(selectedPO.status)}`}>
+                      <span className={`px-2 py-1 text-xs font-medium rounded ${getStatusColor(selectedPO.status)}`} style={getStatusStyle(selectedPO.status)}>
                         {selectedPO.status.charAt(0).toUpperCase() + selectedPO.status.slice(1)}
                       </span>
                       <span className="text-sm text-gray-600 dark:text-gray-400">

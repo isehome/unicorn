@@ -993,6 +993,7 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | Purpose | File |
 |---------|------|
 | Wire drop logic | `src/services/wireDropService.js` |
+| **Prewire mode (technician)** | `src/components/PrewireMode.js` |
 | Milestone calculations | `src/services/milestoneService.js` |
 | Equipment management | `src/services/projectEquipmentService.js` |
 | Shade detail page | `src/components/Shades/ShadeDetailPage.js` |
@@ -3628,6 +3629,62 @@ The application needs a proper user capabilities/roles system to control access 
 ---
 
 # PART 6: CHANGELOG
+
+## 2026-01-16
+
+### Prewire Mode - Show/Hide Completed Toggles
+
+Added two separate toggle buttons to filter wire drops by completion status in Prewire Mode (Technician Dashboard).
+
+**Feature:** Independent toggle buttons to show/hide completed items for:
+1. **Label Printed** - Filter drops where labels have already been printed
+2. **Photo Taken** - Filter drops where prewire photo has been captured
+
+**UI Components:**
+
+| Button | Default State | Active State | Description |
+|--------|---------------|--------------|-------------|
+| Label Printed | "All Labels" + Eye | "Unprinted" + EyeOff (violet) | Hides drops with `labels_printed=true` |
+| Photo Taken | "All Photos" + Eye | "No Photo" + EyeOff (violet) | Hides drops with prewire stage `completed=true` |
+
+**Behavior:**
+- Both toggles are **independent** - can be used separately or combined
+- Default: Both show all items (toggles inactive/gray border)
+- Active: Violet highlight indicates filtering is enabled (hiding completed items)
+- Filters stack with existing floor/room/search filters
+- Stats display updated to show both: `X/Y printed` and `X/Y photo`
+
+**Voice AI Integration:**
+- Added `toggle_show_photo_taken` action for voice control
+- Updated state publishing to include `showPhotoTaken` filter status
+- Both toggles accessible via voice commands
+
+**State Variables:**
+```javascript
+const [showPrinted, setShowPrinted] = useState(true);    // Show/hide printed labels
+const [showPhotoTaken, setShowPhotoTaken] = useState(true); // Show/hide photo taken
+```
+
+**Filter Logic:**
+```javascript
+// Hide printed labels when toggle is off
+if (!showPrinted) {
+  filtered = filtered.filter(drop => !drop.labels_printed);
+}
+
+// Hide drops with prewire photo when toggle is off
+if (!showPhotoTaken) {
+  filtered = filtered.filter(drop => {
+    const prewireStage = drop.wire_drop_stages?.find(s => s.stage_type === 'prewire');
+    return !prewireStage?.completed;
+  });
+}
+```
+
+**Files Modified:**
+- `src/components/PrewireMode.js` - Added state, filter logic, UI toggles, voice AI actions
+
+---
 
 ## 2026-01-14
 

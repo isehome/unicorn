@@ -178,7 +178,7 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
         <div className="flex items-center gap-3">
           {status?.healthy ? (
             <>
-              <CheckCircle className="w-5 h-5 text-green-500" />
+              <CheckCircle style={{ color: '#94AF32' }} />
               <span className="font-medium" style={styles.text.primary}>
                 Connected & Working
               </span>
@@ -303,7 +303,7 @@ const SystemAccountSettings = ({ mode = 'light' }) => {
                   style={{ backgroundColor: isDark ? '#27272a' : '#f4f4f5' }}
                 >
                   {test.passed ? (
-                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+                    <CheckCircle style={{ color: '#94AF32' }} />
                   ) : (
                     <XCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                   )}

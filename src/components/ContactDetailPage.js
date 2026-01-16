@@ -815,7 +815,7 @@ const ContactDetailPage = () => {
                               title="Copy username"
                             >
                               {copiedItem === `${item.id}-username` ? (
-                                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                                <CheckCircle style={{ color: '#94AF32' }} />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" style={styles.textSecondary} />
                               )}
@@ -846,7 +846,7 @@ const ContactDetailPage = () => {
                               title="Copy password"
                             >
                               {copiedItem === `${item.id}-password` ? (
-                                <CheckCircle className="w-3.5 h-3.5 text-green-500" />
+                                <CheckCircle style={{ color: '#94AF32' }} />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" style={styles.textSecondary} />
                               )}

@@ -575,7 +575,7 @@ const EquipmentCredentialsSection = ({ equipmentId, projectId, mode, user }) => 
                         className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
                       >
                         {copiedField === `user-${cred.id}` ? (
-                          <CheckCircle2 size={12} className="text-green-500" />
+                          <CheckCircle2 size={12} style={{ color: '#94AF32' }} />
                         ) : (
                           <Copy size={12} className="text-gray-400" />
                         )}
@@ -605,7 +605,7 @@ const EquipmentCredentialsSection = ({ equipmentId, projectId, mode, user }) => 
                         className="p-1 hover:bg-gray-200 dark:hover:bg-zinc-700 rounded"
                       >
                         {copiedField === `pass-${cred.id}` ? (
-                          <CheckCircle2 size={12} className="text-green-500" />
+                          <CheckCircle2 size={12} style={{ color: '#94AF32' }} />
                         ) : (
                           <Copy size={12} className="text-gray-400" />
                         )}

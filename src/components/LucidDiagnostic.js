@@ -385,7 +385,7 @@ const LucidDiagnostic = () => {
                 >
                   <div className="flex items-start gap-2">
                     {result.success ? (
-                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                      <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#94AF32' }} />
                     ) : (
                       <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                     )}
@@ -521,7 +521,7 @@ const LucidDiagnostic = () => {
           </h2>
           <div className="space-y-2 text-sm">
             <div className="flex items-start gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5" />
+              <CheckCircle className="w-4 h-4 mt-0.5" style={{ color: '#94AF32' }} />
               <div>
                 <p className="text-gray-900 dark:text-white font-medium">Proxy Endpoint</p>
                 <p className="text-gray-600 dark:text-gray-400">{process.env.REACT_APP_LUCID_PROXY_URL || 'Using default'}/api/lucid-proxy</p>
@@ -529,7 +529,7 @@ const LucidDiagnostic = () => {
             </div>
             <div className="flex items-start gap-2">
               {process.env.REACT_APP_LUCID_API_KEY ? (
-                <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5" />
+                <CheckCircle className="w-4 h-4 mt-0.5" style={{ color: '#94AF32' }} />
               ) : (
                 <AlertCircle className="w-4 h-4 text-yellow-600 dark:text-yellow-400 mt-0.5" />
               )}

@@ -63,7 +63,7 @@ export function OfflineBanner({ isOnline, pendingCount = 0, isSyncing = false, o
       return <RefreshCw className="h-5 w-5 text-blue-600 dark:text-blue-400 animate-spin" />;
     }
     if (showSuccess && pendingCount === 0) {
-      return <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />;
+      return <CheckCircle2 style={{ color: '#94AF32' }} />;
     }
     if (pendingCount > 0) {
       return <Upload className="h-5 w-5 text-amber-600 dark:text-amber-400" />;

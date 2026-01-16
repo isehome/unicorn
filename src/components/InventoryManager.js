@@ -429,7 +429,7 @@ const InventoryManager = ({ projectId }) => {
                 {equipment.filter((item) => getInventoryStatus(item).hasStock).length}
               </p>
             </div>
-            <CheckCircle className="h-8 w-8 text-green-500" />
+            <CheckCircle style={{ color: '#94AF32' }} />
           </div>
         </div>
 

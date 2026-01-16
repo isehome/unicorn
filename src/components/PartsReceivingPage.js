@@ -668,7 +668,7 @@ const PartsReceivingPageNew = () => {
     const percent = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
 
     if (percent === 100) {
-      return { label: 'Fully Received', color: 'text-green-600 dark:text-green-400', percent };
+      return { label: 'Fully Received', color: '', style: { color: '#94AF32' }, percent };
     } else if (percent > 0) {
       return { label: `${percent}% Received`, color: 'text-yellow-600 dark:text-yellow-400', percent };
     } else {
@@ -975,8 +975,8 @@ const PartsReceivingPageNew = () => {
         )}
 
         {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-800 dark:text-green-200">{successMessage}</p>
+          <div className="mb-4 p-4 rounded-lg border" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm" style={{ color: '#94AF32' }}>{successMessage}</p>
           </div>
         )}
 
@@ -1073,7 +1073,7 @@ const PartsReceivingPageNew = () => {
                           <h3 className="font-semibold text-gray-900 dark:text-white">
                             {po.po_number}
                           </h3>
-                          <span className={`text-xs font-medium ${status.color}`}>
+                          <span className={`text-xs font-medium ${status.color}`} style={status.style || {}}>
                             {status.label}
                           </span>
                           {hasOpenIssues && (
@@ -1222,11 +1222,8 @@ const PartsReceivingPageNew = () => {
                     return (
                       <div
                         key={shade.id}
-                        className={`p-4 flex items-center justify-between ${
-                          shade.received
-                            ? 'bg-green-50 dark:bg-green-900/20'
-                            : 'bg-white dark:bg-zinc-800'
-                        }`}
+                        className="p-4 flex items-center justify-between"
+                        style={shade.received ? { backgroundColor: 'rgba(148, 175, 50, 0.1)' } : {}}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -1234,7 +1231,7 @@ const PartsReceivingPageNew = () => {
                               {shade.shade_name || 'Unnamed Shade'}
                             </h4>
                             {shade.received && (
-                              <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                              <CheckCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#94AF32' }} />
                             )}
                           </div>
                           <p className="text-xs text-gray-600 dark:text-gray-400">
@@ -1255,8 +1252,9 @@ const PartsReceivingPageNew = () => {
                           className={`ml-3 px-4 py-2 rounded-lg text-sm font-medium min-h-[44px] min-w-[100px] transition-colors ${
                             shade.received
                               ? 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
-                              : 'bg-green-600 text-white hover:bg-green-700'
+                              : 'text-white'
                           } disabled:opacity-50`}
+                          style={!shade.received ? { backgroundColor: '#94AF32' } : {}}
                         >
                           {isSaving ? (
                             <Loader className="w-4 h-4 animate-spin mx-auto" />
@@ -1373,7 +1371,7 @@ const PartsReceivingPageNew = () => {
                           </div>
                         )}
                       </div>
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
                     </button>
 
                     {isExpanded && (
@@ -1608,7 +1606,7 @@ const LineItem = ({ item, onUpdate, saving }) => {
   return (
     <div className={`border rounded-lg p-3 ${
       isFullyReceived && !hasMismatch
-        ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
+        ? 'border-[#94AF32]/30 bg-[#94AF32]/10'
         : hasMismatch
         ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-zinc-800'
@@ -1618,7 +1616,7 @@ const LineItem = ({ item, onUpdate, saving }) => {
           <h4 className="font-medium text-gray-900 dark:text-white text-sm">
             {equipment.part_number || 'N/A'}
             {isFullyReceived && !hasMismatch && (
-              <span className="ml-2 text-green-600 dark:text-green-400">✓</span>
+              <span className="ml-2" style={{ color: '#94AF32' }}>✓</span>
             )}
             {hasMismatch && (
               <span className="ml-2 text-yellow-600 dark:text-yellow-400" title="Quantity mismatch">⚠️</span>
@@ -1681,8 +1679,8 @@ const LineItem = ({ item, onUpdate, saving }) => {
                 type="button"
                 onClick={handleSave}
                 disabled={saving || isSaving}
-                className="px-3 py-1 bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded text-sm font-bold min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation select-none"
-                style={{ WebkitTapHighlightColor: 'transparent' }}
+                className="px-3 py-1 text-white rounded text-sm font-bold min-h-[44px] min-w-[44px] flex items-center justify-center touch-manipulation select-none"
+                style={{ backgroundColor: '#94AF32', WebkitTapHighlightColor: 'transparent' }}
                 title="Save"
               >
                 {isSaving ? '...' : 'OK'}

@@ -1342,8 +1342,8 @@ const PMOrderEquipmentPageEnhanced = () => {
                 <p className="font-semibold text-gray-900 dark:text-white">{required}</p>
               </div>
               <div>
-                <p className="text-xs text-green-600 dark:text-green-400">On Hand</p>
-                <p className="font-semibold text-green-700 dark:text-green-300">{group.quantity_on_hand || 0}</p>
+                <p className="text-xs" style={{ color: '#94AF32' }}>On Hand</p>
+                <p className="font-semibold" style={{ color: '#94AF32' }}>{group.quantity_on_hand || 0}</p>
               </div>
               {inDraft > 0 && (
                 <div>
@@ -1500,8 +1500,8 @@ const PMOrderEquipmentPageEnhanced = () => {
         )}
 
         {successMessage && (
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-            <p className="text-sm text-green-800 dark:text-green-200">{successMessage}</p>
+          <div className="mb-4 p-4 rounded-lg border" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+            <p className="text-sm" style={{ color: '#94AF32' }}>{successMessage}</p>
           </div>
         )}
 
@@ -1739,11 +1739,13 @@ const PMOrderEquipmentPageEnhanced = () => {
                                   <h3 className="font-semibold text-gray-900 dark:text-white">
                                     {po.po_number}
                                   </h3>
-                                  <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                                    po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                                  <span
+                                    className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                                       po.status === 'confirmed' ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300' :
                                         'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300'
-                                    }`}>
+                                    }`}
+                                    style={po.status === 'received' ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
+                                  >
                                     {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
                                   </span>
                                   <span className="px-2 py-1 text-xs font-medium rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300">
@@ -1867,7 +1869,7 @@ const PMOrderEquipmentPageEnhanced = () => {
 
               {receivingIssues.length === 0 ? (
                 <div className="text-center py-8">
-                  <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-500" />
+                  <CheckCircle className="w-12 h-12 mx-auto mb-3" style={{ color: '#94AF32' }} />
                   <p className="text-gray-600 dark:text-gray-400">
                     No open receiving issues. Great job!
                   </p>

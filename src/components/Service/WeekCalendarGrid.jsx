@@ -360,15 +360,15 @@ const ScheduleBlock = memo(({
           {/* Commit icon for draft blocks (all sizes) */}
           {isDraft && onCommit && (
             <button
-              className="w-5 h-5 rounded flex items-center justify-center transition-colors hover:bg-green-500/30"
-              style={{ backgroundColor: 'rgba(34, 197, 94, 0.2)' }}
+              className="w-5 h-5 rounded flex items-center justify-center transition-colors"
+              style={{ backgroundColor: 'rgba(148, 175, 50, 0.2)' }}
               onClick={(e) => {
                 e.stopPropagation();
                 onCommit?.(schedule);
               }}
               title="Commit & Send Invite"
             >
-              <Send size={10} style={{ color: '#22C55E' }} />
+              <Send size={10} style={{ color: '#94AF32' }} />
             </button>
           )}
           {/* Technician Avatar */}
@@ -404,11 +404,11 @@ const ScheduleBlock = memo(({
       {/* Full commit button (only for large draft blocks) */}
       {isDraft && isLarge && onCommit && (
         <button
-          className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors hover:bg-green-500/30"
+          className="flex items-center justify-center gap-1 w-full mt-1 py-1 rounded text-[10px] font-medium transition-colors"
           style={{
-            backgroundColor: 'rgba(34, 197, 94, 0.2)',
-            color: '#22C55E',
-            border: '1px solid rgba(34, 197, 94, 0.4)'
+            backgroundColor: 'rgba(148, 175, 50, 0.2)',
+            color: '#94AF32',
+            border: '1px solid rgba(148, 175, 50, 0.4)'
           }}
           onClick={(e) => {
             e.stopPropagation();

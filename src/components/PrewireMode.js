@@ -52,7 +52,8 @@ const PrewireMode = () => {
   const [selectedFloor, setSelectedFloor] = useState('');
   const [selectedRoom, setSelectedRoom] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showPrinted, setShowPrinted] = useState(true); // Toggle to show/hide already printed
+  const [showPrinted, setShowPrinted] = useState(true); // Toggle to show/hide already printed labels
+  const [showPhotoTaken, setShowPhotoTaken] = useState(true); // Toggle to show/hide drops with prewire photo taken
 
   // Printer states
   const { connected: printerConnected, printLabel: printerPrintLabel } = usePrinter();
@@ -190,6 +191,14 @@ const PrewireMode = () => {
       filtered = filtered.filter(drop => !drop.labels_printed);
     }
 
+    // Apply photo taken filter (hide drops with prewire photo if toggled off)
+    if (!showPhotoTaken) {
+      filtered = filtered.filter(drop => {
+        const prewireStage = drop.wire_drop_stages?.find(s => s.stage_type === 'prewire');
+        return !prewireStage?.completed;
+      });
+    }
+
     // Sort by room_name, then by labels_printed (false first), then by drop_name
     return [...filtered].sort((a, b) => {
       // First by room name
@@ -204,7 +213,7 @@ const PrewireMode = () => {
       // Finally by drop name
       return (a.drop_name || '').localeCompare(b.drop_name || '');
     });
-  }, [wireDrops, selectedFloor, selectedRoom, searchTerm, showPrinted]);
+  }, [wireDrops, selectedFloor, selectedRoom, searchTerm, showPrinted, showPhotoTaken]);
 
   // Check if prewire stage is complete
   const isPrewireComplete = (drop) => {
@@ -254,7 +263,8 @@ const PrewireMode = () => {
         floor: selectedFloor || 'all',
         room: selectedRoom || 'all',
         search: searchTerm || '',
-        showPrinted: showPrinted
+        showPrinted: showPrinted,
+        showPhotoTaken: showPhotoTaken
       },
       availableFloors: availableFloors,
       availableRooms: availableRooms,
@@ -263,7 +273,7 @@ const PrewireMode = () => {
       printerConnected: printerConnected,
       hint: 'Prewire mode. Print labels, take photos for wire drops. Filter by floor/room.'
     });
-  }, [publishState, project, selectedFloor, selectedRoom, searchTerm, showPrinted, wireDrops, filteredDrops, availableFloors, availableRooms, printerConnected]);
+  }, [publishState, project, selectedFloor, selectedRoom, searchTerm, showPrinted, showPhotoTaken, wireDrops, filteredDrops, availableFloors, availableRooms, printerConnected]);
 
   // Register actions for AI
   useEffect(() => {
@@ -299,7 +309,11 @@ const PrewireMode = () => {
       },
       toggle_show_printed: async () => {
         setShowPrinted(prev => !prev);
-        return { success: true, message: showPrinted ? 'Hiding printed labels' : 'Showing printed labels' };
+        return { success: true, message: showPrinted ? 'Hiding drops with printed labels' : 'Showing all drops' };
+      },
+      toggle_show_photo_taken: async () => {
+        setShowPhotoTaken(prev => !prev);
+        return { success: true, message: showPhotoTaken ? 'Hiding drops with photos taken' : 'Showing all drops' };
       },
       open_wire_drop: async ({ name, uid }) => {
         const drop = filteredDrops?.find(d =>
@@ -335,7 +349,7 @@ const PrewireMode = () => {
 
     registerActions(actions);
     return () => unregisterActions(Object.keys(actions));
-  }, [registerActions, unregisterActions, availableFloors, availableRooms, filteredDrops, wireDrops, navigate, showPrinted]);
+  }, [registerActions, unregisterActions, availableFloors, availableRooms, filteredDrops, wireDrops, navigate, showPrinted, showPhotoTaken]);
 
   // ===== VOICE AI TOOLS (Legacy - uses registerTools) =====
   // Register prewire-specific voice tools for hands-free control
@@ -582,17 +596,36 @@ const PrewireMode = () => {
                   ? 'border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400'
                   : 'border-violet-500 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400'
               }`}
-              title={showPrinted ? 'Click to hide printed labels' : 'Click to show all labels'}
+              title={showPrinted ? 'Click to hide drops with printed labels' : 'Click to show all drops'}
             >
-              {showPrinted ? <Eye size={16} /> : <EyeOff size={16} />}
+              <Printer size={16} />
               <span className="text-sm font-medium">
-                {showPrinted ? 'Showing All' : 'Unprinted Only'}
+                {showPrinted ? 'All Labels' : 'Unprinted'}
               </span>
+              {showPrinted ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+
+            {/* Show/Hide photo taken toggle */}
+            <button
+              onClick={() => setShowPhotoTaken(!showPhotoTaken)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+                showPhotoTaken
+                  ? 'border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400'
+                  : 'border-violet-500 bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400'
+              }`}
+              title={showPhotoTaken ? 'Click to hide drops with photos taken' : 'Click to show all drops'}
+            >
+              <Camera size={16} />
+              <span className="text-sm font-medium">
+                {showPhotoTaken ? 'All Photos' : 'No Photo'}
+              </span>
+              {showPhotoTaken ? <Eye size={14} /> : <EyeOff size={14} />}
             </button>
 
             {/* Stats */}
-            <div className="ml-auto text-sm text-zinc-600 dark:text-zinc-400">
-              {filteredDrops.filter(d => d.labels_printed).length} / {filteredDrops.length} printed
+            <div className="ml-auto text-sm text-zinc-600 dark:text-zinc-400 flex gap-3">
+              <span>{filteredDrops.filter(d => d.labels_printed).length}/{filteredDrops.length} printed</span>
+              <span>{filteredDrops.filter(d => isPrewireComplete(d)).length}/{filteredDrops.length} photo</span>
             </div>
           </div>
         </div>

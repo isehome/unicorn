@@ -174,7 +174,7 @@ const UniFiClientSelector = ({ projectId, equipmentId, wireDropId, onAssign }) =
       {currentAssignment && (
         <div className="p-3 rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700">
           <div className="flex items-start gap-3">
-            <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            <CheckCircle size={20} className="" style={{ color: '#94AF32' }} flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="text-sm font-medium text-green-900 dark:text-green-100">
                 Network Client Assigned

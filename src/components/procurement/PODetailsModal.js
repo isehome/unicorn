@@ -900,11 +900,13 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
             </h2>
             {po && (
               <div className="flex items-center gap-2 mt-1">
-                <span className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'draft' ? 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300' :
-                  po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                    po.status === 'received' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
+                <span
+                  className={`px-2 py-1 text-xs font-medium rounded ${po.status === 'draft' ? 'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300' :
+                    po.status === 'submitted' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
                       'bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300'
-                  }`}>
+                  }`}
+                  style={po.status === 'received' ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
+                >
                   {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
                 </span>
                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -945,10 +947,10 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
         )}
 
         {success && (
-          <div className="mx-6 mt-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="mx-6 mt-4 p-4 rounded-lg border" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-              <p className="text-sm text-green-800 dark:text-green-200">{success}</p>
+              <CheckCircle className="w-5 h-5" style={{ color: '#94AF32' }} />
+              <p className="text-sm" style={{ color: '#94AF32' }}>{success}</p>
             </div>
           </div>
         )}
@@ -1059,8 +1061,8 @@ const PODetailsModal = ({ isOpen, onClose, poId, onUpdate, onDelete }) => {
                       />
                     </div>
                   ) : editData.shipping_address_id ? (
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                      <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300">
+                    <div className="p-3 rounded-lg border" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)', borderColor: 'rgba(148, 175, 50, 0.3)' }}>
+                      <div className="flex items-center gap-2 text-sm" style={{ color: '#94AF32' }}>
                         <MapPin className="w-4 h-4" />
                         <span className="font-medium">Shipping address selected</span>
                       </div>

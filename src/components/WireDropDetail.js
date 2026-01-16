@@ -1812,7 +1812,10 @@ const WireDropDetail = () => {
                                   <span className={`text-xs px-2 py-0.5 rounded-full ${shade.ordered ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
                                     {shade.ordered ? 'Ordered' : 'Not Ordered'}
                                   </span>
-                                  <span className={`text-xs px-2 py-0.5 rounded-full ${shade.received ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
+                                  <span
+                                    className={`text-xs px-2 py-0.5 rounded-full ${!shade.received ? 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500' : ''}`}
+                                    style={shade.received ? { backgroundColor: 'rgba(148, 175, 50, 0.15)', color: '#94AF32' } : {}}
+                                  >
                                     {shade.received ? 'Received' : 'Not Received'}
                                   </span>
                                   <span className={`text-xs px-2 py-0.5 rounded-full ${shade.installed ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' : 'bg-gray-100 text-gray-500 dark:bg-zinc-800 dark:text-zinc-500'}`}>
@@ -2081,11 +2084,13 @@ const WireDropDetail = () => {
             {/* Completion Percentage */}
             {!editing && (
               <div className="text-right border-t pt-4" style={{ borderColor: styles.card.borderColor }}>
-                <div className={`text-3xl font-bold ${wireDrop.completion === 100 ? 'text-green-500' :
-                  wireDrop.completion >= 67 ? 'text-blue-500' :
+                <div
+                  className={`text-3xl font-bold ${wireDrop.completion >= 67 ? '' :
                     wireDrop.completion >= 33 ? 'text-yellow-500' :
                       'text-gray-500'
-                  }`}>
+                  }`}
+                  style={wireDrop.completion === 100 ? { color: '#94AF32' } : wireDrop.completion >= 67 ? { color: '#3B82F6' } : {}}
+                >
                   {wireDrop.completion || 0}%
                 </div>
                 <div className="text-xs" style={styles.subtleText}>Complete</div>
@@ -2235,7 +2240,7 @@ const WireDropDetail = () => {
                     Stage 1: Prewire
                   </h3>
                   {prewireStage?.completed ? (
-                    <CheckCircle size={24} className="text-green-500" />
+                    <CheckCircle size={24} style={{ color: '#94AF32' }} />
                   ) : (
                     <Circle size={24} className="text-yellow-500" />
                   )}
@@ -2377,7 +2382,7 @@ const WireDropDetail = () => {
                     Stage 2: Trim Out
                   </h3>
                   {trimOutStage?.completed ? (
-                    <CheckCircle size={24} className="text-green-500" />
+                    <CheckCircle size={24} style={{ color: '#94AF32' }} />
                   ) : (
                     <Circle size={24} className="text-yellow-500" />
                   )}
@@ -2542,7 +2547,7 @@ const WireDropDetail = () => {
                     Stage 3: Commission
                   </h3>
                   {commissionStage?.completed ? (
-                    <CheckCircle size={24} className="text-green-500" />
+                    <CheckCircle size={24} style={{ color: '#94AF32' }} />
                   ) : (
                     <Circle size={24} className="text-yellow-500" />
                   )}
@@ -2550,11 +2555,11 @@ const WireDropDetail = () => {
 
                 {commissionStage?.completed ? (
                   <div className="space-y-3">
-                    <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20">
+                    <div className="p-3 rounded-lg" style={{ backgroundColor: 'rgba(148, 175, 50, 0.1)' }}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <CheckCircle size={16} className="text-green-500" />
-                          <span className="font-medium text-green-700 dark:text-green-300">
+                          <CheckCircle size={16} style={{ color: '#94AF32' }} />
+                          <span className="font-medium" style={{ color: '#94AF32' }}>
                             Commissioned
                           </span>
                         </div>
@@ -2570,7 +2575,7 @@ const WireDropDetail = () => {
                         </Button>
                       </div>
                       {commissionStage.completed_at && (
-                        <div className="text-xs space-y-1 text-green-600 dark:text-green-400">
+                        <div className="text-xs space-y-1" style={{ color: '#94AF32' }}>
                           <div className="flex items-center gap-1">
                             <Clock size={12} />
                             {new Date(commissionStage.completed_at).toLocaleDateString()}
