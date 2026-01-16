@@ -154,15 +154,22 @@ export async function downloadSubmittalsPackage(projectId, projectName, manifest
     try {
       progress(Math.round((completed / total) * 100), 'Exporting wiremap...');
 
-      // Export page 1 as PNG
-      const pngDataUrl = await exportDocumentPage(manifest.lucidDocumentId, 1);
+      // Export page 0 (first page) as PNG, force proxy to avoid placeholder
+      const pngDataUrl = await exportDocumentPage(manifest.lucidDocumentId, 0, null, { forceProxy: true });
 
-      if (pngDataUrl) {
+      // Check if we got a real image (not a placeholder)
+      // Placeholder images contain "Enable CORS" text or are very small
+      const isPlaceholder = !pngDataUrl ||
+        pngDataUrl.includes('RW5hYmxlIENPUlM=') || // base64 for "Enable CORS"
+        pngDataUrl.length < 1000; // Real images are much larger
+
+      if (pngDataUrl && !isPlaceholder) {
         const wireMapBlob = dataURLtoBlob(pngDataUrl);
         zip.file('Wiremap.png', wireMapBlob);
         updateProgress('Added wiremap');
       } else {
-        updateProgress('Skipped wiremap (export failed)');
+        console.warn('[zipDownloadService] Wiremap export returned placeholder or empty');
+        updateProgress('Skipped wiremap (export unavailable)');
       }
     } catch (error) {
       console.error('[zipDownloadService] Failed to export wiremap:', error);
