@@ -112,18 +112,10 @@ const Login = () => {
       console.error('[Login] Login error:', error);
       setLocalLoading(false);
 
-      // Handle interaction_in_progress error
+      // Handle interaction_in_progress error - AuthContext now auto-clears stuck state
       if (error.errorCode === 'interaction_in_progress') {
-        setError('Authentication is already in progress. Please reload the page and try again.');
-
-        // Offer to clear the stuck state
-        setTimeout(() => {
-          if (window.confirm('Would you like to reset the authentication state?')) {
-            // Clear MSAL cache
-            localStorage.removeItem('msal.interaction.status');
-            window.location.reload();
-          }
-        }, 2000);
+        // The AuthContext will have cleared the stuck state, user just needs to try again
+        setError('Authentication was interrupted. Please click the button again to sign in.');
       } else if (error.errorCode === 'popup_window_error' || error.errorCode === 'empty_window_error') {
         // This shouldn't happen since we handle it above, but just in case
         setError('Pop-up was blocked. Click the button again to sign in via redirect.');

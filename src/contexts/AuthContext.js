@@ -424,6 +424,22 @@ export function AuthProvider({ children }) {
       console.log('[Auth] Starting login flow with popup');
       setError(null);
 
+      // Check if there's a stuck interaction and clear it
+      const interactionStatus = sessionStorage.getItem('msal.interaction.status') ||
+                                localStorage.getItem('msal.interaction.status');
+      if (interactionStatus) {
+        console.warn('[Auth] Found stuck interaction status, clearing it');
+        sessionStorage.removeItem('msal.interaction.status');
+        localStorage.removeItem('msal.interaction.status');
+        // Also clear any other potentially stuck MSAL state
+        for (let i = sessionStorage.length - 1; i >= 0; i--) {
+          const key = sessionStorage.key(i);
+          if (key && key.includes('msal.') && key.includes('.request.')) {
+            sessionStorage.removeItem(key);
+          }
+        }
+      }
+
       const response = await msalInstance.loginPopup(loginRequest);
       
       console.log('[Auth] Login successful:', response.account.username);
@@ -482,11 +498,36 @@ export function AuthProvider({ children }) {
         }
         // Don't set error or throw - just return so user can try again
         return;
+      } else if (error.errorCode === 'interaction_in_progress') {
+        // Clear the stuck interaction state and prompt retry
+        console.warn('[Auth] Interaction in progress error, clearing stuck state');
+        try {
+          sessionStorage.removeItem('msal.interaction.status');
+          localStorage.removeItem('msal.interaction.status');
+          // Clear all interaction-related keys
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (key && key.includes('msal.') && (key.includes('.request.') || key.includes('interaction'))) {
+              sessionStorage.removeItem(key);
+            }
+          }
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && key.includes('msal.') && (key.includes('.request.') || key.includes('interaction'))) {
+              localStorage.removeItem(key);
+            }
+          }
+          console.log('[Auth] Cleared stuck interaction state, please try again');
+        } catch (storageError) {
+          console.warn('[Auth] Unable to clear stuck state:', storageError);
+        }
+        errorMessage = 'Authentication was interrupted. Please click the button again to sign in.';
       } else if (error.errorCode) {
         errorMessage = `Authentication failed: ${error.errorCode}`;
       }
 
       const formattedError = new Error(errorMessage);
+      formattedError.errorCode = error.errorCode;
       setError(formattedError);
       throw formattedError;
     }
