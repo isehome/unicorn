@@ -522,8 +522,7 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
     .status-dot.amber { background: #F59E0B; }
     .status-dot.green { background: #94AF32; }
     .status-dot.violet { background: #8B5CF6; }
-    .date-actual { color: #94AF32; }
-    .date-target { color: #a1a1aa; text-decoration: line-through; }
+    .date-complete { color: #a1a1aa; }  /* Gray for completed dates - no strike-through per user preference */
 
     /* Issues */
     .issue { padding: 16px; border: 1px solid #3f3f46; border-radius: 12px; margin-bottom: 12px; }
@@ -633,6 +632,11 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
               dotColor = '#3B82F6'; // blue for in-progress
             }
 
+            // IMPORTANT: Match PMProjectView.js logic exactly
+            // Target date: always show if present (greyed styling if complete handled by CSS)
+            // Actual date: ONLY show if milestone is truly complete (100% or manually marked)
+            const showActual = isComplete && hasActual;
+
             return `
               <tr>
                 <td>
@@ -641,8 +645,8 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
                     ${label}
                   </div>
                 </td>
-                <td>${hasActual && hasTarget ? `<span class="date-target">${formatDate(milestone.target)}</span>` : formatDate(milestone.target)}</td>
-                <td>${hasActual ? `<span class="date-actual">${formatDate(milestone.actual)}</span>` : '—'}</td>
+                <td>${isComplete ? `<span class="date-complete">${formatDate(milestone.target)}</span>` : formatDate(milestone.target)}</td>
+                <td>${showActual ? `<span class="date-complete">${formatDate(milestone.actual)}</span>` : '—'}</td>
                 <td><span style="color: ${dotColor};">${statusText}</span></td>
               </tr>
             `;

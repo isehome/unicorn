@@ -4248,40 +4248,68 @@ const PMProjectViewEnhanced = () => {
                           </div>
                         </td>
                         <td className="py-3 px-4">
-                          {phaseMilestonesEditMode ? (
-                            <DateInput
-                              value={milestone?.target_date || ''}
-                              onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
-                              className="text-sm"
-                            />
-                          ) : (
-                            <DateField
-                              date={milestone?.target_date}
-                              isCompleted={!!milestone?.actual_date}
-                              showIcon={false}
-                              showBadge={!milestone?.actual_date}
-                              showDescription={false}
-                              variant="inline"
-                            />
-                          )}
+                          {(() => {
+                            // Determine completion status from calculated percentage OR manual flag
+                            // NOT from actual_date which may have stale/incorrect data
+                            const percentage = getPercentageForType(type);
+                            const isComplete = milestone?.completed_manually || percentage === 100;
+
+                            if (phaseMilestonesEditMode) {
+                              return (
+                                <DateInput
+                                  value={milestone?.target_date || ''}
+                                  onChange={(e) => handleMilestoneUpdate(type, 'target_date', e.target.value || null)}
+                                  className="text-sm"
+                                />
+                              );
+                            }
+
+                            return (
+                              <DateField
+                                date={milestone?.target_date}
+                                isCompleted={isComplete}
+                                showIcon={false}
+                                showBadge={!isComplete}
+                                showDescription={false}
+                                variant="inline"
+                              />
+                            );
+                          })()}
                         </td>
                         <td className="py-3 px-4">
-                          {phaseMilestonesEditMode ? (
-                            <DateInput
-                              value={milestone?.actual_date || ''}
-                              onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
-                              className="text-sm"
-                            />
-                          ) : (
-                            <DateField
-                              date={milestone?.actual_date}
-                              isCompleted={!!milestone?.completed_manually}
-                              showIcon={false}
-                              showBadge={false}
-                              showDescription={false}
-                              variant="inline"
-                            />
-                          )}
+                          {(() => {
+                            // IMPORTANT: Only show actual_date if milestone is truly complete
+                            // A milestone is complete when: manually marked OR calculated percentage = 100%
+                            const percentage = getPercentageForType(type);
+                            const isComplete = milestone?.completed_manually || percentage === 100;
+
+                            if (phaseMilestonesEditMode) {
+                              return (
+                                <DateInput
+                                  value={milestone?.actual_date || ''}
+                                  onChange={(e) => handleMilestoneUpdate(type, 'actual_date', e.target.value || null)}
+                                  className="text-sm"
+                                />
+                              );
+                            }
+
+                            // Only show actual date if milestone is complete
+                            if (isComplete && milestone?.actual_date) {
+                              return (
+                                <DateField
+                                  date={milestone.actual_date}
+                                  isCompleted={true}
+                                  showIcon={false}
+                                  showBadge={false}
+                                  showDescription={false}
+                                  variant="inline"
+                                />
+                              );
+                            }
+
+                            // Not complete - show dash
+                            return <span className="text-sm text-zinc-400 dark:text-zinc-500">—</span>;
+                          })()}
                         </td>
                         <td className="py-3 px-4">
                           {(() => {
@@ -4313,11 +4341,39 @@ const PMProjectViewEnhanced = () => {
                           })()}
                         </td>
                         <td className="py-3 px-4">
-                          <span className="text-xs text-zinc-600 dark:text-zinc-400">
-                            {milestone?.completed_manually && milestone?.updated_by_user
-                              ? formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)
-                              : '—'}
-                          </span>
+                          {(() => {
+                            const percentage = getPercentageForType(type);
+                            const isComplete = milestone?.completed_manually || percentage === 100;
+
+                            // Only show "Completed By" if milestone is actually complete
+                            if (isComplete) {
+                              // Check for user info, otherwise show "System (Auto)" for auto-completed milestones
+                              if (milestone?.updated_by_user) {
+                                return (
+                                  <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                                    {formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)}
+                                  </span>
+                                );
+                              } else if (milestone?.updated_at) {
+                                // Auto-completed milestone (no user but has timestamp)
+                                const date = new Date(milestone.updated_at);
+                                const dateStr = date.toLocaleString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                });
+                                return (
+                                  <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                                    System (Auto) on {dateStr}
+                                  </span>
+                                );
+                              }
+                            }
+
+                            return <span className="text-xs text-zinc-400 dark:text-zinc-500">—</span>;
+                          })()}
                         </td>
                       </tr>
                     );
