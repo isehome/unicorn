@@ -347,7 +347,12 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Parse as local date to avoid timezone shift
+    // Database stores dates as YYYY-MM-DD (date only, no time)
+    // new Date('2026-01-15') interprets as UTC midnight, which shifts to previous day in US timezones
+    const [year, month, day] = dateStr.split('T')[0].split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const priorityColor = {
