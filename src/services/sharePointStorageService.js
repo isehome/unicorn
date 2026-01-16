@@ -598,8 +598,9 @@ class SharePointStorageService {
       const validDocTypes = ['submittals', 'schematics', 'manuals', 'technical'];
       const normalizedDocType = validDocTypes.includes(docType) ? docType : 'submittals';
 
-      // Build folder path: Parts/{Manufacturer}/{PartNumber}/{docType}/
-      const subPath = `Parts/${sanitizedManufacturer}/${sanitizedPartNumber}/${normalizedDocType}`;
+      // Build folder path: {Manufacturer}/{PartNumber}/{docType}/
+      // Note: The root URL should already point to the target folder (e.g., Knowledge)
+      const subPath = `${sanitizedManufacturer}/${sanitizedPartNumber}/${normalizedDocType}`;
 
       // Create filename with timestamp to allow multiple versions
       const timestamp = this.formatTimestamp(new Date());

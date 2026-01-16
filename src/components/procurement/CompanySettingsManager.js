@@ -358,7 +358,7 @@ const CompanySettingsManager = () => {
               <span className="relative group">
                 <HelpCircle className="w-3.5 h-3.5 text-gray-400 cursor-help" />
                 <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs bg-gray-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                  Example: https://yourcompany.sharepoint.com/sites/Documents/Parts
+                  Example: https://isehome.sharepoint.com/sites/Unicorn/Knowledge
                 </span>
               </span>
             </label>
@@ -367,10 +367,10 @@ const CompanySettingsManager = () => {
               value={formData.company_sharepoint_root_url}
               onChange={(e) => handleInputChange('company_sharepoint_root_url', e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
-              placeholder="https://yourcompany.sharepoint.com/sites/Documents/Parts"
+              placeholder="https://isehome.sharepoint.com/sites/Unicorn/Knowledge"
             />
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Folder structure will be: /Parts/[Manufacturer]/[PartNumber]/submittals/, schematics/, manuals/
+              Folder structure will be: [Root]/[Manufacturer]/[PartNumber]/submittals/, schematics/, manuals/
             </p>
           </div>
         </div>
