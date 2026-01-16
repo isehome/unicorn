@@ -545,6 +545,90 @@ class SharePointStorageService {
   }
 
   /**
+   * Get the company SharePoint root URL for global parts document storage
+   * @returns {Promise<string>} Company SharePoint root URL
+   */
+  async getCompanySharePointUrl() {
+    try {
+      const { data: settings, error } = await supabase
+        .from('company_settings')
+        .select('company_sharepoint_root_url')
+        .limit(1)
+        .single();
+
+      if (error) {
+        // If no settings exist yet, return null instead of throwing
+        if (error.code === 'PGRST116') {
+          return null;
+        }
+        throw error;
+      }
+
+      return settings?.company_sharepoint_root_url || null;
+    } catch (error) {
+      console.error('Failed to get company SharePoint URL:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload global part document to SharePoint
+   * Uploads to company SharePoint: Parts/{Manufacturer}/{PartNumber}/{docType}/
+   *
+   * @param {File} file - File to upload
+   * @param {string} manufacturer - Part manufacturer name
+   * @param {string} partNumber - Part number
+   * @param {string} docType - Document type: 'submittals', 'schematics', 'manuals', 'technical'
+   * @returns {Promise<{url: string, driveId: string, itemId: string, name: string, webUrl: string, size: number}>} SharePoint metadata
+   */
+  async uploadGlobalPartDocument(file, manufacturer, partNumber, docType = 'submittals') {
+    try {
+      // Get company SharePoint root URL
+      const rootUrl = await this.getCompanySharePointUrl();
+
+      if (!rootUrl) {
+        throw new Error('Company SharePoint URL not configured. Please set it in Admin → Company Settings.');
+      }
+
+      // Sanitize folder names
+      const sanitizedManufacturer = this.sanitizeForFileName(manufacturer || 'Unknown');
+      const sanitizedPartNumber = this.sanitizeForFileName(partNumber || 'Unknown');
+
+      // Validate document type
+      const validDocTypes = ['submittals', 'schematics', 'manuals', 'technical'];
+      const normalizedDocType = validDocTypes.includes(docType) ? docType : 'submittals';
+
+      // Build folder path: Parts/{Manufacturer}/{PartNumber}/{docType}/
+      const subPath = `Parts/${sanitizedManufacturer}/${sanitizedPartNumber}/${normalizedDocType}`;
+
+      // Create filename with timestamp to allow multiple versions
+      const timestamp = this.formatTimestamp(new Date());
+      const extension = this.getFileExtension(file.name);
+      const originalName = this.sanitizeForFileName(file.name.replace(/\.[^/.]+$/, '')); // Remove extension
+      const filename = `${originalName}_${timestamp}.${extension}`;
+
+      console.log('Global Part Document Upload Debug:', {
+        rootUrl,
+        subPath,
+        filename,
+        manufacturer: sanitizedManufacturer,
+        partNumber: sanitizedPartNumber,
+        docType: normalizedDocType,
+        fileSize: file.size,
+        fileType: file.type
+      });
+
+      // Upload to SharePoint - returns metadata object
+      const metadata = await this.uploadToSharePoint(rootUrl, subPath, filename, file);
+
+      return metadata;
+    } catch (error) {
+      console.error('Failed to upload global part document:', error);
+      throw new Error(`Global part document upload failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Delete a file from SharePoint via Graph API
    * @param {string} driveId
    * @param {string} itemId

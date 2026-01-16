@@ -3720,6 +3720,67 @@ The application needs a proper user capabilities/roles system to control access 
 
 ## 2026-01-16
 
+### Company SharePoint URL for Global Parts Documentation
+
+Added company-level SharePoint configuration to enable uploading submittals, manuals, and schematics for global parts.
+
+**Problem Solved:**
+- Global parts (in `global_parts` table) are not project-specific
+- Existing upload methods required a project's `client_folder_url`
+- Submittal PDF uploads were failing with "uploadFile is not a function" error
+
+**Solution:**
+Added a company-wide SharePoint root URL setting that allows document uploads for global parts with automatic folder organization.
+
+**Folder Structure:**
+```
+{company_sharepoint_root_url}/
+└── Parts/
+    └── {Manufacturer}/
+        └── {PartNumber}/
+            ├── submittals/
+            ├── schematics/
+            ├── manuals/
+            └── technical/
+```
+
+**Database Changes:**
+```sql
+ALTER TABLE company_settings ADD COLUMN company_sharepoint_root_url TEXT;
+```
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260116_add_company_sharepoint_url.sql` | Add SharePoint URL column |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/companySettingsService.js` | Added `company_sharepoint_root_url` to create/update |
+| `src/components/procurement/CompanySettingsManager.js` | Added SharePoint Document Storage section with URL input |
+| `src/services/sharePointStorageService.js` | Added `getCompanySharePointUrl()` and `uploadGlobalPartDocument()` methods |
+| `src/components/PartDetailPage.js` | Fixed to use new `uploadGlobalPartDocument()` method |
+
+**New Method: `uploadGlobalPartDocument()`**
+```javascript
+// Usage in PartDetailPage.js
+const result = await sharePointStorageService.uploadGlobalPartDocument(
+  file,                    // PDF file
+  'Lutron',                // Manufacturer name
+  'QSE-IO',                // Part number
+  'submittals'             // Document type: 'submittals', 'schematics', 'manuals', 'technical'
+);
+```
+
+**Setup Required:**
+1. Run the database migration
+2. Go to Admin → Company Settings
+3. Enter your SharePoint root URL in "SharePoint Document Storage" section
+4. Example URL: `https://yourcompany.sharepoint.com/sites/Documents/Parts`
+
+---
+
 ### Submittals Report Feature (Major Feature)
 
 Added a new Submittals tab to the Reports section that generates downloadable documentation packages for projects.

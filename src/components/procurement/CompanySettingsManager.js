@@ -9,7 +9,9 @@ import {
   Upload,
   X,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  FolderOpen,
+  HelpCircle
 } from 'lucide-react';
 
 /**
@@ -38,7 +40,8 @@ const CompanySettingsManager = () => {
     accounting_contact_phone: '',
     company_logo_url: null,
     company_logo_sharepoint_drive_id: null,
-    company_logo_sharepoint_item_id: null
+    company_logo_sharepoint_item_id: null,
+    company_sharepoint_root_url: ''
   });
 
   useEffect(() => {
@@ -62,7 +65,8 @@ const CompanySettingsManager = () => {
           accounting_contact_phone: data.accounting_contact_phone || '',
           company_logo_url: data.company_logo_url || null,
           company_logo_sharepoint_drive_id: data.company_logo_sharepoint_drive_id || null,
-          company_logo_sharepoint_item_id: data.company_logo_sharepoint_item_id || null
+          company_logo_sharepoint_item_id: data.company_logo_sharepoint_item_id || null,
+          company_sharepoint_root_url: data.company_sharepoint_root_url || ''
         });
       }
     } catch (err) {
@@ -335,6 +339,39 @@ const CompanySettingsManager = () => {
                 placeholder="(555) 123-4567"
               />
             </div>
+          </div>
+        </div>
+
+        {/* SharePoint Document Storage Section */}
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-violet-600" />
+            SharePoint Document Storage
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Configure a root SharePoint folder for storing global parts documentation (submittals, manuals, schematics).
+            Documents will be organized by manufacturer and part number.
+          </p>
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+              SharePoint Root URL
+              <span className="relative group">
+                <HelpCircle className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs bg-gray-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                  Example: https://yourcompany.sharepoint.com/sites/Documents/Parts
+                </span>
+              </span>
+            </label>
+            <input
+              type="url"
+              value={formData.company_sharepoint_root_url}
+              onChange={(e) => handleInputChange('company_sharepoint_root_url', e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
+              placeholder="https://yourcompany.sharepoint.com/sites/Documents/Parts"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Folder structure will be: /Parts/[Manufacturer]/[PartNumber]/submittals/, schematics/, manuals/
+            </p>
           </div>
         </div>
 

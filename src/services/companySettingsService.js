@@ -46,6 +46,7 @@ class CompanySettingsService {
           company_logo_url: settingsData.company_logo_url,
           company_logo_sharepoint_drive_id: settingsData.company_logo_sharepoint_drive_id,
           company_logo_sharepoint_item_id: settingsData.company_logo_sharepoint_item_id,
+          company_sharepoint_root_url: settingsData.company_sharepoint_root_url,
           created_by: user?.id || null,
           updated_by: user?.id || null
         }])
@@ -80,6 +81,7 @@ class CompanySettingsService {
           company_logo_url: settingsData.company_logo_url,
           company_logo_sharepoint_drive_id: settingsData.company_logo_sharepoint_drive_id,
           company_logo_sharepoint_item_id: settingsData.company_logo_sharepoint_item_id,
+          company_sharepoint_root_url: settingsData.company_sharepoint_root_url,
           updated_by: user?.id || null
         })
         .eq('id', settingsId)

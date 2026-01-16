@@ -170,11 +170,14 @@ const PartDetailPage = () => {
     setFormError('');
 
     try {
-      // Create folder name from part info
-      const folderName = `submittals/${formState.manufacturer || 'Unknown'}/${formState.part_number || partId}`;
-
-      // Upload to SharePoint
-      const result = await sharePointStorageService.uploadFile(file, folderName);
+      // Upload to SharePoint using the new global part document method
+      // This uses the company SharePoint URL from Admin → Company Settings
+      const result = await sharePointStorageService.uploadGlobalPartDocument(
+        file,
+        formState.manufacturer || 'Unknown',
+        formState.part_number || partId,
+        'submittals'
+      );
 
       if (result) {
         setFormState((prev) => ({

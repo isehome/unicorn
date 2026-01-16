@@ -347,12 +347,17 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '—';
-    // Parse as local date to avoid timezone shift
-    // Database stores dates as YYYY-MM-DD (date only, no time)
-    // new Date('2026-01-15') interprets as UTC midnight, which shifts to previous day in US timezones
-    const [year, month, day] = dateStr.split('T')[0].split('-');
-    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // TIMEZONE-SAFE: Parse date string manually without using Date object
+    // Database stores dates as YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS
+    // Using Date object causes timezone shifts - avoid it entirely
+    const datePart = dateStr.split('T')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Return formatted string directly without Date object
+    return `${monthNames[month - 1]} ${day}, ${year}`;
   };
 
   const priorityColor = {

@@ -87,6 +87,90 @@ Import from Lucid → Create Wire Drops → Assign Equipment → Complete Stages
 | Trim Stages | % of wire drops with trim photo + equipment |
 | Commissioning | % of wire drops commissioned |
 
+#### Milestone Architecture (Single Source of Truth)
+
+**CRITICAL:** All milestone percentages are calculated from a SINGLE source: `api/_milestoneCalculations.js`
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    MILESTONE DATA FLOW (SSOT)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  PMProjectView.js             api/project-report/generate.js    │
+│       │                                    │                     │
+│       └──────────────┬─────────────────────┘                     │
+│                      │                                           │
+│                      ▼                                           │
+│            api/_milestoneCalculations.js                         │
+│            (SINGLE SOURCE OF TRUTH)                              │
+│                      │                                           │
+│                      ▼                                           │
+│            api/milestone-percentages.js (API endpoint)           │
+│                      │                                           │
+│                      ▼                                           │
+│            milestoneCacheService.js (5-min localStorage cache)   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Files:**
+| File | Purpose |
+|------|---------|
+| `api/_milestoneCalculations.js` | **SSOT** - All calculation logic lives here |
+| `api/milestone-percentages.js` | API endpoint for fetching percentages |
+| `src/services/milestoneService.js` | Frontend service (calls API) |
+| `src/services/milestoneCacheService.js` | 5-minute localStorage cache |
+
+#### Percentage vs Completion vs Actual Date
+
+**These are THREE separate concepts - DO NOT conflate them:**
+
+| Concept | Meaning | Set By | Example |
+|---------|---------|--------|---------|
+| `percentage === 100` | Calculated work is done | Automatic calculation | All wire drops have prewire photos |
+| `completed_manually === true` | User acknowledged completion | Manual toggle in Phase Milestones table | PM clicked "Completed" dropdown |
+| `actual_date` | Timestamp of manual completion | Set when `completed_manually` toggled ON | "2026-01-15" stored in DB |
+
+**Example Scenario:**
+1. Team uploads all prewire photos → Prewire Stages gauge shows 100%
+2. BUT `completed_manually` is still `false` and `actual_date` is `null`
+3. PM reviews work, clicks "Completed" in Phase Milestones table
+4. NOW `completed_manually = true` and `actual_date = today`
+
+**Report Preview Status Logic:**
+```javascript
+// CORRECT: Only show "Completed" if EXPLICITLY marked complete
+const isManuallyComplete = dates.completed_manually === true;
+
+// WRONG (old buggy code): This fabricates completion dates!
+const isComplete = dates.completed || (percentage === 100);  // DON'T DO THIS
+```
+
+#### Phase Rollup Formula
+
+Phase percentages use a weighted rollup:
+
+```
+Prewire Phase = (Prewire Orders × 25%) + (Prewire Receiving × 25%) + (Prewire Stages × 50%)
+Trim Phase    = (Trim Orders × 25%)    + (Trim Receiving × 25%)    + (Trim Stages × 50%)
+```
+
+Stages are weighted 50% because actual installation work is more significant than procurement.
+
+#### Cache Invalidation
+
+The milestone cache is automatically invalidated when:
+- Wire drop stage completed (prewire/trim/commission photo uploaded)
+- Equipment procurement status changed (ordered/received)
+- Bulk receive executed for a phase
+
+**Manual invalidation (for debugging):**
+```javascript
+import { milestoneCacheService } from '../services/milestoneCacheService';
+milestoneCacheService.invalidate(projectId);  // Single project
+milestoneCacheService.clearAll();              // All projects
+```
+
 ### 4. Procurement (Purchase Orders)
 
 **Flow:**
@@ -322,8 +406,118 @@ Photos are stored in `shade_photos` table with full SharePoint metadata for thum
 | **Microsoft 365 Calendar** | Technician calendar sync for service appointments |
 | **Retell AI** | Voice-based service intake (inbound calls) |
 | **QuickBooks Online** | Invoice creation from service tickets |
+| **Home Assistant** | Smart home device monitoring, network diagnostics via Nabu Casa |
 
-#### 7.1 Retell AI Voice Integration
+#### 7.1 Home Assistant Integration
+
+Remote access to customer Home Assistant instances for device monitoring, network diagnostics, and future automation control.
+
+##### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Home Assistant Integration                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Unicorn App (Browser/Vercel)                                   │
+│        │                                                         │
+│        ▼                                                         │
+│  /api/ha/status.js ──────────────────┐                          │
+│  /api/ha/entities.js                  │                          │
+│  /api/ha/command.js                   │                          │
+│        │                              │                          │
+│        ▼                              ▼                          │
+│  Supabase DB                    Nabu Casa Cloud                 │
+│  (encrypted credentials)        (remote access)                 │
+│  project_home_assistant              │                          │
+│        │                              │                          │
+│        └────── decrypt ───────────────┤                          │
+│                                       ▼                          │
+│                              Customer's Home Assistant          │
+│                              (local network)                    │
+│                                       │                          │
+│                              ┌────────┴────────┐                │
+│                              │ UniFi Integration│                │
+│                              │ (device_tracker) │                │
+│                              └─────────────────┘                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+##### Database Schema
+
+**Table: `project_home_assistant`**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `id` | UUID | Primary key |
+| `project_id` | UUID | FK to projects |
+| `ha_url_encrypted` | TEXT | Nabu Casa URL (encrypted) |
+| `access_token_encrypted` | TEXT | Long-lived access token (encrypted) |
+| `instance_name` | TEXT | Friendly name (e.g., "Smith Residence HA") |
+| `nabu_casa_enabled` | BOOLEAN | Using Nabu Casa for remote access |
+| `last_connected_at` | TIMESTAMPTZ | Last successful connection |
+| `last_error` | TEXT | Last error message |
+| `device_count` | INTEGER | Number of entities |
+
+**View: `project_home_assistant_decrypted`** - Auto-decrypts credentials using Vault
+
+**RPC Functions:**
+- `create_project_home_assistant()` - Insert with encryption
+- `update_project_home_assistant()` - Update with encryption
+
+##### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/ha/status` | GET | Test connection, get version/entity count |
+| `/api/ha/entities` | GET | Fetch all entities with states |
+| `/api/ha/command` | POST | Execute service call (turn_on, toggle, etc.) |
+
+##### Key Files
+
+| File | Purpose |
+|------|---------|
+| `api/ha/status.js` | Connection test endpoint |
+| `api/ha/entities.js` | Entity list endpoint |
+| `api/ha/command.js` | Command execution endpoint |
+| `src/services/homeAssistantService.js` | Frontend service layer |
+| `src/pages/HomeAssistantPage.js` | HA dashboard/test page |
+| `src/components/HomeAssistantSettings.js` | Config UI in project settings |
+| `database/migrations/20260115_home_assistant_integration.sql` | DB schema |
+
+##### Setup Requirements
+
+1. **Customer needs Nabu Casa subscription** - Required for remote access from Vercel
+2. **Long-lived access token** - Created in HA → Profile → Security
+3. **Nabu Casa Remote UI enabled** - Settings → Home Assistant Cloud → Remote Control ON
+
+##### Connection Flow
+
+```
+1. PM enters Nabu Casa URL + Token in HomeAssistantSettings
+2. Credentials encrypted via Supabase Vault RPC
+3. "Test Connection" calls /api/ha/status
+4. API decrypts credentials from project_home_assistant_decrypted view
+5. API fetches https://{nabu_casa_url}/api/ with Bearer token
+6. Returns HA version, entity count, connection status
+```
+
+##### Troubleshooting
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `fetch failed` | Nabu Casa disconnected | Open account.nabucasa.com → Click "Connect" |
+| `401 Unauthorized` | Bad/expired token | Create new Long-Lived Access Token in HA |
+| `Connection timeout` | HA not responding | Check HA is running, internet connected |
+
+##### Future Features (Planned)
+
+1. **UniFi device tracking via HA** - Get IP, switch port, WiFi/wired status for network clients
+2. **Entity dashboard** - View/control lights, switches, covers from Unicorn
+3. **Proactive monitoring** - Alert when critical devices go offline
+4. **Sarah integration** - Voice AI can check device status during calls
+
+#### 7.2 Retell AI Voice Integration
 
 AI-powered phone agent for handling inbound customer service calls.
 
@@ -851,12 +1045,30 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | `issues` | Problems/issues |
 | `contacts` | People |
 | `suppliers` | Vendors |
+| `project_secure_data` | **ENCRYPTED** - Project credentials (passwords, usernames, etc.) |
+| `contact_secure_data` | **ENCRYPTED** - Contact credentials (gate codes, etc.) |
 | `service_tickets` | Service ticket records |
 | `service_schedules` | Scheduled service appointments |
 | `service_call_logs` | Call history and notes |
 | `service_schedule_confirmations` | Customer confirmation tokens |
 | `qbo_auth_tokens` | QuickBooks OAuth tokens |
 | `qbo_customer_mapping` | Contact to QBO customer ID mapping |
+| `project_home_assistant` | **ENCRYPTED** - Home Assistant credentials per project |
+
+### Secure Data Tables (Encrypted)
+
+The `project_secure_data` and `contact_secure_data` tables store sensitive credentials with field-level encryption.
+
+**⚠️ NEVER query these tables directly for sensitive fields!**
+
+| Operation | Correct Approach |
+|-----------|------------------|
+| **READ** | Use `project_secure_data_decrypted` or `contact_secure_data_decrypted` views |
+| **INSERT** | Use `create_project_secure_data()` or `create_contact_secure_data()` RPC |
+| **UPDATE** | Use `update_project_secure_data()` or `update_contact_secure_data()` RPC |
+| **DELETE** | Direct DELETE is fine (no encryption involved) |
+
+See [Secure Data Encryption Implementation](#secure-data-encryption-implementation-workstream-1) in CHANGELOG for full details.
 
 ---
 
@@ -865,6 +1077,7 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | Purpose | File |
 |---------|------|
 | Wire drop logic | `src/services/wireDropService.js` |
+| **Prewire mode (technician)** | `src/components/PrewireMode.js` |
 | Milestone calculations | `src/services/milestoneService.js` |
 | Equipment management | `src/services/projectEquipmentService.js` |
 | Shade detail page | `src/components/Shades/ShadeDetailPage.js` |
@@ -888,6 +1101,16 @@ Service tickets can be exported to QuickBooks Online as invoices for billing.
 | **Unscheduled tickets panel** | `src/components/Service/UnscheduledTicketsPanel.jsx` |
 | **Technician filter bar** | `src/components/Service/TechnicianFilterBar.jsx` |
 | **QuickBooks service** | `src/services/quickbooksService.js` |
+| **Home Assistant service** | `src/services/homeAssistantService.js` |
+| **Home Assistant settings** | `src/components/HomeAssistantSettings.js` |
+| **Home Assistant page** | `src/pages/HomeAssistantPage.js` |
+| **HA status API** | `api/ha/status.js` |
+| **HA entities API** | `api/ha/entities.js` |
+| **HA command API** | `api/ha/command.js` |
+| **Submittals report service** | `src/services/submittalsReportService.js` |
+| **ZIP download service** | `src/services/zipDownloadService.js` |
+| **Project reports page** | `src/pages/ProjectReportsPage.js` |
+| **SharePoint download API** | `api/sharepoint-download.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 
@@ -3495,6 +3718,463 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-01-16
+
+### Company SharePoint URL for Global Parts Documentation
+
+Added company-level SharePoint configuration to enable uploading submittals, manuals, and schematics for global parts.
+
+**Problem Solved:**
+- Global parts (in `global_parts` table) are not project-specific
+- Existing upload methods required a project's `client_folder_url`
+- Submittal PDF uploads were failing with "uploadFile is not a function" error
+
+**Solution:**
+Added a company-wide SharePoint root URL setting that allows document uploads for global parts with automatic folder organization.
+
+**Folder Structure:**
+```
+{company_sharepoint_root_url}/
+└── Parts/
+    └── {Manufacturer}/
+        └── {PartNumber}/
+            ├── submittals/
+            ├── schematics/
+            ├── manuals/
+            └── technical/
+```
+
+**Database Changes:**
+```sql
+ALTER TABLE company_settings ADD COLUMN company_sharepoint_root_url TEXT;
+```
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260116_add_company_sharepoint_url.sql` | Add SharePoint URL column |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/companySettingsService.js` | Added `company_sharepoint_root_url` to create/update |
+| `src/components/procurement/CompanySettingsManager.js` | Added SharePoint Document Storage section with URL input |
+| `src/services/sharePointStorageService.js` | Added `getCompanySharePointUrl()` and `uploadGlobalPartDocument()` methods |
+| `src/components/PartDetailPage.js` | Fixed to use new `uploadGlobalPartDocument()` method |
+
+**New Method: `uploadGlobalPartDocument()`**
+```javascript
+// Usage in PartDetailPage.js
+const result = await sharePointStorageService.uploadGlobalPartDocument(
+  file,                    // PDF file
+  'Lutron',                // Manufacturer name
+  'QSE-IO',                // Part number
+  'submittals'             // Document type: 'submittals', 'schematics', 'manuals', 'technical'
+);
+```
+
+**Setup Required:**
+1. Run the database migration
+2. Go to Admin → Company Settings
+3. Enter your SharePoint root URL in "SharePoint Document Storage" section
+4. Example URL: `https://yourcompany.sharepoint.com/sites/Documents/Parts`
+
+---
+
+### Submittals Report Feature (Major Feature)
+
+Added a new Submittals tab to the Reports section that generates downloadable documentation packages for projects.
+
+**Feature Overview:**
+- Collects product submittal PDFs from all parts used in a project
+- Deduplicates by global_part_id (one document per part type, regardless of quantity)
+- Includes Lucid wiremap as PNG
+- Packages everything into a single ZIP file for download
+
+**Database Changes:**
+New columns added to `global_parts` table:
+| Column | Type | Purpose |
+|--------|------|---------|
+| `submittal_pdf_url` | TEXT | External URL to manufacturer submittal PDF |
+| `submittal_sharepoint_url` | TEXT | SharePoint URL for uploaded submittal PDF |
+| `submittal_sharepoint_drive_id` | TEXT | SharePoint drive ID for Graph API access |
+| `submittal_sharepoint_item_id` | TEXT | SharePoint item ID for Graph API access |
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260116_add_submittal_fields.sql` | Add submittal columns to global_parts |
+| `database/migrations/20260116_update_global_part_rpc.sql` | Update RPC function with submittal params |
+| `src/services/submittalsReportService.js` | Query parts with submittals, generate manifest |
+| `src/services/zipDownloadService.js` | Generate ZIP files using JSZip |
+| `api/sharepoint-download.js` | Proxy endpoint for downloading SharePoint files |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/partsService.js` | Added submittal fields to create() and update() |
+| `src/components/GlobalPartDocumentationEditor.js` | Added submittal document section (URL or upload) |
+| `src/components/GlobalPartsManager.js` | Added submittal fields to select query |
+| `src/components/PartDetailPage.js` | **Added Submittal Document section** with external URL input and SharePoint upload |
+| `src/pages/ProjectReportsPage.js` | Added Progress and Submittals tabs |
+| `src/components/PMProjectView.js` | Removed standalone Progress Report button |
+
+**Part Detail Page Submittal Section:**
+The Submittal Document field appears in the Part Details page (`/parts/:partId`) after the Technical Manual URLs section:
+- External URL input for manufacturer submittal PDF links
+- OR divider
+- SharePoint upload option for custom submittal PDFs
+- Amber FileCheck icon to distinguish from other documentation types
+- Upload files are stored in SharePoint under: `submittals/{Manufacturer}/{PartNumber}/`
+
+**Reports Page Tabs (Updated):**
+| Tab | Purpose |
+|-----|---------|
+| Overview | Quick stats and milestone timeline |
+| **Progress Report** | HTML report preview with email button (moved from PM View) |
+| **Submittals** | Parts list with submittals + ZIP download button |
+| Issues | Stakeholder issue groupings |
+| Wire Drops | Wire drop progress by floor |
+| Equipment | Parts ordering/receiving status |
+
+**ZIP Package Contents:**
+```
+ProjectName-Submittals.zip
+├── Submittals/
+│   ├── Manufacturer1-Model1.pdf
+│   ├── Manufacturer1-Model2.pdf
+│   └── Manufacturer2-Model3.pdf
+├── Wiremap.png (from Lucid export)
+└── _Contents.txt (manifest listing)
+```
+
+**Data Flow:**
+```
+User clicks "Download ZIP" on Submittals tab
+    ↓
+zipDownloadService.downloadSubmittalsPackage()
+    ↓
+1. For each part with submittal:
+   - If SharePoint: /api/sharepoint-download → file blob
+   - If external URL: /api/image-proxy → file blob
+    ↓
+2. Export Lucid page 1 as PNG via lucidApi.exportDocumentPage()
+    ↓
+3. Bundle into JSZip with folder structure
+    ↓
+4. Generate and save ZIP via FileSaver.js
+```
+
+**Dependencies Added:**
+- `jszip` - Client-side ZIP file generation
+- `file-saver` (already present) - Trigger browser download
+
+---
+
+### Prewire Mode - Show/Hide Completed Toggles
+
+Added two separate toggle buttons to filter wire drops by completion status in Prewire Mode (Technician Dashboard).
+
+**Feature:** Independent toggle buttons to show/hide completed items for:
+1. **Label Printed** - Filter drops where labels have already been printed
+2. **Photo Taken** - Filter drops where prewire photo has been captured
+
+**UI Components:**
+
+| Button | Default State | Active State | Description |
+|--------|---------------|--------------|-------------|
+| Label Printed | "All Labels" + Eye | "Unprinted" + EyeOff (violet) | Hides drops with `labels_printed=true` |
+| Photo Taken | "All Photos" + Eye | "No Photo" + EyeOff (violet) | Hides drops with prewire stage `completed=true` |
+
+**Behavior:**
+- Both toggles are **independent** - can be used separately or combined
+- Default: Both show all items (toggles inactive/gray border)
+- Active: Violet highlight indicates filtering is enabled (hiding completed items)
+- Filters stack with existing floor/room/search filters
+- Stats display updated to show both: `X/Y printed` and `X/Y photo`
+
+**Voice AI Integration:**
+- Added `toggle_show_photo_taken` action for voice control
+- Updated state publishing to include `showPhotoTaken` filter status
+- Both toggles accessible via voice commands
+
+**State Variables:**
+```javascript
+const [showPrinted, setShowPrinted] = useState(true);    // Show/hide printed labels
+const [showPhotoTaken, setShowPhotoTaken] = useState(true); // Show/hide photo taken
+```
+
+**Filter Logic:**
+```javascript
+// Hide printed labels when toggle is off
+if (!showPrinted) {
+  filtered = filtered.filter(drop => !drop.labels_printed);
+}
+
+// Hide drops with prewire photo when toggle is off
+if (!showPhotoTaken) {
+  filtered = filtered.filter(drop => {
+    const prewireStage = drop.wire_drop_stages?.find(s => s.stage_type === 'prewire');
+    return !prewireStage?.completed;
+  });
+}
+```
+
+**Files Modified:**
+- `src/components/PrewireMode.js` - Added state, filter logic, UI toggles, voice AI actions
+
+---
+
+### Phase Milestones - Real-Time Status Display
+
+Fixed the Phase Milestones table to show real-time calculated status instead of only displaying static database values.
+
+**Problem:** The Phase Milestones section showed outdated dates because it only read from `project_milestones` table, while the Project Report Preview calculated percentages in real-time.
+
+**Solution:** Updated the Status column to use the already-calculated `milestonePercentages` state:
+- Shows "Completed" (green) when percentage = 100% OR manually marked complete
+- Shows "X%" (blue) when percentage is between 1-99%
+- Shows "Not set" (gray) when percentage is 0 or null
+
+**Implementation Details:**
+
+Added helper function to extract percentage for each milestone type:
+```javascript
+const getPercentageForType = (type) => {
+  const typeMap = {
+    'planning_design': milestonePercentages.planning_design,
+    'prewire_prep': milestonePercentages.prewire_prep,
+    'prewire': typeof milestonePercentages.prewire === 'number'
+      ? milestonePercentages.prewire
+      : milestonePercentages.prewire_phase?.percentage || 0,
+    // ... other milestone types
+  };
+  return typeMap[type] ?? null;
+};
+```
+
+Updated Status column to derive status from calculated percentage:
+```javascript
+const percentage = getPercentageForType(type);
+const isComplete = milestone?.completed_manually || percentage === 100;
+
+if (isComplete) return "Completed";
+if (percentage > 0) return `${percentage}%`;
+return "Not set";
+```
+
+**Files Modified:**
+- `src/components/PMProjectView.js` - Added `getPercentageForType()` helper, updated Status column rendering
+
+---
+
+### Milestone Data Consistency - Single Source of Truth (SSOT)
+
+Major refactoring to fix data inconsistencies between PM Project View and Project Report Preview gauges.
+
+**Problems Fixed:**
+
+1. **Fabricated Actual Dates** - Report showed today's date as "actual date" when percentage=100%, even if milestone wasn't explicitly completed by user.
+
+2. **Duplicate Calculation Code** - `api/project-report/generate.js` had 360+ lines duplicating `milestoneService.js`, leading to calculation drift.
+
+3. **No Single Source of Truth** - Two separate calculation systems produced different results.
+
+4. **Stale Cache** - 5-minute localStorage cache with no invalidation triggers.
+
+**Solution Architecture:**
+
+```
+PMProjectView.js ─────┬────► api/_milestoneCalculations.js (SSOT)
+                      │              │
+generate.js ──────────┘              ▼
+                           api/milestone-percentages.js (API)
+                                     │
+                           milestoneCacheService.js (5-min cache + invalidation)
+```
+
+**Key Changes:**
+
+1. **Fixed Fabricated Dates Bug** (line 891 in generate.js):
+   - Before: `isComplete = dates.completed || (percentage === 100)` - WRONG
+   - After: `isManuallyComplete = dates.completed === true` - CORRECT
+
+2. **Created Shared Calculation Module** (`api/_milestoneCalculations.js`):
+   - Single source of truth for ALL milestone percentage calculations
+   - Exported functions used by both generate.js and milestone-percentages.js API
+
+3. **Removed 360 Lines of Duplicate Code** from generate.js
+
+4. **Added Cache Invalidation Triggers**:
+   - `wireDropService.js` - Invalidates cache when stage completed
+   - `projectEquipmentService.js` - Invalidates cache when procurement status changes
+
+**New API Endpoint:**
+```
+GET /api/milestone-percentages?projectId={uuid}
+
+Response: {
+  success: true,
+  percentages: {
+    planning_design: 100,
+    prewire_phase: { percentage: 68, orders: {...}, receiving: {...}, stages: {...} },
+    trim_phase: { percentage: 25, ... },
+    commissioning: 0
+  }
+}
+```
+
+**Files Created:**
+- `api/_milestoneCalculations.js` - Shared calculation module (SSOT)
+- `api/milestone-percentages.js` - API endpoint
+
+**Files Modified:**
+- `api/project-report/generate.js` - Fixed dates bug, imports from shared module
+- `src/services/wireDropService.js` - Added cache invalidation on stage update
+- `src/services/projectEquipmentService.js` - Added cache invalidation on status change
+- `AGENT.md` - Added milestone architecture documentation
+
+---
+
+## 2026-01-14
+
+### Bug Todos Tab Improvements
+
+**Bug ID:** Session work (multiple bugs fixed)
+
+**Changes Made:**
+
+1. **Action Buttons Moved to Collapsed State**
+   - Download, Copy, Reanalyze, and Fixed buttons now visible without expanding the bug report
+   - Allows faster triage without clicking to expand each item
+   - Added `e.stopPropagation()` to prevent row expansion when clicking buttons
+
+2. **Bug Report Document - AGENT.md Update Instruction**
+   - Added "Step 5: Update Documentation (REQUIRED)" to generated bug reports
+   - Instructs AI tools to update AGENT.md after fixing bugs
+   - Ensures changelog entries are created with: date, bug ID, description, fix details, files modified
+
+3. **Fixed Duplicate Bug Report IDs (Race Condition)**
+   - Problem: Multiple bugs processed simultaneously all got the same ID (e.g., BR-2026-01-14-0003)
+   - Solution: Implemented atomic ID claiming with retry logic in `generateBugId()` function
+   - Uses optimistic locking: UPDATE only if `bug_report_id IS NULL`
+   - Retries up to 5 times with random delay on collision
+   - Falls back to UUID-based suffix if all retries fail
+
+4. **Fixed Safari Confirmation Dialog Issue**
+   - Problem: `window.confirm()` was blocked by Safari when called from event handlers with `stopPropagation()`
+   - Solution: Replaced with custom React modal for delete confirmation
+   - Modal matches dark/light theme and works consistently across browsers
+
+**Files Modified:**
+- `src/components/Admin/BugTodosTab.js` - UI changes, custom modal, action button relocation
+- `api/cron/process-bugs.js` - Race condition fix in `generateBugId()` function
+
+---
+
+### TodoDetailPage Crash Fix (BR-2026-01-14-0003)
+
+**Bug ID:** BR-2026-01-14-0003
+
+**Problem:** TodoDetailPage crashed with `TypeError: undefined is not an object (evaluating 'M.palette')` when opening a todo item on mobile (iPhone).
+
+**Root Causes Identified:**
+
+1. **Undefined Palette Object** - Components were accessing `palette.textPrimary`, `palette.info`, etc. without defensive checks when the palette object could be undefined during component initialization or when theme context wasn't fully loaded.
+
+2. **Missing Database Columns** - The `project_todos` table was missing the calendar integration columns (`do_by_time`, `planned_hours`, `calendar_event_id`) that were added in migration `2025-12-02_add_todo_calendar_fields.sql`.
+
+3. **Non-existent `updated_at` Column** - Code was trying to set `updated_at` on `project_todos` but this column doesn't exist in the table schema.
+
+**Fixes Applied:**
+
+1. **Defensive Palette Handling** - Added fallback defaults for palette properties in three components:
+   ```javascript
+   // Pattern applied to all components
+   const rawPalette = paletteByMode[mode] || paletteByMode.light || {};
+   const palette = {
+       success: rawPalette.success || '#94AF32',
+       warning: rawPalette.warning || '#F59E0B',
+       info: rawPalette.info || '#3B82F6',
+       primary: rawPalette.primary || '#8B5CF6',
+       textPrimary: rawPalette.textPrimary || (mode === 'dark' ? '#FAFAFA' : '#18181B'),
+       textSecondary: rawPalette.textSecondary || (mode === 'dark' ? '#A1A1AA' : '#52525B'),
+       ...rawPalette
+   };
+   ```
+
+2. **Database Migration** - User ran the migration to add missing columns:
+   - `do_by_time time` - Start time for calendar events
+   - `planned_hours decimal(4,2)` - Duration estimate
+   - `calendar_event_id text` - Microsoft Graph event ID
+
+3. **Removed `updated_at` References** - Removed `updated_at: new Date().toISOString()` from update payloads in `handleSave` and `handleToggleComplete` functions.
+
+4. **Time Format Fix** - Format `do_by_time` as `HH:MM:SS` for PostgreSQL time type:
+   ```javascript
+   const formattedDoByTime = doBy && doByTime ? `${doByTime}:00` : null;
+   ```
+
+**Files Modified:**
+- `src/components/TodoDetailPage.js` - Defensive palette, removed `updated_at`, time format fix
+- `src/components/TodoDetailModal.js` - Defensive palette handling
+- `src/components/ui/TimeSelectionGrid.jsx` - Defensive palette handling
+
+**Migration Required:**
+If encountering schema cache errors, run:
+```sql
+-- database/migrations/2025-12-02_add_todo_calendar_fields.sql
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS planned_hours decimal(4,2);
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS do_by_time time;
+ALTER TABLE project_todos ADD COLUMN IF NOT EXISTS calendar_event_id text;
+```
+
+---
+
+### Issue Stakeholder Dropdown Fix (BR-2026-01-15-0001)
+
+**Bug ID:** BR-2026-01-15-0001
+
+**Problem:** When adding stakeholders to an issue, the dropdown was showing ALL contacts in the system instead of only stakeholders assigned to the current project.
+
+**Root Cause:** The `IssueDetail.js` component was using `contactsService.getAll()` to populate the dropdown, which returned every contact in the database. The user expected to see only `availableProjectStakeholders` (people already assigned to this project).
+
+**Fix Applied:**
+
+1. **Changed data source for dropdown:**
+   - Before: `filteredContacts` based on `allContacts` (all contacts in system)
+   - After: `filteredStakeholders` based on `availableProjectStakeholders` (project stakeholders only)
+
+2. **Simplified the tagging flow:**
+   - Before: Two-step process (select contact → select role)
+   - After: Single-step (select project stakeholder with their existing role)
+   - Project stakeholders already have roles assigned, so no need for role selection
+
+3. **Added exclusion of already-tagged stakeholders:**
+   - Dropdown now filters out stakeholders already tagged on the current issue
+   - Shows helpful message when all stakeholders are already tagged
+
+4. **Updated UI to show role information:**
+   - Each stakeholder in dropdown now shows their role name
+   - Internal/external indicator with appropriate colors (violet/olive)
+
+5. **Removed unused code:**
+   - Removed `allContacts`, `allRoles`, `selectedContact`, `stakeholderStep` state variables
+   - Removed `handleSelectRole` function
+   - Removed `contactsService` and `stakeholderRolesService` imports
+
+**Files Modified:**
+- `src/components/IssueDetail.js` - Dropdown now filters from project stakeholders, simplified flow
+
+**How to Test:**
+1. Navigate to any issue detail page
+2. Click "Add stakeholder..." dropdown
+3. Verify only project stakeholders appear (not all contacts)
+4. Verify each stakeholder shows their role name
+5. Select a stakeholder and verify they get tagged correctly
+
+---
+
 ## 2025-12-23
 
 ### Azure AI Search RAG Integration (Major Update)
@@ -4851,5 +5531,216 @@ git show --stat HEAD
 # To checkout specific files from before:
 git checkout HEAD~1 -- path/to/file.js
 ```
+
+---
+
+## 2026-01-14
+
+### Secure Data Encryption Implementation (Workstream 1)
+
+**Status:** ✅ COMPLETE - Deployed 2026-01-14
+
+Implemented field-level encryption for all sensitive data in `project_secure_data` and `contact_secure_data` tables using **Supabase Vault + pgcrypto**.
+
+**Problem Solved:** Passwords, usernames, URLs, IP addresses, and notes were stored as plaintext in the database. This was a critical security issue.
+
+**Solution:** Server-side encryption using pgcrypto's `pgp_sym_encrypt` with keys stored in Supabase Vault.
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Secure Data Encryption Flow                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  WRITE (Create/Update):                                         │
+│  Browser → HTTPS → Supabase API → RPC Function → encrypt_field()│
+│                                        │                         │
+│                                        ▼                         │
+│                              vault.decrypted_secrets             │
+│                              (gets encryption key)               │
+│                                        │                         │
+│                                        ▼                         │
+│                              pgp_sym_encrypt()                   │
+│                                        │                         │
+│                                        ▼                         │
+│                              Base64 encoded blob                 │
+│                              stored in *_encrypted column        │
+│                                                                  │
+│  READ:                                                           │
+│  Service → decrypted view → decrypt_field() → plaintext         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Security Model
+
+| Layer | Protection |
+|-------|------------|
+| **Transit** | HTTPS/TLS encrypts browser ↔ Supabase |
+| **At Rest** | pgcrypto encrypts data in database |
+| **Key Storage** | Supabase Vault (not accessible via API) |
+| **Access Control** | SECURITY DEFINER functions only |
+
+**Who can decrypt:**
+- ✅ Unicorn app (via decrypted views)
+- ✅ Supabase SQL Editor (dashboard admin)
+- ❌ Direct API access (can't access Vault secrets)
+- ❌ Database dumps (only see encrypted blobs)
+- ❌ Compromised anon key (can't read Vault)
+
+#### Database Schema
+
+**Migration Files:**
+- `database/migrations/20260114_encrypt_secure_data_part1_tables.sql` - Tables, extensions, RLS
+- `database/migrations/20260114_encrypt_secure_data_part2_encryption.sql` - Encryption implementation
+- `database/migrations/20260114_encrypt_secure_data.sql` - Combined (reference only)
+
+**Encrypted Columns (both tables):**
+| Column | Type | Purpose |
+|--------|------|---------|
+| `password_encrypted` | text | Base64-encoded encrypted password |
+| `username_encrypted` | text | Base64-encoded encrypted username |
+| `url_encrypted` | text | Base64-encoded encrypted URL |
+| `ip_address_encrypted` | text | Base64-encoded encrypted IP address |
+| `notes_encrypted` | text | Base64-encoded encrypted notes |
+| `additional_info_encrypted` | text | Base64-encoded encrypted JSON |
+
+**Vault Secrets:**
+| Secret Name | Purpose |
+|-------------|---------|
+| `project_secure_data_key` | Encryption key for project credentials |
+| `contact_secure_data_key` | Encryption key for contact credentials |
+
+**Functions:**
+| Function | Purpose |
+|----------|---------|
+| `encrypt_field(text, text)` | Encrypts plaintext using Vault secret |
+| `decrypt_field(text, text)` | Decrypts ciphertext using Vault secret |
+| `create_project_secure_data(...)` | RPC for encrypted INSERT |
+| `create_contact_secure_data(...)` | RPC for encrypted INSERT |
+| `update_project_secure_data(...)` | RPC for encrypted UPDATE |
+| `update_contact_secure_data(...)` | RPC for encrypted UPDATE |
+| `create_default_secure_entries(uuid)` | Auto-creates Gate/House Code for new contacts |
+
+**Views (auto-decrypt on read):**
+| View | Purpose |
+|------|---------|
+| `project_secure_data_decrypted` | Transparent decryption for project credentials |
+| `contact_secure_data_decrypted` | Transparent decryption for contact credentials |
+
+#### Service Layer
+
+**File:** `src/services/equipmentService.js`
+
+**secureDataService:**
+```javascript
+// READ - Use decrypted views
+.from('project_secure_data_decrypted')
+
+// CREATE - Use RPC
+supabase.rpc('create_project_secure_data', {
+  p_project_id: ...,
+  p_name: ...,
+  p_password: ...,  // Plaintext - RPC encrypts it
+  ...
+});
+
+// UPDATE - Use RPC
+supabase.rpc('update_project_secure_data', {
+  p_id: ...,
+  p_password: ...,  // Plaintext - RPC encrypts it
+  ...
+});
+```
+
+**contactSecureDataService:**
+- Same pattern with `contact_secure_data_decrypted` view
+- Uses `create_contact_secure_data` and `update_contact_secure_data` RPCs
+
+#### Testing Encryption
+
+**Verify raw data is encrypted:**
+```sql
+SELECT
+  name,
+  password AS plaintext_col,
+  password_encrypted AS encrypted_col,
+  CASE WHEN password_encrypted IS NOT NULL THEN 'ENCRYPTED' ELSE 'not encrypted' END as status
+FROM project_secure_data
+ORDER BY created_at DESC
+LIMIT 10;
+```
+
+**Expected results:**
+- New entries: `plaintext_col = NULL`, `encrypted_col = 'ww0EBwMC...'` (base64 blob)
+- Old migrated entries: `plaintext_col = 'actual password'`, `encrypted_col = 'ww0EBwMC...'`
+
+**Verify decryption works:**
+```sql
+SELECT name, password, username
+FROM project_secure_data_decrypted
+LIMIT 5;
+```
+
+Should show actual plaintext values.
+
+#### Running the Migration
+
+**Step 1:** Run Part 1 (creates tables, extensions, RLS)
+```sql
+-- Copy contents of: database/migrations/20260114_encrypt_secure_data_part1_tables.sql
+-- Execute in Supabase SQL Editor
+```
+
+**Step 2:** Run Part 2 (encryption implementation)
+```sql
+-- Copy contents of: database/migrations/20260114_encrypt_secure_data_part2_encryption.sql
+-- Execute in Supabase SQL Editor
+```
+
+**Step 3:** Verify
+1. Check raw table has encrypted blobs
+2. Check decrypted view returns plaintext
+3. Test create/update in app UI
+
+#### Plaintext Column Cleanup
+
+**DO NOT RUN until 1 week after successful migration:**
+
+```sql
+-- Only run after full verification!
+ALTER TABLE project_secure_data
+DROP COLUMN IF EXISTS password,
+DROP COLUMN IF EXISTS username,
+DROP COLUMN IF EXISTS url,
+DROP COLUMN IF EXISTS ip_address,
+DROP COLUMN IF EXISTS notes,
+DROP COLUMN IF EXISTS additional_info;
+
+ALTER TABLE contact_secure_data
+DROP COLUMN IF EXISTS password,
+DROP COLUMN IF EXISTS username,
+DROP COLUMN IF EXISTS url,
+DROP COLUMN IF EXISTS ip_address,
+DROP COLUMN IF EXISTS notes,
+DROP COLUMN IF EXISTS additional_info;
+```
+
+#### Rollback Plan
+
+Plaintext columns remain until cleanup. To rollback:
+
+1. **Service layer:** Change `project_secure_data_decrypted` → `project_secure_data` in queries
+2. **Remove RPC calls:** Replace with direct INSERT/UPDATE
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `database/migrations/20260114_encrypt_secure_data_part1_tables.sql` | **NEW** - Tables and extensions |
+| `database/migrations/20260114_encrypt_secure_data_part2_encryption.sql` | **NEW** - Encryption implementation |
+| `database/migrations/20260114_encrypt_secure_data.sql` | **NEW** - Combined reference |
+| `src/services/equipmentService.js` | Use decrypted views and RPC functions |
 
 ---
