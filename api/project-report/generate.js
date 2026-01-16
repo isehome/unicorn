@@ -2,22 +2,69 @@
  * Generate Project Progress Report
  * Creates HTML email with gauges and issues for external stakeholders
  *
- * Updated 2026-01-16: CRITICAL FIX - Fixed fabricated dates bug and
- * now uses shared milestone calculation module (SSOT) instead of
- * duplicate code. See api/_milestoneCalculations.js for calculation logic.
+ * Updated 2026-01-16: Now calls /api/milestone-percentages endpoint
+ * which uses the same calculation logic as the frontend milestoneService.js.
+ * This ensures Single Source of Truth for milestone calculations.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { systemSendMail } = require('../_systemGraph');
-const { calculateAllMilestones } = require('../_milestoneCalculations');
+
+// For internal API calls (uses VERCEL_URL to call self on same deployment)
+const API_BASE_URL = process.env.VERCEL_URL
+  ? `https://${process.env.VERCEL_URL}`
+  : process.env.APP_BASE_URL || 'https://unicorn-one.vercel.app';
+
+// For external portal links (user-facing URLs)
+const APP_BASE_URL = process.env.APP_BASE_URL || process.env.PUBLIC_SITE_URL || 'https://unicorn-one.vercel.app';
+
+/**
+ * Fetch milestone percentages from the API endpoint (SSOT)
+ * This ensures we use the same calculation logic as the frontend
+ */
+async function fetchMilestonePercentages(projectId) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/milestone-percentages?projectId=${projectId}`);
+    if (!response.ok) {
+      throw new Error(`Milestone API returned ${response.status}`);
+    }
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to fetch milestones');
+    }
+    return data.percentages;
+  } catch (error) {
+    console.error('[project-report] Error fetching milestone percentages:', error);
+    // Return empty defaults on error
+    return {
+      planning_design: 0,
+      prewire_orders: 0,
+      prewire_receiving: 0,
+      prewire: 0,
+      trim_orders: 0,
+      trim_receiving: 0,
+      trim: 0,
+      commissioning: { percentage: 0, completed: 0, total: 0 },
+      prewire_phase: { percentage: 0, orders: {}, receiving: {}, stages: {} },
+      trim_phase: { percentage: 0, orders: {}, receiving: {}, stages: {} },
+      planningDesign: { percentage: 0 },
+      prewireOrders: { percentage: 0 },
+      prewireReceiving: { percentage: 0 },
+      prewireStages: { percentage: 0 },
+      prewirePhase: 0,
+      trimOrders: { percentage: 0 },
+      trimReceiving: { percentage: 0 },
+      trimStages: { percentage: 0 },
+      trimPhase: 0
+    };
+  }
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-const APP_BASE_URL = process.env.APP_BASE_URL || process.env.PUBLIC_SITE_URL || 'https://unicorn-one.vercel.app';
 
 /**
  * Generate a secure portal token (server-side version)
@@ -133,8 +180,9 @@ module.exports = async (req, res) => {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Calculate milestone percentages (matching milestoneService.js logic)
-    const milestones = await calculateAllMilestones(projectId, project);
+    // Fetch milestone percentages from the API endpoint (SSOT)
+    // This ensures we use the exact same calculation logic as the frontend
+    const milestones = await fetchMilestonePercentages(projectId);
 
     // Fetch milestone dates from project_milestones table
     const { data: milestoneDates } = await supabase
@@ -363,45 +411,46 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
     resolved: '#94AF32'
   };
 
-  // Phase data matching screenshot layout
+  // Phase data for the 3 main progress gauges
   const phases = [
     {
-      name: 'Prewire Phase',
-      percentage: milestones.prewirePhase,
+      name: 'Prewire',
+      percentage: milestones.prewire_phase?.percentage || milestones.prewirePhase || 0,
       subItems: [
-        { label: 'Prewire Orders', ...milestones.prewireOrders },
-        { label: 'Prewire Receiving', ...milestones.prewireReceiving },
-        { label: 'Prewire Stages', ...milestones.prewireStages }
+        { label: 'Prewire Orders', percentage: milestones.prewire_orders?.percentage || milestones.prewireOrders?.percentage || 0, ordered: milestones.prewire_orders?.ordered || milestones.prewireOrders?.partsAccountedFor, total: milestones.prewire_orders?.total || milestones.prewireOrders?.totalParts },
+        { label: 'Prewire Receiving', percentage: milestones.prewire_receiving?.percentage || milestones.prewireReceiving?.percentage || 0, received: milestones.prewire_receiving?.received || milestones.prewireReceiving?.partsReceived, total: milestones.prewire_receiving?.total || milestones.prewireReceiving?.totalParts },
+        { label: 'Prewire Stages', percentage: milestones.prewire || milestones.prewireStages?.percentage || 0, completed: milestones.prewireStages?.completed, total: milestones.prewireStages?.total }
       ]
     },
     {
-      name: 'Trim Phase',
-      percentage: milestones.trimPhase,
+      name: 'Trim',
+      percentage: milestones.trim_phase?.percentage || milestones.trimPhase || 0,
       subItems: [
-        { label: 'Trim Orders', ...milestones.trimOrders },
-        { label: 'Trim Receiving', ...milestones.trimReceiving },
-        { label: 'Trim Stages', ...milestones.trimStages }
+        { label: 'Trim Orders', percentage: milestones.trim_orders?.percentage || milestones.trimOrders?.percentage || 0, ordered: milestones.trim_orders?.ordered || milestones.trimOrders?.partsAccountedFor, total: milestones.trim_orders?.total || milestones.trimOrders?.totalParts },
+        { label: 'Trim Receiving', percentage: milestones.trim_receiving?.percentage || milestones.trimReceiving?.percentage || 0, received: milestones.trim_receiving?.received || milestones.trimReceiving?.partsReceived, total: milestones.trim_receiving?.total || milestones.trimReceiving?.totalParts },
+        { label: 'Trim Stages', percentage: milestones.trim || milestones.trimStages?.percentage || 0, completed: milestones.trimStages?.completed, total: milestones.trimStages?.total }
       ]
     },
     {
-      name: 'Commissioning',
-      percentage: milestones.commissioning.percentage,
+      name: 'Commission',
+      percentage: milestones.commissioning?.percentage || 0,
       subItems: null,
-      itemCount: milestones.commissioning
+      itemCount: milestones.commissioning || { completed: 0, total: 0 }
     }
   ];
 
-  // Schedule rows matching the screenshot
-  const scheduleRows = [
-    { phase: 'Planning & Design', type: 'planning_design', percentage: milestones.planningDesign.percentage },
-    { phase: 'Prewire Prep', type: 'prewire_prep', percentage: null },
-    { phase: 'Prewire', type: 'prewire', percentage: milestones.prewireStages.percentage },
-    { phase: 'Rough-In Inspection', type: 'rough_in_inspection', percentage: null },
-    { phase: 'Trim Prep', type: 'trim_prep', percentage: null },
-    { phase: 'Trim', type: 'trim', percentage: milestones.trimStages.percentage },
-    { phase: 'Final Inspection', type: 'final_inspection', percentage: null },
-    { phase: 'Commissioning', type: 'commissioning', percentage: milestones.commissioning.percentage },
-    { phase: 'Handoff / Training', type: 'handoff_training', percentage: null }
+  // Phase Milestones table - matches PMProjectView exactly
+  // Colors match the PM View milestone table
+  const phaseMilestones = [
+    { type: 'planning_design', label: 'Planning & Design', color: '#8b5cf6' },
+    { type: 'prewire_prep', label: 'Prewire Prep', color: '#06b6d4' },
+    { type: 'prewire', label: 'Prewire', color: '#8b5cf6' },
+    { type: 'rough_in_inspection', label: 'Rough-In Inspection', color: '#ec4899' },
+    { type: 'trim_prep', label: 'Trim Prep', color: '#f59e0b' },
+    { type: 'trim', label: 'Trim', color: '#f59e0b' },
+    { type: 'final_inspection', label: 'Final Inspection', color: '#ec4899' },
+    { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
+    { type: 'handoff_training', label: 'Handoff / Training', color: '#94AF32' }
   ];
 
   return `
@@ -423,21 +472,21 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
     .card-header h2 { margin: 0; font-size: 16px; font-weight: 500; color: #fafafa; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #8B5CF6; }
 
-    /* Phase Progress Section */
-    .phase-section { margin-bottom: 24px; }
-    .phase-row { display: flex; align-items: flex-start; gap: 24px; margin-bottom: 24px; }
-    .phase-gauge { text-align: center; }
-    .phase-label { font-size: 12px; color: #a1a1aa; margin-bottom: 8px; }
-    .gauge-circle { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; position: relative; }
-    .gauge-circle::before { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: #27272a; }
-    .gauge-value { position: relative; z-index: 1; }
+    /* Phase Progress Section - matches PM View layout */
+    .progress-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 24px; }
+    .phase-column { text-align: center; }
+    .phase-title { font-size: 12px; font-weight: 600; color: #fafafa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .gauge-circle { width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 700; position: relative; margin: 0 auto; }
+    .gauge-circle::before { content: ''; position: absolute; inset: 6px; border-radius: 50%; background: #27272a; }
+    .gauge-value { position: relative; z-index: 1; color: #fafafa; }
+    .gauge-count { font-size: 11px; color: #71717a; margin-top: 8px; }
 
-    .sub-items { flex: 1; }
-    .sub-item { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-    .sub-label { font-size: 13px; color: #d4d4d8; }
-    .sub-bar { flex: 1; margin: 0 16px; height: 8px; background: #3f3f46; border-radius: 4px; overflow: hidden; }
-    .sub-fill { height: 100%; border-radius: 4px; }
-    .sub-count { font-size: 13px; color: #a1a1aa; min-width: 60px; text-align: right; }
+    .sub-items { margin-top: 16px; padding: 0 8px; }
+    .sub-item { display: flex; align-items: center; margin-bottom: 10px; }
+    .sub-label { font-size: 12px; color: #a1a1aa; min-width: 100px; text-align: left; }
+    .sub-bar { flex: 1; height: 6px; background: #3f3f46; border-radius: 3px; overflow: hidden; margin: 0 8px; }
+    .sub-fill { height: 100%; border-radius: 3px; }
+    .sub-pct { font-size: 12px; color: #d4d4d8; min-width: 40px; text-align: right; font-weight: 500; }
 
     /* Schedule Table */
     .schedule-table { width: 100%; border-collapse: collapse; }
@@ -487,38 +536,37 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
         <h2>Project Progress</h2>
       </div>
 
-      ${phases.map(phase => `
-        <div class="phase-section">
-          <div class="phase-row">
-            <div class="phase-gauge">
-              <div class="phase-label">${phase.name}</div>
-              <div class="gauge-circle" style="background: conic-gradient(${getGaugeColor(phase.percentage)} ${phase.percentage * 3.6}deg, #3f3f46 0deg);">
-                <span class="gauge-value">${Math.round(phase.percentage)}%</span>
-              </div>
-              ${phase.itemCount ? `<div style="font-size: 11px; color: #71717a; margin-top: 4px;">${phase.itemCount.completed || 0} of ${phase.itemCount.total || 0}</div>` : ''}
+      <!-- Three gauges side by side with title above each -->
+      <div class="progress-grid">
+        ${phases.map(phase => `
+          <div class="phase-column">
+            <div class="phase-title">${phase.name}</div>
+            <div class="gauge-circle" style="background: conic-gradient(${getGaugeColor(phase.percentage)} ${phase.percentage * 3.6}deg, #3f3f46 0deg);">
+              <span class="gauge-value">${Math.round(phase.percentage)}%</span>
             </div>
+            ${phase.itemCount ? `<div class="gauge-count">${phase.itemCount.completed || 0} of ${phase.itemCount.total || 0}</div>` : ''}
             ${phase.subItems ? `
               <div class="sub-items">
                 ${phase.subItems.map(sub => `
                   <div class="sub-item">
-                    <span class="sub-label">${sub.label}</span>
+                    <span class="sub-label">${sub.label.replace('Prewire ', '').replace('Trim ', '')}</span>
                     <div class="sub-bar">
-                      <div class="sub-fill" style="width: ${sub.percentage}%; background: ${getGaugeColor(sub.percentage)};"></div>
+                      <div class="sub-fill" style="width: ${sub.percentage || 0}%; background: ${getGaugeColor(sub.percentage || 0)};"></div>
                     </div>
-                    <span class="sub-count">${sub.ordered !== undefined ? `${sub.ordered} of ${sub.total}` : sub.received !== undefined ? `${sub.received} of ${sub.total}` : `${sub.completed || 0} of ${sub.total || 0}`}</span>
+                    <span class="sub-pct">${Math.round(sub.percentage || 0)}%</span>
                   </div>
                 `).join('')}
               </div>
             ` : ''}
           </div>
-        </div>
-      `).join('')}
+        `).join('')}
+      </div>
     </div>
 
     <div class="card">
       <div class="card-header">
         <span class="dot"></span>
-        <h2>Project Schedule</h2>
+        <h2>Phase Milestones</h2>
       </div>
       <table class="schedule-table">
         <thead>
@@ -530,40 +578,38 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
           </tr>
         </thead>
         <tbody>
-          ${scheduleRows.map(row => {
-            const dates = dateMap[row.type] || {};
-            // CRITICAL FIX: Only show "Completed" if EXPLICITLY marked complete in database
-            // percentage=100% means calculated work is done, but doesn't mean user acknowledged completion
-            // These are separate concepts:
-            //   - percentage === 100: Work items are done (automatic calculation)
-            //   - completed === true: User explicitly marked milestone complete (manual toggle)
-            //   - actual_date: Timestamp when user marked it complete
-            const isManuallyComplete = dates.completed === true;
+          ${phaseMilestones.map(({ type, label, color }) => {
+            const milestone = dateMap[type] || {};
+            const hasTarget = !!milestone.target;
+            const hasActual = !!milestone.actual;
+            const isComplete = milestone.completed === true;
 
-            // Determine visual status dot color
-            let dotClass = 'red';
-            if (isManuallyComplete) dotClass = 'violet';
-            else if (row.percentage === 100) dotClass = 'green';  // Work done but not officially closed
-            else if (row.percentage >= 50) dotClass = 'green';
-            else if (row.percentage > 0) dotClass = 'amber';
+            // Status: Completed (green) > Has actual date (green) > Has target (amber) > Not set (gray)
+            let statusText = '—';
+            let dotColor = '#71717a'; // gray
 
-            // Determine status text
-            let statusText = 'Not set';
-            if (isManuallyComplete) statusText = 'Completed';
-            else if (row.percentage === 100) statusText = '100% (Pending Close)';
-            else if (row.percentage > 0) statusText = `${row.percentage}%`;
+            if (isComplete) {
+              statusText = 'Completed';
+              dotColor = '#94AF32'; // olive green
+            } else if (hasActual) {
+              statusText = 'Done';
+              dotColor = '#94AF32';
+            } else if (hasTarget) {
+              statusText = 'Scheduled';
+              dotColor = '#F59E0B'; // amber
+            }
 
             return `
               <tr>
                 <td>
                   <div class="phase-cell">
-                    <span class="status-dot ${dotClass}"></span>
-                    ${row.phase}
+                    <span class="status-dot" style="background: ${color};"></span>
+                    ${label}
                   </div>
                 </td>
-                <td>${dates.actual ? `<span class="date-target">${formatDate(dates.target)}</span>` : formatDate(dates.target)}</td>
-                <td>${dates.actual ? `<span class="date-actual">${formatDate(dates.actual)}</span>` : '—'}</td>
-                <td>${statusText}</td>
+                <td>${hasActual && hasTarget ? `<span class="date-target">${formatDate(milestone.target)}</span>` : formatDate(milestone.target)}</td>
+                <td>${hasActual ? `<span class="date-actual">${formatDate(milestone.actual)}</span>` : '—'}</td>
+                <td><span style="color: ${dotColor};">${statusText}</span></td>
               </tr>
             `;
           }).join('')}
