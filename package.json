@@ -23,6 +23,7 @@
     "intuit-oauth": "^4.2.2",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.540.0",
     "node-fetch": "^3.3.2",
     "papaparse": "^5.4.1",

@@ -370,30 +370,68 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
   };
 
   // Phase data for the 3 main progress gauges
+  // IMPORTANT: Match exactly how MilestoneGaugesDisplay.js accesses the data
+  // The milestone object from _milestoneCalculations.js uses these property names:
+  // - prewire_orders: { percentage, ordered, total }
+  // - prewire_receiving: { percentage, received, total }
+  // - prewireStages: { percentage, completed, total }
   const phases = [
     {
-      name: 'Prewire',
-      percentage: milestones.prewire_phase?.percentage || milestones.prewirePhase || 0,
+      name: 'Prewire Phase',
+      percentage: milestones.prewire_phase?.percentage || 0,
       subItems: [
-        { label: 'Prewire Orders', percentage: milestones.prewire_orders?.percentage || milestones.prewireOrders?.percentage || 0, ordered: milestones.prewire_orders?.ordered || milestones.prewireOrders?.partsAccountedFor, total: milestones.prewire_orders?.total || milestones.prewireOrders?.totalParts },
-        { label: 'Prewire Receiving', percentage: milestones.prewire_receiving?.percentage || milestones.prewireReceiving?.percentage || 0, received: milestones.prewire_receiving?.received || milestones.prewireReceiving?.partsReceived, total: milestones.prewire_receiving?.total || milestones.prewireReceiving?.totalParts },
-        { label: 'Prewire Stages', percentage: milestones.prewire || milestones.prewireStages?.percentage || 0, completed: milestones.prewireStages?.completed, total: milestones.prewireStages?.total }
+        {
+          label: 'Prewire Orders',
+          percentage: milestones.prewire_orders?.percentage || milestones.prewireOrders?.percentage || 0,
+          count: milestones.prewire_orders?.ordered ?? milestones.prewireOrders?.partsAccountedFor ?? null,
+          total: milestones.prewire_orders?.total ?? milestones.prewireOrders?.totalParts ?? null
+        },
+        {
+          label: 'Prewire Receiving',
+          percentage: milestones.prewire_receiving?.percentage || milestones.prewireReceiving?.percentage || 0,
+          count: milestones.prewire_receiving?.received ?? milestones.prewireReceiving?.partsReceived ?? null,
+          total: milestones.prewire_receiving?.total ?? milestones.prewireReceiving?.totalParts ?? null
+        },
+        {
+          label: 'Prewire Stages',
+          percentage: milestones.prewire || milestones.prewireStages?.percentage || 0,
+          count: milestones.prewireStages?.completed ?? null,
+          total: milestones.prewireStages?.total ?? null
+        }
       ]
     },
     {
-      name: 'Trim',
-      percentage: milestones.trim_phase?.percentage || milestones.trimPhase || 0,
+      name: 'Trim Phase',
+      percentage: milestones.trim_phase?.percentage || 0,
       subItems: [
-        { label: 'Trim Orders', percentage: milestones.trim_orders?.percentage || milestones.trimOrders?.percentage || 0, ordered: milestones.trim_orders?.ordered || milestones.trimOrders?.partsAccountedFor, total: milestones.trim_orders?.total || milestones.trimOrders?.totalParts },
-        { label: 'Trim Receiving', percentage: milestones.trim_receiving?.percentage || milestones.trimReceiving?.percentage || 0, received: milestones.trim_receiving?.received || milestones.trimReceiving?.partsReceived, total: milestones.trim_receiving?.total || milestones.trimReceiving?.totalParts },
-        { label: 'Trim Stages', percentage: milestones.trim || milestones.trimStages?.percentage || 0, completed: milestones.trimStages?.completed, total: milestones.trimStages?.total }
+        {
+          label: 'Trim Orders',
+          percentage: milestones.trim_orders?.percentage || milestones.trimOrders?.percentage || 0,
+          count: milestones.trim_orders?.ordered ?? milestones.trimOrders?.partsAccountedFor ?? null,
+          total: milestones.trim_orders?.total ?? milestones.trimOrders?.totalParts ?? null
+        },
+        {
+          label: 'Trim Receiving',
+          percentage: milestones.trim_receiving?.percentage || milestones.trimReceiving?.percentage || 0,
+          count: milestones.trim_receiving?.received ?? milestones.trimReceiving?.partsReceived ?? null,
+          total: milestones.trim_receiving?.total ?? milestones.trimReceiving?.totalParts ?? null
+        },
+        {
+          label: 'Trim Stages',
+          percentage: milestones.trim || milestones.trimStages?.percentage || 0,
+          count: milestones.trimStages?.completed ?? null,
+          total: milestones.trimStages?.total ?? null
+        }
       ]
     },
     {
-      name: 'Commission',
+      name: 'Commissioning',
       percentage: milestones.commissioning?.percentage || 0,
       subItems: null,
-      itemCount: milestones.commissioning || { completed: 0, total: 0 }
+      itemCount: {
+        completed: milestones.commissioning?.completed || 0,
+        total: milestones.commissioning?.total || 0
+      }
     }
   ];
 
@@ -410,6 +448,29 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
     { type: 'commissioning', label: 'Commissioning', color: '#3b82f6' },
     { type: 'handoff_training', label: 'Handoff / Training', color: '#94AF32' }
   ];
+
+  // Helper function to get calculated percentage for each milestone type
+  // Matches the getPercentageForType() function in PMProjectView.js exactly
+  const getPercentageForType = (type) => {
+    const typeMap = {
+      'planning_design': milestones.planning_design,
+      'prewire_prep': milestones.prewire_prep,
+      'prewire': typeof milestones.prewire === 'number'
+        ? milestones.prewire
+        : milestones.prewire_phase?.percentage || 0,
+      'rough_in_inspection': null, // Manual milestone, no auto-calculation
+      'trim_prep': milestones.trim_prep,
+      'trim': typeof milestones.trim === 'number'
+        ? milestones.trim
+        : milestones.trim_phase?.percentage || 0,
+      'final_inspection': null, // Manual milestone, no auto-calculation
+      'commissioning': typeof milestones.commissioning === 'number'
+        ? milestones.commissioning
+        : milestones.commissioning?.percentage || 0,
+      'handoff_training': null // Manual milestone, no auto-calculation
+    };
+    return typeMap[type] ?? null;
+  };
 
   return `
 <!DOCTYPE html>
@@ -495,6 +556,7 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
       </div>
 
       <!-- Three gauges side by side with title above each -->
+      <!-- Matches MilestoneGaugesDisplay.js expanded view layout -->
       <div class="progress-grid">
         ${phases.map(phase => `
           <div class="phase-column">
@@ -505,15 +567,19 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
             ${phase.itemCount ? `<div class="gauge-count">${phase.itemCount.completed || 0} of ${phase.itemCount.total || 0}</div>` : ''}
             ${phase.subItems ? `
               <div class="sub-items">
-                ${phase.subItems.map(sub => `
+                ${phase.subItems.map(sub => {
+                  // Display "X of Y" for counts, or just percentage if no counts available
+                  const hasCount = sub.count !== null && sub.total !== null;
+                  const displayValue = hasCount ? `${sub.count} of ${sub.total}` : `${Math.round(sub.percentage || 0)}%`;
+                  return `
                   <div class="sub-item">
                     <span class="sub-label">${sub.label.replace('Prewire ', '').replace('Trim ', '')}</span>
                     <div class="sub-bar">
                       <div class="sub-fill" style="width: ${sub.percentage || 0}%; background: ${getGaugeColor(sub.percentage || 0)};"></div>
                     </div>
-                    <span class="sub-pct">${Math.round(sub.percentage || 0)}%</span>
+                    <span class="sub-pct">${displayValue}</span>
                   </div>
-                `).join('')}
+                `}).join('')}
               </div>
             ` : ''}
           </div>
@@ -540,21 +606,26 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
             const milestone = dateMap[type] || {};
             const hasTarget = !!milestone.target;
             const hasActual = !!milestone.actual;
-            const isComplete = milestone.completed === true;
+            const isManuallyComplete = milestone.completed === true;
 
-            // Status: Completed (green) > Has actual date (green) > Has target (amber) > Not set (gray)
-            let statusText = '—';
+            // Get calculated percentage for this milestone type
+            // This matches PMProjectView.js Status column logic exactly
+            const percentage = getPercentageForType(type);
+            const isComplete = isManuallyComplete || percentage === 100;
+
+            // Status logic matching PMProjectView.js:
+            // - "Completed" (green) when 100% OR manually marked complete
+            // - "X%" (blue) when percentage is between 1-99%
+            // - "Not set" (gray) when percentage is 0 or null
+            let statusText = 'Not set';
             let dotColor = '#71717a'; // gray
 
             if (isComplete) {
               statusText = 'Completed';
               dotColor = '#94AF32'; // olive green
-            } else if (hasActual) {
-              statusText = 'Done';
-              dotColor = '#94AF32';
-            } else if (hasTarget) {
-              statusText = 'Scheduled';
-              dotColor = '#F59E0B'; // amber
+            } else if (percentage !== null && percentage > 0) {
+              statusText = `${percentage}%`;
+              dotColor = '#3B82F6'; // blue for in-progress
             }
 
             return `

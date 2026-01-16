@@ -57,7 +57,7 @@ import {
 } from 'lucide-react';
 import { projectShadeService } from '../services/projectShadeService';
 import ShadeManager from './Shades/ShadeManager';
-import ProjectReportButton from './ProjectReportButton';
+// ProjectReportButton removed - Progress Report is now in the Reports page
 import HomeAssistantSettings from './HomeAssistantSettings';
 
 // Old ProgressBar component removed - now using UnifiedProgressGauge in MilestoneGaugesDisplay
@@ -4160,18 +4160,7 @@ const PMProjectViewEnhanced = () => {
         </div>
       )}
 
-      {/* Project Progress Report Generator */}
-      <div className="rounded-2xl border p-4" style={sectionStyles.card}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <FileBarChart2 className="w-5 h-5 text-zinc-900 dark:text-zinc-100" />
-            <span className="font-medium text-zinc-900 dark:text-zinc-100">Progress Report</span>
-          </div>
-          <ProjectReportButton projectId={projectId} projectName={project?.name} />
-        </div>
-      </div>
-
-      {/* Reports Section - Links to dedicated page */}
+      {/* Reports Section - Links to dedicated page (includes Progress Report and Submittals) */}
       <div>
         <button
           onClick={() => navigate(`/projects/${projectId}/reports`)}

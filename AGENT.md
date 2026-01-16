@@ -1107,6 +1107,10 @@ See [Secure Data Encryption Implementation](#secure-data-encryption-implementati
 | **HA status API** | `api/ha/status.js` |
 | **HA entities API** | `api/ha/entities.js` |
 | **HA command API** | `api/ha/command.js` |
+| **Submittals report service** | `src/services/submittalsReportService.js` |
+| **ZIP download service** | `src/services/zipDownloadService.js` |
+| **Project reports page** | `src/pages/ProjectReportsPage.js` |
+| **SharePoint download API** | `api/sharepoint-download.js` |
 
 #### 8.11 Retell AI Phone System (Sarah)
 
@@ -3715,6 +3719,87 @@ The application needs a proper user capabilities/roles system to control access 
 # PART 6: CHANGELOG
 
 ## 2026-01-16
+
+### Submittals Report Feature (Major Feature)
+
+Added a new Submittals tab to the Reports section that generates downloadable documentation packages for projects.
+
+**Feature Overview:**
+- Collects product submittal PDFs from all parts used in a project
+- Deduplicates by global_part_id (one document per part type, regardless of quantity)
+- Includes Lucid wiremap as PNG
+- Packages everything into a single ZIP file for download
+
+**Database Changes:**
+New columns added to `global_parts` table:
+| Column | Type | Purpose |
+|--------|------|---------|
+| `submittal_pdf_url` | TEXT | External URL to manufacturer submittal PDF |
+| `submittal_sharepoint_url` | TEXT | SharePoint URL for uploaded submittal PDF |
+| `submittal_sharepoint_drive_id` | TEXT | SharePoint drive ID for Graph API access |
+| `submittal_sharepoint_item_id` | TEXT | SharePoint item ID for Graph API access |
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260116_add_submittal_fields.sql` | Add submittal columns to global_parts |
+| `database/migrations/20260116_update_global_part_rpc.sql` | Update RPC function with submittal params |
+| `src/services/submittalsReportService.js` | Query parts with submittals, generate manifest |
+| `src/services/zipDownloadService.js` | Generate ZIP files using JSZip |
+| `api/sharepoint-download.js` | Proxy endpoint for downloading SharePoint files |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/partsService.js` | Added submittal fields to create() and update() |
+| `src/components/GlobalPartDocumentationEditor.js` | Added submittal document section (URL or upload) |
+| `src/components/GlobalPartsManager.js` | Added submittal fields to select query |
+| `src/pages/ProjectReportsPage.js` | Added Progress and Submittals tabs |
+| `src/components/PMProjectView.js` | Removed standalone Progress Report button |
+
+**Reports Page Tabs (Updated):**
+| Tab | Purpose |
+|-----|---------|
+| Overview | Quick stats and milestone timeline |
+| **Progress Report** | HTML report preview with email button (moved from PM View) |
+| **Submittals** | Parts list with submittals + ZIP download button |
+| Issues | Stakeholder issue groupings |
+| Wire Drops | Wire drop progress by floor |
+| Equipment | Parts ordering/receiving status |
+
+**ZIP Package Contents:**
+```
+ProjectName-Submittals.zip
+├── Submittals/
+│   ├── Manufacturer1-Model1.pdf
+│   ├── Manufacturer1-Model2.pdf
+│   └── Manufacturer2-Model3.pdf
+├── Wiremap.png (from Lucid export)
+└── _Contents.txt (manifest listing)
+```
+
+**Data Flow:**
+```
+User clicks "Download ZIP" on Submittals tab
+    ↓
+zipDownloadService.downloadSubmittalsPackage()
+    ↓
+1. For each part with submittal:
+   - If SharePoint: /api/sharepoint-download → file blob
+   - If external URL: /api/image-proxy → file blob
+    ↓
+2. Export Lucid page 1 as PNG via lucidApi.exportDocumentPage()
+    ↓
+3. Bundle into JSZip with folder structure
+    ↓
+4. Generate and save ZIP via FileSaver.js
+```
+
+**Dependencies Added:**
+- `jszip` - Client-side ZIP file generation
+- `file-saver` (already present) - Trigger browser download
+
+---
 
 ### Prewire Mode - Show/Hide Completed Toggles
 

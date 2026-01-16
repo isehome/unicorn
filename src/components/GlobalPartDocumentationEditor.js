@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, CheckCircle } from 'lucide-react';
+import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, CheckCircle, Upload, FileCheck } from 'lucide-react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
+import { sharePointStorageService } from '../services/sharePointStorageService';
 
 /**
  * Component for managing documentation links on global parts
@@ -22,6 +23,14 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
   );
   const [newInstallManual, setNewInstallManual] = useState('');
   const [newTechnicalManual, setNewTechnicalManual] = useState('');
+
+  // Submittal document state
+  const [submittalPdfUrl, setSubmittalPdfUrl] = useState(part?.submittal_pdf_url || '');
+  const [submittalSharepointUrl, setSubmittalSharepointUrl] = useState(part?.submittal_sharepoint_url || '');
+  const [submittalSharepointDriveId, setSubmittalSharepointDriveId] = useState(part?.submittal_sharepoint_drive_id || '');
+  const [submittalSharepointItemId, setSubmittalSharepointItemId] = useState(part?.submittal_sharepoint_item_id || '');
+  const [uploadingSubmittal, setUploadingSubmittal] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
@@ -60,6 +69,47 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setTechnicalManuals(updated);
   };
 
+  // Handle submittal PDF file upload to SharePoint
+  const handleSubmittalFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.includes('pdf')) {
+      setError('Please upload a PDF file for submittals');
+      return;
+    }
+
+    setUploadingSubmittal(true);
+    setError(null);
+
+    try {
+      // Create folder name from part info
+      const folderName = `submittals/${part.manufacturer || 'Unknown'}/${part.part_number || part.id}`;
+
+      // Upload to SharePoint
+      const result = await sharePointStorageService.uploadFile(file, folderName);
+
+      if (result) {
+        setSubmittalSharepointUrl(result.webUrl || result.url);
+        setSubmittalSharepointDriveId(result.driveId);
+        setSubmittalSharepointItemId(result.itemId);
+      }
+    } catch (err) {
+      console.error('Failed to upload submittal:', err);
+      setError('Failed to upload submittal PDF: ' + (err.message || 'Unknown error'));
+    } finally {
+      setUploadingSubmittal(false);
+    }
+  };
+
+  // Clear uploaded submittal
+  const handleClearSubmittalUpload = () => {
+    setSubmittalSharepointUrl('');
+    setSubmittalSharepointDriveId('');
+    setSubmittalSharepointItemId('');
+  };
+
   const handleSave = async () => {
     if (!part?.id) {
       setError('No part ID provided');
@@ -72,11 +122,16 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
 
     try {
       // Use RPC function to bypass RLS issues (same pattern as prewire toggle)
-      const { data, error: updateError } = await supabase.rpc('update_part_documentation', {
+      const { data, error: updateError } = await supabase.rpc('update_global_part', {
         p_part_id: part.id,
         p_schematic_url: schematicUrl.trim() || null,
         p_install_manual_urls: installManuals.length > 0 ? installManuals : null,
-        p_technical_manual_urls: technicalManuals.length > 0 ? technicalManuals : null
+        p_technical_manual_urls: technicalManuals.length > 0 ? technicalManuals : null,
+        // Submittal document fields
+        p_submittal_pdf_url: submittalPdfUrl.trim() || null,
+        p_submittal_sharepoint_url: submittalSharepointUrl || null,
+        p_submittal_sharepoint_drive_id: submittalSharepointDriveId || null,
+        p_submittal_sharepoint_item_id: submittalSharepointItemId || null
       });
 
       if (updateError) throw updateError;
@@ -300,6 +355,115 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
         </p>
       </div>
 
+      {/* Submittal Document Section */}
+      <div className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+        <label className="flex items-center gap-2 text-sm font-medium">
+          <FileCheck className="h-4 w-4 text-amber-500" />
+          Submittal Document
+          <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+            (for end-of-project documentation)
+          </span>
+        </label>
+
+        {/* External URL Option */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            External URL (manufacturer website)
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="url"
+              value={submittalPdfUrl}
+              onChange={(e) => setSubmittalPdfUrl(e.target.value)}
+              placeholder="https://manufacturer.com/product-submittal.pdf"
+              className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-zinc-800 dark:focus:border-violet-400 dark:focus:ring-violet-900/50"
+            />
+            {submittalPdfUrl && (
+              <a
+                href={submittalPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 p-2 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded"
+                title="Open link"
+              >
+                <LinkIcon className="h-4 w-4" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* OR divider */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+          <span className="text-xs text-gray-400">OR</span>
+          <div className="flex-1 border-t border-gray-200 dark:border-gray-700" />
+        </div>
+
+        {/* Upload Option */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            Upload to SharePoint
+          </label>
+
+          {submittalSharepointUrl ? (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-800 dark:bg-amber-900/20">
+              <FileCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span className="flex-1 text-sm text-amber-700 dark:text-amber-300 truncate">
+                Submittal PDF uploaded
+              </span>
+              <a
+                href={submittalSharepointUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1 text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+                title="View file"
+              >
+                <LinkIcon className="h-4 w-4" />
+              </a>
+              <button
+                onClick={handleClearSubmittalUpload}
+                className="p-1 text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                type="button"
+                title="Remove"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <label className="flex-1">
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleSubmittalFileUpload}
+                  disabled={uploadingSubmittal}
+                  className="hidden"
+                />
+                <div className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-3 cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-colors dark:border-gray-600 dark:bg-zinc-800/50 dark:hover:border-amber-500 dark:hover:bg-amber-900/20">
+                  {uploadingSubmittal ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        Click to upload submittal PDF
+                      </span>
+                    </>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
+        </div>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Submittal documents are product spec sheets included in end-of-project documentation packages
+        </p>
+      </div>
+
       {/* Action buttons */}
       <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
         <Button
@@ -327,9 +491,14 @@ GlobalPartDocumentationEditor.propTypes = {
     id: PropTypes.string.isRequired,
     name: PropTypes.string,
     part_number: PropTypes.string,
+    manufacturer: PropTypes.string,
     schematic_url: PropTypes.string,
     install_manual_urls: PropTypes.arrayOf(PropTypes.string),
-    technical_manual_urls: PropTypes.arrayOf(PropTypes.string)
+    technical_manual_urls: PropTypes.arrayOf(PropTypes.string),
+    submittal_pdf_url: PropTypes.string,
+    submittal_sharepoint_url: PropTypes.string,
+    submittal_sharepoint_drive_id: PropTypes.string,
+    submittal_sharepoint_item_id: PropTypes.string
   }).isRequired,
   onSave: PropTypes.func,
   onCancel: PropTypes.func

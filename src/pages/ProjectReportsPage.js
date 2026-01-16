@@ -25,8 +25,17 @@ import {
   Target,
   TrendingUp,
   CheckCircle2,
-  Clock
+  Clock,
+  FileBarChart2,
+  FileBox,
+  Download,
+  Eye,
+  Loader2,
+  ExternalLink
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { submittalsReportService } from '../services/submittalsReportService';
+import { downloadSubmittalsPackage, hasDownloadableContent } from '../services/zipDownloadService';
 
 const ProjectReportsPage = () => {
   const { projectId } = useParams();
@@ -54,6 +63,18 @@ const ProjectReportsPage = () => {
   const [copiedStakeholder, setCopiedStakeholder] = useState(null);
   // eslint-disable-next-line no-unused-vars
   const [showFilters, setShowFilters] = useState(false);
+
+  // Progress Report state
+  const [progressReportHtml, setProgressReportHtml] = useState(null);
+  const [loadingProgressReport, setLoadingProgressReport] = useState(false);
+  const [progressReportError, setProgressReportError] = useState(null);
+
+  // Submittals state
+  const [submittalsManifest, setSubmittalsManifest] = useState(null);
+  const [loadingSubmittals, setLoadingSubmittals] = useState(false);
+  const [submittalsError, setSubmittalsError] = useState(null);
+  const [downloadingZip, setDownloadingZip] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState({ percent: 0, message: '' });
 
   // Load all report data including milestone percentages
   const loadReports = useCallback(async () => {
@@ -92,6 +113,82 @@ const ProjectReportsPage = () => {
       loadReports();
     }
   }, [projectId, loadReports]);
+
+  // Load progress report HTML when tab is selected
+  const loadProgressReport = useCallback(async () => {
+    if (progressReportHtml) return; // Already loaded
+
+    setLoadingProgressReport(true);
+    setProgressReportError(null);
+
+    try {
+      const response = await fetch('/api/project-report/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId })
+      });
+      if (!response.ok) {
+        throw new Error('Failed to generate progress report');
+      }
+      const data = await response.json();
+      setProgressReportHtml(data.html);
+    } catch (err) {
+      console.error('Failed to load progress report:', err);
+      setProgressReportError(err.message || 'Failed to load progress report');
+    } finally {
+      setLoadingProgressReport(false);
+    }
+  }, [projectId, progressReportHtml]);
+
+  // Load submittals manifest when tab is selected
+  const loadSubmittalsManifest = useCallback(async () => {
+    if (submittalsManifest) return; // Already loaded
+
+    setLoadingSubmittals(true);
+    setSubmittalsError(null);
+
+    try {
+      const manifest = await submittalsReportService.generateSubmittalsManifest(projectId);
+      setSubmittalsManifest(manifest);
+    } catch (err) {
+      console.error('Failed to load submittals manifest:', err);
+      setSubmittalsError(err.message || 'Failed to load submittals');
+    } finally {
+      setLoadingSubmittals(false);
+    }
+  }, [projectId, submittalsManifest]);
+
+  // Load data when switching to progress or submittals tabs
+  useEffect(() => {
+    if (activeTab === 'progress') {
+      loadProgressReport();
+    } else if (activeTab === 'submittals') {
+      loadSubmittalsManifest();
+    }
+  }, [activeTab, loadProgressReport, loadSubmittalsManifest]);
+
+  // Handle submittals ZIP download
+  const handleDownloadSubmittals = useCallback(async () => {
+    if (!submittalsManifest || downloadingZip) return;
+
+    setDownloadingZip(true);
+    setDownloadProgress({ percent: 0, message: 'Starting download...' });
+
+    try {
+      await downloadSubmittalsPackage(
+        projectId,
+        submittalsManifest.projectName,
+        submittalsManifest,
+        (percent, message) => setDownloadProgress({ percent, message })
+      );
+    } catch (err) {
+      console.error('Failed to download submittals:', err);
+      alert('Failed to download submittals package: ' + err.message);
+    } finally {
+      setDownloadingZip(false);
+      setDownloadProgress({ percent: 0, message: '' });
+    }
+  }, [projectId, submittalsManifest, downloadingZip]);
 
   // Get ALL project stakeholders for filter dropdown (not just those with issues)
   const stakeholders = useMemo(() => {
@@ -245,6 +342,8 @@ const ProjectReportsPage = () => {
   // Available report types for AI awareness
   const reportTypes = useMemo(() => [
     { id: 'overview', label: 'Overview' },
+    { id: 'progress', label: 'Progress Report' },
+    { id: 'submittals', label: 'Submittals' },
     { id: 'issues', label: 'Issues' },
     { id: 'wiredrops', label: 'Wire Drops' },
     { id: 'equipment', label: 'Equipment' }
@@ -295,7 +394,7 @@ const ProjectReportsPage = () => {
   useEffect(() => {
     const actions = {
       select_report_type: async ({ reportType }) => {
-        const validTypes = ['overview', 'issues', 'wiredrops', 'equipment'];
+        const validTypes = ['overview', 'progress', 'submittals', 'issues', 'wiredrops', 'equipment'];
         const normalized = reportType?.toLowerCase();
         if (validTypes.includes(normalized)) {
           setActiveTab(normalized);
@@ -308,7 +407,7 @@ const ProjectReportsPage = () => {
         try {
           await loadReports();
           if (reportType) {
-            const validTypes = ['overview', 'issues', 'wiredrops', 'equipment'];
+            const validTypes = ['overview', 'progress', 'submittals', 'issues', 'wiredrops', 'equipment'];
             const normalized = reportType.toLowerCase();
             if (validTypes.includes(normalized)) {
               setActiveTab(normalized);
@@ -318,6 +417,16 @@ const ProjectReportsPage = () => {
         } catch (err) {
           return { success: false, error: `Failed to generate report: ${err.message}` };
         }
+      },
+      download_submittals: async () => {
+        if (!submittalsManifest) {
+          return { success: false, error: 'No submittals data loaded. Switch to Submittals tab first.' };
+        }
+        if (!hasDownloadableContent(submittalsManifest)) {
+          return { success: false, error: 'No downloadable content available.' };
+        }
+        handleDownloadSubmittals();
+        return { success: true, message: 'Starting submittals package download' };
       },
       export_report: async ({ format }) => {
         // Copy report to clipboard
@@ -410,7 +519,7 @@ const ProjectReportsPage = () => {
   }, [
     registerActions, unregisterActions, navigate, projectId, loadReports,
     issueReportData, fullReportData, milestonePercentages, stakeholders,
-    handleOpenInEmail
+    handleOpenInEmail, submittalsManifest, handleDownloadSubmittals
   ]);
 
   // Loading state
@@ -476,6 +585,8 @@ const ProjectReportsPage = () => {
       <div className="flex items-center gap-2 border-b pb-2 flex-wrap" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
         {[
           { id: 'overview', label: 'Overview', icon: TrendingUp },
+          { id: 'progress', label: 'Progress Report', icon: FileBarChart2 },
+          { id: 'submittals', label: 'Submittals', icon: FileBox, count: submittalsManifest?.totalParts },
           { id: 'issues', label: 'Issues', icon: AlertCircle, count: issueStats?.open },
           { id: 'wiredrops', label: 'Wire Drops', icon: Cable, count: milestonePercentages?.commissioning?.totalItems || wireDropProgress?.total },
           { id: 'equipment', label: 'Equipment', icon: Package, count: milestonePercentages?.trim_orders?.totalItems || equipmentStatus?.total }
@@ -596,6 +707,319 @@ const ProjectReportsPage = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'progress' && (
+        <div className="space-y-4">
+          {/* Progress Report Preview */}
+          <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+              <div className="flex items-center gap-3">
+                <FileBarChart2 className="w-5 h-5 text-violet-500" />
+                <h3 className="font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                  Progress Report
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {progressReportHtml && (
+                  <>
+                    <Button
+                      variant="secondary"
+                      icon={Eye}
+                      onClick={() => {
+                        const newWindow = window.open('', '_blank');
+                        newWindow.document.write(progressReportHtml);
+                        newWindow.document.close();
+                      }}
+                    >
+                      Open in New Tab
+                    </Button>
+                    <Button
+                      variant="primary"
+                      icon={Mail}
+                      onClick={async () => {
+                        const projectName = fullReportData?.project?.name || 'Project';
+                        const subject = `${projectName} - Progress Report`;
+                        // Copy HTML to clipboard for pasting
+                        try {
+                          const htmlBlob = new Blob([progressReportHtml], { type: 'text/html' });
+                          const textBlob = new Blob(['Progress report HTML copied to clipboard - paste in email'], { type: 'text/plain' });
+                          await navigator.clipboard.write([
+                            new window.ClipboardItem({
+                              'text/html': htmlBlob,
+                              'text/plain': textBlob
+                            })
+                          ]);
+                        } catch (err) {
+                          console.error('Failed to copy HTML:', err);
+                        }
+                        window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent('(Rich HTML content copied to clipboard - paste here)')}`;
+                      }}
+                    >
+                      Email Report
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {loadingProgressReport ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+                <span className="ml-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                  Generating progress report...
+                </span>
+              </div>
+            ) : progressReportError ? (
+              <div className="flex items-center gap-2 p-4 m-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                <AlertTriangle className="w-5 h-5" />
+                <span>{progressReportError}</span>
+                <Button variant="secondary" size="sm" onClick={() => { setProgressReportHtml(null); loadProgressReport(); }} className="ml-auto">
+                  Try Again
+                </Button>
+              </div>
+            ) : progressReportHtml ? (
+              <div className="p-4">
+                <iframe
+                  srcDoc={progressReportHtml}
+                  title="Progress Report Preview"
+                  className="w-full border rounded-lg"
+                  style={{ height: '600px', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}
+                />
+              </div>
+            ) : (
+              <div className="text-center py-16" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                <FileBarChart2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No progress report data available</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'submittals' && (
+        <div className="space-y-4">
+          {/* Submittals Header Card */}
+          <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <FileBox className="w-5 h-5 text-violet-500" />
+                <div>
+                  <h3 className="font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                    Submittals Package
+                  </h3>
+                  <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                    Product documentation and wiremap for this project
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {submittalsManifest && hasDownloadableContent(submittalsManifest) && (
+                  <Button
+                    variant="primary"
+                    icon={downloadingZip ? Loader2 : Download}
+                    onClick={handleDownloadSubmittals}
+                    disabled={downloadingZip}
+                    className={downloadingZip ? 'animate-pulse' : ''}
+                  >
+                    {downloadingZip ? `${downloadProgress.percent}%` : 'Download ZIP'}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {downloadingZip && downloadProgress.message && (
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <span style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{downloadProgress.message}</span>
+                  <span style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{downloadProgress.percent}%</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div
+                    className="bg-violet-500 rounded-full h-2 transition-all"
+                    style={{ width: `${downloadProgress.percent}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {loadingSubmittals ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
+              <span className="ml-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                Loading submittals...
+              </span>
+            </div>
+          ) : submittalsError ? (
+            <div className="flex items-center gap-2 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+              <AlertTriangle className="w-5 h-5" />
+              <span>{submittalsError}</span>
+              <Button variant="secondary" size="sm" onClick={() => { setSubmittalsManifest(null); loadSubmittalsManifest(); }} className="ml-auto">
+                Try Again
+              </Button>
+            </div>
+          ) : submittalsManifest ? (
+            <>
+              {/* Summary Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatCard
+                  icon={FileBox}
+                  label="Submittal Documents"
+                  value={submittalsManifest.totalParts || 0}
+                  subtext="unique part types"
+                  color="violet"
+                  isDark={isDark}
+                />
+                <StatCard
+                  icon={Package}
+                  label="Manufacturers"
+                  value={Object.keys(
+                    submittalsManifest.parts?.reduce((acc, p) => {
+                      acc[p.manufacturer || 'Unknown'] = true;
+                      return acc;
+                    }, {}) || {}
+                  ).length}
+                  color="blue"
+                  isDark={isDark}
+                />
+                <StatCard
+                  icon={Cable}
+                  label="Wiremap"
+                  value={submittalsManifest.hasWiremap ? 'Included' : 'Not Available'}
+                  subtext={submittalsManifest.hasWiremap ? 'PNG from Lucid' : 'No Lucid URL set'}
+                  color={submittalsManifest.hasWiremap ? 'green' : 'amber'}
+                  isDark={isDark}
+                />
+                <StatCard
+                  icon={CheckCircle2}
+                  label="Ready to Download"
+                  value={hasDownloadableContent(submittalsManifest) ? 'Yes' : 'No'}
+                  subtext={hasDownloadableContent(submittalsManifest) ? 'Click Download ZIP' : 'No content available'}
+                  color={hasDownloadableContent(submittalsManifest) ? 'green' : 'red'}
+                  isDark={isDark}
+                />
+              </div>
+
+              {/* Parts with Submittals */}
+              {submittalsManifest.parts && submittalsManifest.parts.length > 0 ? (
+                <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                  <div className="p-4 border-b" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                    <h4 className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                      Parts with Submittal Documents ({submittalsManifest.parts.length})
+                    </h4>
+                  </div>
+                  <div className="divide-y" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                    {/* Group by manufacturer */}
+                    {Object.entries(
+                      submittalsManifest.parts.reduce((acc, part) => {
+                        const mfg = part.manufacturer || 'Unknown';
+                        if (!acc[mfg]) acc[mfg] = [];
+                        acc[mfg].push(part);
+                        return acc;
+                      }, {})
+                    ).map(([manufacturer, parts]) => (
+                      <div key={manufacturer} className="p-4">
+                        <h5 className="font-medium text-sm mb-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                          {manufacturer} ({parts.length})
+                        </h5>
+                        <div className="space-y-2">
+                          {parts.map((part) => (
+                            <div
+                              key={part.id}
+                              className="flex items-center justify-between p-3 rounded-lg"
+                              style={{ backgroundColor: isDark ? '#374151' : '#f9fafb' }}
+                            >
+                              <div className="flex items-center gap-3">
+                                <FileBox className="w-4 h-4 text-violet-500" />
+                                <div>
+                                  <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                                    {part.model || part.partNumber || part.name}
+                                  </span>
+                                  {part.name && part.model && (
+                                    <span className="text-sm ml-2" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                      {part.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm px-2 py-1 rounded-lg" style={{ backgroundColor: isDark ? '#4b5563' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                  {part.usageCount}x used
+                                </span>
+                                {part.hasUploadedFile && (
+                                  <span className="text-xs px-2 py-1 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400">
+                                    SharePoint
+                                  </span>
+                                )}
+                                {part.hasExternalUrl && (
+                                  <a
+                                    href={part.submittalPdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    View PDF
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#f9fafb' }}>
+                  <FileBox className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                    No submittal documents found
+                  </p>
+                  <p className="text-sm mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                    Add submittal PDFs to parts in the Parts Manager
+                  </p>
+                </div>
+              )}
+
+              {/* Wiremap Info */}
+              {submittalsManifest.lucidUrl && (
+                <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Cable className="w-5 h-5 text-blue-500" />
+                      <div>
+                        <h4 className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                          Wiremap (Lucid Floor Plan)
+                        </h4>
+                        <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                          {submittalsManifest.hasWiremap
+                            ? 'Will be exported as PNG and included in ZIP'
+                            : 'Could not extract document ID from Lucid URL'}
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href={submittalsManifest.lucidUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-sm text-violet-600 dark:text-violet-400 hover:underline"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      Open in Lucid
+                    </a>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-16" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+              <FileBox className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No submittals data available</p>
             </div>
           )}
         </div>

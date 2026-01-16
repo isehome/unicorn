@@ -167,6 +167,11 @@ export const partsService = {
         payload.is_inventory_item === false ? false : true,
       required_for_prewire:
         payload.required_for_prewire === true ? true : false,
+      // Submittal document fields
+      submittal_pdf_url: payload.submittal_pdf_url?.trim() || null,
+      submittal_sharepoint_url: payload.submittal_sharepoint_url?.trim() || null,
+      submittal_sharepoint_drive_id: payload.submittal_sharepoint_drive_id?.trim() || null,
+      submittal_sharepoint_item_id: payload.submittal_sharepoint_item_id?.trim() || null,
       // Removed: resource_links and attributes - these JSON fields cause serialization issues
     };
 
@@ -226,6 +231,11 @@ export const partsService = {
       p_schematic_url: payload.schematic_url,
       p_install_manual_urls: payload.install_manual_urls,
       p_technical_manual_urls: payload.technical_manual_urls,
+      // Submittal document fields
+      p_submittal_pdf_url: payload.submittal_pdf_url,
+      p_submittal_sharepoint_url: payload.submittal_sharepoint_url,
+      p_submittal_sharepoint_drive_id: payload.submittal_sharepoint_drive_id,
+      p_submittal_sharepoint_item_id: payload.submittal_sharepoint_item_id,
     };
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc('update_global_part', rpcParams);
