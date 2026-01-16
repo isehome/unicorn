@@ -23,7 +23,10 @@ class SubmittalsReportService {
 
     // Query project_equipment to get unique global_part_ids used in this project
     // Then join to get the submittal URLs from global_parts
-    const { data, error } = await supabase
+    let data, error;
+
+    // Try with submittal fields first
+    const result = await supabase
       .from('project_equipment')
       .select(`
         global_part_id,
@@ -42,8 +45,34 @@ class SubmittalsReportService {
       .eq('project_id', projectId)
       .not('global_part_id', 'is', null);
 
+    data = result.data;
+    error = result.error;
+
+    // If we get an error about columns not existing, try without submittal fields
+    if (error && (error.message?.includes('column') || error.code === 'PGRST204')) {
+      console.warn('[SubmittalsReportService] Submittal columns may not exist, trying basic query');
+      const fallbackResult = await supabase
+        .from('project_equipment')
+        .select(`
+          global_part_id,
+          global_parts:global_part_id (
+            id,
+            part_number,
+            name,
+            manufacturer,
+            model
+          )
+        `)
+        .eq('project_id', projectId)
+        .not('global_part_id', 'is', null);
+
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+    }
+
     if (error) {
       console.error('[SubmittalsReportService] Error fetching equipment:', error);
+      console.error('[SubmittalsReportService] Error details:', JSON.stringify(error, null, 2));
       throw new Error(error.message || 'Failed to fetch project equipment');
     }
 
@@ -128,6 +157,10 @@ class SubmittalsReportService {
    * @returns {Promise<Object>} Manifest with parts and wiremap info
    */
   async generateSubmittalsManifest(projectId) {
+    if (!projectId) {
+      throw new Error('Project ID is required for manifest generation');
+    }
+
     // Get project info for naming
     const { data: project, error: projectError } = await supabase
       .from('projects')
@@ -137,7 +170,9 @@ class SubmittalsReportService {
 
     if (projectError) {
       console.error('[SubmittalsReportService] Error fetching project:', projectError);
-      throw new Error('Failed to fetch project details');
+      console.error('[SubmittalsReportService] Error details:', JSON.stringify(projectError, null, 2));
+      console.error('[SubmittalsReportService] ProjectId used:', projectId);
+      throw new Error(`Failed to fetch project details: ${projectError.message || projectError.code || 'Unknown error'}`);
     }
 
     // Get parts with submittals
