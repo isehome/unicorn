@@ -1,6 +1,21 @@
 -- Update the update_global_part RPC function to include submittal fields
 -- This migration adds the new submittal document parameters
 
+-- First, drop ALL existing versions of the function using DO block
+-- This handles any signature without needing to know the exact parameter types
+DO $$
+DECLARE
+  func_oid oid;
+BEGIN
+  FOR func_oid IN
+    SELECT oid FROM pg_proc
+    WHERE proname = 'update_global_part'
+    AND pronamespace = 'public'::regnamespace
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %s', func_oid::regprocedure);
+  END LOOP;
+END $$;
+
 CREATE OR REPLACE FUNCTION public.update_global_part(
   p_part_id UUID,
   p_part_number TEXT DEFAULT NULL,
