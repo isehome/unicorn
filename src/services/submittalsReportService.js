@@ -181,9 +181,10 @@ class SubmittalsReportService {
     }
 
     // Get project info for naming
+    // Note: The Lucid URL is stored in wiring_diagram_url column, not lucid_url
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .select('name, lucid_url')
+      .select('name, wiring_diagram_url')
       .eq('id', projectId)
       .single();
 
@@ -206,9 +207,12 @@ class SubmittalsReportService {
 
     // Extract Lucid document ID from URL if present
     let lucidDocumentId = null;
-    if (project?.lucid_url) {
-      // Lucid URLs typically look like: https://lucid.app/documents/view/DOCUMENT_ID/...
-      const match = project.lucid_url.match(/\/documents\/(?:view|edit)\/([a-f0-9-]+)/i);
+    const wiringDiagramUrl = project?.wiring_diagram_url;
+    if (wiringDiagramUrl) {
+      // Lucid URLs typically look like:
+      // https://lucid.app/documents/view/DOCUMENT_ID/...
+      // https://lucid.app/lucidchart/DOCUMENT_ID/edit
+      const match = wiringDiagramUrl.match(/(?:\/documents\/(?:view|edit)|\/lucidchart)\/([a-zA-Z0-9-_]+)/i);
       if (match) {
         lucidDocumentId = match[1];
       }
@@ -217,7 +221,7 @@ class SubmittalsReportService {
     return {
       projectId,
       projectName: project?.name || 'Unknown Project',
-      lucidUrl: project?.lucid_url,
+      lucidUrl: wiringDiagramUrl,
       lucidDocumentId,
       parts: partsWithCounts,
       totalParts: partsWithCounts.length,
