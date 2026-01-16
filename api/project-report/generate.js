@@ -2,64 +2,17 @@
  * Generate Project Progress Report
  * Creates HTML email with gauges and issues for external stakeholders
  *
- * Updated 2026-01-16: Now calls /api/milestone-percentages endpoint
- * which uses the same calculation logic as the frontend milestoneService.js.
- * This ensures Single Source of Truth for milestone calculations.
+ * Updated 2026-01-16: Uses _milestoneCalculations.js directly (SSOT)
+ * This is the same calculation logic as the frontend milestoneService.js.
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 const { systemSendMail } = require('../_systemGraph');
-
-// For internal API calls (uses VERCEL_URL to call self on same deployment)
-const API_BASE_URL = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : process.env.APP_BASE_URL || 'https://unicorn-one.vercel.app';
+const { calculateAllMilestones } = require('../_milestoneCalculations');
 
 // For external portal links (user-facing URLs)
 const APP_BASE_URL = process.env.APP_BASE_URL || process.env.PUBLIC_SITE_URL || 'https://unicorn-one.vercel.app';
-
-/**
- * Fetch milestone percentages from the API endpoint (SSOT)
- * This ensures we use the same calculation logic as the frontend
- */
-async function fetchMilestonePercentages(projectId) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/milestone-percentages?projectId=${projectId}`);
-    if (!response.ok) {
-      throw new Error(`Milestone API returned ${response.status}`);
-    }
-    const data = await response.json();
-    if (!data.success) {
-      throw new Error(data.error || 'Failed to fetch milestones');
-    }
-    return data.percentages;
-  } catch (error) {
-    console.error('[project-report] Error fetching milestone percentages:', error);
-    // Return empty defaults on error
-    return {
-      planning_design: 0,
-      prewire_orders: 0,
-      prewire_receiving: 0,
-      prewire: 0,
-      trim_orders: 0,
-      trim_receiving: 0,
-      trim: 0,
-      commissioning: { percentage: 0, completed: 0, total: 0 },
-      prewire_phase: { percentage: 0, orders: {}, receiving: {}, stages: {} },
-      trim_phase: { percentage: 0, orders: {}, receiving: {}, stages: {} },
-      planningDesign: { percentage: 0 },
-      prewireOrders: { percentage: 0 },
-      prewireReceiving: { percentage: 0 },
-      prewireStages: { percentage: 0 },
-      prewirePhase: 0,
-      trimOrders: { percentage: 0 },
-      trimReceiving: { percentage: 0 },
-      trimStages: { percentage: 0 },
-      trimPhase: 0
-    };
-  }
-}
 
 const supabase = createClient(
   process.env.SUPABASE_URL || process.env.REACT_APP_SUPABASE_URL,
@@ -182,7 +135,7 @@ module.exports = async (req, res) => {
 
     // Fetch milestone percentages from the API endpoint (SSOT)
     // This ensures we use the exact same calculation logic as the frontend
-    const milestones = await fetchMilestonePercentages(projectId);
+    const milestones = await calculateAllMilestones(projectId);
 
     // Fetch milestone dates from project_milestones table
     const { data: milestoneDates } = await supabase
