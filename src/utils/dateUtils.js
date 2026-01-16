@@ -7,7 +7,13 @@
 
 /**
  * Format a date string for display
- * @param {string|null} dateString - ISO date string
+ *
+ * TIMEZONE-SAFE: Parses date strings directly without using Date object
+ * to avoid timezone conversion issues. Database stores dates as YYYY-MM-DD
+ * (date only), and using new Date() interprets these as UTC midnight, which
+ * then shifts when converted to local timezone.
+ *
+ * @param {string|null} dateString - ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
  * @param {object} options - Formatting options
  * @returns {string|null} - Formatted date or null if no date
  */
@@ -20,29 +26,39 @@ export const formatDate = (dateString, options = {}) => {
   } = options;
 
   try {
-    const date = new Date(dateString);
+    // Extract just the date part (handles both YYYY-MM-DD and YYYY-MM-DDTHH:MM:SS)
+    const datePart = dateString.split('T')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+
+    // Validate parsed values
+    if (!year || !month || !day || month < 1 || month > 12 || day < 1 || day > 31) {
+      console.error('Invalid date string:', dateString);
+      return null;
+    }
+
+    const shortMonthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                             'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const longMonthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
 
     if (format === 'short') {
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        ...(includeYear && { year: 'numeric' })
-      });
+      return includeYear
+        ? `${shortMonthNames[month - 1]} ${day}, ${year}`
+        : `${shortMonthNames[month - 1]} ${day}`;
     }
 
     if (format === 'long') {
-      return date.toLocaleDateString('en-US', {
-        month: 'long',
-        day: 'numeric',
-        ...(includeYear && { year: 'numeric' })
-      });
+      return includeYear
+        ? `${longMonthNames[month - 1]} ${day}, ${year}`
+        : `${longMonthNames[month - 1]} ${day}`;
     }
 
     if (format === 'numeric') {
-      return date.toLocaleDateString('en-US');
+      return `${month}/${day}/${year}`;
     }
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Default to short format with year
+    return `${shortMonthNames[month - 1]} ${day}, ${year}`;
   } catch (error) {
     console.error('Error formatting date:', error);
     return null;
@@ -51,22 +67,34 @@ export const formatDate = (dateString, options = {}) => {
 
 /**
  * Calculate days until/since a date
- * @param {string} dateString - ISO date string
+ *
+ * TIMEZONE-SAFE: Parses date strings directly to avoid timezone issues.
+ * Compares the date portion only, ignoring time components.
+ *
+ * @param {string} dateString - ISO date string (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)
  * @returns {number} - Positive for future, negative for past, 0 for today
  */
 export const getDaysUntil = (dateString) => {
   if (!dateString) return null;
 
   try {
-    const targetDate = new Date(dateString);
-    const today = new Date();
+    // Parse the target date string directly (timezone-safe)
+    const datePart = dateString.split('T')[0];
+    const [targetYear, targetMonth, targetDay] = datePart.split('-').map(Number);
 
-    // Reset time to midnight for accurate day comparison
-    targetDate.setHours(0, 0, 0, 0);
-    today.setHours(0, 0, 0, 0);
+    // Get today's date in local timezone
+    const now = new Date();
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth() + 1; // getMonth() is 0-indexed
+    const todayDay = now.getDate();
+
+    // Create Date objects using local timezone (year, month-1, day)
+    // This ensures both dates are in the same timezone context
+    const targetDate = new Date(targetYear, targetMonth - 1, targetDay);
+    const today = new Date(todayYear, todayMonth - 1, todayDay);
 
     const diffTime = targetDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
     return diffDays;
   } catch (error) {
