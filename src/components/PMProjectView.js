@@ -4347,13 +4347,33 @@ const PMProjectViewEnhanced = () => {
 
                             // Only show "Completed By" if milestone is actually complete
                             if (isComplete) {
-                              // Check for user info, otherwise show "System (Auto)" for auto-completed milestones
+                              // For inspections and manual milestones, use actual_date as the completion date
+                              // (when the inspection/milestone actually occurred, not when data was entered)
+                              // For auto-completed milestones (prewire_prep, trim_prep), use updated_at
+                              const isManualMilestone = ['rough_in_inspection', 'final_inspection', 'handoff_training', 'planning_design'].includes(type);
+
                               if (milestone?.updated_by_user) {
-                                return (
-                                  <span className="text-xs text-zinc-600 dark:text-zinc-400">
-                                    {formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)}
-                                  </span>
-                                );
+                                // Use actual_date for manual milestones (date only, no time)
+                                // Use updated_at for auto-completed milestones (has timestamp)
+                                if (isManualMilestone && milestone?.actual_date) {
+                                  // Format actual_date as date-only (YYYY-MM-DD has no time component)
+                                  const datePart = milestone.actual_date.split('T')[0];
+                                  const [year, month, day] = datePart.split('-').map(Number);
+                                  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                                  const dateStr = `${monthNames[month - 1]} ${day}, ${year}`;
+                                  const userName = milestone.updated_by_user.full_name || milestone.updated_by_user.email || 'Unknown';
+                                  return (
+                                    <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                                      {userName} on {dateStr}
+                                    </span>
+                                  );
+                                } else {
+                                  return (
+                                    <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                                      {formatMilestoneUserInfo(milestone.updated_by_user, milestone.updated_at)}
+                                    </span>
+                                  );
+                                }
                               } else if (milestone?.updated_at) {
                                 // Auto-completed milestone (no user but has timestamp)
                                 const date = new Date(milestone.updated_at);
