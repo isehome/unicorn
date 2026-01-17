@@ -140,8 +140,14 @@ module.exports = async (req, res) => {
     // Fetch milestone dates from project_milestones table
     const { data: milestoneDates } = await supabase
       .from('project_milestones')
-      .select('milestone_type, target_date, actual_date, completed_manually')
+      .select('milestone_type, target_date, actual_date, completed_manually, updated_at')
       .eq('project_id', projectId);
+
+    // DEBUG: Log raw milestone dates from Supabase
+    console.log('[project-report] RAW MILESTONE DATES FROM SUPABASE:');
+    (milestoneDates || []).forEach(m => {
+      console.log(`  ${m.milestone_type}: target=${m.target_date}, actual=${m.actual_date}, completed=${m.completed_manually}, updated=${m.updated_at}`);
+    });
 
     // Fetch issues for this project (exclude resolved issues)
     const { data: issues, error: issuesError } = await supabase
@@ -653,6 +659,20 @@ function generateReportHtml({ project, milestones, milestoneDates, externalIssue
           }).join('')}
         </tbody>
       </table>
+    </div>
+
+    <!-- DEBUG: Raw Supabase Data -->
+    <div class="card" style="background: #1a1a2e; border: 2px solid #ff6b6b;">
+      <div class="card-header">
+        <span class="dot" style="background: #ff6b6b;"></span>
+        <h2>DEBUG: Raw Supabase milestone_dates</h2>
+      </div>
+      <pre style="font-size: 11px; color: #a1a1aa; overflow-x: auto; white-space: pre-wrap;">
+${JSON.stringify(milestoneDates, null, 2)}
+      </pre>
+      <p style="font-size: 11px; color: #71717a; margin-top: 8px;">
+        dateMap used in report: ${JSON.stringify(dateMap, null, 2)}
+      </p>
     </div>
 
     ${blockedIssues.length > 0 ? `
