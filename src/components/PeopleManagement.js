@@ -418,7 +418,7 @@ const PeopleManagement = () => {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-900 transition-colors pb-20">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         {/* Filters and Search */}
         <div style={sectionStyles.card} className="mb-6">
           <div className="flex flex-col md:flex-row gap-4">

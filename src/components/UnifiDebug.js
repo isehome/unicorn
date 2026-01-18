@@ -272,7 +272,7 @@ const UnifiDebug = () => {
     };
 
     return (
-        <div className="p-6 max-w-6xl mx-auto pb-24">
+        <div className="px-2 sm:px-4 py-4 sm:py-6 w-full pb-24">
             <h1 className="text-2xl font-bold mb-6 flex items-center gap-2">
                 <Shield className="w-8 h-8 text-blue-600" />
                 UniFi Connection Debugger

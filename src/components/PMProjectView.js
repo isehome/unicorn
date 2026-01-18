@@ -53,7 +53,8 @@ import {
   Trash2,
   FileBarChart2,
   AlignJustify,
-  Home
+  Home,
+  Server
 } from 'lucide-react';
 import { projectShadeService } from '../services/projectShadeService';
 import ShadeManager from './Shades/ShadeManager';
@@ -2569,7 +2570,7 @@ const PMProjectViewEnhanced = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-6">
       {/* Project Header */}
       <div style={sectionStyles.card} className="p-6 space-y-5">
         {/* Project Title and Edit Button - Same Line */}
@@ -2702,6 +2703,14 @@ const PMProjectViewEnhanced = () => {
             className={procurementIssueCount > 0 ? 'animate-pulse' : ''}
           >
             Procurement {procurementIssueCount > 0 && `(${procurementIssueCount} Issue${procurementIssueCount > 1 ? 's' : ''})`}
+          </Button>
+          <Button
+            onClick={() => navigate(`/projects/${projectId}/rack-layout`)}
+            variant="secondary"
+            icon={Server}
+            size="md"
+          >
+            Rack Layout
           </Button>
         </div>
 

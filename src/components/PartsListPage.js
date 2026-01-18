@@ -719,7 +719,7 @@ const PartsListPage = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold uppercase tracking-wide text-violet-500">

@@ -415,7 +415,7 @@ const PMDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         {/* Create New Project Form (Collapsible) */}
         {showNewProjectForm && (
           <div style={sectionStyles.card} className="mb-6 animate-in fade-in duration-200">

@@ -539,44 +539,47 @@ function HomeAssistantSettings({ projectId }) {
             {saving ? 'Saving...' : 'Save'}
           </button>
 
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={testing || !config}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border transition-colors disabled:opacity-50"
-            style={{
-              borderColor: styles.input.borderColor,
-              color: styles.textPrimary.color,
-              backgroundColor: styles.mutedCard.backgroundColor
-            }}
-          >
-            {testing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )}
-            {testing ? 'Testing...' : 'Test Connection'}
-          </button>
-
+          {/* Primary test button - tests directly from browser */}
           <button
             type="button"
             onClick={handleDirectTest}
             disabled={testing || !haUrl || !accessToken}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
             style={{
-              borderColor: palette.warning,
-              color: palette.warning,
-              backgroundColor: withAlpha(palette.warning, 0.1)
+              backgroundColor: '#10B981'
             }}
-            title="Test directly from browser (for local network testing)"
+            title="Test connection directly from your browser"
           >
             {testing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Wifi className="w-4 h-4" />
             )}
-            Direct Test (Local)
+            {testing ? 'Testing...' : 'Test Connection'}
           </button>
+
+          {/* Secondary test button - only show when config is saved and on production */}
+          {config && window.location.hostname.includes('vercel.app') && (
+            <button
+              type="button"
+              onClick={handleTest}
+              disabled={testing}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border transition-colors disabled:opacity-50"
+              style={{
+                borderColor: styles.input.borderColor,
+                color: styles.textPrimary.color,
+                backgroundColor: styles.mutedCard.backgroundColor
+              }}
+              title="Test via Vercel API (for Nabu Casa URLs)"
+            >
+              {testing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Test via Server
+            </button>
+          )}
 
           {config && (
             <button

@@ -244,8 +244,8 @@ const ServiceTicketList = () => {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-900 p-4 md:p-6 pb-20">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-zinc-900 px-2 sm:px-4 py-4 sm:py-6 pb-20">
+      <div className="w-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>

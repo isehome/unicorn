@@ -289,8 +289,8 @@ const ServiceReports = () => {
   const hasFilters = customerId || technicianId;
 
   return (
-    <div className="min-h-screen bg-zinc-900 p-4 md:p-6 pb-20">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-zinc-900 px-2 sm:px-4 py-4 sm:py-6 pb-20">
+      <div className="w-full">
         {/* Header */}
         <div className="mb-6">
           <p className="text-sm text-zinc-400">Analyze service ticket data and performance</p>

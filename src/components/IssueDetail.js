@@ -1221,7 +1221,7 @@ const IssueDetail = () => {
 
   if (error && !isNew) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         <div className="text-rose-600 text-sm mb-3">{error}</div>
         {/* Error state - user will use app bar back button */}
       </div>
@@ -1910,14 +1910,14 @@ const IssueDetail = () => {
 
   if (isNew) {
     return (
-      <form onSubmit={handleCreate} className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+      <form onSubmit={handleCreate} className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-4">
         {content}
       </form>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-4">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-4">
       {content}
 
       <Modal

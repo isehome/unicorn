@@ -1078,15 +1078,36 @@ class MilestoneService {
 
       // Update the milestone with the completion data
       if (data) {
+        // IMPORTANT: Only set actual_date on FIRST completion, never overwrite existing date
+        // This preserves the historical date when the milestone was actually completed
+        const { data: existingMilestone } = await supabase
+          .from('project_milestones')
+          .select('actual_date')
+          .eq('project_id', projectId)
+          .eq('milestone_type', milestoneType)
+          .maybeSingle();
+
+        const updateData = {
+          percent_complete: data.percent_complete,
+          auto_completion_data: data.details,
+          last_auto_check: new Date().toISOString()
+        };
+
+        // Only set actual_date if:
+        // 1. Milestone is now complete (is_complete = true)
+        // 2. AND there's no existing actual_date (first-time completion)
+        if (data.is_complete && !existingMilestone?.actual_date) {
+          updateData.actual_date = new Date().toISOString().split('T')[0];
+        }
+        // If milestone is no longer complete, clear the actual_date
+        else if (!data.is_complete) {
+          updateData.actual_date = null;
+        }
+        // Otherwise, keep existing actual_date (don't overwrite historical date)
+
         await supabase
           .from('project_milestones')
-          .update({
-            percent_complete: data.percent_complete,
-            auto_completion_data: data.details,
-            last_auto_check: new Date().toISOString(),
-            // Set actual date if complete and not already set
-            actual_date: data.is_complete ? new Date().toISOString().split('T')[0] : null
-          })
+          .update(updateData)
           .eq('project_id', projectId)
           .eq('milestone_type', milestoneType);
       }
@@ -1226,9 +1247,18 @@ class MilestoneService {
   }
 
   /**
-   * Toggle manual completion for handoff/training
+   * Toggle manual completion for handoff/training and inspections
+   *
+   * IMPORTANT: For manual milestones (inspections, handoff_training), the actual_date
+   * should be the date the event occurred (entered by user), NOT today's date.
+   * This function does NOT set actual_date - the caller should provide it if needed.
+   *
+   * @param {string} projectId - Project UUID
+   * @param {string} milestoneType - Milestone type
+   * @param {boolean} isComplete - Whether to mark complete or incomplete
+   * @param {string|null} actualDate - Optional actual date (YYYY-MM-DD) when the event occurred
    */
-  async toggleManualCompletion(projectId, milestoneType, isComplete) {
+  async toggleManualCompletion(projectId, milestoneType, isComplete, actualDate = null) {
     try {
       // Get current authenticated user
       const { data: { user } } = await supabase.auth.getUser();
@@ -1236,14 +1266,19 @@ class MilestoneService {
       const updates = {
         completed_manually: isComplete,
         percent_complete: isComplete ? 100 : 0,
-        updated_by: user?.id
+        updated_by: user?.id,
+        updated_at: new Date().toISOString()
       };
 
-      if (isComplete && !updates.actual_date) {
-        updates.actual_date = new Date().toISOString().split('T')[0];
+      // For manual milestones: only set actual_date if explicitly provided by caller
+      // This ensures the date reflects when the event occurred, not when it was entered
+      if (isComplete && actualDate) {
+        updates.actual_date = actualDate;
       } else if (!isComplete) {
+        // Clear the actual_date when uncompleting
         updates.actual_date = null;
       }
+      // If completing without actualDate, leave existing actual_date unchanged
 
       const { data, error } = await supabase
         .from('project_milestones')
@@ -1311,12 +1346,15 @@ class MilestoneService {
         // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
         console.log('[Milestone] ✓ Prewire prep conditions met - auto-completing...');
 
+        // Only set actual_date if not already set (preserve historical date)
+        const actualDateToSet = currentPrewireMilestone?.actual_date || completionDate;
+
         const { error } = await supabase
           .from('project_milestones')
           .upsert({
             project_id: projectId,
             milestone_type: 'prewire_prep',
-            actual_date: completionDate,
+            actual_date: actualDateToSet,
             completed_manually: true,
             percent_complete: 100,
             updated_by: user?.id,
@@ -1384,12 +1422,15 @@ class MilestoneService {
         // CONDITIONS MET + NOT COMPLETE → COMPLETE IT
         console.log('[Milestone] ✓ Trim prep conditions met - auto-completing...');
 
+        // Only set actual_date if not already set (preserve historical date)
+        const actualDateToSet = currentTrimMilestone?.actual_date || completionDate;
+
         const { error } = await supabase
           .from('project_milestones')
           .upsert({
             project_id: projectId,
             milestone_type: 'trim_prep',
-            actual_date: completionDate,
+            actual_date: actualDateToSet,
             completed_manually: true,
             percent_complete: 100,
             updated_by: user?.id,

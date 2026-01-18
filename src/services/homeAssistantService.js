@@ -69,12 +69,40 @@ const homeAssistantService = {
    * Calls the backend API which handles the actual HA communication
    */
   async testConnection(projectId) {
-    const response = await fetch(`/api/ha/status?project_id=${projectId}`);
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}`);
+    const apiUrl = `/api/ha/status?project_id=${projectId}`;
+    console.log('[HA Service] Testing connection via:', apiUrl);
+
+    const response = await fetch(apiUrl);
+
+    // Get the response text first
+    const responseText = await response.text();
+
+    // Check if it looks like HTML (common when API route not found or server error)
+    if (responseText.startsWith('<!DOCTYPE') || responseText.startsWith('<html')) {
+      console.error('[HA Service] API returned HTML instead of JSON:', responseText.substring(0, 500));
+
+      // Check if it's a 404 page
+      if (response.status === 404 || responseText.includes('404') || responseText.includes('Not Found')) {
+        throw new Error('API endpoint not found (404). Are you running locally? Use "vercel dev" or use the "Direct Test (Local)" button instead.');
+      }
+
+      throw new Error('API returned HTML instead of JSON. If running locally, use "Direct Test (Local)" button, or run "vercel dev".');
     }
-    return response.json();
+
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('[HA Service] Failed to parse JSON:', responseText.substring(0, 200));
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return data;
   },
 
   /**
@@ -86,11 +114,30 @@ const homeAssistantService = {
     if (options.category) params.append('category', options.category);
 
     const response = await fetch(`/api/ha/entities?${params}`);
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}`);
+
+    // Get the response text first
+    const responseText = await response.text();
+
+    // Check if it looks like HTML
+    if (responseText.startsWith('<!DOCTYPE') || responseText.startsWith('<html')) {
+      console.error('[HA Service] API returned HTML instead of JSON:', responseText.substring(0, 200));
+      throw new Error('API endpoint returned HTML instead of JSON. The API route may not be deployed correctly.');
     }
-    return response.json();
+
+    // Try to parse as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('[HA Service] Failed to parse JSON:', responseText.substring(0, 200));
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return data;
   },
 
   /**

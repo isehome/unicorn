@@ -104,3 +104,13 @@ body.dark ::-webkit-scrollbar-thumb {
 .animate-fadeIn {
   animation: fadeIn 0.3s ease-out;
 }
+
+/* Utility class to hide scrollbars while keeping scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}

@@ -56,6 +56,7 @@ const AppHeader = () => {
     if (p.includes('/reports')) return 'Project Reports';
     if (p.includes('/secure-data')) return 'Secure Data';
     if (p.includes('/home-assistant')) return 'Home Assistant';
+    if (p.includes('/rack-layout')) return 'Rack Layout';
     if (p.includes('/shades')) return 'Window Treatments';
     if (p.startsWith('/unifi-test')) return 'UniFi API Test';
     if (p.startsWith('/settings')) return 'Settings';
@@ -75,7 +76,7 @@ const AppHeader = () => {
 
   return (
     <header style={headerStyle} className="sticky top-0 z-50 backdrop-blur">
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+      <div className="w-full px-2 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {showBackButton && (
             <button

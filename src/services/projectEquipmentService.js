@@ -1226,6 +1226,11 @@ export const projectEquipmentService = {
         unifi_last_ip,
         unifi_last_seen,
         unifi_data,
+        rack_id,
+        rack_position_u,
+        shelf_id,
+        ha_client_mac,
+        exclude_from_rack,
         project_rooms(name, is_headend),
         global_part:global_part_id (
           id,
@@ -1242,7 +1247,11 @@ export const projectEquipmentService = {
           warehouse_location,
           schematic_url,
           install_manual_urls,
-          technical_manual_urls
+          technical_manual_urls,
+          u_height,
+          is_rack_mountable,
+          power_watts,
+          power_outlets
         )
       `)
       .eq('project_id', projectId)
@@ -1906,6 +1915,12 @@ export const projectEquipmentService = {
     if (updates.equipment_type !== undefined) cleanUpdates.equipment_type = updates.equipment_type;
     if (updates.unit_of_measure !== undefined) cleanUpdates.unit_of_measure = updates.unit_of_measure;
     if (updates.supplier_id !== undefined) cleanUpdates.supplier_id = updates.supplier_id || null;
+
+    // Rack layout fields
+    if (updates.rack_id !== undefined) cleanUpdates.rack_id = updates.rack_id || null;
+    if (updates.rack_position_u !== undefined) cleanUpdates.rack_position_u = updates.rack_position_u || null;
+    if (updates.shelf_id !== undefined) cleanUpdates.shelf_id = updates.shelf_id || null;
+    if (updates.exclude_from_rack !== undefined) cleanUpdates.exclude_from_rack = updates.exclude_from_rack;
 
     cleanUpdates.updated_at = new Date().toISOString();
 

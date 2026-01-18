@@ -303,7 +303,7 @@ const PMIssuesPage = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-4 space-y-4">
+    <div className="w-full px-2 sm:px-4 py-4 space-y-4">
       {/* Action buttons */}
       <div className="flex items-center justify-end gap-2">
         <div className="flex items-center gap-2">

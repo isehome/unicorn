@@ -2,11 +2,15 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
-import { enhancedStyles } from '../styles/styleSystem';
+import { useAuth } from '../contexts/AuthContext';
+import { enhancedStyles, brandColors } from '../styles/styleSystem';
 import { reportService } from '../services/reportService';
 import { milestoneService } from '../services/milestoneService';
+import { submittalsReportService } from '../services/submittalsReportService';
+import { downloadSubmittalsPackage, hasDownloadableContent } from '../services/zipDownloadService';
 import Button from '../components/ui/Button';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
+import StatCard from '../components/ui/StatCard';
 import MilestoneGaugesDisplay from '../components/MilestoneGaugesDisplay';
 import {
   AlertTriangle,
@@ -33,9 +37,41 @@ import {
   Loader2,
   ExternalLink
 } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { submittalsReportService } from '../services/submittalsReportService';
-import { downloadSubmittalsPackage, hasDownloadableContent } from '../services/zipDownloadService';
+
+// Debug: verify imports are loaded correctly
+if (typeof StatCard === 'undefined') {
+  console.error('ProjectReportsPage: StatCard is undefined!');
+}
+
+// ============================================================================
+// ZINC THEME COLORS - ALWAYS USE THESE, NOT GRAY/SLATE
+// Per AGENT.md: Use ZINC, not GRAY - gray has blue tint, zinc is neutral
+// ============================================================================
+const ZINC_COLORS = {
+  // Dark mode backgrounds
+  pageBackground: '#09090B',     // zinc-950 (main page)
+  cardBackground: '#18181B',     // zinc-900 (cards/sections)
+  cardBackgroundAlt: '#27272A',  // zinc-800 (alternate cards)
+  surfaceHover: '#3F3F46',       // zinc-700 (hover states)
+
+  // Dark mode borders
+  borderDefault: '#27272A',      // zinc-800
+  borderSubtle: '#3F3F46',       // zinc-700
+
+  // Dark mode text
+  textPrimary: '#FAFAFA',        // zinc-50
+  textSecondary: '#A1A1AA',      // zinc-400
+  textMuted: '#71717A',          // zinc-500
+
+  // Light mode equivalents
+  light: {
+    pageBackground: '#F4F4F5',   // zinc-100
+    cardBackground: '#FFFFFF',   // white
+    borderDefault: '#E4E4E7',    // zinc-200
+    textPrimary: '#18181B',      // zinc-900
+    textSecondary: '#52525B',    // zinc-600
+  }
+};
 
 const ProjectReportsPage = () => {
   const { projectId } = useParams();
@@ -61,8 +97,6 @@ const ProjectReportsPage = () => {
   const [expandedStakeholders, setExpandedStakeholders] = useState({});
   const [copied, setCopied] = useState(false);
   const [copiedStakeholder, setCopiedStakeholder] = useState(null);
-  // eslint-disable-next-line no-unused-vars
-  const [showFilters, setShowFilters] = useState(false);
 
   // Progress Report state
   const [progressReportHtml, setProgressReportHtml] = useState(null);
@@ -192,21 +226,12 @@ const ProjectReportsPage = () => {
 
   // Get ALL project stakeholders for filter dropdown (not just those with issues)
   const stakeholders = useMemo(() => {
-    // Debug: Log what we have
-    console.log('[Reports] issueReportData:', issueReportData);
-    console.log('[Reports] allStakeholders:', issueReportData?.allStakeholders);
-    console.log('[Reports] stakeholderGroups:', issueReportData?.stakeholderGroups);
-    console.log('[Reports] unassignedIssues:', issueReportData?.unassignedIssues);
-    console.log('[Reports] summary:', issueReportData?.summary);
-
     // Use allStakeholders which includes ALL project stakeholders
     if (issueReportData?.allStakeholders) {
-      console.log('[Reports] Using allStakeholders, count:', issueReportData.allStakeholders.length);
       return issueReportData.allStakeholders;
     }
     // Fallback to stakeholder groups if allStakeholders not available
     if (issueReportData?.stakeholderGroups) {
-      console.log('[Reports] Falling back to stakeholderGroups');
       return issueReportData.stakeholderGroups.map(g => g.stakeholder);
     }
     return [];
@@ -215,32 +240,20 @@ const ProjectReportsPage = () => {
   // Filter stakeholder groups based on selection
   const filteredStakeholderGroups = useMemo(() => {
     if (!issueReportData?.stakeholderGroups) {
-      console.log('[Reports Filter] No stakeholderGroups in issueReportData');
       return [];
     }
 
     let groups = issueReportData.stakeholderGroups;
-    console.log('[Reports Filter] Starting with groups:', groups.length, groups.map(g => ({ id: g.stakeholder.id, name: g.stakeholder.name })));
-    console.log('[Reports Filter] stakeholderFilter:', stakeholderFilter);
 
     if (stakeholderFilter === 'external') {
       groups = groups.filter(g => !g.stakeholder.is_internal);
-      console.log('[Reports Filter] After external filter:', groups.length);
     } else if (stakeholderFilter === 'internal') {
       groups = groups.filter(g => g.stakeholder.is_internal);
-      console.log('[Reports Filter] After internal filter:', groups.length);
     } else if (stakeholderFilter !== 'all') {
       // Filter by specific stakeholder ID - use String() to ensure consistent comparison
       // (select option values are always strings, but IDs from DB might be UUIDs)
       const filterIdStr = String(stakeholderFilter);
-      console.log('[Reports Filter] Filtering by specific ID:', filterIdStr);
-      console.log('[Reports Filter] Available IDs:', groups.map(g => String(g.stakeholder.id)));
-      groups = groups.filter(g => {
-        const matches = String(g.stakeholder.id) === filterIdStr;
-        console.log(`[Reports Filter] ${g.stakeholder.name} (${g.stakeholder.id}) === ${filterIdStr}: ${matches}`);
-        return matches;
-      });
-      console.log('[Reports Filter] After specific stakeholder filter:', groups.length);
+      groups = groups.filter(g => String(g.stakeholder.id) === filterIdStr);
     }
 
     // Apply issue status filter to each group's issues
@@ -254,10 +267,8 @@ const ProjectReportsPage = () => {
           return true;
         })
       })).filter(g => g.issues.length > 0);
-      console.log('[Reports Filter] After issue status filter:', groups.length);
     }
 
-    console.log('[Reports Filter] Final groups:', groups.length);
     return groups;
   }, [issueReportData, stakeholderFilter, issueStatusFilter]);
 
@@ -525,7 +536,7 @@ const ProjectReportsPage = () => {
   // Loading state
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         <div className="flex items-center justify-center min-h-[50vh]">
           <LoadingSpinner size="lg" message="Loading project data..." />
         </div>
@@ -536,7 +547,7 @@ const ProjectReportsPage = () => {
   // Error state
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         <div className="flex items-center gap-2 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
           <AlertTriangle className="w-5 h-5" />
           <span>{error}</span>
@@ -551,11 +562,20 @@ const ProjectReportsPage = () => {
   const { milestoneProgress, wireDropProgress, equipmentStatus, issueStats, permitStatus } = fullReportData || {};
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-6">
       {/* Project Status Gauges - Full Milestone Display */}
-      <div className="rounded-2xl border p-6" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+      <div
+        className="rounded-2xl border p-6"
+        style={{
+          backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+          borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+        }}
+      >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+          <h2
+            className="text-lg font-semibold"
+            style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+          >
             Project Progress
           </h2>
           <div className="flex items-center gap-4">
@@ -575,14 +595,19 @@ const ProjectReportsPage = () => {
             startCollapsed={false}
           />
         ) : (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-zinc-500">
             Loading milestone data...
           </div>
         )}
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-2 border-b pb-2 flex-wrap" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+      <div
+        className="flex items-center gap-1 sm:gap-2 border-b pb-2 overflow-x-auto scrollbar-hide"
+        style={{ borderColor: isDark ? ZINC_COLORS.borderDefault : ZINC_COLORS.light.borderDefault }}
+        role="tablist"
+        aria-label="Report sections"
+      >
         {[
           { id: 'overview', label: 'Overview', icon: TrendingUp },
           { id: 'progress', label: 'Progress Report', icon: FileBarChart2 },
@@ -594,20 +619,24 @@ const ProjectReportsPage = () => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`tabpanel-${tab.id}`}
+            id={`tab-${tab.id}`}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400'
-                : 'hover:bg-gray-100 dark:hover:bg-zinc-800'
+                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
             }`}
-            style={{ color: activeTab !== tab.id ? (isDark ? '#9ca3af' : '#6b7280') : undefined }}
+            style={{ color: activeTab !== tab.id ? (isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary) : undefined }}
           >
-            <tab.icon className="w-4 h-4" />
+            <tab.icon className="w-4 h-4" aria-hidden="true" />
             <span className="font-medium">{tab.label}</span>
             {tab.count !== undefined && (
               <span className={`text-xs px-2 py-0.5 rounded-full ${
                 activeTab === tab.id
                   ? 'bg-violet-200 dark:bg-violet-800 text-violet-700 dark:text-violet-300'
-                  : 'bg-gray-200 dark:bg-gray-700'
+                  : 'bg-zinc-200 dark:bg-zinc-700'
               }`}>
                 {tab.count}
               </span>
@@ -618,7 +647,7 @@ const ProjectReportsPage = () => {
 
       {/* Tab Content */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview" className="space-y-6">
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {/* Prewire Phase */}
@@ -678,9 +707,18 @@ const ProjectReportsPage = () => {
           </div>
 
           {/* Milestone Timeline */}
-          {milestoneProgress?.milestones && (
-            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-              <h3 className="font-semibold mb-4 flex items-center gap-2" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+          {milestoneProgress?.milestones && milestoneProgress.milestones.length > 0 ? (
+            <div
+              className="rounded-xl border p-4"
+              style={{
+                backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+                borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+              }}
+            >
+              <h3
+                className="font-semibold mb-4 flex items-center gap-2"
+                style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+              >
                 <Calendar className="w-5 h-5 text-violet-500" />
                 Project Timeline
               </h3>
@@ -690,11 +728,15 @@ const ProjectReportsPage = () => {
                     key={milestone.type}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
                       milestone.completed
-                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        ? 'text-white'
                         : idx === milestoneProgress.completedCount
                         ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 ring-2 ring-violet-500'
-                        : 'bg-gray-100 dark:bg-zinc-800 text-gray-500 dark:text-gray-400'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
                     }`}
+                    style={milestone.completed ? {
+                      backgroundColor: brandColors.success,
+                      color: '#FFFFFF'
+                    } : undefined}
                   >
                     {milestone.completed ? (
                       <CheckCircle2 className="w-4 h-4" />
@@ -708,18 +750,49 @@ const ProjectReportsPage = () => {
                 ))}
               </div>
             </div>
+          ) : (
+            <div
+              className="rounded-xl border p-8 text-center"
+              style={{
+                backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+                borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+              }}
+            >
+              <Calendar className="w-12 h-12 mx-auto mb-4 text-zinc-400" />
+              <p
+                className="font-medium"
+                style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}
+              >
+                No milestones configured
+              </p>
+              <p
+                className="text-sm mt-1"
+                style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}
+              >
+                Milestones will appear here once the project timeline is set up
+              </p>
+            </div>
           )}
         </div>
       )}
 
       {activeTab === 'progress' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-progress" aria-labelledby="tab-progress" className="space-y-4">
           {/* Progress Report Preview */}
-          <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{
+              backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+              borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+            }}
+          >
+            <div
+              className="flex items-center justify-between p-4 border-b"
+              style={{ borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault }}
+            >
               <div className="flex items-center gap-3">
                 <FileBarChart2 className="w-5 h-5 text-violet-500" />
-                <h3 className="font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                <h3 className="font-semibold" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
                   Progress Report
                 </h3>
               </div>
@@ -769,7 +842,7 @@ const ProjectReportsPage = () => {
             {loadingProgressReport ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
-                <span className="ml-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                <span className="ml-3" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                   Generating progress report...
                 </span>
               </div>
@@ -787,11 +860,11 @@ const ProjectReportsPage = () => {
                   srcDoc={progressReportHtml}
                   title="Progress Report Preview"
                   className="w-full border rounded-lg"
-                  style={{ height: '600px', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}
+                  style={{ height: '600px', borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault }}
                 />
               </div>
             ) : (
-              <div className="text-center py-16" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+              <div className="text-center py-16" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                 <FileBarChart2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p>No progress report data available</p>
               </div>
@@ -801,17 +874,23 @@ const ProjectReportsPage = () => {
       )}
 
       {activeTab === 'submittals' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-submittals" aria-labelledby="tab-submittals" className="space-y-4">
           {/* Submittals Header Card */}
-          <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+          <div
+            className="rounded-xl border p-4"
+            style={{
+              backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+              borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+            }}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <FileBox className="w-5 h-5 text-violet-500" />
                 <div>
-                  <h3 className="font-semibold" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                  <h3 className="font-semibold" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
                     Submittals Package
                   </h3>
-                  <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                  <p className="text-sm" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                     Product documentation and wiremap for this project
                   </p>
                 </div>
@@ -833,10 +912,10 @@ const ProjectReportsPage = () => {
             {downloadingZip && downloadProgress.message && (
               <div className="mt-3">
                 <div className="flex items-center justify-between text-sm mb-1">
-                  <span style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{downloadProgress.message}</span>
-                  <span style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{downloadProgress.percent}%</span>
+                  <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>{downloadProgress.message}</span>
+                  <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>{downloadProgress.percent}%</span>
                 </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
                   <div
                     className="bg-violet-500 rounded-full h-2 transition-all"
                     style={{ width: `${downloadProgress.percent}%` }}
@@ -849,7 +928,7 @@ const ProjectReportsPage = () => {
           {loadingSubmittals ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-8 h-8 animate-spin text-violet-500" />
-              <span className="ml-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+              <span className="ml-3" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                 Loading submittals...
               </span>
             </div>
@@ -905,13 +984,19 @@ const ProjectReportsPage = () => {
 
               {/* Parts with Submittals */}
               {submittalsManifest.parts && submittalsManifest.parts.length > 0 ? (
-                <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-                  <div className="p-4 border-b" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-                    <h4 className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                <div
+                  className="rounded-xl border overflow-hidden"
+                  style={{
+                    backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+                    borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+                  }}
+                >
+                  <div className="p-4 border-b" style={{ borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault }}>
+                    <h4 className="font-medium" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
                       Parts with Submittal Documents ({submittalsManifest.parts.length})
                     </h4>
                   </div>
-                  <div className="divide-y" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                  <div className="divide-y divide-zinc-200 dark:divide-zinc-700">
                     {/* Group by manufacturer */}
                     {Object.entries(
                       submittalsManifest.parts.reduce((acc, part) => {
@@ -922,7 +1007,7 @@ const ProjectReportsPage = () => {
                       }, {})
                     ).map(([manufacturer, parts]) => (
                       <div key={manufacturer} className="p-4">
-                        <h5 className="font-medium text-sm mb-3" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                        <h5 className="font-medium text-sm mb-3" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                           {manufacturer} ({parts.length})
                         </h5>
                         <div className="space-y-2">
@@ -930,23 +1015,23 @@ const ProjectReportsPage = () => {
                             <div
                               key={part.id}
                               className="flex items-center justify-between p-3 rounded-lg"
-                              style={{ backgroundColor: isDark ? '#374151' : '#f9fafb' }}
+                              style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackgroundAlt : '#f9fafb' }}
                             >
                               <div className="flex items-center gap-3">
                                 <FileBox className="w-4 h-4 text-violet-500" />
                                 <div>
-                                  <span className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                                  <span className="font-medium" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
                                     {part.model || part.partNumber || part.name}
                                   </span>
                                   {part.name && part.model && (
-                                    <span className="text-sm ml-2" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                    <span className="text-sm ml-2" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                                       {part.name}
                                     </span>
                                   )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-3">
-                                <span className="text-sm px-2 py-1 rounded-lg" style={{ backgroundColor: isDark ? '#4b5563' : '#e5e7eb', color: isDark ? '#9ca3af' : '#6b7280' }}>
+                                <span className="text-sm px-2 py-1 rounded-lg" style={{ backgroundColor: isDark ? ZINC_COLORS.surfaceHover : '#e5e7eb', color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                                   {part.usageCount}x used
                                 </span>
                                 {part.hasUploadedFile && (
@@ -975,12 +1060,12 @@ const ProjectReportsPage = () => {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-12 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#f9fafb' }}>
-                  <FileBox className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                  <p className="font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                <div className="text-center py-12 rounded-xl" style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackground : '#f9fafb' }}>
+                  <FileBox className="w-12 h-12 mx-auto mb-4 text-zinc-400" />
+                  <p className="font-medium" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                     No submittal documents found
                   </p>
-                  <p className="text-sm mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>
+                  <p className="text-sm mt-1" style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}>
                     Add submittal PDFs to parts in the Parts Manager
                   </p>
                 </div>
@@ -988,15 +1073,21 @@ const ProjectReportsPage = () => {
 
               {/* Wiremap Info */}
               {submittalsManifest.lucidUrl && (
-                <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
+                <div
+                  className="rounded-xl border p-4"
+                  style={{
+                    backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+                    borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+                  }}
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Cable className="w-5 h-5 text-blue-500" />
                       <div>
-                        <h4 className="font-medium" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>
+                        <h4 className="font-medium" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
                           Wiremap (Lucid Floor Plan)
                         </h4>
-                        <p className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                        <p className="text-sm" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                           {submittalsManifest.hasWiremap
                             ? 'Will be exported as PNG and included in ZIP'
                             : 'Could not extract document ID from Lucid URL'}
@@ -1017,7 +1108,7 @@ const ProjectReportsPage = () => {
               )}
             </>
           ) : (
-            <div className="text-center py-16" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+            <div className="text-center py-16" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
               <FileBox className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No submittals data available</p>
             </div>
@@ -1026,18 +1117,27 @@ const ProjectReportsPage = () => {
       )}
 
       {activeTab === 'issues' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-issues" aria-labelledby="tab-issues" className="space-y-4">
           {/* Filters Bar */}
-          <div className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', border: `1px solid ${isDark ? '#3F3F46' : '#e5e7eb'}` }}>
+          <div
+            className="flex items-center justify-between flex-wrap gap-4 p-4 rounded-xl"
+            style={{
+              backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+              border: `1px solid ${isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault}`
+            }}
+          >
             <div className="flex items-center gap-4 flex-wrap">
               {/* Stakeholder Filter */}
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-gray-500" />
+                <Users className="w-4 h-4 text-zinc-500" />
                 <select
                   value={stakeholderFilter}
                   onChange={(e) => setStakeholderFilter(e.target.value)}
                   className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-zinc-800"
-                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#18181B' }}
+                  style={{
+                    borderColor: isDark ? ZINC_COLORS.surfaceHover : '#d1d5db',
+                    color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary
+                  }}
                 >
                   <option value="all">All Stakeholders ({stakeholders.length})</option>
                   <option value="external">External Only</option>
@@ -1059,12 +1159,15 @@ const ProjectReportsPage = () => {
 
               {/* Status Filter */}
               <div className="flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-gray-500" />
+                <AlertCircle className="w-4 h-4 text-zinc-500" />
                 <select
                   value={issueStatusFilter}
                   onChange={(e) => setIssueStatusFilter(e.target.value)}
                   className="px-3 py-1.5 rounded-lg border text-sm bg-white dark:bg-zinc-800"
-                  style={{ borderColor: isDark ? '#4b5563' : '#d1d5db', color: isDark ? '#f9fafb' : '#18181B' }}
+                  style={{
+                    borderColor: isDark ? ZINC_COLORS.surfaceHover : '#d1d5db',
+                    color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary
+                  }}
                 >
                   <option value="all">All Statuses</option>
                   <option value="open">Open Only</option>
@@ -1075,10 +1178,13 @@ const ProjectReportsPage = () => {
 
               {/* Stats */}
               <div className="flex items-center gap-3 text-sm">
-                <span className="px-2 py-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                <span
+                  className="px-2 py-1 rounded"
+                  style={{ backgroundColor: 'rgba(148, 175, 50, 0.15)', color: brandColors.success }}
+                >
                   {issueReportData?.summary?.externalCount || 0} External
                 </span>
-                <span className="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                <span className="px-2 py-1 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
                   {issueReportData?.summary?.internalCount || 0} Internal
                 </span>
                 {issueReportData?.summary?.blockedCount > 0 && (
@@ -1104,8 +1210,8 @@ const ProjectReportsPage = () => {
             const isExpanded = expandedStakeholders[group.stakeholder.id];
             const isExternal = !group.stakeholder.is_internal;
             const isCopied = copiedStakeholder === group.stakeholder.id;
-            // Use olive green for external (#94AF32), violet for internal (#8B5CF6)
-            const dotColor = isExternal ? '#94AF32' : '#8B5CF6';
+            // Use olive green for external, violet for internal
+            const dotColor = isExternal ? brandColors.success : brandColors.primary;
 
             return (
               <div
@@ -1115,14 +1221,14 @@ const ProjectReportsPage = () => {
               >
                 {/* Stakeholder Header */}
                 <div
-                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                   onClick={() => toggleStakeholder(group.stakeholder.id)}
                 >
                   <div className="flex items-center gap-3">
                     {isExpanded ? (
-                      <ChevronDown className="w-5 h-5 text-gray-500" />
+                      <ChevronDown className="w-5 h-5 text-zinc-500" />
                     ) : (
-                      <ChevronRight className="w-5 h-5 text-gray-500" />
+                      <ChevronRight className="w-5 h-5 text-zinc-500" />
                     )}
                     {/* Colored dot indicator */}
                     <div
@@ -1131,23 +1237,23 @@ const ProjectReportsPage = () => {
                       title={isExternal ? 'External' : 'Internal'}
                     />
                     <div className="flex items-center flex-wrap gap-x-2 gap-y-1">
-                      <span className="font-semibold text-gray-900 dark:text-white">
+                      <span className="font-semibold text-zinc-900 dark:text-white">
                         {group.stakeholder.name}
                       </span>
                       {group.stakeholder.role && (
-                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                        <span className="text-sm text-zinc-500 dark:text-zinc-400">
                           {group.stakeholder.role}
                         </span>
                       )}
                       {group.stakeholder.email && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                        <span className="text-xs text-zinc-400 dark:text-zinc-500">
                           {group.stakeholder.email}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                    <span className="text-sm px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                    <span className="text-sm px-2.5 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300">
                       {group.issues.length} issue{group.issues.length !== 1 ? 's' : ''}
                     </span>
                     {group.blockedCount > 0 && (
@@ -1157,13 +1263,13 @@ const ProjectReportsPage = () => {
                     )}
                     <button
                       onClick={() => handleCopyToClipboard(group)}
-                      className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
                       title="Copy email for this stakeholder"
                     >
                       {isCopied ? (
-                        <Check className="w-4 h-4 text-green-600" />
+                        <Check className="w-4 h-4" style={{ color: brandColors.success }} />
                       ) : (
-                        <Copy className="w-4 h-4 text-gray-500" />
+                        <Copy className="w-4 h-4 text-zinc-500" />
                       )}
                     </button>
                     <button
@@ -1207,7 +1313,7 @@ const ProjectReportsPage = () => {
                           className="w-full text-left p-4 rounded-2xl border hover:shadow transition-transform hover:scale-[1.005]"
                         >
                           <div className="flex items-center justify-between">
-                            <div className="font-semibold text-gray-900 dark:text-white">{issue.title}</div>
+                            <div className="font-semibold text-zinc-900 dark:text-white">{issue.title}</div>
                             <span
                               className="text-xs px-2.5 py-1 rounded-full font-medium"
                               style={getStatusStyle()}
@@ -1216,7 +1322,7 @@ const ProjectReportsPage = () => {
                             </span>
                           </div>
                           {issue.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">
+                            <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 line-clamp-2">
                               {issue.description.substring(0, 200)}{issue.description.length > 200 ? '...' : ''}
                             </p>
                           )}
@@ -1231,12 +1337,12 @@ const ProjectReportsPage = () => {
 
           {/* Unassigned Issues */}
           {issueReportData?.unassignedIssues?.length > 0 && stakeholderFilter === 'all' && (
-            <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-              <div className="p-4" style={{ backgroundColor: isDark ? '#3F3F46' : '#f3f4f6' }}>
-                <span className="font-semibold text-lg" style={{ color: isDark ? '#9ca3af' : '#3F3F46' }}>
+            <div className="border rounded-xl overflow-hidden" style={{ borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault }}>
+              <div className="p-4" style={{ backgroundColor: isDark ? ZINC_COLORS.surfaceHover : '#f4f4f5' }}>
+                <span className="font-semibold text-lg" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                   Unassigned Issues
                 </span>
-                <span className="text-sm ml-3 px-3 py-1 bg-white dark:bg-gray-700 rounded-lg" style={{ color: '#666' }}>
+                <span className="text-sm ml-3 px-3 py-1 bg-white dark:bg-zinc-700 rounded-lg" style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}>
                   {issueReportData.unassignedIssues.length}
                 </span>
               </div>
@@ -1250,9 +1356,9 @@ const ProjectReportsPage = () => {
                       return { backgroundColor: '#ef444420', color: '#ef4444', border: '1px solid #ef444440' };
                     } else {
                       return {
-                        backgroundColor: isDark ? '#3F3F46' : '#f3f4f6',
-                        color: isDark ? '#d1d5db' : '#6b7280',
-                        border: `1px solid ${isDark ? '#4b5563' : '#e5e7eb'}`
+                        backgroundColor: isDark ? ZINC_COLORS.surfaceHover : '#f4f4f5',
+                        color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary,
+                        border: `1px solid ${isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault}`
                       };
                     }
                   };
@@ -1264,7 +1370,7 @@ const ProjectReportsPage = () => {
                       className="w-full text-left p-4 rounded-2xl border hover:shadow transition-transform hover:scale-[1.005]"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-semibold text-gray-900 dark:text-white">{issue.title}</div>
+                        <div className="font-semibold text-zinc-900 dark:text-white">{issue.title}</div>
                         <span
                           className="text-xs px-2.5 py-1 rounded-full font-medium"
                           style={getStatusStyle()}
@@ -1273,7 +1379,7 @@ const ProjectReportsPage = () => {
                         </span>
                       </div>
                       {issue.description && (
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">
+                        <p className="text-sm text-zinc-600 dark:text-zinc-300 mt-1 line-clamp-2">
                           {issue.description.substring(0, 200)}{issue.description.length > 200 ? '...' : ''}
                         </p>
                       )}
@@ -1285,9 +1391,9 @@ const ProjectReportsPage = () => {
           )}
 
           {filteredStakeholderGroups.length === 0 && (
-            <div className="text-center py-12 rounded-xl" style={{ backgroundColor: isDark ? '#1f2937' : '#f9fafb' }}>
-              <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-green-500" />
-              <p className="font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+            <div className="text-center py-12 rounded-xl" style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackground : '#f4f4f5' }}>
+              <CheckCircle2 className="w-12 h-12 mx-auto mb-4" style={{ color: brandColors.success }} />
+              <p className="font-medium" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                 No issues match the selected filters
               </p>
             </div>
@@ -1296,7 +1402,7 @@ const ProjectReportsPage = () => {
       )}
 
       {activeTab === 'wiredrops' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-wiredrops" aria-labelledby="tab-wiredrops" className="space-y-4">
           {/* Wire Drop Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
@@ -1334,17 +1440,17 @@ const ProjectReportsPage = () => {
 
           {/* By Floor */}
           {wireDropProgress?.byFloor && Object.keys(wireDropProgress.byFloor).length > 0 && (
-            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#3F3F46' : '#e5e7eb' }}>
-              <h3 className="font-semibold mb-4" style={{ color: isDark ? '#f9fafb' : '#18181B' }}>By Floor</h3>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground, borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault }}>
+              <h3 className="font-semibold mb-4" style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>By Floor</h3>
               <div className="space-y-3">
                 {Object.entries(wireDropProgress.byFloor).map(([floor, data]) => (
                   <div key={floor} className="flex items-center gap-4">
-                    <span className="w-24 font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{floor}</span>
+                    <span className="w-24 font-medium" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>{floor}</span>
                     <div className="flex-1 flex items-center gap-2">
-                      <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div className="flex-1 bg-zinc-200 dark:bg-zinc-700 rounded-full h-2">
                         <div className="bg-violet-500 rounded-full h-2" style={{ width: `${data.total > 0 ? (data.prewireComplete / data.total) * 100 : 0}%` }} />
                       </div>
-                      <span className="text-sm" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>
+                      <span className="text-sm" style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
                         {data.prewireComplete}/{data.total}
                       </span>
                     </div>
@@ -1353,11 +1459,139 @@ const ProjectReportsPage = () => {
               </div>
             </div>
           )}
+
+          {/* Wire Drop Progress by Phase */}
+          <div
+            className="rounded-xl border p-4"
+            style={{
+              backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+              borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+            }}
+          >
+            <h3
+              className="font-semibold mb-4 flex items-center gap-2"
+              style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+            >
+              <Cable className="w-5 h-5 text-violet-500" />
+              Wire Drop Progress by Phase
+            </h3>
+
+            {/* Phase Progress Bars */}
+            <div className="space-y-4">
+              {/* Prewire Phase */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}
+                  >
+                    Prewire Complete
+                  </span>
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+                  >
+                    {milestonePercentages?.prewire_phase?.percentage || 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-3">
+                  <div
+                    className="bg-blue-500 rounded-full h-3 transition-all duration-500"
+                    style={{ width: `${milestonePercentages?.prewire_phase?.percentage || 0}%` }}
+                  />
+                </div>
+                <div
+                  className="text-xs mt-1"
+                  style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}
+                >
+                  Orders: {milestonePercentages?.prewire_orders?.percentage || 0}% •
+                  Received: {milestonePercentages?.prewire_receiving?.percentage || 0}% •
+                  Stages: {milestonePercentages?.prewire || 0}%
+                </div>
+              </div>
+
+              {/* Trim Phase */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}
+                  >
+                    Trim Complete
+                  </span>
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+                  >
+                    {milestonePercentages?.trim_phase?.percentage || 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-3">
+                  <div
+                    className="rounded-full h-3 transition-all duration-500"
+                    style={{
+                      width: `${milestonePercentages?.trim_phase?.percentage || 0}%`,
+                      backgroundColor: brandColors.success
+                    }}
+                  />
+                </div>
+                <div
+                  className="text-xs mt-1"
+                  style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}
+                >
+                  Orders: {milestonePercentages?.trim_orders?.percentage || 0}% •
+                  Received: {milestonePercentages?.trim_receiving?.percentage || 0}% •
+                  Stages: {milestonePercentages?.trim || 0}%
+                </div>
+              </div>
+
+              {/* Commissioning */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}
+                  >
+                    Commissioning Complete
+                  </span>
+                  <span
+                    className="text-sm font-bold"
+                    style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+                  >
+                    {milestonePercentages?.commissioning?.percentage || 0}%
+                  </span>
+                </div>
+                <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-3">
+                  <div
+                    className="bg-amber-500 rounded-full h-3 transition-all duration-500"
+                    style={{ width: `${milestonePercentages?.commissioning?.percentage || 0}%` }}
+                  />
+                </div>
+                <div
+                  className="text-xs mt-1"
+                  style={{ color: isDark ? ZINC_COLORS.textMuted : ZINC_COLORS.light.textSecondary }}
+                >
+                  {milestonePercentages?.commissioning?.itemCount || 0} of {milestonePercentages?.commissioning?.totalItems || 0} wire drops commissioned
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Button to View Full Wire Drop List */}
+          <div className="flex justify-center">
+            <button
+              onClick={() => navigate(`/project/${projectId}/wire-drops`)}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors"
+            >
+              <Cable className="w-5 h-5" />
+              View All Wire Drops
+            </button>
+          </div>
         </div>
       )}
 
       {activeTab === 'equipment' && (
-        <div className="space-y-4">
+        <div role="tabpanel" id="tabpanel-equipment" aria-labelledby="tab-equipment" className="space-y-4">
           {/* Equipment Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Prewire Parts */}
@@ -1395,35 +1629,136 @@ const ProjectReportsPage = () => {
               isDark={isDark}
             />
           </div>
+
+          {/* Equipment Order Summary */}
+          <div
+            className="rounded-xl border p-4"
+            style={{
+              backgroundColor: isDark ? ZINC_COLORS.cardBackground : ZINC_COLORS.light.cardBackground,
+              borderColor: isDark ? ZINC_COLORS.borderSubtle : ZINC_COLORS.light.borderDefault
+            }}
+          >
+            <h3
+              className="font-semibold mb-4 flex items-center gap-2"
+              style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+            >
+              <Package className="w-5 h-5 text-violet-500" />
+              Equipment Order Status
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Prewire Equipment Card */}
+              <div
+                className="rounded-lg p-4"
+                style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackgroundAlt : '#f9fafb' }}
+              >
+                <h4
+                  className="font-medium mb-3 flex items-center gap-2"
+                  style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+                >
+                  <div className="w-3 h-3 rounded-full bg-blue-500" />
+                  Prewire Equipment
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Total Parts
+                    </span>
+                    <span style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
+                      {milestonePercentages?.prewire_orders?.totalParts || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Ordered
+                    </span>
+                    <span className="text-blue-500 font-medium">
+                      {milestonePercentages?.prewire_orders?.partsAccountedFor || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Received
+                    </span>
+                    <span className="text-violet-500 font-medium">
+                      {milestonePercentages?.prewire_receiving?.partsReceived || milestonePercentages?.prewire_receiving?.itemCount || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Pending
+                    </span>
+                    <span className="text-amber-500 font-medium">
+                      {Math.max(0, (milestonePercentages?.prewire_orders?.totalParts || 0) - (milestonePercentages?.prewire_receiving?.partsReceived || milestonePercentages?.prewire_receiving?.itemCount || 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trim Equipment Card */}
+              <div
+                className="rounded-lg p-4"
+                style={{ backgroundColor: isDark ? ZINC_COLORS.cardBackgroundAlt : '#f9fafb' }}
+              >
+                <h4
+                  className="font-medium mb-3 flex items-center gap-2"
+                  style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}
+                >
+                  <div
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: brandColors.success }}
+                  />
+                  Trim Equipment
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Total Parts
+                    </span>
+                    <span style={{ color: isDark ? ZINC_COLORS.textPrimary : ZINC_COLORS.light.textPrimary }}>
+                      {milestonePercentages?.trim_orders?.totalParts || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Ordered
+                    </span>
+                    <span style={{ color: brandColors.success }} className="font-medium">
+                      {milestonePercentages?.trim_orders?.partsAccountedFor || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Received
+                    </span>
+                    <span className="text-amber-500 font-medium">
+                      {milestonePercentages?.trim_receiving?.partsReceived || milestonePercentages?.trim_receiving?.itemCount || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: isDark ? ZINC_COLORS.textSecondary : ZINC_COLORS.light.textSecondary }}>
+                      Pending
+                    </span>
+                    <span className="text-amber-500 font-medium">
+                      {Math.max(0, (milestonePercentages?.trim_orders?.totalParts || 0) - (milestonePercentages?.trim_receiving?.partsReceived || milestonePercentages?.trim_receiving?.itemCount || 0))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Button */}
+          <div className="flex justify-center">
+            <button
+              onClick={() => navigate(`/project/${projectId}/equipment`)}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors"
+            >
+              <Package className="w-5 h-5" />
+              View Full Equipment List
+            </button>
+          </div>
         </div>
-      )}
-    </div>
-  );
-};
-
-// Stat Card Component
-const StatCard = ({ icon: Icon, label, value, subtext, color, isDark }) => {
-  const colors = {
-    violet: { bg: 'bg-violet-100 dark:bg-violet-900/30', text: 'text-violet-600 dark:text-violet-400' },
-    blue: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-600 dark:text-blue-400' },
-    green: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-600 dark:text-green-400' },
-    amber: { bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-600 dark:text-amber-400' },
-    red: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-600 dark:text-red-400' },
-    teal: { bg: 'bg-teal-100 dark:bg-teal-900/30', text: 'text-teal-600 dark:text-teal-400' },
-    indigo: { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-600 dark:text-indigo-400' }
-  };
-
-  const colorClass = colors[color] || colors.violet;
-
-  return (
-    <div className={`rounded-xl p-4 ${colorClass.bg}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`w-4 h-4 ${colorClass.text}`} />
-        <span className="text-sm font-medium" style={{ color: isDark ? '#9ca3af' : '#6b7280' }}>{label}</span>
-      </div>
-      <div className={`text-2xl font-bold ${colorClass.text}`}>{value}</div>
-      {subtext && (
-        <div className="text-xs mt-1" style={{ color: isDark ? '#6b7280' : '#9ca3af' }}>{subtext}</div>
       )}
     </div>
   );

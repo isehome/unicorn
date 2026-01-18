@@ -485,7 +485,7 @@ const ShadeManager = ({ isPMView = false, embeddedProjectId = null }) => {
 
     return (
         <div className={`min-h-screen pb-20 ${mode === 'dark' ? 'bg-zinc-900' : 'bg-zinc-50'}`}>
-            <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+            <div className="w-full px-2 sm:px-4 py-4 sm:py-6 space-y-6">
 
                 {/* Controls (Collapsible) */}
                 <div className={`rounded-xl border ${mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-zinc-200'}`}>

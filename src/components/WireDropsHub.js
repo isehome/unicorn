@@ -95,7 +95,7 @@ const WireDropsHub = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         <div style={sectionStyles.card} className="mb-6">
           <div className="text-center mb-8">
             <Activity className="w-12 h-12 text-violet-500 dark:text-violet-300 mx-auto mb-4" />

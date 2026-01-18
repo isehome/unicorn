@@ -232,7 +232,7 @@ const LucidDiagnostic = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-900 transition-colors pb-20">
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
         {/* Header */}
         <div style={sectionStyles.card} className="mb-6 p-6">
           <div className="flex items-center gap-3 mb-4">
