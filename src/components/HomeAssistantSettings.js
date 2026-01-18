@@ -34,7 +34,16 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  HardDrive,
+  FileArchive,
+  FolderOpen,
+  Clock,
+  Network,
+  Cable,
+  Monitor,
+  Signal
 } from 'lucide-react';
 
 const withAlpha = (hex, alpha) => {
@@ -84,6 +93,21 @@ function HomeAssistantSettings({ projectId }) {
   const [entities, setEntities] = useState([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
+
+  // Backup management state
+  const [backups, setBackups] = useState([]);
+  const [loadingBackups, setLoadingBackups] = useState(false);
+  const [showBackups, setShowBackups] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const [haFolderUrl, setHaFolderUrl] = useState(null);
+
+  // Network clients state
+  const [networkClients, setNetworkClients] = useState([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [showClients, setShowClients] = useState(false);
+  const [clientsError, setClientsError] = useState(null);
+  const [clientFilter, setClientFilter] = useState('all'); // 'all', 'wired', 'wireless'
 
   const styles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
@@ -179,6 +203,37 @@ function HomeAssistantSettings({ projectId }) {
         access_token: accessToken.trim(),
         instance_name: instanceName.trim() || null
       }, user?.id);
+
+      // Ensure the Home Assistant folder exists in SharePoint Knowledge library
+      try {
+        const folderResponse = await fetch('/api/ha/ensure-knowledge-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        if (folderResponse.ok) {
+          const folderResult = await folderResponse.json();
+          console.log('[HA Settings] Knowledge folder:', folderResult.created ? 'created' : 'already exists');
+        }
+      } catch (folderErr) {
+        // Don't fail the save if folder creation fails - just log it
+        console.warn('[HA Settings] Could not ensure Knowledge folder:', folderErr.message);
+      }
+
+      // Ensure the Home Assistant folder exists in the client's project SharePoint folder
+      try {
+        const clientFolderResponse = await fetch('/api/ha/ensure-client-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project_id: projectId })
+        });
+        if (clientFolderResponse.ok) {
+          const clientFolderResult = await clientFolderResponse.json();
+          console.log('[HA Settings] Client HA folder:', clientFolderResult.created ? 'created' : 'already exists');
+        }
+      } catch (clientFolderErr) {
+        // Don't fail the save if folder creation fails - just log it
+        console.warn('[HA Settings] Could not ensure client HA folder:', clientFolderErr.message);
+      }
 
       setHaUrl(normalizedUrl); // Update the field with normalized URL
       await loadConfig();
@@ -336,6 +391,116 @@ function HomeAssistantSettings({ projectId }) {
     });
     return cats;
   }, [entities]);
+
+  // Backup management functions
+  const loadBackups = useCallback(async () => {
+    setLoadingBackups(true);
+    try {
+      const response = await fetch(`/api/ha/list-backups?project_id=${projectId}`);
+      if (response.ok) {
+        const result = await response.json();
+        setBackups(result.backups || []);
+        setHaFolderUrl(result.haFolderUrl || null);
+      }
+    } catch (err) {
+      console.error('Error loading backups:', err);
+      setBackups([]);
+    } finally {
+      setLoadingBackups(false);
+    }
+  }, [projectId]);
+
+  const toggleBackups = () => {
+    if (!showBackups && backups.length === 0) {
+      loadBackups();
+    }
+    setShowBackups(!showBackups);
+  };
+
+  // Network clients management functions
+  const loadNetworkClients = useCallback(async () => {
+    setLoadingClients(true);
+    setClientsError(null);
+    try {
+      const response = await fetch(`/api/ha/network-clients?project_id=${projectId}`);
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || `Failed to load clients: ${response.status}`);
+      }
+
+      setNetworkClients(result.clients || []);
+    } catch (err) {
+      console.error('Error loading network clients:', err);
+      setClientsError(err.message);
+      setNetworkClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  }, [projectId]);
+
+  const toggleClients = () => {
+    if (!showClients && networkClients.length === 0) {
+      loadNetworkClients();
+    }
+    setShowClients(!showClients);
+  };
+
+  // Filter network clients based on selected filter
+  const filteredClients = useMemo(() => {
+    if (clientFilter === 'all') return networkClients;
+    if (clientFilter === 'wired') return networkClients.filter(c => c.is_wired);
+    if (clientFilter === 'wireless') return networkClients.filter(c => c.is_wireless);
+    return networkClients;
+  }, [networkClients, clientFilter]);
+
+  const handleBackupUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validExtensions = ['.tar', '.tar.gz', '.tgz', '.zip'];
+    const isValidType = validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+    if (!isValidType) {
+      setError('Invalid file type. Please upload a .tar, .tar.gz, .tgz, or .zip file.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress('Uploading...');
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('project_id', projectId);
+
+      const response = await fetch('/api/ha/upload-backup', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setUploadProgress(null);
+      setTestResult({ success: true, message: result.message });
+
+      // Refresh backup list
+      await loadBackups();
+    } catch (err) {
+      console.error('Backup upload error:', err);
+      setError(err.message);
+      setUploadProgress(null);
+    } finally {
+      setUploading(false);
+      // Reset file input
+      event.target.value = '';
+    }
+  };
 
   if (loading) {
     return (
@@ -539,45 +704,22 @@ function HomeAssistantSettings({ projectId }) {
             {saving ? 'Saving...' : 'Save'}
           </button>
 
-          {/* Primary test button - tests directly from browser */}
-          <button
-            type="button"
-            onClick={handleDirectTest}
-            disabled={testing || !haUrl || !accessToken}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
-            style={{
-              backgroundColor: '#10B981'
-            }}
-            title="Test connection directly from your browser"
-          >
-            {testing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Wifi className="w-4 h-4" />
-            )}
-            {testing ? 'Testing...' : 'Test Connection'}
-          </button>
-
-          {/* Secondary test button - only show when config is saved and on production */}
-          {config && window.location.hostname.includes('vercel.app') && (
+          {/* Test connection via server API (works with Nabu Casa URLs) */}
+          {config && (
             <button
               type="button"
               onClick={handleTest}
               disabled={testing}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border transition-colors disabled:opacity-50"
-              style={{
-                borderColor: styles.input.borderColor,
-                color: styles.textPrimary.color,
-                backgroundColor: styles.mutedCard.backgroundColor
-              }}
-              title="Test via Vercel API (for Nabu Casa URLs)"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50"
+              style={{ backgroundColor: '#10B981' }}
+              title="Test connection via server"
             >
               {testing ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <RefreshCw className="w-4 h-4" />
+                <Wifi className="w-4 h-4" />
               )}
-              Test via Server
+              {testing ? 'Testing...' : 'Test Connection'}
             </button>
           )}
 
@@ -706,36 +848,390 @@ function HomeAssistantSettings({ projectId }) {
         </div>
       )}
 
+      {/* Network Clients Section */}
+      {config?.last_connected_at && (
+        <div className="mt-6 pt-6 border-t" style={{ borderColor: styles.card.borderColor }}>
+          <button
+            onClick={toggleClients}
+            className="w-full flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            <div className="flex items-center gap-2">
+              <Network className="w-5 h-5" style={{ color: palette.success }} />
+              <span className="font-medium" style={styles.textPrimary}>
+                Network Clients
+              </span>
+              {networkClients.length > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full" style={styles.successBadge}>
+                  {networkClients.length} client{networkClients.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            {showClients ? (
+              <ChevronDown className="w-5 h-5" style={styles.textSecondary} />
+            ) : (
+              <ChevronRight className="w-5 h-5" style={styles.textSecondary} />
+            )}
+          </button>
+
+          {showClients && (
+            <div className="mt-4 space-y-4">
+              {/* Client Error */}
+              {clientsError && (
+                <div className="p-3 rounded-lg flex items-start gap-2" style={styles.errorBadge}>
+                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span>{clientsError}</span>
+                    {clientsError.includes('not found') && (
+                      <p className="mt-1 text-sm">
+                        Make sure the Unicorn UniFi collector integration is configured in Home Assistant.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Filter Buttons */}
+              {networkClients.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setClientFilter('all')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                    style={clientFilter === 'all' ? styles.successBadge : styles.mutedCard}
+                  >
+                    All ({networkClients.length})
+                  </button>
+                  <button
+                    onClick={() => setClientFilter('wired')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                    style={clientFilter === 'wired' ? styles.successBadge : styles.mutedCard}
+                  >
+                    <Cable className="w-4 h-4" />
+                    Wired ({networkClients.filter(c => c.is_wired).length})
+                  </button>
+                  <button
+                    onClick={() => setClientFilter('wireless')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                    style={clientFilter === 'wireless' ? styles.successBadge : styles.mutedCard}
+                  >
+                    <Wifi className="w-4 h-4" />
+                    Wireless ({networkClients.filter(c => c.is_wireless).length})
+                  </button>
+                </div>
+              )}
+
+              {/* Client List */}
+              {loadingClients ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: palette.info }} />
+                </div>
+              ) : filteredClients.length === 0 && !clientsError ? (
+                <div className="text-center py-6" style={styles.textSecondary}>
+                  <Network className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p>No network clients found</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                  {filteredClients.map((client, idx) => (
+                    <div
+                      key={client.mac_address || idx}
+                      className="p-3 rounded-lg"
+                      style={styles.mutedCard}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div
+                            className="p-2 rounded-lg flex-shrink-0"
+                            style={{ backgroundColor: withAlpha(client.is_wired ? palette.info : palette.warning, 0.15) }}
+                          >
+                            {client.is_wired ? (
+                              <Cable className="w-4 h-4" style={{ color: palette.info }} />
+                            ) : (
+                              <Wifi className="w-4 h-4" style={{ color: palette.warning }} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium truncate" style={styles.textPrimary}>
+                              {client.name}
+                            </div>
+                            <div className="text-xs space-y-0.5" style={styles.subtleText}>
+                              {/* MAC and IP */}
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                {client.mac_address && (
+                                  <span className="font-mono">{client.mac_address}</span>
+                                )}
+                                {client.ip_address && (
+                                  <span className="font-mono">{client.ip_address}</span>
+                                )}
+                              </div>
+                              {/* Connection details */}
+                              {client.is_wired ? (
+                                // Wired: show switch and port
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                                  {client.switch_name && (
+                                    <span className="flex items-center gap-1">
+                                      <Monitor className="w-3 h-3" />
+                                      {client.switch_name}
+                                    </span>
+                                  )}
+                                  {client.switch_port && (
+                                    <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={styles.infoBadge}>
+                                      Port {client.switch_port}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                // Wireless: show SSID, AP, signal
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                                  {client.ssid && (
+                                    <span className="flex items-center gap-1">
+                                      <Wifi className="w-3 h-3" />
+                                      {client.ssid}
+                                    </span>
+                                  )}
+                                  {client.ap_name && (
+                                    <span className="flex items-center gap-1">
+                                      <Server className="w-3 h-3" />
+                                      {client.ap_name}
+                                    </span>
+                                  )}
+                                  {client.wifi_signal && (
+                                    <span className="flex items-center gap-1">
+                                      <Signal className="w-3 h-3" />
+                                      {client.wifi_signal} dBm
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Uptime badge */}
+                        {client.uptime_formatted && (
+                          <div
+                            className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap"
+                            style={styles.infoBadge}
+                          >
+                            {client.uptime_formatted}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Refresh Button */}
+              <button
+                onClick={loadNetworkClients}
+                disabled={loadingClients}
+                className="flex items-center gap-2 text-sm font-medium transition-colors"
+                style={{ color: palette.info }}
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingClients ? 'animate-spin' : ''}`} />
+                Refresh Clients
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Backup Management Section */}
+      {config && (
+        <div className="mt-6 pt-6 border-t" style={{ borderColor: styles.card.borderColor }}>
+          <button
+            onClick={toggleBackups}
+            className="w-full flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            <div className="flex items-center gap-2">
+              <HardDrive className="w-5 h-5" style={{ color: palette.warning }} />
+              <span className="font-medium" style={styles.textPrimary}>
+                Backup Management
+              </span>
+              {backups.length > 0 && (
+                <span className="text-sm px-2 py-0.5 rounded-full" style={styles.infoBadge}>
+                  {backups.length} backup{backups.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            {showBackups ? (
+              <ChevronDown className="w-5 h-5" style={styles.textSecondary} />
+            ) : (
+              <ChevronRight className="w-5 h-5" style={styles.textSecondary} />
+            )}
+          </button>
+
+          {showBackups && (
+            <div className="mt-4 space-y-4">
+              {/* Upload Backup */}
+              <div className="p-4 rounded-xl" style={styles.mutedCard}>
+                <div className="flex items-center gap-2 mb-3">
+                  <Upload className="w-4 h-4" style={{ color: palette.primary }} />
+                  <span className="font-medium" style={styles.textPrimary}>Upload Backup</span>
+                </div>
+                <p className="text-sm mb-3" style={styles.textSecondary}>
+                  Upload Home Assistant backup files (.tar, .tar.gz, .zip) to SharePoint for safekeeping.
+                </p>
+                <div className="flex items-center gap-3">
+                  <label
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white cursor-pointer transition-colors"
+                    style={{ backgroundColor: uploading ? '#6B7280' : palette.primary }}
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        {uploadProgress || 'Uploading...'}
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" />
+                        Choose File
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept=".tar,.tar.gz,.tgz,.zip"
+                      onChange={handleBackupUpload}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </label>
+                  {haFolderUrl && (
+                    <a
+                      href={haFolderUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-700"
+                      style={{ color: palette.info }}
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      Open Folder
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Backup List */}
+              {loadingBackups ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: palette.info }} />
+                </div>
+              ) : backups.length === 0 ? (
+                <div className="text-center py-6" style={styles.textSecondary}>
+                  <FileArchive className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                  <p>No backups uploaded yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {backups.map(backup => (
+                    <a
+                      key={backup.id}
+                      href={backup.webUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-3 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      style={styles.mutedCard}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FileArchive className="w-5 h-5" style={{ color: palette.warning }} />
+                        <div>
+                          <div className="font-medium text-sm" style={styles.textPrimary}>
+                            {backup.name}
+                          </div>
+                          <div className="text-xs flex items-center gap-2" style={styles.subtleText}>
+                            <span>{backup.sizeFormatted}</span>
+                            <span>•</span>
+                            <Clock className="w-3 h-3" />
+                            <span>{new Date(backup.modifiedAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <ExternalLink className="w-4 h-4" style={styles.subtleText} />
+                    </a>
+                  ))}
+                </div>
+              )}
+
+              {/* Refresh Button */}
+              <button
+                onClick={loadBackups}
+                disabled={loadingBackups}
+                className="flex items-center gap-2 text-sm font-medium transition-colors"
+                style={{ color: palette.info }}
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingBackups ? 'animate-spin' : ''}`} />
+                Refresh Backups
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Help Section */}
       <div className="mt-6 pt-4 border-t space-y-3" style={{ borderColor: styles.card.borderColor }}>
-        <a
-          href="https://www.nabucasa.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 text-sm hover:underline"
-          style={{ color: palette.info }}
-        >
-          <ExternalLink className="w-4 h-4" />
-          Learn about Nabu Casa (Home Assistant Cloud)
-        </a>
-
-        {/* Local Testing Help */}
-        <div className="p-3 rounded-lg text-sm" style={styles.mutedCard}>
-          <div className="font-medium mb-1" style={styles.textPrimary}>
-            🔧 Local Testing Note
+        {/* Setup Instructions */}
+        <div className="p-4 rounded-xl space-y-3" style={styles.mutedCard}>
+          <div className="font-medium" style={styles.textPrimary}>
+            Setup Instructions
           </div>
-          <p style={styles.textSecondary}>
-            "Direct Test (Local)" tests from your browser directly - useful for local IPs when Vercel can't reach them.
-            If you get CORS errors, add this to your HA <code className="px-1 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700">configuration.yaml</code>:
-          </p>
-          <pre className="mt-2 p-2 rounded text-xs overflow-x-auto bg-zinc-200 dark:bg-zinc-800" style={styles.textPrimary}>
-{`http:
-  cors_allowed_origins:
-    - http://localhost:3000
-    - https://unicorn-one.vercel.app`}
-          </pre>
+          <div className="space-y-2">
+            <a
+              href="https://isehome.sharepoint.com/sites/Unicorn/Knowledge/Home%20Assistant"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm hover:underline"
+              style={{ color: palette.info }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              Home Assistant Setup Guide (Knowledge Base)
+            </a>
+            <a
+              href="https://www.nabucasa.com/config/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm hover:underline"
+              style={{ color: palette.info }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              How to Add Account to Nabu Casa
+            </a>
+            <a
+              href="https://www.home-assistant.io/docs/authentication/#your-account-profile"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-sm hover:underline"
+              style={{ color: palette.info }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              How to Create Long-Lived Access Token
+            </a>
+          </div>
         </div>
       </div>
+
+      {/* Home Assistant Portal Link */}
+      {config?.ha_url && (
+        <div className="mt-6 pt-4 border-t" style={{ borderColor: styles.card.borderColor }}>
+          <a
+            href={config.ha_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 p-3 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          >
+            <div className="p-2 rounded-lg" style={{ backgroundColor: withAlpha(palette.primary, 0.15) }}>
+              <Home className="w-5 h-5" style={{ color: palette.primary }} />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium" style={styles.textPrimary}>
+                Open Home Assistant
+              </div>
+              <div className="text-sm" style={styles.subtleText}>
+                {config.ha_url}
+              </div>
+            </div>
+            <ExternalLink className="w-5 h-5" style={styles.textSecondary} />
+          </a>
+        </div>
+      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@
     "@testing-library/user-event": "^13.5.0",
     "dotenv": "^17.2.3",
     "file-saver": "^2.0.5",
+    "formidable": "^3.5.4",
     "fuse.js": "^7.1.0",
     "html2canvas": "^1.4.1",
     "html5-qrcode": "^2.3.8",

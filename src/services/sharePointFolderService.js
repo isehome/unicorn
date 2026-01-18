@@ -12,7 +12,8 @@ export const STANDARD_SUBFOLDERS = {
   procurement: 'Procurement',
   design: 'Design',
   data: 'Data',
-  business: 'Business'
+  business: 'Business',
+  homeAssistant: 'Home Assistant'
 };
 
 const STANDARD_SUBFOLDER_SUFFIXES = Object.values(STANDARD_SUBFOLDERS)
