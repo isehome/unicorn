@@ -4,8 +4,9 @@
  * Supports equipment placement, shelf management, and drag-and-drop operations
  */
 
-import React, { memo, useState, useCallback, useMemo } from 'react';
-import { Plus, RefreshCw, Server, Trash2, GripVertical, X, EyeOff, Settings } from 'lucide-react';
+import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
+import { Plus, RefreshCw, Server, Trash2, GripVertical, X, EyeOff, Settings, Layers, Home, ChevronDown } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 // Constants - using HOUR_HEIGHT pattern from calendar (60px per U)
 const U_HEIGHT = 60; // pixels per rack unit
@@ -313,13 +314,16 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
   const manufacturer = equipment.global_part?.manufacturer || '';
   const model = equipment.global_part?.model || '';
   const hasUHeight = uHeight > 0 && equipment.global_part?.u_height;
+  const needsShelf = equipment.needs_shelf;
+  const shelfUHeight = equipment.shelf_u_height;
 
   const handleDragStart = (e) => {
     setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       equipmentId: equipment.id,
-      uHeight,
+      uHeight: needsShelf ? shelfUHeight : uHeight,
       isMove: false,
+      needsShelf,
     }));
     e.dataTransfer.effectAllowed = 'move';
     onDragStart?.(equipment);
@@ -343,6 +347,37 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
     onClick?.(equipment);
   };
 
+  // Determine size badge display
+  const getSizeBadge = () => {
+    if (needsShelf) {
+      return {
+        text: `${shelfUHeight || 2}U shelf`,
+        bg: 'rgba(59, 130, 246, 0.2)',
+        color: '#3B82F6',
+        border: 'border-blue-500/50',
+        title: `Needs ${shelfUHeight || 2}U of shelf space`,
+      };
+    }
+    if (hasUHeight) {
+      return {
+        text: `${uHeight}U`,
+        bg: 'rgba(113, 113, 122, 0.3)',
+        color: '#A1A1AA',
+        border: '',
+        title: `${uHeight} rack units`,
+      };
+    }
+    return {
+      text: '?U',
+      bg: 'rgba(234, 179, 8, 0.2)',
+      color: '#EAB308',
+      border: 'border border-dashed border-yellow-500/50',
+      title: 'U-height not set - click to configure',
+    };
+  };
+
+  const sizeBadge = getSizeBadge();
+
   return (
     <div
       draggable
@@ -352,11 +387,15 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
       className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-grab active:cursor-grabbing transition-all hover:border-violet-500/50 group"
       style={{
         backgroundColor: equipmentColors.unplaced.bg,
-        borderColor: equipmentColors.unplaced.border,
+        borderColor: needsShelf ? '#3B82F6' : equipmentColors.unplaced.border,
       }}
     >
       <GripVertical size={14} className="text-zinc-500 flex-shrink-0" />
-      <Server size={14} style={{ color: equipmentColors.unplaced.text }} />
+      {needsShelf ? (
+        <Layers size={14} style={{ color: '#3B82F6' }} />
+      ) : (
+        <Server size={14} style={{ color: equipmentColors.unplaced.text }} />
+      )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium truncate" style={{ color: equipmentColors.unplaced.text }}>
           {displayName}
@@ -366,14 +405,14 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
         </div>
       </div>
       <span
-        className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${!hasUHeight ? 'border border-dashed border-yellow-500/50' : ''}`}
+        className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${sizeBadge.border}`}
         style={{
-          backgroundColor: hasUHeight ? 'rgba(113, 113, 122, 0.3)' : 'rgba(234, 179, 8, 0.2)',
-          color: hasUHeight ? '#A1A1AA' : '#EAB308',
+          backgroundColor: sizeBadge.bg,
+          color: sizeBadge.color,
         }}
-        title={hasUHeight ? `${uHeight} rack units` : 'U-height not set - will prompt on drop'}
+        title={sizeBadge.title}
       >
-        {hasUHeight ? `${uHeight}U` : '?U'}
+        {sizeBadge.text}
       </span>
       {/* Settings icon - always clickable */}
       <button
@@ -460,16 +499,40 @@ AddShelfModal.displayName = 'AddShelfModal';
 
 /**
  * Equipment Edit Modal - Modal for editing equipment properties
- * Allows excluding from rack, setting U-height, etc.
+ * Allows excluding from rack, setting U-height, marking as shelf item, moving to different room
  */
-const EquipmentEditModal = memo(({ equipment, onClose, onSave, onExclude }) => {
+const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExclude, onMoveRoom }) => {
   const [uHeight, setUHeight] = useState(equipment?.global_part?.u_height || 1);
+  const [needsShelf, setNeedsShelf] = useState(equipment?.needs_shelf || false);
+  const [shelfUHeight, setShelfUHeight] = useState(equipment?.shelf_u_height || 2);
   const [saving, setSaving] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [selectedRoomId, setSelectedRoomId] = useState(equipment?.room_id || '');
+  const [showRoomSelector, setShowRoomSelector] = useState(false);
+  const [loadingRooms, setLoadingRooms] = useState(false);
 
   const displayName = equipment?.global_part?.name || equipment?.description || 'Unnamed Equipment';
   const manufacturer = equipment?.global_part?.manufacturer || '';
   const model = equipment?.global_part?.model || '';
   const hasGlobalPart = !!equipment?.global_part_id;
+
+  // Load rooms when room selector is opened
+  useEffect(() => {
+    if (showRoomSelector && rooms.length === 0 && projectId) {
+      setLoadingRooms(true);
+      supabase
+        .from('project_rooms')
+        .select('id, name')
+        .eq('project_id', projectId)
+        .order('name')
+        .then(({ data, error }) => {
+          if (!error && data) {
+            setRooms(data);
+          }
+          setLoadingRooms(false);
+        });
+    }
+  }, [showRoomSelector, rooms.length, projectId]);
 
   const handleSaveUHeight = async () => {
     if (!hasGlobalPart) return;
@@ -479,6 +542,34 @@ const EquipmentEditModal = memo(({ equipment, onClose, onSave, onExclude }) => {
       onClose();
     } catch (err) {
       console.error('Failed to save U-height:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveShelfRequirement = async () => {
+    setSaving(true);
+    try {
+      await onSave(equipment.id, {
+        needsShelf,
+        shelfUHeight: needsShelf ? shelfUHeight : null
+      });
+      onClose();
+    } catch (err) {
+      console.error('Failed to save shelf requirement:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMoveRoom = async () => {
+    if (!selectedRoomId || selectedRoomId === equipment?.room_id) return;
+    setSaving(true);
+    try {
+      await onMoveRoom(equipment.id, selectedRoomId);
+      onClose();
+    } catch (err) {
+      console.error('Failed to move equipment to room:', err);
     } finally {
       setSaving(false);
     }
@@ -498,9 +589,11 @@ const EquipmentEditModal = memo(({ equipment, onClose, onSave, onExclude }) => {
 
   if (!equipment) return null;
 
+  const currentRoom = rooms.find(r => r.id === equipment?.room_id);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-800 rounded-xl p-6 w-96 border border-zinc-700 shadow-xl">
+      <div className="bg-zinc-800 rounded-xl p-6 w-[420px] max-h-[90vh] overflow-y-auto border border-zinc-700 shadow-xl">
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -566,6 +659,133 @@ const EquipmentEditModal = memo(({ equipment, onClose, onSave, onExclude }) => {
             )}
           </div>
 
+          {/* Needs Shelf Section */}
+          <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-800/50">
+            <div className="flex items-start gap-3">
+              <Layers size={20} className="text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-blue-300">
+                  Needs Shelf Space
+                </h4>
+                <p className="text-xs text-blue-400/80 mt-1">
+                  For non-rack-mountable equipment (amps, small devices) that needs to sit on a shelf.
+                </p>
+
+                <div className="mt-3 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={needsShelf}
+                      onChange={(e) => setNeedsShelf(e.target.checked)}
+                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-zinc-300">This equipment needs a shelf</span>
+                  </label>
+
+                  {needsShelf && (
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">
+                        Shelf space needed (U)
+                      </label>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4].map((u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setShelfUHeight(u)}
+                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
+                              shelfUHeight === u
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                            }`}
+                          >
+                            {u}U
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSaveShelfRequirement}
+                    disabled={saving || (needsShelf === equipment?.needs_shelf && shelfUHeight === equipment?.shelf_u_height)}
+                    className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
+                  >
+                    {saving ? 'Saving...' : 'Save Shelf Requirement'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Move to Different Room Section */}
+          {onMoveRoom && (
+            <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-800/50">
+              <div className="flex items-start gap-3">
+                <Home size={20} className="text-amber-400 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-amber-300">
+                    Move to Different Room
+                  </h4>
+                  <p className="text-xs text-amber-400/80 mt-1">
+                    {currentRoom ? `Currently in: ${currentRoom.name}` : 'Currently: Head End (no room assigned)'}
+                  </p>
+
+                  <div className="mt-3 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowRoomSelector(!showRoomSelector)}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-300 text-sm transition-colors"
+                    >
+                      <span>
+                        {selectedRoomId
+                          ? rooms.find(r => r.id === selectedRoomId)?.name || 'Select room...'
+                          : 'Select room...'}
+                      </span>
+                      <ChevronDown size={16} className={`transition-transform ${showRoomSelector ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showRoomSelector && (
+                      <div className="max-h-40 overflow-y-auto rounded-lg border border-zinc-600 bg-zinc-700">
+                        {loadingRooms ? (
+                          <div className="p-3 text-sm text-zinc-400 text-center">Loading rooms...</div>
+                        ) : rooms.length === 0 ? (
+                          <div className="p-3 text-sm text-zinc-400 text-center">No rooms found</div>
+                        ) : (
+                          rooms.map(room => (
+                            <button
+                              key={room.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRoomId(room.id);
+                                setShowRoomSelector(false);
+                              }}
+                              className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-600 transition-colors ${
+                                selectedRoomId === room.id ? 'bg-amber-600/30 text-amber-300' : 'text-zinc-300'
+                              } ${room.id === equipment?.room_id ? 'opacity-50' : ''}`}
+                              disabled={room.id === equipment?.room_id}
+                            >
+                              {room.name}
+                              {room.id === equipment?.room_id && ' (current)'}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleMoveRoom}
+                      disabled={saving || !selectedRoomId || selectedRoomId === equipment?.room_id}
+                      className="w-full px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
+                    >
+                      {saving ? 'Moving...' : 'Move Equipment'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Exclude Section */}
           <div className="p-4 bg-red-900/20 rounded-lg border border-red-800/50">
             <div className="flex items-start gap-3">
@@ -613,11 +833,13 @@ const RackFrontView = ({
   rack,
   equipment = [],
   unplacedEquipment = [],
+  projectId,
   onEquipmentDrop,
   onEquipmentMove,
   onEquipmentRemove,
   onEquipmentEdit,
   onEquipmentExclude,
+  onMoveRoom,
   onAddShelf,
   onRefresh,
 }) => {
@@ -996,9 +1218,11 @@ const RackFrontView = ({
       {editingEquipment && (
         <EquipmentEditModal
           equipment={editingEquipment}
+          projectId={projectId}
           onClose={() => setEditingEquipment(null)}
           onSave={onEquipmentEdit}
           onExclude={onEquipmentExclude}
+          onMoveRoom={onMoveRoom}
         />
       )}
     </div>

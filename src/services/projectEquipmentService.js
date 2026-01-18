@@ -1921,6 +1921,8 @@ export const projectEquipmentService = {
     if (updates.rack_position_u !== undefined) cleanUpdates.rack_position_u = updates.rack_position_u || null;
     if (updates.shelf_id !== undefined) cleanUpdates.shelf_id = updates.shelf_id || null;
     if (updates.exclude_from_rack !== undefined) cleanUpdates.exclude_from_rack = updates.exclude_from_rack;
+    if (updates.needs_shelf !== undefined) cleanUpdates.needs_shelf = updates.needs_shelf;
+    if (updates.shelf_u_height !== undefined) cleanUpdates.shelf_u_height = updates.shelf_u_height;
 
     cleanUpdates.updated_at = new Date().toISOString();
 

@@ -267,17 +267,13 @@ const RackLayoutPage = () => {
     }
   }, [projectId, loadData]);
 
-  // Handle editing equipment properties (e.g., U-height)
+  // Handle editing equipment properties (e.g., U-height, shelf requirements)
   const handleEquipmentEdit = useCallback(async (equipmentId, updates) => {
     try {
       const eq = equipment.find(e => e.id === equipmentId);
-      if (!eq?.global_part_id) {
-        console.warn('[handleEquipmentEdit] No global_part_id for equipment:', equipmentId);
-        return;
-      }
 
       // Update global_parts with the u_height using RPC function (bypasses RLS)
-      if (updates.uHeight) {
+      if (updates.uHeight && eq?.global_part_id) {
         const { supabase } = await import('../lib/supabase');
         const { data, error } = await supabase.rpc('update_part_rack_info', {
           p_part_id: eq.global_part_id,
@@ -292,11 +288,35 @@ const RackLayoutPage = () => {
         console.log('[handleEquipmentEdit] Updated global_part via RPC:', data);
       }
 
+      // Update shelf requirements on project_equipment
+      if (updates.needsShelf !== undefined) {
+        await projectEquipmentService.updateEquipment(equipmentId, {
+          needs_shelf: updates.needsShelf,
+          shelf_u_height: updates.shelfUHeight || null,
+        });
+        console.log('[handleEquipmentEdit] Updated shelf requirements:', { needsShelf: updates.needsShelf, shelfUHeight: updates.shelfUHeight });
+      }
+
       await loadData();
     } catch (err) {
       console.error('Failed to update equipment:', err);
     }
   }, [equipment, loadData]);
+
+  // Handle moving equipment to a different room
+  const handleMoveRoom = useCallback(async (equipmentId, newRoomId) => {
+    try {
+      await projectEquipmentService.updateEquipment(equipmentId, {
+        room_id: newRoomId,
+        // Moving to a room means it's no longer head-end equipment
+        install_side: 'room',
+      });
+      console.log('[handleMoveRoom] Moved equipment to room:', newRoomId);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to move equipment to room:', err);
+    }
+  }, [loadData]);
 
   // Handle excluding equipment from rack layout
   const handleEquipmentExclude = useCallback(async (equipmentId) => {
@@ -588,11 +608,13 @@ const RackLayoutPage = () => {
                   rack={currentRack}
                   equipment={placedEquipment}
                   unplacedEquipment={unplacedEquipment}
+                  projectId={projectId}
                   onEquipmentDrop={handleEquipmentDrop}
                   onEquipmentMove={handleEquipmentMove}
                   onEquipmentRemove={handleEquipmentRemove}
                   onEquipmentEdit={handleEquipmentEdit}
                   onEquipmentExclude={handleEquipmentExclude}
+                  onMoveRoom={handleMoveRoom}
                   onAddShelf={handleAddShelf}
                   onRefresh={handleRefresh}
                 />
