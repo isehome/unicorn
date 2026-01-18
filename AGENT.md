@@ -5744,3 +5744,324 @@ Plaintext columns remain until cleanup. To rollback:
 | `src/services/equipmentService.js` | Use decrypted views and RPC functions |
 
 ---
+
+## 2026-01-18
+
+### Home Assistant UniFi Integration - Infrastructure Devices
+
+**Status:** ✅ COMPLETE - Full infrastructure device visibility working
+
+**Goal:** Display UniFi infrastructure devices (switches, APs, gateways) in Home Assistant via the Unicorn app - not just network clients.
+
+#### Problem Statement
+
+The existing UniFi integration only tracked network clients (devices connected to the network). Steve wanted to also see the actual UniFi infrastructure:
+- **Switches** (USW 16 PoE, etc.) - with port details and PoE power data
+- **Access Points** (UAP XG, etc.) - with connected station counts
+- **Gateways** (Dream Machine Pro/UDMPRO) - with CPU, memory, uptime
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    UniFi Integration Data Flow                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. Python Script (on Home Assistant):                                       │
+│     /config/python_scripts/unifi_client_collector.py                        │
+│           │                                                                  │
+│           ├── Authenticates to UniFi OS controller (https://192.168.1.1)    │
+│           ├── GET /proxy/network/api/s/{site}/stat/sta (clients)            │
+│           ├── GET /proxy/network/api/s/{site}/stat/device (infrastructure)  │
+│           └── Outputs JSON to stdout                                         │
+│                                                                              │
+│  2. Shell Command (runs every 60 seconds via automation):                    │
+│     shell_command.unifi_fetch_clients                                       │
+│           │                                                                  │
+│           └── Redirects stdout to /config/unifi_status.json                  │
+│                                                                              │
+│  3. Command Line Sensor (reads JSON file every 60 seconds):                  │
+│     sensor.unifi_connection_status                                          │
+│           │                                                                  │
+│           └── Exposes attributes: clients[], devices[], counts              │
+│                                                                              │
+│  4. Unicorn App API:                                                         │
+│     GET /api/ha/network-clients?project_id=xxx                              │
+│           │                                                                  │
+│           └── Fetches sensor state from HA API → Returns to frontend        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Files on Home Assistant
+
+| File | Purpose |
+|------|---------|
+| `/config/python_scripts/unifi_client_collector.py` | Main collector script |
+| `/config/unifi_status.json` | JSON output file (sensor reads this) |
+| `/config/configuration.yaml` | Contains shell_command and command_line sensor |
+
+#### Configuration in Home Assistant
+
+**Input Text Helpers (via HA UI):**
+- `input_text.unifi_controller_url` = `https://192.168.1.1`
+- `input_text.unifi_username` = `Unicorn1`
+- `input_text.unifi_password` = `Unicorn1one!`
+- `input_text.unifi_site` = `default`
+
+**Shell Command (configuration.yaml):**
+```yaml
+shell_command:
+  unifi_fetch_clients: 'python3 /config/python_scripts/unifi_client_collector.py "{{ states(''input_text.unifi_controller_url'') }}" "{{ states(''input_text.unifi_username'') }}" "{{ states(''input_text.unifi_password'') }}" "{{ states(''input_text.unifi_site'') }}" > /config/unifi_status.json '
+```
+
+**Command Line Sensor (configuration.yaml):**
+```yaml
+command_line:
+  - sensor:
+      name: "UniFi Connection Status"
+      unique_id: unifi_connection_status
+      command: "cat /config/unifi_status.json"
+      value_template: "{{ value_json.status | default('unknown') }}"
+      json_attributes:
+        - status
+        - message
+        - timestamp
+        - client_count
+        - clients
+        - device_count
+        - devices
+        - switch_count
+        - ap_count
+        - gateway_count
+      scan_interval: 60
+```
+
+#### Python Script Output Schema
+
+```json
+{
+  "status": "connected",
+  "message": "Successfully fetched 5 clients and 3 devices",
+  "timestamp": "2026-01-18T16:09:03.485296",
+  "client_count": 5,
+  "clients": [
+    {
+      "mac": "48:a6:b8:d8:5c:e0",
+      "hostname": "SonosZP",
+      "ip": "192.168.1.82",
+      "is_wired": false,
+      "network": "Default",
+      "vlan": 1,
+      "connection_type": "Wireless",
+      "ssid": "Zshop",
+      "signal": -45,
+      "switch_mac": "N/A",
+      "switch_name": "N/A",
+      "switch_port": "N/A",
+      "uptime": 347202
+    }
+  ],
+  "device_count": 3,
+  "devices": [
+    {
+      "mac": "74:83:c2:f8:01:20",
+      "name": "UAP XG",
+      "model": "UCXG",
+      "type": "uap",
+      "category": "access_point",
+      "ip": "192.168.1.96",
+      "state": 1,
+      "adopted": true,
+      "uptime": 347262,
+      "version": "6.7.35.15586",
+      "num_sta": 2,
+      "cpu": "2.1",
+      "mem": "43.9"
+    },
+    {
+      "mac": "24:5a:4c:ab:6c:fa",
+      "name": "USW 16 PoE",
+      "model": "USL16P",
+      "type": "usw",
+      "category": "switch",
+      "ip": "192.168.1.235",
+      "state": 1,
+      "adopted": true,
+      "uptime": 347284,
+      "version": "7.2.123.16565",
+      "ports_total": 18,
+      "ports_used": 5,
+      "port_table": [
+        {
+          "port_idx": 1,
+          "name": "Port 1",
+          "up": true,
+          "speed": 1000,
+          "poe_enable": true,
+          "poe_power": "4.18",
+          "is_uplink": false
+        }
+      ]
+    },
+    {
+      "mac": "74:ac:b9:3b:59:57",
+      "name": "Zionsville Shop",
+      "model": "UDMPRO",
+      "type": "udm",
+      "category": "gateway",
+      "ip": "104.137.214.72",
+      "state": 1,
+      "adopted": true,
+      "uptime": 347311,
+      "version": "4.4.6.27560",
+      "ports_total": 11,
+      "cpu": "13.6",
+      "mem": "36.3"
+    }
+  ],
+  "switch_count": 1,
+  "ap_count": 1,
+  "gateway_count": 1
+}
+```
+
+#### Bugs Fixed
+
+**Bug 1: INFO Log Line Breaking JSON Parse**
+
+**Problem:** The JSON file started with an INFO log line instead of `{`, causing parse errors:
+```
+INFO:__main__:Successfully authenticated with UniFi OS controller
+{"status": "connected", ...}
+```
+
+**Root Cause:** Shell command used `2>&1` which redirected stderr (containing the INFO log) to the output file along with stdout.
+
+**Fix:** Removed `2>&1` from the shell_command in configuration.yaml:
+```yaml
+# Before (broken):
+unifi_fetch_clients: '... > /config/unifi_status.json 2>&1'
+
+# After (fixed):
+unifi_fetch_clients: '... > /config/unifi_status.json '
+```
+
+**Bug 2: Authentication Failed**
+
+**Problem:** Sensor showed "Authentication failed" error.
+
+**Root Cause:** Input text helpers had incorrect values (old credentials).
+
+**Fix:** Updated credentials via Home Assistant Helpers UI:
+- Username: `Unicorn1`
+- Password: `Unicorn1one!`
+- URL: `https://192.168.1.1` (must include https:// prefix)
+
+#### Unicorn App Files
+
+| File | Purpose |
+|------|---------|
+| `api/ha/network-clients.js` | API endpoint to fetch clients from HA sensor |
+| `api/ha/sync-clients.js` | API endpoint to sync clients to Supabase |
+| `src/components/HomeAssistantSettings.js` | UI component showing network clients |
+| `ha-unifi-integration/scripts/unifi_clients.py` | Reference Python script (repo copy) |
+| `ha-unifi-integration/configuration_additions.yaml` | Reference HA configuration |
+
+#### API Endpoint: GET /api/ha/network-clients
+
+**Request:**
+```
+GET /api/ha/network-clients?project_id=32e2fa08-3551-4749-b749-7478aa4781ce
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "summary": {
+    "total": 5,
+    "wired": 2,
+    "wireless": 3
+  },
+  "clients": [
+    {
+      "mac_address": "78:55:36:00:85:c7",
+      "ip_address": "192.168.1.149",
+      "hostname": "homeassistant",
+      "name": "homeassistant",
+      "is_wired": true,
+      "is_wireless": false,
+      "connection_type": "wired",
+      "switch_name": "USW 16 PoE",
+      "switch_port": 15,
+      "ssid": null,
+      "uptime_seconds": 268552,
+      "uptime_formatted": "3d 2h",
+      "is_connected": true
+    }
+  ],
+  "source": "sensor.unifi_connection_status"
+}
+```
+
+#### Frontend UI (HomeAssistantSettings.js)
+
+The Network Clients section shows:
+- Filter buttons: All / Wired / Wireless
+- Client cards with:
+  - Device icon (cable for wired, wifi for wireless)
+  - Hostname and MAC address
+  - IP address
+  - For wired: Switch name and port number
+  - For wireless: SSID, AP name, signal strength
+  - Uptime badge
+
+#### Infrastructure Devices Available
+
+**After this implementation, the sensor exposes:**
+
+1. **UAP XG** (Access Point)
+   - Model: UCXG
+   - IP: 192.168.1.96
+   - Connected stations: 2
+   - CPU/Memory usage
+
+2. **USW 16 PoE** (Switch)
+   - Model: USL16P
+   - IP: 192.168.1.235
+   - 18 total ports, 5 in use
+   - Full port table with PoE power data
+
+3. **Zionsville Shop** (Dream Machine Pro)
+   - Model: UDMPRO
+   - WAN IP: 104.137.214.72
+   - 11 ports
+   - CPU: 13.6%, Memory: 36.3%
+
+#### Testing Commands (via HA SSH)
+
+```bash
+# Run Python script manually
+python3 /config/python_scripts/unifi_client_collector.py https://192.168.1.1 Unicorn1 'Unicorn1one!' default > /config/unifi_status.json
+
+# Verify JSON is valid
+jq '.status, .device_count, (.devices[] | .name)' /config/unifi_status.json
+
+# Check first character (should be '{')
+head -1 /config/unifi_status.json | cut -c1-50
+
+# Force sensor update
+ha core restart
+```
+
+#### Key Learnings
+
+1. **Python logging to stderr:** Use `logging.basicConfig(stream=sys.stderr)` to keep logs separate from JSON output
+2. **Shell command redirection:** Don't use `2>&1` if you only want stdout in the output file
+3. **UniFi API endpoints:**
+   - Clients: `/proxy/network/api/s/{site}/stat/sta`
+   - Devices: `/proxy/network/api/s/{site}/stat/device`
+4. **URL format:** UniFi controller URL must include `https://` prefix
+
+---

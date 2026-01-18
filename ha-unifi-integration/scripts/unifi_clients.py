@@ -104,8 +104,8 @@ def get_clients(session, config):
 
 def get_devices(session, config):
     """
-    Fetch all UniFi network devices (switches, APs) for reference.
-    Useful for mapping sw_mac to device names.
+    Fetch all UniFi network devices (switches, APs, gateways) with full details.
+    Returns tuple of (name_map, devices_list).
     """
     devices_url = f"https://{config['host']}/proxy/network/api/s/{config['site']}/stat/device"
 
@@ -117,10 +117,93 @@ def get_devices(session, config):
         )
         response.raise_for_status()
         data = response.json()
-        return {d.get("mac"): d.get("name", d.get("model", "Unknown"))
-                for d in data.get("data", [])}
+        raw_devices = data.get("data", [])
+
+        # Build name mapping for client lookups
+        name_map = {d.get("mac"): d.get("name", d.get("model", "Unknown"))
+                    for d in raw_devices}
+
+        # Format full device list
+        devices_list = [format_device(d) for d in raw_devices]
+
+        return name_map, devices_list
     except requests.exceptions.RequestException:
-        return {}
+        return {}, []
+
+
+def format_device(device):
+    """
+    Format a UniFi device (switch, AP, gateway) with relevant fields.
+    """
+    device_type = device.get("type", "unknown")
+
+    # Determine device category
+    if device_type in ["usw", "usw-pro", "usw-flex"]:
+        category = "switch"
+    elif device_type in ["uap", "uap-pro", "uap-ac", "u6"]:
+        category = "access_point"
+    elif device_type in ["ugw", "udm", "udr", "uxg"]:
+        category = "gateway"
+    else:
+        category = device_type
+
+    # Build port summary for switches
+    port_table = device.get("port_table", [])
+    ports_used = sum(1 for p in port_table if p.get("up", False))
+    ports_total = len(port_table)
+
+    return {
+        # Identity
+        "mac": device.get("mac", ""),
+        "name": device.get("name", device.get("model", "Unknown")),
+        "model": device.get("model", ""),
+        "type": device_type,
+        "category": category,
+
+        # Network
+        "ip": device.get("ip", ""),
+        "gateway_mac": device.get("gateway_mac", ""),
+
+        # Status
+        "state": device.get("state", 0),  # 1 = connected
+        "adopted": device.get("adopted", False),
+        "uptime": device.get("uptime", 0),
+        "last_seen": device.get("last_seen", 0),
+
+        # Version info
+        "version": device.get("version", ""),
+        "upgradable": device.get("upgradable", False),
+
+        # Switch-specific
+        "ports_total": ports_total,
+        "ports_used": ports_used,
+        "port_table": [format_port(p) for p in port_table] if category == "switch" else [],
+
+        # AP-specific
+        "num_sta": device.get("num_sta", 0),  # Number of connected stations
+        "channel": device.get("channel", ""),
+        "radio_table": device.get("radio_table", []),
+
+        # System stats
+        "cpu": device.get("system-stats", {}).get("cpu", ""),
+        "mem": device.get("system-stats", {}).get("mem", ""),
+        "loadavg_1": device.get("sys_stats", {}).get("loadavg_1", ""),
+    }
+
+
+def format_port(port):
+    """Format a switch port entry."""
+    return {
+        "port_idx": port.get("port_idx"),
+        "name": port.get("name", f"Port {port.get('port_idx', '?')}"),
+        "up": port.get("up", False),
+        "speed": port.get("speed", 0),
+        "full_duplex": port.get("full_duplex", False),
+        "poe_enable": port.get("poe_enable", False),
+        "poe_mode": port.get("poe_mode", ""),
+        "poe_power": port.get("poe_power", ""),
+        "is_uplink": port.get("is_uplink", False),
+    }
 
 
 def format_client(client, device_names):
@@ -176,14 +259,15 @@ def format_client(client, device_names):
 
 
 def main():
-    """Main entry point - fetch and output client data as JSON."""
+    """Main entry point - fetch and output client and device data as JSON."""
     config = get_config()
 
     # Validate required config
     if not config["username"] or not config["password"]:
         print(json.dumps({
             "error": "Missing UNIFI_USERNAME or UNIFI_PASSWORD environment variables",
-            "clients": []
+            "clients": [],
+            "devices": []
         }))
         sys.exit(1)
 
@@ -194,8 +278,8 @@ def main():
     if not authenticate(session, config):
         sys.exit(1)
 
-    # Get device names for switch mapping
-    device_names = get_devices(session, config)
+    # Get devices (returns name_map for client lookups AND full device list)
+    device_names, devices = get_devices(session, config)
 
     # Get all clients
     raw_clients = get_clients(session, config)
@@ -203,15 +287,31 @@ def main():
     # Format clients with relevant fields
     clients = [format_client(c, device_names) for c in raw_clients]
 
-    # Sort by hostname for consistent ordering
+    # Sort clients by hostname for consistent ordering
     clients.sort(key=lambda x: x.get("hostname", "").lower())
+
+    # Sort devices by name
+    devices.sort(key=lambda x: x.get("name", "").lower())
+
+    # Count device types
+    switches = [d for d in devices if d.get("category") == "switch"]
+    access_points = [d for d in devices if d.get("category") == "access_point"]
+    gateways = [d for d in devices if d.get("category") == "gateway"]
 
     # Output JSON for Home Assistant command_line sensor
     output = {
+        # Client data
         "clients": clients,
         "total_count": len(clients),
         "wired_count": sum(1 for c in clients if c.get("is_wired")),
         "wireless_count": sum(1 for c in clients if not c.get("is_wired")),
+
+        # Device data (NEW!)
+        "devices": devices,
+        "device_count": len(devices),
+        "switch_count": len(switches),
+        "ap_count": len(access_points),
+        "gateway_count": len(gateways),
     }
 
     print(json.dumps(output))

@@ -11,7 +11,7 @@
 
 sensor:
   - platform: command_line
-    name: unifi_network_clients
+    name: unifi_connection_status
     # The command passes credentials via environment variables for security
     command: >
       UNIFI_HOST={{ states('input_text.unifi_host') | default('!secret unifi_host', true) }}
@@ -25,12 +25,17 @@ sensor:
     command_timeout: 30
     # The main sensor value shows total client count
     value_template: "{{ value_json.total_count | default(0) }}"
-    # Store all client data in attributes
+    # Store all client AND device data in attributes
     json_attributes:
       - clients
       - total_count
       - wired_count
       - wireless_count
+      - devices
+      - device_count
+      - switch_count
+      - ap_count
+      - gateway_count
     # Icon for the sensor
     icon: mdi:lan
 
