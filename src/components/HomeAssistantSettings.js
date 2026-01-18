@@ -422,7 +422,11 @@ function HomeAssistantSettings({ projectId }) {
     setLoadingClients(true);
     setClientsError(null);
     try {
-      const response = await fetch(`/api/ha/network-clients?project_id=${projectId}`);
+      // Use Vercel production URL for API calls in development (local dev doesn't have serverless functions)
+      const apiBase = window.location.hostname === 'localhost'
+        ? 'https://unicorn-one.vercel.app'
+        : '';
+      const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
       const result = await response.json();
 
       if (!response.ok) {
