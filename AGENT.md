@@ -6065,3 +6065,101 @@ ha core restart
 4. **URL format:** UniFi controller URL must include `https://` prefix
 
 ---
+
+### Equipment Network Linking (Wire Drop Integration)
+
+**Status:** ✅ COMPLETE
+
+Connected the UniFi network client data to project equipment in the Wire Drop detail view.
+
+#### User Flow
+
+1. Technician opens Wire Drop for a device (e.g., Apple TV)
+2. In the "Linked Equipment" section, clicks **"Connect Network"** button
+3. `HANetworkClientSelector` component loads live network clients from HA
+4. Technician selects the matching network client from the list
+5. System associates MAC address with the equipment
+6. **Auto-populated data:**
+   - IP Address
+   - MAC Address
+   - Hostname
+   - Switch Name (for wired)
+   - Switch Port (for wired)
+   - SSID (for wireless)
+   - AP Name (for wireless)
+7. Connection is persistent but can be changed/cleared anytime
+
+#### Component: HANetworkClientSelector.jsx
+
+**Location:** `src/components/HANetworkClientSelector.jsx`
+
+**Props:**
+| Prop | Type | Description |
+|------|------|-------------|
+| `equipment` | object | Full equipment object (optional, loads from ID if not provided) |
+| `equipmentId` | UUID | Equipment ID to link |
+| `projectId` | UUID | Project ID (required for HA API call) |
+| `onClientLinked` | function | Callback when client is linked/unlinked |
+| `palette` | object | Theme palette colors |
+| `mode` | string | 'light' or 'dark' |
+
+**Features:**
+- Fetches live network clients from `/api/ha/network-clients`
+- Filter by connection type (All/Wired/Wireless)
+- Search by name, MAC, or IP
+- Auto-match by existing MAC address
+- Shows full connection details before selection
+- Persists to `project_equipment` table
+
+#### Database Fields Updated
+
+**Table:** `project_equipment`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `unifi_client_mac` | text | MAC address of connected device |
+| `unifi_last_ip` | text | Last known IP address |
+| `unifi_last_seen` | timestamptz | When connection was last verified |
+| `unifi_data` | jsonb | Full connection details (see below) |
+| `ha_client_mac` | text | HA-specific MAC tracking |
+
+**`unifi_data` JSON structure:**
+```json
+{
+  "hostname": "AppleTV-Living-Room",
+  "is_wired": true,
+  "connection_type": "wired",
+  "switch_name": "USW 16 PoE",
+  "switch_port": 15,
+  "switch_mac": "24:5a:4c:ab:6c:fa",
+  "ssid": null,
+  "ap_name": null,
+  "ap_mac": null,
+  "wifi_signal": null,
+  "uptime_seconds": 347202,
+  "uptime_formatted": "4d 0h",
+  "synced_from": "home_assistant",
+  "synced_at": "2026-01-18T16:30:00Z"
+}
+```
+
+#### Wire Drop Display
+
+**In WireDropDetail.js:**
+
+The "Network Connection" section now displays:
+- IP Address
+- MAC Address
+- Hostname (if available)
+- **For wired:** Switch name + Port badge
+- **For wireless:** SSID + AP name
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/HANetworkClientSelector.jsx` | **NEW** - Main selector component |
+| `src/components/WireDropDetail.js` | Added import, replaced UniFiClientSelector, enhanced display |
+| `api/ha/network-clients.js` | Fixed field mapping (sw_name → switch_name) |
+
+---
