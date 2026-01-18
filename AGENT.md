@@ -6162,4 +6162,84 @@ The "Network Connection" section now displays:
 | `src/components/WireDropDetail.js` | Added import, replaced UniFiClientSelector, enhanced display |
 | `api/ha/network-clients.js` | Fixed field mapping (sw_name → switch_name) |
 
+### Localhost API Fix
+
+**Problem:** Local development (`localhost:3001`) was showing JSON parse errors when trying to load network clients because Vercel serverless functions don't exist locally.
+
+**Error:** `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`
+
+**Solution:** Added localhost detection to use Vercel production URL for API calls in development:
+
+```javascript
+// Use Vercel production URL for API calls in development
+const apiBase = window.location.hostname === 'localhost'
+  ? 'https://unicorn-one.vercel.app'
+  : '';
+const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
+```
+
+**Files Updated:**
+| File | Change |
+|------|--------|
+| `src/components/HANetworkClientSelector.jsx` | Added localhost detection for API calls |
+| `src/components/HomeAssistantSettings.js` | Added localhost detection for Network Clients section |
+
+---
+
+### Rack Layout Equipment Modal Enhancements
+
+**Goal:** Improve the equipment editing experience in the rack layout page for non-rack-mountable equipment (like amps) and allow moving equipment between rooms.
+
+#### New Features
+
+1. **Needs Shelf Space Option** (Blue section)
+   - Checkbox: "This equipment needs a shelf"
+   - Shelf space selector: 1U, 2U, 3U, 4U buttons
+   - "Save Shelf Requirement" button
+   - Perfect for amps, receivers, and other non-rack-mountable devices
+
+2. **Move to Different Room Option** (Amber section)
+   - Shows current location (e.g., "Currently: Head End (no room assigned)")
+   - Room dropdown selector (loads rooms dynamically from `project_rooms`)
+   - "Move Equipment" button
+   - Moves equipment from head-end to a specific room
+
+#### Visual Changes
+
+Equipment cards in the DROP ZONE now show:
+- **Shelf items:** Blue border, Layers icon, "XU shelf" badge (e.g., "2U shelf")
+- **Rack-mountable items:** Standard gray border, Server icon, "XU" badge
+- **Unset items:** Yellow dashed border, "?U" badge
+
+#### Database Changes
+
+**New columns in `project_equipment`:**
+```sql
+ALTER TABLE project_equipment
+ADD COLUMN IF NOT EXISTS needs_shelf BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS shelf_u_height INTEGER DEFAULT NULL;
+```
+
+**Migration:** `supabase/migrations/20260118_add_shelf_requirement_to_equipment.sql`
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Enhanced EquipmentEditModal with shelf/room options, updated UnplacedEquipmentCard |
+| `src/pages/RackLayoutPage.js` | Added `handleMoveRoom` callback, enhanced `handleEquipmentEdit` for shelf fields |
+| `src/services/projectEquipmentService.js` | Added `needs_shelf` and `shelf_u_height` to updateEquipment |
+
+#### User Flow
+
+1. Technician opens Rack Layout page
+2. Scrolls to DROP ZONE with unplaced equipment
+3. Clicks gear icon on equipment (e.g., Sonos amp)
+4. Modal shows options:
+   - **Set U-Height:** For rack-mountable equipment
+   - **Needs Shelf Space:** Check box, select shelf U needed
+   - **Move to Different Room:** Select room from dropdown
+   - **Exclude from Rack Layout:** For non-rack items (cables, accessories)
+5. Saves and equipment card updates with appropriate badge/icon
+
 ---
