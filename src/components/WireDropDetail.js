@@ -13,6 +13,7 @@ import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import QRCode from 'qrcode';
 import UniFiClientSelector from './UniFiClientSelector';
+import HANetworkClientSelector from './HANetworkClientSelector';
 
 import { enqueueUpload } from '../lib/offline';
 import { compressImage } from '../lib/images';
@@ -1624,7 +1625,7 @@ const WireDropDetail = () => {
                               </p>
                             )}
 
-                            {/* UniFi Connection Info */}
+                            {/* Network Connection Info */}
                             <div className="mt-2 pt-2 border-t" style={{ borderColor: styles.card.borderColor }}>
                               <div className="flex items-center gap-1 mb-1">
                                 <Network size={12} style={styles.subtleText} />
@@ -1649,6 +1650,46 @@ const WireDropDetail = () => {
                                       <span className="text-xs" style={styles.subtleText}>Hostname:</span>
                                       <span className="text-xs font-mono" style={styles.textPrimary}>
                                         {primaryRoomEquipment.unifi_data.hostname}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {/* Switch info for wired connections */}
+                                  {primaryRoomEquipment.unifi_data?.is_wired && primaryRoomEquipment.unifi_data?.switch_name && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs" style={styles.subtleText}>Switch:</span>
+                                      <span className="text-xs font-medium" style={styles.textPrimary}>
+                                        {primaryRoomEquipment.unifi_data.switch_name}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {primaryRoomEquipment.unifi_data?.is_wired && primaryRoomEquipment.unifi_data?.switch_port && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs" style={styles.subtleText}>Port:</span>
+                                      <span
+                                        className="text-xs font-medium px-1.5 py-0.5 rounded"
+                                        style={{
+                                          backgroundColor: `${palette.info}20`,
+                                          color: palette.info
+                                        }}
+                                      >
+                                        Port {primaryRoomEquipment.unifi_data.switch_port}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {/* WiFi info for wireless connections */}
+                                  {!primaryRoomEquipment.unifi_data?.is_wired && primaryRoomEquipment.unifi_data?.ssid && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs" style={styles.subtleText}>SSID:</span>
+                                      <span className="text-xs font-medium" style={styles.textPrimary}>
+                                        {primaryRoomEquipment.unifi_data.ssid}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {!primaryRoomEquipment.unifi_data?.is_wired && primaryRoomEquipment.unifi_data?.ap_name && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs" style={styles.subtleText}>AP:</span>
+                                      <span className="text-xs font-medium" style={styles.textPrimary}>
+                                        {primaryRoomEquipment.unifi_data.ap_name}
                                       </span>
                                     </div>
                                   )}
@@ -1719,16 +1760,20 @@ const WireDropDetail = () => {
                           </Button>
                         </div>
 
-                        {/* UniFi Client Selector */}
+                        {/* Network Client Selector (via Home Assistant) */}
                         {showUniFiSelector && wireDrop?.project_id && (
                           <div className="pt-3 mt-3 border-t" style={{ borderColor: styles.card.borderColor }}>
-                            <UniFiClientSelector
+                            <HANetworkClientSelector
                               projectId={wireDrop.project_id}
+                              equipment={primaryRoomEquipment}
                               equipmentId={primaryRoomEquipment.id}
-                              wireDropId={wireDrop.id}
-                              onAssign={async () => {
+                              palette={palette}
+                              mode={mode}
+                              onClientLinked={async (equipmentId, clientData) => {
+                                console.log('[WireDropDetail] Network client linked:', { equipmentId, clientData });
                                 await loadEquipment();
-                                setShowUniFiSelector(false);
+                                // Keep selector open if connected so user can see the details
+                                // setShowUniFiSelector(false);
                               }}
                             />
                           </div>

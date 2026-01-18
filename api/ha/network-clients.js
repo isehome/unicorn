@@ -120,9 +120,10 @@ module.exports = async (req, res) => {
         connection_type: c.is_wired ? 'wired' : 'wireless',
 
         // Wired connection info (switch/port)
-        switch_name: c.switch_name || null,
-        switch_port: c.switch_port || null,
-        switch_mac: c.switch_mac || null,
+        // Note: Python script outputs sw_name/sw_port, but we normalize to switch_name/switch_port
+        switch_name: c.sw_name || c.switch_name || null,
+        switch_port: c.sw_port || c.switch_port || null,
+        switch_mac: c.sw_mac || c.switch_mac || null,
 
         // Wireless connection info
         ssid: c.ssid && c.ssid !== 'N/A' ? c.ssid : null,
