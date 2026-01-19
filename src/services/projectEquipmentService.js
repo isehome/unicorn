@@ -449,6 +449,63 @@ const resetPreviousImports = async (projectId) => {
       .from('wire_drop_equipment_links')
       .delete()
       .in('project_equipment_id', equipmentIds);
+
+    // Handle purchase order items - return internal inventory before deleting
+    // First, find PO items that came from internal inventory and need to be returned
+    const { data: poItems, error: poItemsFetchError } = await supabase
+      .from('purchase_order_items')
+      .select(`
+        id,
+        quantity_ordered,
+        project_equipment_id,
+        project_equipment:project_equipment_id (
+          global_part_id
+        ),
+        purchase_order:po_id (
+          supplier:supplier_id (
+            is_internal_inventory
+          )
+        )
+      `)
+      .in('project_equipment_id', equipmentIds);
+
+    if (poItemsFetchError) {
+      console.error('[Equipment Delete] Error fetching PO items:', poItemsFetchError);
+    } else if (poItems && poItems.length > 0) {
+      console.log(`[Equipment Delete] Found ${poItems.length} PO items to process`);
+
+      // Return inventory for items from internal inventory
+      for (const item of poItems) {
+        const isInternalInventory = item.purchase_order?.supplier?.is_internal_inventory;
+        const globalPartId = item.project_equipment?.global_part_id;
+        const quantity = item.quantity_ordered || 0;
+
+        if (isInternalInventory && globalPartId && quantity > 0) {
+          console.log(`[Equipment Delete] Returning ${quantity} units to internal inventory for part ${globalPartId}`);
+          const { error: incrementError } = await supabase.rpc('increment_global_inventory', {
+            p_global_part_id: globalPartId,
+            p_quantity: quantity
+          });
+
+          if (incrementError) {
+            console.error('[Equipment Delete] Error returning inventory:', incrementError);
+          }
+        }
+      }
+    }
+
+    // Now delete the PO items
+    const { error: poItemsError } = await supabase
+      .from('purchase_order_items')
+      .delete()
+      .in('project_equipment_id', equipmentIds);
+
+    if (poItemsError) {
+      console.error('[Equipment Delete] Error deleting PO items:', poItemsError);
+      // Don't throw - try to continue with equipment deletion
+    } else {
+      console.log('[Equipment Delete] Deleted PO items for equipment being replaced');
+    }
   }
 
   // Step 3: Delete ALL equipment in REPLACE mode (not just CSV imports)
@@ -883,17 +940,33 @@ export const projectEquipmentService = {
         console.log('[Auth Check] User role:', session?.user?.role || 'anon');
         console.log('[Auth Check] User ID:', session?.user?.id || 'none');
 
-        const { data: inserted, error: equipmentError } = await supabase
-          .from('project_equipment')
-          .insert(equipmentRecords)
-          .select();
-
-        if (equipmentError) {
-          console.error('[Equipment Insert] Error:', equipmentError);
-          throw equipmentError;
+        // Batch insert to avoid statement timeout on large CSVs
+        const BATCH_SIZE = 100;
+        const batches = [];
+        for (let i = 0; i < equipmentRecords.length; i += BATCH_SIZE) {
+          batches.push(equipmentRecords.slice(i, i + BATCH_SIZE));
         }
 
-        insertedEquipment = inserted || [];
+        console.log(`[Equipment Insert] Inserting ${equipmentRecords.length} records in ${batches.length} batches`);
+
+        for (let i = 0; i < batches.length; i++) {
+          const batch = batches[i];
+          console.log(`[Equipment Insert] Processing batch ${i + 1}/${batches.length} (${batch.length} records)`);
+
+          const { data: inserted, error: equipmentError } = await supabase
+            .from('project_equipment')
+            .insert(batch)
+            .select();
+
+          if (equipmentError) {
+            console.error(`[Equipment Insert] Error in batch ${i + 1}:`, equipmentError);
+            throw equipmentError;
+          }
+
+          insertedEquipment.push(...(inserted || []));
+        }
+
+        console.log(`[Equipment Insert] Successfully inserted ${insertedEquipment.length} records`);
 
         if (insertedEquipment.length > 0) {
           const inventoryPayload = insertedEquipment.map((item) => ({
@@ -906,8 +979,15 @@ export const projectEquipmentService = {
             notes: null
           }));
 
+          // Batch inventory inserts too
           if (inventoryPayload.length > 0) {
-            await supabase.from('project_equipment_inventory').insert(inventoryPayload);
+            const inventoryBatches = [];
+            for (let i = 0; i < inventoryPayload.length; i += BATCH_SIZE) {
+              inventoryBatches.push(inventoryPayload.slice(i, i + BATCH_SIZE));
+            }
+            for (const invBatch of inventoryBatches) {
+              await supabase.from('project_equipment_inventory').insert(invBatch);
+            }
           }
 
           await syncGlobalParts(insertedEquipment, projectId, batchId);
@@ -1251,7 +1331,12 @@ export const projectEquipmentService = {
           u_height,
           is_rack_mountable,
           power_watts,
-          power_outlets
+          power_outlets,
+          is_power_device,
+          power_outlets_provided,
+          power_output_watts,
+          ups_va_rating,
+          ups_runtime_minutes
         )
       `)
       .eq('project_id', projectId)

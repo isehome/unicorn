@@ -5,7 +5,7 @@
  */
 
 import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
-import { Plus, RefreshCw, Server, GripVertical, X, Settings, Layers, Home, ChevronDown, Link2, Trash2, ExternalLink, Globe } from 'lucide-react';
+import { Plus, RefreshCw, Server, GripVertical, X, Settings, Layers, Home, ChevronDown, Link2, Trash2, ExternalLink, Globe, Zap, Plug } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 // Constants
@@ -16,6 +16,29 @@ const U_HEIGHT = 50; // pixels per rack unit (slightly smaller for cleaner look)
  */
 const getEquipmentUHeight = (equipment) => {
   return equipment?.global_part?.u_height || equipment?.u_height || 1;
+};
+
+/**
+ * Extract part name for rack view display
+ * Full name format is "Room Name - Part Name N" for organization,
+ * but in rack view we strip the room prefix to show just the part name
+ */
+const getEquipmentDisplayName = (equipment) => {
+  // Try global_part.name if linked
+  if (equipment?.global_part?.name) return equipment.global_part.name;
+
+  // Extract part name from name (format: "Room - Part Name N")
+  const fullName = equipment?.instance_name || equipment?.name;
+  if (fullName && fullName.includes(' - ')) {
+    // Take everything after the first " - " (the part name portion)
+    const parts = fullName.split(' - ');
+    if (parts.length > 1) {
+      return parts.slice(1).join(' - ');
+    }
+  }
+
+  // Fallbacks
+  return equipment?.model || equipment?.part_number || fullName || 'Unnamed Equipment';
 };
 
 /**
@@ -32,7 +55,7 @@ const EquipmentBlock = memo(({
   onClick,
 }) => {
   const uHeight = getEquipmentUHeight(equipment);
-  const displayName = equipment.global_part?.name || equipment.description || equipment.name || 'Unnamed Equipment';
+  const displayName = getEquipmentDisplayName(equipment);
   const isLinked = networkInfo?.linked;
   const ip = networkInfo?.ip;
 
@@ -173,7 +196,7 @@ DropPreview.displayName = 'DropPreview';
 const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
   const [isDragging, setIsDragging] = useState(false);
   const uHeight = getEquipmentUHeight(equipment);
-  const displayName = equipment.global_part?.name || equipment.description || 'Unnamed';
+  const displayName = getEquipmentDisplayName(equipment);
   const hasUHeight = uHeight > 0 && equipment.global_part?.u_height;
   const needsShelf = equipment.needs_shelf;
 
@@ -256,9 +279,18 @@ const EquipmentEditModal = memo(({
   const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
 
-  const displayName = equipment?.global_part?.name || equipment?.description || 'Unnamed Equipment';
-  const manufacturer = equipment?.global_part?.manufacturer || '';
-  const model = equipment?.global_part?.model || '';
+  // Power device settings
+  const [isPowerDevice, setIsPowerDevice] = useState(equipment?.global_part?.is_power_device || false);
+  const [powerOutletsProvided, setPowerOutletsProvided] = useState(equipment?.global_part?.power_outlets_provided || 0);
+  const [powerOutputWatts, setPowerOutputWatts] = useState(equipment?.global_part?.power_output_watts || 0);
+  const [upsVaRating, setUpsVaRating] = useState(equipment?.global_part?.ups_va_rating || 0);
+  const [upsRuntimeMinutes, setUpsRuntimeMinutes] = useState(equipment?.global_part?.ups_runtime_minutes || 0);
+  const [powerWatts, setPowerWatts] = useState(equipment?.global_part?.power_watts || 0);
+  const [powerOutletsRequired, setPowerOutletsRequired] = useState(equipment?.global_part?.power_outlets || 1);
+
+  const displayName = getEquipmentDisplayName(equipment);
+  const manufacturer = equipment?.global_part?.manufacturer || equipment?.manufacturer || '';
+  const model = equipment?.global_part?.model || equipment?.model || '';
   const hasGlobalPart = !!equipment?.global_part_id;
   const isPlaced = equipment?.rack_position_u != null;
   const isLinked = networkInfo?.linked;
@@ -307,6 +339,29 @@ const EquipmentEditModal = memo(({
       onClose();
     } catch (err) {
       console.error('Failed to save:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePowerSettings = async () => {
+    if (!hasGlobalPart) return;
+    setSaving(true);
+    try {
+      await onSave(equipment.id, {
+        powerSettings: {
+          is_power_device: isPowerDevice,
+          power_outlets_provided: isPowerDevice ? powerOutletsProvided : 0,
+          power_output_watts: isPowerDevice ? powerOutputWatts : null,
+          ups_va_rating: isPowerDevice ? upsVaRating : null,
+          ups_runtime_minutes: isPowerDevice ? upsRuntimeMinutes : null,
+          power_watts: powerWatts,
+          power_outlets: powerOutletsRequired,
+        },
+      });
+      onClose();
+    } catch (err) {
+      console.error('Failed to save power settings:', err);
     } finally {
       setSaving(false);
     }
@@ -611,6 +666,128 @@ const EquipmentEditModal = memo(({
               </button>
             </div>
           </div>
+
+          {/* Power Settings Section */}
+          {hasGlobalPart && (
+            <div className="rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="px-4 py-3 bg-zinc-800/50 flex items-center gap-2">
+                <Zap size={16} className="text-amber-400" />
+                <span className="text-sm font-medium text-zinc-200">Power Settings</span>
+              </div>
+              <div className="p-4 space-y-4">
+                {/* Power Device Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isPowerDevice}
+                    onChange={(e) => setIsPowerDevice(e.target.checked)}
+                    className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-amber-500"
+                  />
+                  <span className="text-sm text-zinc-300">This is a power distribution device</span>
+                  <span className="text-xs text-zinc-500">(UPS, PDU, surge protector)</span>
+                </label>
+
+                {isPowerDevice ? (
+                  /* Power Device Settings */
+                  <div className="space-y-3 p-3 rounded-lg bg-amber-900/20 border border-amber-800/50">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-amber-400 w-28">Outlets provided:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        value={powerOutletsProvided}
+                        onChange={(e) => setPowerOutletsProvided(parseInt(e.target.value) || 0)}
+                        className="w-20 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                      />
+                      <div className="flex items-center gap-0.5">
+                        {Array.from({ length: Math.min(powerOutletsProvided, 8) }).map((_, i) => (
+                          <Plug key={i} size={10} className="text-amber-400" />
+                        ))}
+                        {powerOutletsProvided > 8 && <span className="text-xs text-amber-400 ml-1">+{powerOutletsProvided - 8}</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-amber-400 w-28">Max output (W):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10000"
+                        value={powerOutputWatts}
+                        onChange={(e) => setPowerOutputWatts(parseInt(e.target.value) || 0)}
+                        className="w-24 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-amber-400 w-28">VA rating (UPS):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20000"
+                        value={upsVaRating}
+                        onChange={(e) => setUpsVaRating(parseInt(e.target.value) || 0)}
+                        className="w-24 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                        placeholder="0 = N/A"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-amber-400 w-28">Runtime (min):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="480"
+                        value={upsRuntimeMinutes}
+                        onChange={(e) => setUpsRuntimeMinutes(parseInt(e.target.value) || 0)}
+                        className="w-24 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                        placeholder="0 = N/A"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Regular Device Power Consumption */
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-zinc-400 w-28">Power draw (W):</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5000"
+                        value={powerWatts}
+                        onChange={(e) => setPowerWatts(parseInt(e.target.value) || 0)}
+                        className="w-24 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-zinc-400 w-28">Outlets needed:</label>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4].map((n) => (
+                          <button
+                            key={n}
+                            onClick={() => setPowerOutletsRequired(n)}
+                            className={`w-8 h-8 rounded text-xs font-medium transition-colors ${
+                              powerOutletsRequired === n
+                                ? 'bg-zinc-600 text-white'
+                                : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSavePowerSettings}
+                  disabled={saving}
+                  className="w-full px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors"
+                >
+                  Save Power Settings to Parts Database
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Move to Room Section */}
           {onMoveRoom && (

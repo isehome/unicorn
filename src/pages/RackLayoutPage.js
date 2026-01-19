@@ -439,6 +439,31 @@ const RackLayoutPage = () => {
         console.log('[handleEquipmentEdit] Shelf update result:', result);
       }
 
+      // Update power settings on global_parts
+      if (updates.powerSettings && eq?.global_part_id) {
+        const { supabase } = await import('../lib/supabase');
+        console.log('[handleEquipmentEdit] Saving power settings:', updates.powerSettings);
+
+        const { error } = await supabase
+          .from('global_parts')
+          .update({
+            is_power_device: updates.powerSettings.is_power_device,
+            power_outlets_provided: updates.powerSettings.power_outlets_provided,
+            power_output_watts: updates.powerSettings.power_output_watts,
+            ups_va_rating: updates.powerSettings.ups_va_rating,
+            ups_runtime_minutes: updates.powerSettings.ups_runtime_minutes,
+            power_watts: updates.powerSettings.power_watts,
+            power_outlets: updates.powerSettings.power_outlets,
+          })
+          .eq('id', eq.global_part_id);
+
+        if (error) {
+          console.error('[handleEquipmentEdit] Failed to update power settings:', error);
+          throw error;
+        }
+        console.log('[handleEquipmentEdit] Power settings saved successfully');
+      }
+
       await loadData();
     } catch (err) {
       console.error('Failed to update equipment:', err);

@@ -73,9 +73,21 @@ const RackBackView = ({
     };
   };
 
-  // Get display name for equipment
+  // Get display name for equipment - strip room prefix from "Room - Part Name N" format
   const getEquipmentName = (item) => {
-    return item.name || item.global_part?.name || item.description || 'Unknown Equipment';
+    // Try global_part.name if linked
+    if (item.global_part?.name) return item.global_part.name;
+
+    // Extract part name from name (format: "Room - Part Name N")
+    const fullName = item?.instance_name || item?.name;
+    if (fullName && fullName.includes(' - ')) {
+      const parts = fullName.split(' - ');
+      if (parts.length > 1) {
+        return parts.slice(1).join(' - ');
+      }
+    }
+
+    return item.model || item.part_number || fullName || 'Unknown Equipment';
   };
 
   // Sort equipment by rack position (descending - top of rack first)
@@ -87,16 +99,29 @@ const RackBackView = ({
     });
   }, [equipment]);
 
-  // Calculate power totals
+  // Calculate power totals - consumption vs available
   const powerTotals = useMemo(() => {
     return equipment.reduce((acc, item) => {
-      const watts = item.global_part?.power_watts || 0;
-      const outlets = item.global_part?.power_outlets || 0;
+      const gp = item.global_part;
+      const isPowerDevice = gp?.is_power_device;
+      const wattsConsumed = gp?.power_watts || 0;
+      const outletsRequired = gp?.power_outlets || 0;
+      const outletsProvided = gp?.power_outlets_provided || 0;
+      const powerOutput = gp?.power_output_watts || 0;
+
       return {
-        watts: acc.watts + watts,
-        outlets: acc.outlets + outlets,
+        // Total power consumed by all devices
+        wattsConsumed: acc.wattsConsumed + wattsConsumed,
+        // Total outlets required by non-power devices
+        outletsRequired: acc.outletsRequired + (isPowerDevice ? 0 : outletsRequired),
+        // Total outlets provided by power devices
+        outletsProvided: acc.outletsProvided + outletsProvided,
+        // Total power output capacity from power devices
+        powerCapacity: acc.powerCapacity + powerOutput,
+        // Count of power devices
+        powerDeviceCount: acc.powerDeviceCount + (isPowerDevice ? 1 : 0),
       };
-    }, { watts: 0, outlets: 0 });
+    }, { wattsConsumed: 0, outletsRequired: 0, outletsProvided: 0, powerCapacity: 0, powerDeviceCount: 0 });
   }, [equipment]);
 
   // Build network entities list (devices + unlinked clients available for linking)
@@ -164,15 +189,35 @@ const RackBackView = ({
         </h3>
         <div className="flex items-center gap-3">
           {/* Power Summary */}
-          <div className="flex items-center gap-4 px-4 py-1.5 bg-zinc-900 rounded-lg">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-4 px-4 py-1.5 bg-zinc-900 rounded-lg text-sm">
+            {/* Power consumption */}
+            <div className="flex items-center gap-1.5" title="Total power consumed">
               <Zap size={14} className="text-yellow-400" />
-              <span className="text-sm font-medium text-zinc-200">{powerTotals.watts}W</span>
+              <span className="font-medium text-zinc-200">{powerTotals.wattsConsumed}W</span>
+              {powerTotals.powerCapacity > 0 && (
+                <span className="text-zinc-500">/ {powerTotals.powerCapacity}W</span>
+              )}
             </div>
-            <div className="flex items-center gap-1.5">
+            {/* Outlet usage */}
+            <div className="flex items-center gap-1.5" title="Outlets used / available">
               <Plug size={14} className="text-blue-400" />
-              <span className="text-sm font-medium text-zinc-200">{powerTotals.outlets} outlets</span>
+              <span className={`font-medium ${
+                powerTotals.outletsRequired > powerTotals.outletsProvided
+                  ? 'text-red-400'
+                  : 'text-zinc-200'
+              }`}>
+                {powerTotals.outletsRequired}
+              </span>
+              {powerTotals.outletsProvided > 0 && (
+                <span className="text-zinc-500">/ {powerTotals.outletsProvided}</span>
+              )}
             </div>
+            {/* Power device count */}
+            {powerTotals.powerDeviceCount > 0 && (
+              <div className="flex items-center gap-1 text-amber-400" title="Power distribution devices">
+                <span>⚡ {powerTotals.powerDeviceCount}</span>
+              </div>
+            )}
           </div>
 
           {onRefresh && (
@@ -200,8 +245,15 @@ const RackBackView = ({
               const uHeight = item.global_part?.u_height || 1;
               const posU = item.rack_position_u;
               const watts = item.global_part?.power_watts;
-              const outlets = item.global_part?.power_outlets || 0;
+              const outletsRequired = item.global_part?.power_outlets || 0;
               const isLinking = linkingEquipmentId === item.id;
+
+              // Power distribution device info
+              const isPowerDevice = item.global_part?.is_power_device;
+              const outletsProvided = item.global_part?.power_outlets_provided || 0;
+              const powerOutput = item.global_part?.power_output_watts;
+              const upsVA = item.global_part?.ups_va_rating;
+              const upsRuntime = item.global_part?.ups_runtime_minutes;
 
               return (
                 <div
@@ -232,7 +284,12 @@ const RackBackView = ({
                         <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400">
                           {uHeight}U
                         </span>
-                        {watts && (
+                        {isPowerDevice && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700">
+                            ⚡ Power
+                          </span>
+                        )}
+                        {watts && !isPowerDevice && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-900/30 text-yellow-400">
                             {watts}W
                           </span>
@@ -263,26 +320,57 @@ const RackBackView = ({
                         </div>
                       )}
 
-                      {/* Power Outlets Row */}
-                      {outlets > 0 && (
+                      {/* Power Distribution Device Info */}
+                      {isPowerDevice && outletsProvided > 0 && (
+                        <div className="flex items-center gap-2 mt-1.5 p-2 rounded bg-amber-900/20 border border-amber-800/50">
+                          <span className="text-xs text-amber-400 font-medium">Provides:</span>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(outletsProvided, 12) }).map((_, i) => (
+                              <div
+                                key={i}
+                                className="w-3.5 h-3.5 rounded-sm bg-amber-900/50 border border-amber-600 flex items-center justify-center"
+                                title={`Outlet ${i + 1}`}
+                              >
+                                <Plug size={9} className="text-amber-400" />
+                              </div>
+                            ))}
+                            {outletsProvided > 12 && (
+                              <span className="text-xs text-amber-400 ml-1">+{outletsProvided - 12}</span>
+                            )}
+                          </div>
+                          <span className="text-xs text-amber-400">{outletsProvided} outlets</span>
+                          {powerOutput && (
+                            <span className="text-xs text-amber-400 ml-2">{powerOutput}W max</span>
+                          )}
+                          {upsVA && (
+                            <span className="text-xs text-amber-400 ml-2">{upsVA}VA</span>
+                          )}
+                          {upsRuntime && (
+                            <span className="text-xs text-zinc-400 ml-1">({upsRuntime}min)</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Power Required (for non-power devices) */}
+                      {!isPowerDevice && outletsRequired > 0 && (
                         <div className="flex items-center gap-1 mt-1.5">
-                          <span className="text-xs text-zinc-500 mr-1">Power:</span>
-                          <div className="flex items-center" style={{ gap: `${Math.max(2, Math.min(8, 80 / outlets))}px` }}>
-                            {Array.from({ length: Math.min(outlets, 10) }).map((_, i) => (
+                          <span className="text-xs text-zinc-500 mr-1">Needs:</span>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(outletsRequired, 4) }).map((_, i) => (
                               <div
                                 key={i}
                                 className="w-3 h-3 rounded-sm bg-zinc-700 border border-zinc-600 flex items-center justify-center"
                                 title={`Outlet ${i + 1}`}
                               >
-                                <Plug size={8} className="text-yellow-500" />
+                                <Plug size={8} className="text-zinc-400" />
                               </div>
                             ))}
-                            {outlets > 10 && (
-                              <span className="text-xs text-zinc-500 ml-1">+{outlets - 10}</span>
+                            {outletsRequired > 4 && (
+                              <span className="text-xs text-zinc-500 ml-1">+{outletsRequired - 4}</span>
                             )}
                           </div>
                           {watts && (
-                            <span className="text-xs text-zinc-500 ml-2">{watts}W total</span>
+                            <span className="text-xs text-zinc-500 ml-2">{watts}W</span>
                           )}
                         </div>
                       )}
