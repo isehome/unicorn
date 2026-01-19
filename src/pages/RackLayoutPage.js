@@ -162,14 +162,18 @@ const RackLayoutPage = () => {
 
   // Handle linking equipment to HA network client
   const handleLinkToHA = useCallback(async (equipmentId, clientMac) => {
+    console.log('[handleLinkToHA] Called with equipmentId:', equipmentId, 'clientMac:', clientMac);
     try {
-      await projectEquipmentService.updateEquipment(equipmentId, {
+      console.log('[handleLinkToHA] Calling updateEquipment...');
+      const result = await projectEquipmentService.updateEquipment(equipmentId, {
         ha_client_mac: clientMac,
         unifi_client_mac: clientMac
       });
+      console.log('[handleLinkToHA] updateEquipment result:', result);
       await loadData();
+      console.log('[handleLinkToHA] loadData completed');
     } catch (err) {
-      console.error('Failed to link equipment to HA client:', err);
+      console.error('[handleLinkToHA] Failed to link equipment to HA client:', err);
     }
   }, [loadData]);
 
