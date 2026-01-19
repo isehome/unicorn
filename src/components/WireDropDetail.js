@@ -1169,13 +1169,21 @@ const WireDropDetail = () => {
     [projectEquipment]
   );
 
+  // Helper to normalize room names for comparison (removes trailing punctuation, normalizes whitespace)
+  // This extends the base normalizeRoomName to also strip trailing punctuation for fuzzy matching
+  const normalizeRoomNameForMatch = (name) => {
+    if (!name) return '';
+    // First normalize whitespace and lowercase, then remove trailing punctuation
+    return name.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[,;.]+$/, '').trim();
+  };
+
   // Smart sorted equipment for room end selector with single-select behavior
   const sortedRoomEquipment = useMemo(() => {
     console.log('[Equipment Debug] Computing sortedRoomEquipment');
     console.log('[Equipment Debug] selectableEquipment count:', selectableEquipment.length);
     console.log('[Equipment Debug] selectableEquipment:', selectableEquipment);
 
-    const wireDropRoom = wireDrop?.room_name?.toLowerCase().trim();
+    const wireDropRoom = normalizeRoomNameForMatch(wireDrop?.room_name);
     const currentSelection = roomEquipmentSelection[0]; // Only care about first selection for single-select
 
     console.log('[Equipment Debug] wireDropRoom:', wireDropRoom);
@@ -1186,7 +1194,7 @@ const WireDropDetail = () => {
     const otherRoomsData = {};
 
     selectableEquipment.forEach(item => {
-      const itemRoom = item.project_rooms?.name?.toLowerCase().trim();
+      const itemRoom = normalizeRoomNameForMatch(item.project_rooms?.name);
       const isSameRoom = itemRoom === wireDropRoom;
       const isSelected = item.id === currentSelection;
 

@@ -3,7 +3,8 @@ export const normalizeRoomName = (value) => {
   if (typeof value !== 'string') {
     value = String(value);
   }
-  return value.toLowerCase().replace(/\s+/g, ' ').trim();
+  // Normalize whitespace, lowercase, and remove trailing punctuation for consistent matching
+  return value.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[,;.]+$/, '').trim();
 };
 
 export const levenshteinDistance = (a, b) => {

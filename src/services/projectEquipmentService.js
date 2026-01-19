@@ -1924,6 +1924,10 @@ export const projectEquipmentService = {
     if (updates.needs_shelf !== undefined) cleanUpdates.needs_shelf = updates.needs_shelf;
     if (updates.shelf_u_height !== undefined) cleanUpdates.shelf_u_height = updates.shelf_u_height;
 
+    // Home Assistant / UniFi network linking fields
+    if (updates.ha_client_mac !== undefined) cleanUpdates.ha_client_mac = updates.ha_client_mac || null;
+    if (updates.unifi_client_mac !== undefined) cleanUpdates.unifi_client_mac = updates.unifi_client_mac || null;
+
     cleanUpdates.updated_at = new Date().toISOString();
 
     const { data, error } = await supabase

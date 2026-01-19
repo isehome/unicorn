@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { RefreshCw, ChevronDown, ChevronRight, Wifi, WifiOff, Globe, Link2 } from 'lucide-react';
+import { RefreshCw, ChevronDown, ChevronRight, Wifi, WifiOff, Globe, Link2, Server, Router, X } from 'lucide-react';
 import { getSwitchConnectedClients } from '../../services/haClientService';
 
 /**
@@ -140,99 +140,142 @@ const RackBackView = ({
     );
   };
 
-  // Render the link dropdown for unlinked equipment
-  const LinkDropdown = ({ equipmentItem }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [selectedMac, setSelectedMac] = useState('');
+  // State for which equipment is showing link options
+  const [linkingEquipmentId, setLinkingEquipmentId] = useState(null);
 
-    const handleLink = () => {
-      if (selectedMac && onLinkToHA) {
-        onLinkToHA(equipmentItem.id, selectedMac);
-        setIsOpen(false);
-        setSelectedMac('');
-      }
-    };
+  // Get already linked MACs
+  const linkedMacs = equipment
+    .map(e => e.ha_client_mac?.toLowerCase())
+    .filter(Boolean);
 
-    // Get already linked MACs
-    const linkedMacs = equipment
-      .map(e => e.ha_client_mac?.toLowerCase())
-      .filter(Boolean);
+  // Filter out already linked clients
+  const availableClients = haClients.filter(client => {
+    return !linkedMacs.includes(client.mac?.toLowerCase());
+  });
 
-    // Filter out already linked clients
-    const availableClients = haClients.filter(client => {
-      return !linkedMacs.includes(client.mac?.toLowerCase());
-    });
+  // Filter out already linked devices (switches, APs, gateways)
+  const availableDevices = haDevices.filter(device => {
+    return !linkedMacs.includes(device.mac?.toLowerCase());
+  });
 
-    // Filter out already linked devices (switches, APs, gateways)
-    const availableDevices = haDevices.filter(device => {
-      return !linkedMacs.includes(device.mac?.toLowerCase());
-    });
+  // Handle clicking a network entity to link it
+  const handleLinkClick = (equipmentId, mac) => {
+    if (onLinkToHA) {
+      console.log('[RackBackView] Linking equipment', equipmentId, 'to MAC', mac);
+      onLinkToHA(equipmentId, mac);
+      setLinkingEquipmentId(null);
+    }
+  };
+
+  // Render the expandable link section for unlinked equipment
+  const LinkSection = ({ equipmentItem }) => {
+    const isExpanded = linkingEquipmentId === equipmentItem.id;
 
     return (
-      <div className="relative">
+      <div className="mt-2">
+        {/* Toggle button */}
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => setLinkingEquipmentId(isExpanded ? null : equipmentItem.id)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors"
         >
           <Link2 className="w-3.5 h-3.5" />
-          Link to Network
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          {isExpanded ? 'Cancel' : 'Link to Network'}
+          {isExpanded ? (
+            <X className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5" />
+          )}
         </button>
 
-        {isOpen && (
-          <div className="absolute z-20 top-full left-0 mt-1 w-80 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-96 overflow-y-auto">
-            <div className="p-3">
-              <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-                Select Network Device or Client
-              </label>
-              <select
-                value={selectedMac}
-                onChange={(e) => setSelectedMac(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-[#94AF32] focus:border-transparent"
-              >
-                <option value="">Choose a device...</option>
-
-                {/* UniFi Infrastructure Devices (switches, APs, gateways) */}
-                {availableDevices.length > 0 && (
-                  <optgroup label="📡 UniFi Devices">
-                    {availableDevices.map(device => (
-                      <option key={device.mac} value={device.mac}>
-                        {device.name} ({device.model}) - {device.ip || 'No IP'}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-
-                {/* Connected Network Clients */}
-                {availableClients.length > 0 && (
-                  <optgroup label="💻 Network Clients">
-                    {availableClients.map(client => (
-                      <option key={client.mac} value={client.mac}>
-                        {client.hostname || 'Unknown'} - {client.ip || 'No IP'} ({formatMac(client.mac)})
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-              <div className="flex justify-end gap-2 mt-3">
-                <button
-                  onClick={() => {
-                    setIsOpen(false);
-                    setSelectedMac('');
-                  }}
-                  className="px-3 py-1.5 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLink}
-                  disabled={!selectedMac}
-                  className="px-3 py-1.5 text-sm bg-[#94AF32] text-white rounded-lg hover:bg-[#7d9429] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  Link
-                </button>
+        {/* Expanded list of available network entities */}
+        {isExpanded && (
+          <div className="mt-3 border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+            {/* UniFi Devices Section */}
+            {availableDevices.length > 0 && (
+              <div>
+                <div className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+                  <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+                    UniFi Devices
+                  </span>
+                </div>
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-700">
+                  {availableDevices.map(device => (
+                    <button
+                      key={device.mac}
+                      onClick={() => handleLinkClick(equipmentItem.id, device.mac)}
+                      className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-[#94AF32]/10 transition-colors text-left"
+                    >
+                      <div className="p-1.5 rounded bg-zinc-100 dark:bg-zinc-700">
+                        {device.category === 'gateway' ? (
+                          <Router className="w-4 h-4 text-red-500" />
+                        ) : device.category === 'switch' ? (
+                          <Server className="w-4 h-4 text-blue-500" />
+                        ) : (
+                          <Wifi className="w-4 h-4 text-amber-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                          {device.name}
+                        </div>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {device.model} • {device.ip || 'No IP'}
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono text-zinc-400 dark:text-zinc-500">
+                        {formatMac(device.mac)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Network Clients Section */}
+            {availableClients.length > 0 && (
+              <div>
+                <div className="px-3 py-2 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+                  <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
+                    Network Clients
+                  </span>
+                </div>
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-700 max-h-48 overflow-y-auto">
+                  {availableClients.map(client => (
+                    <button
+                      key={client.mac}
+                      onClick={() => handleLinkClick(equipmentItem.id, client.mac)}
+                      className="w-full px-3 py-2.5 flex items-center gap-3 hover:bg-[#94AF32]/10 transition-colors text-left"
+                    >
+                      <div className="p-1.5 rounded bg-zinc-100 dark:bg-zinc-700">
+                        {client.is_wired ? (
+                          <Globe className="w-4 h-4 text-blue-500" />
+                        ) : (
+                          <Wifi className="w-4 h-4 text-amber-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                          {client.hostname || 'Unknown Device'}
+                        </div>
+                        <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {client.ip || 'No IP'}
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono text-zinc-400 dark:text-zinc-500">
+                        {formatMac(client.mac)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* No entities available */}
+            {availableDevices.length === 0 && availableClients.length === 0 && (
+              <div className="p-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                No network entities available to link
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -342,12 +385,13 @@ const RackBackView = ({
                   </span>
                 </div>
               ) : (
-                <div className="mt-2 flex items-center gap-3">
-                  <span className="flex items-center gap-1.5 text-zinc-400 text-sm">
+                <div className="mt-2">
+                  <div className="flex items-center gap-1.5 text-zinc-400 text-sm">
                     <WifiOff className="w-3.5 h-3.5" />
                     Not Linked
-                  </span>
-                  <LinkDropdown equipmentItem={item} />
+                  </div>
+                  {/* Show link section for unlinked equipment */}
+                  <LinkSection equipmentItem={item} />
                 </div>
               )}
             </div>

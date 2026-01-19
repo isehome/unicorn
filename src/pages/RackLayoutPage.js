@@ -186,11 +186,11 @@ const RackLayoutPage = () => {
     }
 
     // Equipment placed in the selected rack
-    // Must be head_end equipment (not room equipment) and have rack placement
+    // Must have rack placement (either rack_id matching or legacy position)
+    // Equipment moved to rooms will have rack_id and rack_position_u cleared, so they won't appear here
     const placed = equipment.filter(eq =>
-      (eq.rack_id === selectedRack.id ||
-        (eq.rack_position_u != null && !eq.rack_id)) && // Legacy: equipment with position but no rack_id
-      eq.install_side !== 'room' // Exclude equipment that's been moved to a room
+      eq.rack_id === selectedRack.id ||
+      (eq.rack_position_u != null && !eq.rack_id) // Legacy: equipment with position but no rack_id
     );
 
     // Head-end equipment not placed in any rack
@@ -387,18 +387,19 @@ const RackLayoutPage = () => {
   // Handle moving equipment to a different room
   const handleMoveRoom = useCallback(async (equipmentId, newRoomId) => {
     try {
+      console.log('[handleMoveRoom] Moving equipment', equipmentId, 'to room', newRoomId);
       await projectEquipmentService.updateEquipment(equipmentId, {
         room_id: newRoomId,
-        // Moving to a room means it's no longer head-end equipment
-        install_side: 'room',
+        // Moving to a room means it's no longer head-end equipment - use 'room_end' which is a valid DB value
+        install_side: 'room_end',
         // Clear rack placement since it's no longer in the rack
         rack_id: null,
         rack_position_u: null,
       });
-      console.log('[handleMoveRoom] Moved equipment to room:', newRoomId, '- cleared rack placement');
+      console.log('[handleMoveRoom] Successfully moved equipment to room:', newRoomId);
       await loadData();
     } catch (err) {
-      console.error('Failed to move equipment to room:', err);
+      console.error('[handleMoveRoom] Failed to move equipment to room:', err);
     }
   }, [loadData]);
 
