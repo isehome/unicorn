@@ -6243,3 +6243,106 @@ ADD COLUMN IF NOT EXISTS shelf_u_height INTEGER DEFAULT NULL;
 5. Saves and equipment card updates with appropriate badge/icon
 
 ---
+
+### Back View Network Client Linking Fix
+
+**Problem:** The "Link to Network" dropdown in the Rack Layout Back View wasn't working - clicking the button opened the dropdown but no network clients were displayed.
+
+**Root Causes:**
+1. `RackLayoutPage.js` wasn't fetching or passing `haClients` data to `RackBackView`
+2. Equipment card containers had `overflow-hidden` CSS which clipped the dropdown
+
+**Solution:**
+
+#### RackLayoutPage.js Changes
+
+1. Added `haClients` state:
+```javascript
+const [haClients, setHaClients] = useState([]);
+```
+
+2. Added `fetchHAClients()` function that fetches from `/api/ha/network-clients`:
+```javascript
+const fetchHAClients = useCallback(async () => {
+  if (!projectId) return;
+
+  try {
+    const apiBase = window.location.hostname === 'localhost'
+      ? 'https://unicorn-one.vercel.app'
+      : '';
+    const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
+    const result = await response.json();
+
+    if (response.ok && result.clients) {
+      const clients = result.clients.map(c => ({
+        mac: c.mac_address,
+        hostname: c.hostname || c.name,
+        ip: c.ip_address,
+        is_online: true,
+        is_wired: c.is_wired,
+        switch_name: c.switch_name,
+        switch_port: c.switch_port
+      }));
+      setHaClients(clients);
+    }
+  } catch (err) {
+    console.error('Failed to fetch HA network clients:', err);
+  }
+}, [projectId]);
+```
+
+3. Added `useEffect` to fetch when switching to Back View:
+```javascript
+useEffect(() => {
+  if (activeView === 'back') {
+    fetchHAClients();
+  }
+}, [activeView, fetchHAClients]);
+```
+
+4. Added `handleLinkToHA` callback:
+```javascript
+const handleLinkToHA = useCallback(async (equipmentId, clientMac) => {
+  try {
+    await projectEquipmentService.updateEquipment(equipmentId, {
+      ha_client_mac: clientMac,
+      unifi_client_mac: clientMac
+    });
+    await loadData();
+  } catch (err) {
+    console.error('Failed to link equipment to HA client:', err);
+  }
+}, [loadData]);
+```
+
+5. Passed props to RackBackView:
+```jsx
+<RackBackView
+  rack={currentRack}
+  equipment={placedEquipment}
+  haClients={haClients}
+  onLinkToHA={handleLinkToHA}
+  onRefresh={handleRefresh}
+/>
+```
+
+#### RackBackView.jsx Changes
+
+Removed `overflow-hidden` from containers to allow dropdown to display:
+
+```diff
+- <div className="border ... overflow-hidden">
++ <div className="border ...">
+
+- <div className="bg-zinc-50 ... overflow-hidden">
++ <div className="bg-zinc-50 ...">
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/RackLayoutPage.js` | Added haClients state, fetch function, link handler, passed props |
+| `src/components/Rack/RackBackView.jsx` | Removed overflow-hidden from equipment card and main container |
+
+---
