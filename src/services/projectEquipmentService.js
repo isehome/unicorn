@@ -1897,6 +1897,8 @@ export const projectEquipmentService = {
   async updateEquipment(equipmentId, updates) {
     if (!equipmentId) throw new Error('Equipment ID is required');
 
+    console.log('[updateEquipment] Called with:', { equipmentId, updates });
+
     // Normalize string fields
     const cleanUpdates = {};
 
@@ -1923,12 +1925,15 @@ export const projectEquipmentService = {
     if (updates.exclude_from_rack !== undefined) cleanUpdates.exclude_from_rack = updates.exclude_from_rack;
     if (updates.needs_shelf !== undefined) cleanUpdates.needs_shelf = updates.needs_shelf;
     if (updates.shelf_u_height !== undefined) cleanUpdates.shelf_u_height = updates.shelf_u_height;
+    if (updates.max_items_per_shelf !== undefined) cleanUpdates.max_items_per_shelf = updates.max_items_per_shelf;
 
     // Home Assistant / UniFi network linking fields
     if (updates.ha_client_mac !== undefined) cleanUpdates.ha_client_mac = updates.ha_client_mac || null;
     if (updates.unifi_client_mac !== undefined) cleanUpdates.unifi_client_mac = updates.unifi_client_mac || null;
 
     cleanUpdates.updated_at = new Date().toISOString();
+
+    console.log('[updateEquipment] Clean updates to send:', cleanUpdates);
 
     const { data, error } = await supabase
       .from('project_equipment')
@@ -1946,6 +1951,8 @@ export const projectEquipmentService = {
       console.error('[updateEquipment] Failed:', error);
       throw new Error(error.message || 'Failed to update equipment');
     }
+
+    console.log('[updateEquipment] Success, returned data:', { needs_shelf: data?.needs_shelf, shelf_u_height: data?.shelf_u_height });
 
     // If part_number changed, re-sync to global_parts
     if (cleanUpdates.part_number && data.project_id) {

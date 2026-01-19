@@ -1,42 +1,15 @@
 /**
  * RackFrontView.jsx
  * Visual drag-and-drop rack layout view showing the front of the rack
- * Supports equipment placement, shelf management, and drag-and-drop operations
+ * Full-width layout matching back view style with improved readability
  */
 
 import React, { memo, useState, useCallback, useMemo, useEffect } from 'react';
-import { Plus, RefreshCw, Server, Trash2, GripVertical, X, EyeOff, Settings, Layers, Home, ChevronDown } from 'lucide-react';
+import { Plus, RefreshCw, Server, GripVertical, X, Settings, Layers, Home, ChevronDown, Link2, Trash2, ExternalLink, Globe } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
-// Constants - using HOUR_HEIGHT pattern from calendar (60px per U)
-const U_HEIGHT = 60; // pixels per rack unit
-const RACK_WIDTH = 400; // pixels for rack visualization
-const U_LABEL_WIDTH = 40; // pixels for U number labels
-
-/**
- * Equipment type colors
- */
-const equipmentColors = {
-  placed: {
-    bg: 'rgba(139, 92, 246, 0.2)',
-    border: '#8B5CF6',
-    text: '#A78BFA',
-  },
-  unplaced: {
-    bg: 'rgba(113, 113, 122, 0.2)',
-    border: '#71717A',
-    text: '#A1A1AA',
-  },
-  shelf: {
-    bg: 'rgba(59, 130, 246, 0.15)',
-    border: '#3B82F6',
-    text: '#60A5FA',
-  },
-  dropTarget: {
-    bg: 'rgba(139, 92, 246, 0.1)',
-    border: '#8B5CF6',
-  },
-};
+// Constants
+const U_HEIGHT = 50; // pixels per rack unit (slightly smaller for cleaner look)
 
 /**
  * Get equipment U height from global_part or default to 1
@@ -47,84 +20,105 @@ const getEquipmentUHeight = (equipment) => {
 
 /**
  * Equipment Block Component - Displays a single piece of equipment in the rack
+ * Clean design with white/light text on dark background
  */
 const EquipmentBlock = memo(({
   equipment,
   top,
   height,
-  isPlaced = true,
   isDragging = false,
+  networkInfo,
   onDragStart,
-  onRemove,
+  onClick,
 }) => {
-  const colors = isPlaced ? equipmentColors.placed : equipmentColors.unplaced;
   const uHeight = getEquipmentUHeight(equipment);
+  const displayName = equipment.global_part?.name || equipment.description || equipment.name || 'Unnamed Equipment';
+  const isLinked = networkInfo?.linked;
+  const ip = networkInfo?.ip;
 
   const handleDragStart = (e) => {
     e.dataTransfer.setData('application/json', JSON.stringify({
       equipmentId: equipment.id,
       uHeight,
-      isMove: isPlaced,
+      isMove: true,
     }));
     e.dataTransfer.effectAllowed = 'move';
     onDragStart?.(equipment);
+  };
+
+  const handleClick = (e) => {
+    if (e.defaultPrevented) return;
+    onClick?.(equipment);
+  };
+
+  const handleIpClick = (e) => {
+    e.stopPropagation();
+    if (ip) {
+      window.open(`http://${ip}`, '_blank');
+    }
   };
 
   return (
     <div
       draggable
       onDragStart={handleDragStart}
-      className={`absolute left-0 right-0 rounded-lg border-2 px-3 py-2 cursor-grab active:cursor-grabbing transition-all overflow-hidden ${
+      onClick={handleClick}
+      className={`absolute left-0 right-0 bg-zinc-800 border border-zinc-600 rounded px-3 py-2 cursor-pointer hover:border-violet-500 transition-all ${
         isDragging ? 'opacity-50 scale-95' : ''
       }`}
       style={{
         top: `${top}px`,
-        height: `${Math.max(height - 4, 30)}px`,
-        backgroundColor: colors.bg,
-        borderColor: colors.border,
+        height: `${Math.max(height - 4, 36)}px`,
         zIndex: isDragging ? 50 : 20,
       }}
     >
-      <div className="flex items-start justify-between gap-2 h-full">
+      <div className="flex items-center justify-between gap-2 h-full">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <GripVertical size={14} className="text-zinc-500 flex-shrink-0" />
+          <GripVertical size={14} className="text-zinc-500 flex-shrink-0 cursor-grab" />
+
+          {/* Status dot */}
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            isLinked
+              ? networkInfo?.isOnline ? 'bg-green-500' : 'bg-red-500'
+              : 'bg-zinc-500'
+          }`} />
+
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span
-                className="text-sm font-medium truncate"
-                style={{ color: colors.text }}
-              >
-                {equipment.name || 'Unnamed Equipment'}
+              <span className="text-sm font-medium text-zinc-100 truncate">
+                {displayName}
               </span>
-              <span
-                className="text-xs px-1.5 py-0.5 rounded flex-shrink-0"
-                style={{
-                  backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                  color: '#A78BFA',
-                }}
-              >
+              <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 flex-shrink-0">
                 {uHeight}U
               </span>
             </div>
-            {height >= 50 && (
-              <div className="text-xs opacity-70 truncate mt-0.5" style={{ color: colors.text }}>
-                {[equipment.manufacturer, equipment.model].filter(Boolean).join(' - ') || 'No details'}
-              </div>
+
+            {/* Show IP if linked and enough height */}
+            {height >= 60 && ip && (
+              <button
+                onClick={handleIpClick}
+                className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mt-0.5 group"
+              >
+                <Globe size={10} />
+                <span className="font-mono">{ip}</span>
+                <ExternalLink size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
             )}
           </div>
         </div>
-        {isPlaced && onRemove && (
+
+        {/* IP badge (compact) when not enough height for full display */}
+        {height < 60 && ip && (
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(equipment.id);
-            }}
-            className="p-1 rounded hover:bg-zinc-700/50 transition-colors flex-shrink-0"
-            title="Remove from rack"
+            onClick={handleIpClick}
+            className="text-xs font-mono text-blue-400 hover:text-blue-300 flex-shrink-0"
+            title={`Open http://${ip}`}
           >
-            <Trash2 size={14} className="text-zinc-400 hover:text-red-400" />
+            {ip}
           </button>
         )}
+
+        <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
       </div>
     </div>
   );
@@ -133,116 +127,20 @@ const EquipmentBlock = memo(({
 EquipmentBlock.displayName = 'EquipmentBlock';
 
 /**
- * Shelf Block Component - Displays a shelf that can hold multiple small items
- */
-const ShelfBlock = memo(({
-  shelf,
-  top,
-  height,
-  shelfEquipment = [],
-  onDrop,
-  onRemoveEquipment,
-}) => {
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-      const shelfPosU = shelf.rack_position_u || shelf.position_u;
-      onDrop?.(data.equipmentId, shelfPosU, shelf.id);
-    } catch (err) {
-      console.error('[ShelfBlock] Drop error:', err);
-    }
-  };
-
-  return (
-    <div
-      className={`absolute left-0 right-0 rounded-lg border-2 border-dashed px-3 py-2 transition-all ${
-        isDragOver ? 'ring-2 ring-violet-500/50' : ''
-      }`}
-      style={{
-        top: `${top}px`,
-        height: `${Math.max(height - 4, 30)}px`,
-        backgroundColor: isDragOver ? equipmentColors.dropTarget.bg : equipmentColors.shelf.bg,
-        borderColor: isDragOver ? equipmentColors.dropTarget.border : equipmentColors.shelf.border,
-      }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      <div className="text-xs font-medium mb-1" style={{ color: equipmentColors.shelf.text }}>
-        Shelf (U{shelf.rack_position_u || shelf.position_u})
-      </div>
-      <div className="flex flex-wrap gap-1">
-        {shelfEquipment.map((eq) => (
-          <div
-            key={eq.id}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs"
-            style={{
-              backgroundColor: equipmentColors.placed.bg,
-              border: `1px solid ${equipmentColors.placed.border}`,
-              color: equipmentColors.placed.text,
-            }}
-          >
-            <span className="truncate max-w-[100px]">{eq.name}</span>
-            {onRemoveEquipment && (
-              <button
-                onClick={() => onRemoveEquipment(eq.id)}
-                className="hover:text-red-400"
-              >
-                <Trash2 size={10} />
-              </button>
-            )}
-          </div>
-        ))}
-        {shelfEquipment.length === 0 && (
-          <span className="text-xs text-zinc-500 italic">Drop equipment here</span>
-        )}
-      </div>
-    </div>
-  );
-});
-
-ShelfBlock.displayName = 'ShelfBlock';
-
-/**
  * Empty Slot Component - Represents an empty U position in the rack
  */
-const EmptySlot = memo(({
-  uPosition,
-  top,
-  height,
-  isDragOver,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-}) => {
+const EmptySlot = memo(({ uPosition, top, height, isDragOver }) => {
   return (
     <div
       className={`absolute left-0 right-0 border border-dashed rounded transition-all ${
         isDragOver
           ? 'border-violet-500 bg-violet-500/10'
-          : 'border-zinc-700 hover:border-zinc-600'
+          : 'border-zinc-700/50'
       }`}
       style={{
         top: `${top}px`,
         height: `${height - 2}px`,
       }}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
     />
   );
 });
@@ -255,18 +153,14 @@ EmptySlot.displayName = 'EmptySlot';
 const DropPreview = memo(({ top, height }) => {
   return (
     <div
-      className="absolute left-0 right-0 rounded-lg border-2 border-dashed pointer-events-none"
+      className="absolute left-0 right-0 rounded border-2 border-dashed border-violet-500 bg-violet-500/10 pointer-events-none flex items-center justify-center"
       style={{
         top: `${top}px`,
         height: `${height}px`,
-        borderColor: '#8B5CF6',
-        backgroundColor: 'rgba(139, 92, 246, 0.15)',
         zIndex: 30,
       }}
     >
-      <div className="flex items-center justify-center h-full text-sm text-violet-400">
-        Drop here
-      </div>
+      <span className="text-sm text-violet-400">Drop here</span>
     </div>
   );
 });
@@ -274,54 +168,20 @@ const DropPreview = memo(({ top, height }) => {
 DropPreview.displayName = 'DropPreview';
 
 /**
- * U Labels Column Component - Shows U position numbers
- */
-const ULabelsColumn = memo(({ totalU }) => {
-  return (
-    <div className="flex-shrink-0" style={{ width: `${U_LABEL_WIDTH}px` }}>
-      <div className="relative" style={{ height: `${totalU * U_HEIGHT}px` }}>
-        {Array.from({ length: totalU }, (_, i) => {
-          const uPosition = totalU - i;
-          return (
-            <div
-              key={uPosition}
-              className="absolute right-2 text-xs text-zinc-500 font-mono"
-              style={{
-                top: `${i * U_HEIGHT + (U_HEIGHT / 2) - 8}px`,
-              }}
-            >
-              U{uPosition}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-
-ULabelsColumn.displayName = 'ULabelsColumn';
-
-/**
  * Unplaced Equipment Card - Small card for equipment not yet in the rack
- * Clickable to open edit modal, draggable to place in rack
  */
 const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
   const [isDragging, setIsDragging] = useState(false);
   const uHeight = getEquipmentUHeight(equipment);
-
-  // Normalize display data from global_part or fallback to equipment fields
   const displayName = equipment.global_part?.name || equipment.description || 'Unnamed';
-  const manufacturer = equipment.global_part?.manufacturer || '';
-  const model = equipment.global_part?.model || '';
   const hasUHeight = uHeight > 0 && equipment.global_part?.u_height;
   const needsShelf = equipment.needs_shelf;
-  const shelfUHeight = equipment.shelf_u_height;
 
   const handleDragStart = (e) => {
     setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       equipmentId: equipment.id,
-      uHeight: needsShelf ? shelfUHeight : uHeight,
+      uHeight: needsShelf ? equipment.shelf_u_height || 2 : uHeight,
       isMove: false,
       needsShelf,
     }));
@@ -329,54 +189,12 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
     onDragStart?.(equipment);
   };
 
-  const handleDragEnd = () => {
-    setIsDragging(false);
-  };
+  const handleDragEnd = () => setIsDragging(false);
 
   const handleClick = (e) => {
-    // Don't trigger click when dragging
     if (isDragging || e.defaultPrevented) return;
-    e.stopPropagation();
     onClick?.(equipment);
   };
-
-  // Handle settings icon click specifically
-  const handleSettingsClick = (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    onClick?.(equipment);
-  };
-
-  // Determine size badge display
-  const getSizeBadge = () => {
-    if (needsShelf) {
-      return {
-        text: `${shelfUHeight || 2}U shelf`,
-        bg: 'rgba(59, 130, 246, 0.2)',
-        color: '#3B82F6',
-        border: 'border-blue-500/50',
-        title: `Needs ${shelfUHeight || 2}U of shelf space`,
-      };
-    }
-    if (hasUHeight) {
-      return {
-        text: `${uHeight}U`,
-        bg: 'rgba(113, 113, 122, 0.3)',
-        color: '#A1A1AA',
-        border: '',
-        title: `${uHeight} rack units`,
-      };
-    }
-    return {
-      text: '?U',
-      bg: 'rgba(234, 179, 8, 0.2)',
-      color: '#EAB308',
-      border: 'border border-dashed border-yellow-500/50',
-      title: 'U-height not set - click to configure',
-    };
-  };
-
-  const sizeBadge = getSizeBadge();
 
   return (
     <div
@@ -384,48 +202,27 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onClick={handleClick}
-      className="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-grab active:cursor-grabbing transition-all hover:border-violet-500/50 group"
-      style={{
-        backgroundColor: equipmentColors.unplaced.bg,
-        borderColor: needsShelf ? '#3B82F6' : equipmentColors.unplaced.border,
-      }}
+      className="flex items-center gap-2 px-3 py-2 rounded bg-zinc-800 border border-zinc-700 cursor-grab active:cursor-grabbing hover:border-zinc-500 transition-all"
     >
       <GripVertical size={14} className="text-zinc-500 flex-shrink-0" />
       {needsShelf ? (
-        <Layers size={14} style={{ color: '#3B82F6' }} />
+        <Layers size={14} className="text-blue-400" />
       ) : (
-        <Server size={14} style={{ color: equipmentColors.unplaced.text }} />
+        <Server size={14} className="text-zinc-400" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate" style={{ color: equipmentColors.unplaced.text }}>
-          {displayName}
-        </div>
-        <div className="text-xs text-zinc-500 truncate">
-          {[manufacturer, model].filter(Boolean).join(' - ') || 'No details'}
-        </div>
+        <div className="text-sm font-medium text-zinc-200 truncate">{displayName}</div>
       </div>
       <span
-        className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${sizeBadge.border}`}
-        style={{
-          backgroundColor: sizeBadge.bg,
-          color: sizeBadge.color,
-        }}
-        title={sizeBadge.title}
+        className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+          hasUHeight
+            ? 'bg-zinc-700 text-zinc-300'
+            : 'bg-yellow-900/50 text-yellow-400 border border-dashed border-yellow-600'
+        }`}
+        title={hasUHeight ? `${uHeight} rack units` : 'U-height not set'}
       >
-        {sizeBadge.text}
+        {hasUHeight ? `${uHeight}U` : '?U'}
       </span>
-      {/* Settings icon - always clickable */}
-      <button
-        type="button"
-        onClick={handleSettingsClick}
-        className="p-1 rounded hover:bg-zinc-700 transition-colors flex-shrink-0"
-        title="Edit equipment settings"
-      >
-        <Settings
-          size={14}
-          className="text-zinc-500 group-hover:text-violet-400 transition-colors"
-        />
-      </button>
     </div>
   );
 });
@@ -433,90 +230,44 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
 UnplacedEquipmentCard.displayName = 'UnplacedEquipmentCard';
 
 /**
- * Add Shelf Modal - Simple modal for adding a new shelf
+ * Equipment Edit Modal - Full edit modal with Link, Delete, Move actions
  */
-const AddShelfModal = memo(({ isOpen, onClose, onSubmit, totalU }) => {
-  const [uHeight, setUHeight] = useState(2);
-  const [positionU, setPositionU] = useState(1);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(uHeight, positionU);
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-800 rounded-lg p-6 w-80 border border-zinc-700">
-        <h3 className="text-lg font-semibold text-white mb-4">Add Shelf</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">Shelf Height (U)</label>
-            <input
-              type="number"
-              min="1"
-              max="10"
-              value={uHeight}
-              onChange={(e) => setUHeight(parseInt(e.target.value) || 1)}
-              className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-zinc-400 mb-1">Position (U)</label>
-            <input
-              type="number"
-              min="1"
-              max={totalU}
-              value={positionU}
-              onChange={(e) => setPositionU(parseInt(e.target.value) || 1)}
-              className="w-full px-3 py-2 bg-zinc-700 border border-zinc-600 rounded text-white"
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded text-zinc-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded text-white transition-colors"
-            >
-              Add Shelf
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-});
-
-AddShelfModal.displayName = 'AddShelfModal';
-
-/**
- * Equipment Edit Modal - Modal for editing equipment properties
- * Allows excluding from rack, setting U-height, marking as shelf item, moving to different room
- */
-const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExclude, onMoveRoom }) => {
+const EquipmentEditModal = memo(({
+  equipment,
+  projectId,
+  networkInfo,
+  haClients = [],
+  haDevices = [],
+  onClose,
+  onSave,
+  onRemove,
+  onExclude,
+  onMoveRoom,
+  onLinkToHA
+}) => {
   const [uHeight, setUHeight] = useState(equipment?.global_part?.u_height || 1);
   const [needsShelf, setNeedsShelf] = useState(equipment?.needs_shelf || false);
   const [shelfUHeight, setShelfUHeight] = useState(equipment?.shelf_u_height || 2);
+  const [maxItemsPerShelf, setMaxItemsPerShelf] = useState(equipment?.max_items_per_shelf || 1);
   const [saving, setSaving] = useState(false);
   const [rooms, setRooms] = useState([]);
-  const [selectedRoomId, setSelectedRoomId] = useState(equipment?.room_id || '');
+  const [selectedRoomId, setSelectedRoomId] = useState('');
   const [showRoomSelector, setShowRoomSelector] = useState(false);
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
 
   const displayName = equipment?.global_part?.name || equipment?.description || 'Unnamed Equipment';
   const manufacturer = equipment?.global_part?.manufacturer || '';
   const model = equipment?.global_part?.model || '';
   const hasGlobalPart = !!equipment?.global_part_id;
+  const isPlaced = equipment?.rack_position_u != null;
+  const isLinked = networkInfo?.linked;
 
-  // Load rooms when room selector is opened
+  // Get already linked MACs to filter them out
+  const linkedMacs = new Set();
+  // This would need to be passed in from parent - for now we show all
+
+  // Load rooms when needed
   useEffect(() => {
     if (showRoomSelector && rooms.length === 0 && projectId) {
       setLoadingRooms(true);
@@ -526,9 +277,7 @@ const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExcl
         .eq('project_id', projectId)
         .order('name')
         .then(({ data, error }) => {
-          if (!error && data) {
-            setRooms(data);
-          }
+          if (!error && data) setRooms(data);
           setLoadingRooms(false);
         });
     }
@@ -552,24 +301,37 @@ const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExcl
     try {
       await onSave(equipment.id, {
         needsShelf,
-        shelfUHeight: needsShelf ? shelfUHeight : null
+        shelfUHeight: needsShelf ? shelfUHeight : null,
+        maxItemsPerShelf: needsShelf ? maxItemsPerShelf : 1,
       });
       onClose();
     } catch (err) {
-      console.error('Failed to save shelf requirement:', err);
+      console.error('Failed to save:', err);
     } finally {
       setSaving(false);
     }
   };
 
   const handleMoveRoom = async () => {
-    if (!selectedRoomId || selectedRoomId === equipment?.room_id) return;
+    if (!selectedRoomId) return;
     setSaving(true);
     try {
       await onMoveRoom(equipment.id, selectedRoomId);
       onClose();
     } catch (err) {
-      console.error('Failed to move equipment to room:', err);
+      console.error('Failed to move:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveFromRack = async () => {
+    setSaving(true);
+    try {
+      await onRemove(equipment.id);
+      onClose();
+    } catch (err) {
+      console.error('Failed to remove:', err);
     } finally {
       setSaving(false);
     }
@@ -581,7 +343,30 @@ const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExcl
       await onExclude(equipment.id);
       onClose();
     } catch (err) {
-      console.error('Failed to exclude equipment:', err);
+      console.error('Failed to exclude:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLinkNetwork = async (mac) => {
+    setSaving(true);
+    try {
+      await onLinkToHA(equipment.id, mac);
+      setShowNetworkSelector(false);
+    } catch (err) {
+      console.error('Failed to link:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUnlink = async () => {
+    setSaving(true);
+    try {
+      await onLinkToHA(equipment.id, null);
+    } catch (err) {
+      console.error('Failed to unlink:', err);
     } finally {
       setSaving(false);
     }
@@ -589,234 +374,305 @@ const EquipmentEditModal = memo(({ equipment, projectId, onClose, onSave, onExcl
 
   if (!equipment) return null;
 
-  const currentRoom = rooms.find(r => r.id === equipment?.room_id);
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-800 rounded-xl p-6 w-[420px] max-h-[90vh] overflow-y-auto border border-zinc-700 shadow-xl">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-zinc-700 shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
+        <div className="sticky top-0 bg-zinc-900 border-b border-zinc-800 px-5 py-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">{displayName}</h3>
-            <p className="text-sm text-zinc-400">
-              {[manufacturer, model].filter(Boolean).join(' - ') || 'No manufacturer/model'}
+            <p className="text-sm text-zinc-400 mt-0.5">
+              {[manufacturer, model].filter(Boolean).join(' ') || 'No manufacturer/model'}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-700 rounded transition-colors"
-          >
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors">
             <X size={18} className="text-zinc-400" />
           </button>
         </div>
 
-        {/* Equipment Info */}
-        <div className="space-y-4">
+        <div className="p-5 space-y-4">
+          {/* Network Link Section */}
+          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="px-4 py-3 bg-zinc-800/50 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Link2 size={16} className="text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-200">Network Device</span>
+              </div>
+              {isLinked && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                  networkInfo?.isOnline ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'
+                }`}>
+                  {networkInfo?.isOnline ? 'Online' : 'Offline'}
+                </span>
+              )}
+            </div>
+            <div className="p-4">
+              {isLinked ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">IP Address</span>
+                    <a
+                      href={`http://${networkInfo?.ip}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-mono text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    >
+                      {networkInfo?.ip || 'N/A'}
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">MAC Address</span>
+                    <span className="text-sm font-mono text-zinc-300">{networkInfo?.mac || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-zinc-400">Hostname</span>
+                    <span className="text-sm text-zinc-300">{networkInfo?.hostname || 'N/A'}</span>
+                  </div>
+                  <button
+                    onClick={handleUnlink}
+                    disabled={saving}
+                    className="w-full mt-2 px-3 py-2 text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors"
+                  >
+                    Unlink Device
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <button
+                    onClick={() => setShowNetworkSelector(!showNetworkSelector)}
+                    className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
+                  >
+                    <span>Select network device...</span>
+                    <ChevronDown size={16} className={`transition-transform ${showNetworkSelector ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {showNetworkSelector && (
+                    <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800">
+                      {/* UniFi Devices */}
+                      {haDevices.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wide bg-zinc-900/50">
+                            UniFi Devices
+                          </div>
+                          {haDevices.map(device => (
+                            <button
+                              key={device.mac}
+                              onClick={() => handleLinkNetwork(device.mac)}
+                              className="w-full px-3 py-2 text-left hover:bg-violet-600/20 transition-colors flex items-center justify-between"
+                            >
+                              <div>
+                                <div className="text-sm text-zinc-200">{device.name}</div>
+                                <div className="text-xs text-zinc-500">{device.ip}</div>
+                              </div>
+                              <span className="text-xs font-mono text-zinc-500">{device.mac?.toUpperCase()}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {/* Network Clients */}
+                      {haClients.length > 0 && (
+                        <>
+                          <div className="px-3 py-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wide bg-zinc-900/50">
+                            Network Clients
+                          </div>
+                          {haClients.map(client => (
+                            <button
+                              key={client.mac}
+                              onClick={() => handleLinkNetwork(client.mac)}
+                              className="w-full px-3 py-2 text-left hover:bg-violet-600/20 transition-colors flex items-center justify-between"
+                            >
+                              <div>
+                                <div className="text-sm text-zinc-200">{client.hostname || 'Unknown'}</div>
+                                <div className="text-xs text-zinc-500">{client.ip}</div>
+                              </div>
+                              <span className="text-xs font-mono text-zinc-500">{client.mac?.toUpperCase()}</span>
+                            </button>
+                          ))}
+                        </>
+                      )}
+                      {haDevices.length === 0 && haClients.length === 0 && (
+                        <div className="px-3 py-4 text-sm text-zinc-500 text-center">
+                          No network devices available
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* U-Height Section */}
-          <div className="p-4 bg-zinc-900/50 rounded-lg border border-zinc-700">
-            <label className="block text-sm font-medium text-zinc-300 mb-2">
-              Rack Unit Height (U)
-            </label>
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1">
+          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="px-4 py-3 bg-zinc-800/50 flex items-center gap-2">
+              <Server size={16} className="text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-200">Rack Size</span>
+            </div>
+            <div className="p-4">
+              <div className="flex items-center gap-2">
                 {[1, 2, 3, 4].map((u) => (
                   <button
                     key={u}
-                    type="button"
                     onClick={() => setUHeight(u)}
                     className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
                       uHeight === u
                         ? 'bg-violet-600 text-white'
-                        : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                        : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                     }`}
                   >
                     {u}U
                   </button>
                 ))}
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={uHeight}
+                  onChange={(e) => setUHeight(parseInt(e.target.value) || 1)}
+                  className="w-16 px-2 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-center text-sm"
+                />
               </div>
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={uHeight}
-                onChange={(e) => setUHeight(parseInt(e.target.value) || 1)}
-                className="w-16 px-2 py-2 bg-zinc-700 border border-zinc-600 rounded-lg text-white text-center"
-              />
-            </div>
-            {hasGlobalPart && (
-              <button
-                onClick={handleSaveUHeight}
-                disabled={saving || uHeight === equipment?.global_part?.u_height}
-                className="mt-3 w-full px-3 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
-              >
-                {saving ? 'Saving...' : 'Save U-Height to Parts Database'}
-              </button>
-            )}
-            {!hasGlobalPart && (
-              <p className="mt-2 text-xs text-yellow-500">
-                This equipment is not linked to a global part. U-height will be set when placed.
-              </p>
-            )}
-          </div>
-
-          {/* Needs Shelf Section */}
-          <div className="p-4 bg-blue-900/20 rounded-lg border border-blue-800/50">
-            <div className="flex items-start gap-3">
-              <Layers size={20} className="text-blue-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-blue-300">
-                  Needs Shelf Space
-                </h4>
-                <p className="text-xs text-blue-400/80 mt-1">
-                  For non-rack-mountable equipment (amps, small devices) that needs to sit on a shelf.
-                </p>
-
-                <div className="mt-3 space-y-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={needsShelf}
-                      onChange={(e) => setNeedsShelf(e.target.checked)}
-                      className="w-4 h-4 rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500"
-                    />
-                    <span className="text-sm text-zinc-300">This equipment needs a shelf</span>
-                  </label>
-
-                  {needsShelf && (
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">
-                        Shelf space needed (U)
-                      </label>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4].map((u) => (
-                          <button
-                            key={u}
-                            type="button"
-                            onClick={() => setShelfUHeight(u)}
-                            className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
-                              shelfUHeight === u
-                                ? 'bg-blue-600 text-white'
-                                : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
-                            }`}
-                          >
-                            {u}U
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSaveShelfRequirement}
-                    disabled={saving || (needsShelf === equipment?.needs_shelf && shelfUHeight === equipment?.shelf_u_height)}
-                    className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
-                  >
-                    {saving ? 'Saving...' : 'Save Shelf Requirement'}
-                  </button>
-                </div>
-              </div>
+              {hasGlobalPart && (
+                <button
+                  onClick={handleSaveUHeight}
+                  disabled={saving || uHeight === equipment?.global_part?.u_height}
+                  className="mt-3 w-full px-3 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
+                >
+                  Save to Parts Database
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Move to Different Room Section */}
-          {onMoveRoom && (
-            <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-800/50">
-              <div className="flex items-start gap-3">
-                <Home size={20} className="text-amber-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-amber-300">
-                    Move to Different Room
-                  </h4>
-                  <p className="text-xs text-amber-400/80 mt-1">
-                    {currentRoom ? `Currently in: ${currentRoom.name}` : 'Currently: Head End (no room assigned)'}
-                  </p>
-
-                  <div className="mt-3 space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowRoomSelector(!showRoomSelector)}
-                      className="w-full flex items-center justify-between px-3 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-300 text-sm transition-colors"
-                    >
-                      <span>
-                        {selectedRoomId
-                          ? rooms.find(r => r.id === selectedRoomId)?.name || 'Select room...'
-                          : 'Select room...'}
-                      </span>
-                      <ChevronDown size={16} className={`transition-transform ${showRoomSelector ? 'rotate-180' : ''}`} />
-                    </button>
-
-                    {showRoomSelector && (
-                      <div className="max-h-40 overflow-y-auto rounded-lg border border-zinc-600 bg-zinc-700">
-                        {loadingRooms ? (
-                          <div className="p-3 text-sm text-zinc-400 text-center">Loading rooms...</div>
-                        ) : rooms.length === 0 ? (
-                          <div className="p-3 text-sm text-zinc-400 text-center">No rooms found</div>
-                        ) : (
-                          rooms.map(room => (
-                            <button
-                              key={room.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedRoomId(room.id);
-                                setShowRoomSelector(false);
-                              }}
-                              className={`w-full px-3 py-2 text-left text-sm hover:bg-zinc-600 transition-colors ${
-                                selectedRoomId === room.id ? 'bg-amber-600/30 text-amber-300' : 'text-zinc-300'
-                              } ${room.id === equipment?.room_id ? 'opacity-50' : ''}`}
-                              disabled={room.id === equipment?.room_id}
-                            >
-                              {room.name}
-                              {room.id === equipment?.room_id && ' (current)'}
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={handleMoveRoom}
-                      disabled={saving || !selectedRoomId || selectedRoomId === equipment?.room_id}
-                      className="w-full px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-colors"
-                    >
-                      {saving ? 'Moving...' : 'Move Equipment'}
-                    </button>
+          {/* Shelf Requirement Section */}
+          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+            <div className="px-4 py-3 bg-zinc-800/50 flex items-center gap-2">
+              <Layers size={16} className="text-blue-400" />
+              <span className="text-sm font-medium text-zinc-200">Shelf Space</span>
+            </div>
+            <div className="p-4 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={needsShelf}
+                  onChange={(e) => setNeedsShelf(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500"
+                />
+                <span className="text-sm text-zinc-300">Needs shelf space</span>
+              </label>
+              {needsShelf && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 w-24">Space needed:</span>
+                    {[1, 2, 3, 4].map((u) => (
+                      <button
+                        key={u}
+                        onClick={() => setShelfUHeight(u)}
+                        className={`w-8 h-8 rounded text-xs font-medium transition-colors ${
+                          shelfUHeight === u
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {u}U
+                      </button>
+                    ))}
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 w-24">Per shelf:</span>
+                    {[1, 2, 3, 4].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setMaxItemsPerShelf(n)}
+                        className={`w-8 h-8 rounded text-xs font-medium transition-colors ${
+                          maxItemsPerShelf === n
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    {maxItemsPerShelf > 1
+                      ? `${maxItemsPerShelf} devices can be shown side-by-side on a ${shelfUHeight}U shelf`
+                      : 'One device per shelf'}
+                  </p>
                 </div>
+              )}
+              <button
+                onClick={handleSaveShelfRequirement}
+                disabled={saving}
+                className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors"
+              >
+                Save Shelf Setting
+              </button>
+            </div>
+          </div>
+
+          {/* Move to Room Section */}
+          {onMoveRoom && (
+            <div className="rounded-lg border border-zinc-800 overflow-hidden">
+              <div className="px-4 py-3 bg-zinc-800/50 flex items-center gap-2">
+                <Home size={16} className="text-amber-400" />
+                <span className="text-sm font-medium text-zinc-200">Move to Room</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <button
+                  onClick={() => setShowRoomSelector(!showRoomSelector)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 text-sm transition-colors"
+                >
+                  <span>{selectedRoomId ? rooms.find(r => r.id === selectedRoomId)?.name : 'Select room...'}</span>
+                  <ChevronDown size={16} className={`transition-transform ${showRoomSelector ? 'rotate-180' : ''}`} />
+                </button>
+                {showRoomSelector && (
+                  <div className="max-h-32 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-800">
+                    {loadingRooms ? (
+                      <div className="p-3 text-sm text-zinc-500 text-center">Loading...</div>
+                    ) : rooms.map(room => (
+                      <button
+                        key={room.id}
+                        onClick={() => { setSelectedRoomId(room.id); setShowRoomSelector(false); }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-700 text-zinc-300 transition-colors"
+                      >
+                        {room.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={handleMoveRoom}
+                  disabled={saving || !selectedRoomId}
+                  className="w-full px-3 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors"
+                >
+                  Move Equipment
+                </button>
               </div>
             </div>
           )}
 
-          {/* Exclude Section */}
-          <div className="p-4 bg-red-900/20 rounded-lg border border-red-800/50">
-            <div className="flex items-start gap-3">
-              <EyeOff size={20} className="text-red-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-red-300">
-                  Not Rack Equipment
-                </h4>
-                <p className="text-xs text-red-400/80 mt-1">
-                  Mark this as non-rack equipment (wire, cable, accessories, etc.) to hide it from the rack layout drop zone.
-                </p>
-                <button
-                  onClick={handleExclude}
-                  disabled={saving}
-                  className="mt-3 px-4 py-2 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 rounded-lg text-white text-sm font-medium transition-colors"
-                >
-                  {saving ? 'Excluding...' : 'Exclude from Rack Layout'}
-                </button>
-              </div>
-            </div>
+          {/* Actions Section */}
+          <div className="pt-2 space-y-2">
+            {isPlaced && (
+              <button
+                onClick={handleRemoveFromRack}
+                disabled={saving}
+                className="w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-300 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                <Trash2 size={14} />
+                Remove from Rack
+              </button>
+            )}
+            <button
+              onClick={handleExclude}
+              disabled={saving}
+              className="w-full px-3 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 rounded-lg text-red-400 text-sm font-medium transition-colors"
+            >
+              Exclude from Rack Layout
+            </button>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-4 pt-4 border-t border-zinc-700">
-          <button
-            onClick={onClose}
-            className="w-full px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-300 transition-colors"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>
@@ -827,40 +683,40 @@ EquipmentEditModal.displayName = 'EquipmentEditModal';
 
 /**
  * RackFrontView - Main Component
- * Visual drag-and-drop rack layout view showing the front of the rack
+ * Full-width rack view with clean styling
  */
 const RackFrontView = ({
   rack,
   equipment = [],
   unplacedEquipment = [],
   projectId,
+  haClients = [],
+  haDevices = [],
   onEquipmentDrop,
   onEquipmentMove,
   onEquipmentRemove,
   onEquipmentEdit,
   onEquipmentExclude,
   onMoveRoom,
+  onLinkToHA,
   onAddShelf,
   onRefresh,
+  getNetworkInfo,
 }) => {
   const [dragState, setDragState] = useState({
     isDragging: false,
     draggedEquipment: null,
     dropPreview: null,
   });
-  const [showAddShelfModal, setShowAddShelfModal] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
 
   const totalU = rack?.total_u || 42;
-  const shelves = rack?.shelves || [];
 
   // Calculate occupied U positions
   const occupiedPositions = useMemo(() => {
     const positions = new Map();
-
-    // Map equipment to their positions (using rack_position_u from database)
     equipment.forEach((eq) => {
-      const posU = eq.rack_position_u || eq.position_u;
+      const posU = eq.rack_position_u;
       if (posU && !eq.shelf_id) {
         const uHeight = getEquipmentUHeight(eq);
         for (let u = posU; u < posU + uHeight; u++) {
@@ -868,52 +724,22 @@ const RackFrontView = ({
         }
       }
     });
-
-    // Map shelves to their positions
-    shelves.forEach((shelf) => {
-      const shelfHeight = shelf.u_height || 2;
-      const shelfPosU = shelf.rack_position_u || shelf.position_u;
-      for (let u = shelfPosU; u < shelfPosU + shelfHeight; u++) {
-        positions.set(u, { type: 'shelf', item: shelf });
-      }
-    });
-
     return positions;
-  }, [equipment, shelves]);
-
-  // Get equipment on shelves
-  const shelfEquipmentMap = useMemo(() => {
-    const map = new Map();
-    equipment.forEach((eq) => {
-      if (eq.shelf_id) {
-        if (!map.has(eq.shelf_id)) {
-          map.set(eq.shelf_id, []);
-        }
-        map.get(eq.shelf_id).push(eq);
-      }
-    });
-    return map;
   }, [equipment]);
 
   // Build positioned equipment and empty slots
-  const { positionedEquipment, positionedShelves, emptySlots } = useMemo(() => {
+  const { positionedEquipment, emptySlots } = useMemo(() => {
     const positionedEquipment = [];
-    const positionedShelves = [];
     const emptySlots = [];
     const processedUs = new Set();
 
-    // Process equipment (using rack_position_u from database)
     equipment.forEach((eq) => {
-      const posU = eq.rack_position_u || eq.position_u;
+      const posU = eq.rack_position_u;
       if (posU && !eq.shelf_id) {
         const uHeight = getEquipmentUHeight(eq);
         const topU = totalU - posU - uHeight + 1;
         positionedEquipment.push({
           ...eq,
-          // Normalize equipment data for display
-          name: eq.global_part?.name || eq.description || 'Unnamed Equipment',
-          manufacturer: eq.global_part?.manufacturer || '',
-          model: eq.global_part?.model || '',
           top: topU * U_HEIGHT,
           height: uHeight * U_HEIGHT,
         });
@@ -923,63 +749,31 @@ const RackFrontView = ({
       }
     });
 
-    // Process shelves
-    shelves.forEach((shelf) => {
-      const shelfHeight = shelf.u_height || 2;
-      const shelfPosU = shelf.rack_position_u || shelf.position_u;
-      const topU = totalU - shelfPosU - shelfHeight + 1;
-      positionedShelves.push({
-        ...shelf,
-        top: topU * U_HEIGHT,
-        height: shelfHeight * U_HEIGHT,
-      });
-      for (let u = shelfPosU; u < shelfPosU + shelfHeight; u++) {
-        processedUs.add(u);
-      }
-    });
-
-    // Find empty slots
     for (let u = 1; u <= totalU; u++) {
       if (!processedUs.has(u)) {
         const topU = totalU - u;
-        emptySlots.push({
-          uPosition: u,
-          top: topU * U_HEIGHT,
-          height: U_HEIGHT,
-        });
+        emptySlots.push({ uPosition: u, top: topU * U_HEIGHT, height: U_HEIGHT });
       }
     }
 
-    return { positionedEquipment, positionedShelves, emptySlots };
-  }, [equipment, shelves, totalU]);
+    return { positionedEquipment, emptySlots };
+  }, [equipment, totalU]);
 
-  // Handle drag start
+  // Drag handlers
   const handleDragStart = useCallback((eq) => {
-    setDragState((prev) => ({
-      ...prev,
-      isDragging: true,
-      draggedEquipment: eq,
-    }));
+    setDragState(prev => ({ ...prev, isDragging: true, draggedEquipment: eq }));
   }, []);
 
-  // Handle drag end
   const handleDragEnd = useCallback(() => {
-    setDragState({
-      isDragging: false,
-      draggedEquipment: null,
-      dropPreview: null,
-    });
+    setDragState({ isDragging: false, draggedEquipment: null, dropPreview: null });
   }, []);
 
-  // Calculate drop position from mouse Y
   const calculateDropPosition = useCallback((e, containerRect) => {
     const relativeY = e.clientY - containerRect.top;
     const uFromTop = Math.floor(relativeY / U_HEIGHT);
-    const targetU = totalU - uFromTop;
-    return Math.max(1, Math.min(targetU, totalU));
+    return Math.max(1, Math.min(totalU - uFromTop, totalU));
   }, [totalU]);
 
-  // Check if position is valid for drop
   const isValidDropPosition = useCallback((targetU, uHeight) => {
     for (let u = targetU; u < targetU + uHeight; u++) {
       if (u > totalU) return false;
@@ -989,49 +783,25 @@ const RackFrontView = ({
     return true;
   }, [occupiedPositions, totalU]);
 
-  // Handle drag over on rack area
   const handleRackDragOver = useCallback((e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
     const rect = e.currentTarget.getBoundingClientRect();
     const targetU = calculateDropPosition(e, rect);
-
-    // Get the dragged equipment's height
-    const uHeight = dragState.draggedEquipment
-      ? getEquipmentUHeight(dragState.draggedEquipment)
-      : 1;
+    const uHeight = dragState.draggedEquipment ? getEquipmentUHeight(dragState.draggedEquipment) : 1;
 
     if (isValidDropPosition(targetU, uHeight)) {
       const topU = totalU - targetU - uHeight + 1;
-      setDragState((prev) => ({
+      setDragState(prev => ({
         ...prev,
-        dropPreview: {
-          targetU,
-          top: topU * U_HEIGHT,
-          height: uHeight * U_HEIGHT,
-        },
+        dropPreview: { targetU, top: topU * U_HEIGHT, height: uHeight * U_HEIGHT },
       }));
     } else {
-      setDragState((prev) => ({
-        ...prev,
-        dropPreview: null,
-      }));
+      setDragState(prev => ({ ...prev, dropPreview: null }));
     }
   }, [calculateDropPosition, dragState.draggedEquipment, isValidDropPosition, totalU]);
 
-  // Handle drag leave on rack area
-  const handleRackDragLeave = useCallback(() => {
-    setDragState((prev) => ({
-      ...prev,
-      dropPreview: null,
-    }));
-  }, []);
-
-  // Handle drop on rack area
   const handleRackDrop = useCallback((e) => {
     e.preventDefault();
-
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       const rect = e.currentTarget.getBoundingClientRect();
@@ -1045,30 +815,24 @@ const RackFrontView = ({
         }
       }
     } catch (err) {
-      console.error('[RackFrontView] Drop error:', err);
+      console.error('Drop error:', err);
     }
-
     handleDragEnd();
   }, [calculateDropPosition, isValidDropPosition, onEquipmentDrop, onEquipmentMove, handleDragEnd]);
 
-  // Handle add shelf
-  const handleAddShelf = useCallback((uHeight, positionU) => {
-    onAddShelf?.(uHeight, positionU);
-  }, [onAddShelf]);
+  // Get network info for editing equipment
+  const editingNetworkInfo = editingEquipment && getNetworkInfo ? getNetworkInfo(editingEquipment) : null;
 
   return (
-    <div className="flex flex-col h-full bg-zinc-900 rounded-lg overflow-hidden">
+    <div className="bg-zinc-900 rounded-xl border border-zinc-700 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-700 bg-zinc-800">
-        <div className="flex items-center gap-3">
-          <Server size={20} className="text-violet-400" />
-          <h2 className="text-lg font-semibold text-white">
-            {rack?.name || 'Rack'} ({totalU}U)
-          </h2>
-        </div>
+      <div className="flex items-center justify-between px-6 py-4 bg-zinc-800 border-b border-zinc-700">
+        <h3 className="text-lg font-semibold text-white">
+          {rack?.name || 'Rack'} - Front View
+        </h3>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowAddShelfModal(true)}
+            onClick={() => {}} // TODO: Add shelf modal
             className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm text-zinc-300 transition-colors"
           >
             <Plus size={14} />
@@ -1078,7 +842,6 @@ const RackFrontView = ({
             <button
               onClick={onRefresh}
               className="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-300 transition-colors"
-              title="Refresh"
             >
               <RefreshCw size={16} />
             </button>
@@ -1086,25 +849,36 @@ const RackFrontView = ({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-auto p-4">
-        {/* Rack Visualization */}
-        <div className="flex gap-2 mb-6">
+      {/* Rack Body - Full Width */}
+      <div className="p-4">
+        <div className="flex gap-3">
           {/* U Labels */}
-          <ULabelsColumn totalU={totalU} />
+          <div className="flex-shrink-0 w-10">
+            <div className="relative" style={{ height: `${totalU * U_HEIGHT}px` }}>
+              {Array.from({ length: totalU }, (_, i) => {
+                const uPosition = totalU - i;
+                return (
+                  <div
+                    key={uPosition}
+                    className="absolute right-0 text-xs text-zinc-500 font-mono"
+                    style={{ top: `${i * U_HEIGHT + (U_HEIGHT / 2) - 8}px` }}
+                  >
+                    U{uPosition}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-          {/* Rack Body */}
+          {/* Rack Content - Full Width */}
           <div
-            className="relative bg-zinc-800 border border-zinc-700 rounded-lg"
-            style={{
-              width: `${RACK_WIDTH}px`,
-              height: `${totalU * U_HEIGHT}px`,
-            }}
+            className="flex-1 relative bg-zinc-800/50 border border-zinc-700 rounded-lg"
+            style={{ height: `${totalU * U_HEIGHT}px` }}
             onDragOver={handleRackDragOver}
-            onDragLeave={handleRackDragLeave}
+            onDragLeave={() => setDragState(prev => ({ ...prev, dropPreview: null }))}
             onDrop={handleRackDrop}
           >
-            {/* U Grid Lines */}
+            {/* Grid Lines */}
             {Array.from({ length: totalU }, (_, i) => (
               <div
                 key={i}
@@ -1115,74 +889,44 @@ const RackFrontView = ({
 
             {/* Empty Slots */}
             {emptySlots.map((slot) => (
-              <EmptySlot
-                key={slot.uPosition}
-                uPosition={slot.uPosition}
-                top={slot.top}
-                height={slot.height}
-                isDragOver={false}
-              />
+              <EmptySlot key={slot.uPosition} {...slot} isDragOver={false} />
             ))}
 
-            {/* Positioned Shelves */}
-            {positionedShelves.map((shelf) => (
-              <ShelfBlock
-                key={shelf.id}
-                shelf={shelf}
-                top={shelf.top}
-                height={shelf.height}
-                shelfEquipment={shelfEquipmentMap.get(shelf.id) || []}
-                onDrop={onEquipmentDrop}
-                onRemoveEquipment={onEquipmentRemove}
-              />
-            ))}
-
-            {/* Positioned Equipment */}
+            {/* Equipment */}
             {positionedEquipment.map((eq) => (
               <EquipmentBlock
                 key={eq.id}
                 equipment={eq}
                 top={eq.top}
                 height={eq.height}
-                isPlaced={true}
                 isDragging={dragState.draggedEquipment?.id === eq.id}
+                networkInfo={getNetworkInfo?.(eq)}
                 onDragStart={handleDragStart}
-                onRemove={onEquipmentRemove}
+                onClick={setEditingEquipment}
               />
             ))}
 
             {/* Drop Preview */}
             {dragState.dropPreview && (
-              <DropPreview
-                top={dragState.dropPreview.top}
-                height={dragState.dropPreview.height}
-              />
+              <DropPreview top={dragState.dropPreview.top} height={dragState.dropPreview.height} />
             )}
           </div>
         </div>
 
-        {/* Unplaced Equipment Section */}
+        {/* Unplaced Equipment */}
         <div className="mt-6">
-          <div className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
-            <span>DROP ZONE - Drag equipment here</span>
-            <span className="text-xs text-zinc-500">({unplacedEquipment.length} items)</span>
+          <div className="text-sm font-medium text-zinc-400 mb-3">
+            Unplaced Equipment ({unplacedEquipment.length})
           </div>
           <div
-            className="min-h-[100px] p-3 border-2 border-dashed border-zinc-700 rounded-lg bg-zinc-800/50"
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = 'move';
-            }}
+            className="min-h-[80px] p-3 border-2 border-dashed border-zinc-700 rounded-lg bg-zinc-800/30"
+            onDragOver={(e) => { e.preventDefault(); }}
             onDrop={(e) => {
               e.preventDefault();
               try {
                 const data = JSON.parse(e.dataTransfer.getData('application/json'));
-                if (data.isMove) {
-                  onEquipmentRemove?.(data.equipmentId);
-                }
-              } catch (err) {
-                console.error('[RackFrontView] Unplace drop error:', err);
-              }
+                if (data.isMove) onEquipmentRemove?.(data.equipmentId);
+              } catch (err) {}
               handleDragEnd();
             }}
           >
@@ -1199,30 +943,27 @@ const RackFrontView = ({
               </div>
             ) : (
               <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-                <span>All equipment has been placed in the rack</span>
+                All equipment placed
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Add Shelf Modal */}
-      <AddShelfModal
-        isOpen={showAddShelfModal}
-        onClose={() => setShowAddShelfModal(false)}
-        onSubmit={handleAddShelf}
-        totalU={totalU}
-      />
-
-      {/* Equipment Edit Modal */}
+      {/* Edit Modal */}
       {editingEquipment && (
         <EquipmentEditModal
           equipment={editingEquipment}
           projectId={projectId}
+          networkInfo={editingNetworkInfo}
+          haClients={haClients}
+          haDevices={haDevices}
           onClose={() => setEditingEquipment(null)}
           onSave={onEquipmentEdit}
+          onRemove={onEquipmentRemove}
           onExclude={onEquipmentExclude}
           onMoveRoom={onMoveRoom}
+          onLinkToHA={onLinkToHA}
         />
       )}
     </div>
@@ -1231,5 +972,4 @@ const RackFrontView = ({
 
 export default memo(RackFrontView);
 
-// Export constants for use in parent components
-export { U_HEIGHT, RACK_WIDTH, U_LABEL_WIDTH };
+export { U_HEIGHT };

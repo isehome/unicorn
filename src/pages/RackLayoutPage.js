@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Server, RotateCcw, Zap, Loader, RefreshCw, Plus, ChevronDown, Check } from 'lucide-react';
+import { Server, RotateCcw, Loader, RefreshCw, Plus, ChevronDown, Check } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { projectsService } from '../services/supabaseService';
@@ -8,7 +8,6 @@ import * as rackService from '../services/rackService';
 import Button from '../components/ui/Button';
 import RackFrontView from '../components/Rack/RackFrontView';
 import RackBackView from '../components/Rack/RackBackView';
-import RackPowerView from '../components/Rack/RackPowerView';
 
 /**
  * RackLayoutPage - Head-End rack layout management page
@@ -153,12 +152,63 @@ const RackLayoutPage = () => {
     }
   }, [projectId]);
 
-  // Fetch HA clients when view changes to back
+  // Fetch HA clients when view changes to back OR front (front view modal needs them too)
   useEffect(() => {
-    if (activeView === 'back') {
+    if (activeView === 'back' || activeView === 'front') {
       fetchHAClients();
     }
   }, [activeView, fetchHAClients]);
+
+  // Helper function to get network info for an equipment item (used by RackFrontView)
+  const getNetworkInfo = useCallback((item) => {
+    let haClient = item.ha_client;
+
+    // If no nested object but we have ha_client_mac, look it up
+    if (!haClient && item.ha_client_mac) {
+      const mac = item.ha_client_mac.toLowerCase();
+
+      const matchedDevice = haDevices.find(d => d.mac?.toLowerCase() === mac);
+      if (matchedDevice) {
+        haClient = {
+          mac: matchedDevice.mac,
+          hostname: matchedDevice.name,
+          ip: matchedDevice.ip,
+          is_online: matchedDevice.is_online,
+          is_wired: true,
+        };
+      }
+
+      if (!haClient) {
+        const matchedClient = haClients.find(c => c.mac?.toLowerCase() === mac);
+        if (matchedClient) {
+          haClient = {
+            mac: matchedClient.mac,
+            hostname: matchedClient.hostname,
+            ip: matchedClient.ip,
+            is_online: matchedClient.is_online,
+            is_wired: matchedClient.is_wired,
+            switch_name: matchedClient.switch_name,
+            switch_port: matchedClient.switch_port,
+          };
+        }
+      }
+    }
+
+    if (!haClient) {
+      return { linked: false, isOnline: null, ip: null, mac: null, hostname: null };
+    }
+
+    return {
+      linked: true,
+      isOnline: haClient.is_online,
+      ip: haClient.ip,
+      mac: haClient.mac,
+      hostname: haClient.hostname,
+      switchName: haClient.switch_name,
+      switchPort: haClient.switch_port,
+      isWired: haClient.is_wired,
+    };
+  }, [haClients, haDevices]);
 
   // Handle linking equipment to HA network client
   const handleLinkToHA = useCallback(async (equipmentId, clientMac) => {
@@ -375,11 +425,18 @@ const RackLayoutPage = () => {
 
       // Update shelf requirements on project_equipment
       if (updates.needsShelf !== undefined) {
-        await projectEquipmentService.updateEquipment(equipmentId, {
+        console.log('[handleEquipmentEdit] Saving shelf requirements:', {
+          equipmentId,
           needs_shelf: updates.needsShelf,
           shelf_u_height: updates.shelfUHeight || null,
+          max_items_per_shelf: updates.maxItemsPerShelf || 1,
         });
-        console.log('[handleEquipmentEdit] Updated shelf requirements:', { needsShelf: updates.needsShelf, shelfUHeight: updates.shelfUHeight });
+        const result = await projectEquipmentService.updateEquipment(equipmentId, {
+          needs_shelf: updates.needsShelf,
+          shelf_u_height: updates.shelfUHeight || null,
+          max_items_per_shelf: updates.maxItemsPerShelf || 1,
+        });
+        console.log('[handleEquipmentEdit] Shelf update result:', result);
       }
 
       await loadData();
@@ -632,18 +689,7 @@ const RackLayoutPage = () => {
                 }`}
               >
                 <RotateCcw size={18} />
-                Back View
-              </button>
-              <button
-                onClick={() => setActiveView('power')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeView === 'power'
-                    ? 'bg-violet-600 text-white'
-                    : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700'
-                }`}
-              >
-                <Zap size={18} />
-                Power View
+                Network View
               </button>
             </div>
 
@@ -698,14 +744,18 @@ const RackLayoutPage = () => {
                   equipment={placedEquipment}
                   unplacedEquipment={unplacedEquipment}
                   projectId={projectId}
+                  haClients={haClients}
+                  haDevices={haDevices}
                   onEquipmentDrop={handleEquipmentDrop}
                   onEquipmentMove={handleEquipmentMove}
                   onEquipmentRemove={handleEquipmentRemove}
                   onEquipmentEdit={handleEquipmentEdit}
                   onEquipmentExclude={handleEquipmentExclude}
                   onMoveRoom={handleMoveRoom}
+                  onLinkToHA={handleLinkToHA}
                   onAddShelf={handleAddShelf}
                   onRefresh={handleRefresh}
+                  getNetworkInfo={getNetworkInfo}
                 />
               )}
               {activeView === 'back' && (
@@ -715,14 +765,7 @@ const RackLayoutPage = () => {
                   haClients={haClients}
                   haDevices={haDevices}
                   onLinkToHA={handleLinkToHA}
-                  onRefresh={handleRefresh}
-                />
-              )}
-              {activeView === 'power' && (
-                <RackPowerView
-                  rack={currentRack}
-                  equipment={placedEquipment}
-                  onRefresh={handleRefresh}
+                  onRefresh={fetchHAClients}
                 />
               )}
             </div>
