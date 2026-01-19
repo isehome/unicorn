@@ -1,17 +1,24 @@
 /**
  * api/ha/network-clients.js
- * Get detailed network client information from Home Assistant's UniFi integration
+ * Get detailed network client AND device information from Home Assistant's UniFi integration
  * GET /api/ha/network-clients?project_id=xxx
  *
  * This fetches from the custom Unicorn UniFi integration sensor:
  * sensor.unifi_connection_status
  *
- * Returns detailed client info:
- * - Device name, MAC address, IP address
- * - Switch name, switch port (for wired clients)
- * - WiFi network (SSID), AP name (for wireless clients)
- * - Connection type (wired/wireless)
- * - Uptime, last seen
+ * Returns:
+ * - clients: Connected network devices (computers, phones, IoT devices)
+ *   - Device name, MAC address, IP address
+ *   - Switch name, switch port (for wired clients)
+ *   - WiFi network (SSID), AP name (for wireless clients)
+ *   - Connection type (wired/wireless)
+ *   - Uptime, last seen
+ *
+ * - devices: UniFi infrastructure (switches, APs, gateways)
+ *   - MAC, IP, model, name
+ *   - Category (switch, access_point, gateway)
+ *   - Port table for switches
+ *   - Firmware version, uptime
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -79,15 +86,18 @@ module.exports = async (req, res) => {
 
     const entityData = await haResponse.json();
 
-    // Extract clients array from entity attributes
-    const rawClients = entityData.attributes?.clients;
+    // Extract clients and devices arrays from entity attributes
+    const rawClients = entityData.attributes?.clients || [];
+    const rawDevices = entityData.attributes?.devices || [];
 
-    if (!rawClients || !Array.isArray(rawClients)) {
+    if (!Array.isArray(rawClients)) {
       return res.status(422).json({
         error: 'No clients data found',
         hint: 'Expected sensor.unifi_connection_status to have a "clients" attribute array'
       });
     }
+
+    console.log('[HA Network] Found', rawClients.length, 'clients and', rawDevices.length, 'devices');
 
     // Format with full network details
     const clients = rawClients.map(c => {
@@ -152,19 +162,97 @@ module.exports = async (req, res) => {
       return (a.name || '').localeCompare(b.name || '');
     });
 
+    // Format UniFi infrastructure devices (switches, APs, gateways)
+    const devices = rawDevices.map(d => {
+      // Format uptime
+      let uptimeFormatted = null;
+      if (d.uptime && typeof d.uptime === 'number') {
+        const seconds = d.uptime;
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        if (days > 0) {
+          uptimeFormatted = `${days}d ${hours}h`;
+        } else if (hours > 0) {
+          uptimeFormatted = `${hours}h ${mins}m`;
+        } else {
+          uptimeFormatted = `${mins}m`;
+        }
+      }
+
+      return {
+        // Core identity
+        mac_address: d.mac || null,
+        ip_address: d.ip || null,
+        name: d.name || d.model || 'Unknown Device',
+        model: d.model || null,
+
+        // Device type
+        type: d.type || null,
+        category: d.category || null, // 'switch', 'access_point', 'gateway'
+
+        // Status
+        state: d.state || null,
+        adopted: d.adopted || false,
+        is_online: d.state === 1,
+
+        // Version info
+        version: d.version || null,
+        upgradable: d.upgradable || false,
+
+        // Timing
+        uptime_seconds: d.uptime || null,
+        uptime_formatted: uptimeFormatted,
+        last_seen: d.last_seen || null,
+
+        // Switch-specific
+        ports_total: d.ports_total || null,
+        ports_used: d.ports_used || null,
+        port_table: d.port_table || [],
+
+        // AP-specific
+        num_sta: d.num_sta || null, // Number of connected stations
+        channel: d.channel || null,
+
+        // System stats
+        cpu: d.cpu || null,
+        mem: d.mem || null,
+
+        // Gateway MAC (for topology)
+        gateway_mac: d.gateway_mac || null,
+
+        // Raw data for debugging
+        _raw: d
+      };
+    });
+
+    // Sort devices: gateways first, then switches, then APs
+    const categoryOrder = { gateway: 0, switch: 1, access_point: 2 };
+    devices.sort((a, b) => {
+      const orderA = categoryOrder[a.category] ?? 99;
+      const orderB = categoryOrder[b.category] ?? 99;
+      if (orderA !== orderB) return orderA - orderB;
+      return (a.name || '').localeCompare(b.name || '');
+    });
+
     // Summary stats
     const summary = {
-      total: clients.length,
-      wired: clients.filter(c => c.is_wired).length,
-      wireless: clients.filter(c => c.is_wireless).length
+      total_clients: clients.length,
+      wired_clients: clients.filter(c => c.is_wired).length,
+      wireless_clients: clients.filter(c => c.is_wireless).length,
+      total_devices: devices.length,
+      switches: devices.filter(d => d.category === 'switch').length,
+      access_points: devices.filter(d => d.category === 'access_point').length,
+      gateways: devices.filter(d => d.category === 'gateway').length
     };
 
-    console.log('[HA Network] Returning', clients.length, 'clients');
+    console.log('[HA Network] Returning', clients.length, 'clients and', devices.length, 'devices');
 
     return res.json({
       success: true,
       summary,
       clients,
+      devices,
       source: 'sensor.unifi_connection_status'
     });
 

@@ -104,10 +104,12 @@ function HomeAssistantSettings({ projectId }) {
 
   // Network clients state
   const [networkClients, setNetworkClients] = useState([]);
+  const [networkDevices, setNetworkDevices] = useState([]); // UniFi infrastructure (switches, APs, gateways)
+  const [networkSummary, setNetworkSummary] = useState(null);
   const [loadingClients, setLoadingClients] = useState(false);
   const [showClients, setShowClients] = useState(false);
   const [clientsError, setClientsError] = useState(null);
-  const [clientFilter, setClientFilter] = useState('all'); // 'all', 'wired', 'wireless'
+  const [clientFilter, setClientFilter] = useState('all'); // 'all', 'wired', 'wireless', 'devices'
 
   const styles = useMemo(() => {
     const cardBackground = mode === 'dark' ? '#27272A' : '#FFFFFF';
@@ -434,10 +436,14 @@ function HomeAssistantSettings({ projectId }) {
       }
 
       setNetworkClients(result.clients || []);
+      setNetworkDevices(result.devices || []);
+      setNetworkSummary(result.summary || null);
     } catch (err) {
       console.error('Error loading network clients:', err);
       setClientsError(err.message);
       setNetworkClients([]);
+      setNetworkDevices([]);
+      setNetworkSummary(null);
     } finally {
       setLoadingClients(false);
     }
@@ -452,11 +458,17 @@ function HomeAssistantSettings({ projectId }) {
 
   // Filter network clients based on selected filter
   const filteredClients = useMemo(() => {
+    if (clientFilter === 'devices') return []; // Devices shown separately
     if (clientFilter === 'all') return networkClients;
     if (clientFilter === 'wired') return networkClients.filter(c => c.is_wired);
     if (clientFilter === 'wireless') return networkClients.filter(c => c.is_wireless);
     return networkClients;
   }, [networkClients, clientFilter]);
+
+  // Get total count for display
+  const totalNetworkCount = useMemo(() => {
+    return networkClients.length + networkDevices.length;
+  }, [networkClients, networkDevices]);
 
   const handleBackupUpload = async (event) => {
     const file = event.target.files?.[0];

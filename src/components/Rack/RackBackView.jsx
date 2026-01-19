@@ -12,6 +12,7 @@ const RackBackView = ({
   rack,
   equipment = [],
   haClients = [],
+  haDevices = [],
   onLinkToHA,
   onRefresh
 }) => {
@@ -152,12 +153,19 @@ const RackBackView = ({
       }
     };
 
+    // Get already linked MACs
+    const linkedMacs = equipment
+      .map(e => e.ha_client_mac?.toLowerCase())
+      .filter(Boolean);
+
     // Filter out already linked clients
     const availableClients = haClients.filter(client => {
-      const linkedMacs = equipment
-        .map(e => e.ha_client_mac?.toLowerCase())
-        .filter(Boolean);
       return !linkedMacs.includes(client.mac?.toLowerCase());
+    });
+
+    // Filter out already linked devices (switches, APs, gateways)
+    const availableDevices = haDevices.filter(device => {
+      return !linkedMacs.includes(device.mac?.toLowerCase());
     });
 
     return (
@@ -172,10 +180,10 @@ const RackBackView = ({
         </button>
 
         {isOpen && (
-          <div className="absolute z-20 top-full left-0 mt-1 w-80 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg">
+          <div className="absolute z-20 top-full left-0 mt-1 w-80 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg max-h-96 overflow-y-auto">
             <div className="p-3">
               <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-2">
-                Select Network Client
+                Select Network Device or Client
               </label>
               <select
                 value={selectedMac}
@@ -183,11 +191,28 @@ const RackBackView = ({
                 className="w-full px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 focus:ring-2 focus:ring-[#94AF32] focus:border-transparent"
               >
                 <option value="">Choose a device...</option>
-                {availableClients.map(client => (
-                  <option key={client.mac} value={client.mac}>
-                    {client.hostname || 'Unknown'} - {client.ip || 'No IP'} ({formatMac(client.mac)})
-                  </option>
-                ))}
+
+                {/* UniFi Infrastructure Devices (switches, APs, gateways) */}
+                {availableDevices.length > 0 && (
+                  <optgroup label="📡 UniFi Devices">
+                    {availableDevices.map(device => (
+                      <option key={device.mac} value={device.mac}>
+                        {device.name} ({device.model}) - {device.ip || 'No IP'}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
+                {/* Connected Network Clients */}
+                {availableClients.length > 0 && (
+                  <optgroup label="💻 Network Clients">
+                    {availableClients.map(client => (
+                      <option key={client.mac} value={client.mac}>
+                        {client.hostname || 'Unknown'} - {client.ip || 'No IP'} ({formatMac(client.mac)})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
               <div className="flex justify-end gap-2 mt-3">
                 <button
@@ -458,6 +483,18 @@ RackBackView.propTypes = {
       hostname: PropTypes.string,
       ip: PropTypes.string,
       is_online: PropTypes.bool
+    })
+  ),
+  haDevices: PropTypes.arrayOf(
+    PropTypes.shape({
+      mac: PropTypes.string.isRequired,
+      name: PropTypes.string,
+      model: PropTypes.string,
+      ip: PropTypes.string,
+      category: PropTypes.string, // 'switch', 'access_point', 'gateway'
+      is_online: PropTypes.bool,
+      ports_total: PropTypes.number,
+      ports_used: PropTypes.number
     })
   ),
   onLinkToHA: PropTypes.func,

@@ -36,8 +36,9 @@ const RackLayoutPage = () => {
   // View state
   const [activeView, setActiveView] = useState('front'); // 'front', 'back', 'power'
 
-  // Home Assistant network clients state
+  // Home Assistant network clients and devices state
   const [haClients, setHaClients] = useState([]);
+  const [haDevices, setHaDevices] = useState([]); // UniFi infrastructure (switches, APs, gateways)
 
   // Styles based on theme
   const styles = useMemo(() => ({
@@ -97,7 +98,7 @@ const RackLayoutPage = () => {
     setRefreshing(false);
   }, [loadData]);
 
-  // Fetch HA network clients for back view network linking
+  // Fetch HA network clients AND UniFi devices for back view network linking
   const fetchHAClients = useCallback(async () => {
     if (!projectId) return;
 
@@ -109,18 +110,43 @@ const RackLayoutPage = () => {
       const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
       const result = await response.json();
 
-      if (response.ok && result.clients) {
-        // Transform to expected format for RackBackView
-        const clients = result.clients.map(c => ({
-          mac: c.mac_address,
-          hostname: c.hostname || c.name,
-          ip: c.ip_address,
-          is_online: true,
-          is_wired: c.is_wired,
-          switch_name: c.switch_name,
-          switch_port: c.switch_port
-        }));
-        setHaClients(clients);
+      if (response.ok) {
+        // Transform clients to expected format for RackBackView
+        if (result.clients) {
+          const clients = result.clients.map(c => ({
+            mac: c.mac_address,
+            hostname: c.hostname || c.name,
+            ip: c.ip_address,
+            is_online: true,
+            is_wired: c.is_wired,
+            switch_name: c.switch_name,
+            switch_port: c.switch_port
+          }));
+          setHaClients(clients);
+        }
+
+        // Transform UniFi devices (switches, APs, gateways) to expected format
+        if (result.devices) {
+          const devices = result.devices.map(d => ({
+            mac: d.mac_address,
+            name: d.name,
+            model: d.model,
+            ip: d.ip_address,
+            category: d.category, // 'switch', 'access_point', 'gateway'
+            type: d.type,
+            is_online: d.is_online,
+            version: d.version,
+            uptime: d.uptime_formatted,
+            ports_total: d.ports_total,
+            ports_used: d.ports_used,
+            port_table: d.port_table,
+            num_sta: d.num_sta, // Connected stations for APs
+            cpu: d.cpu,
+            mem: d.mem
+          }));
+          setHaDevices(devices);
+          console.log('[RackLayout] Loaded', devices.length, 'UniFi devices:', devices.map(d => d.name));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch HA network clients:', err);
@@ -677,6 +703,7 @@ const RackLayoutPage = () => {
                   rack={currentRack}
                   equipment={placedEquipment}
                   haClients={haClients}
+                  haDevices={haDevices}
                   onLinkToHA={handleLinkToHA}
                   onRefresh={handleRefresh}
                 />
