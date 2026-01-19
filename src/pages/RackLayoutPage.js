@@ -186,9 +186,11 @@ const RackLayoutPage = () => {
     }
 
     // Equipment placed in the selected rack
+    // Must be head_end equipment (not room equipment) and have rack placement
     const placed = equipment.filter(eq =>
-      eq.rack_id === selectedRack.id ||
-      (eq.rack_position_u != null && !eq.rack_id) // Legacy: equipment with position but no rack_id
+      (eq.rack_id === selectedRack.id ||
+        (eq.rack_position_u != null && !eq.rack_id)) && // Legacy: equipment with position but no rack_id
+      eq.install_side !== 'room' // Exclude equipment that's been moved to a room
     );
 
     // Head-end equipment not placed in any rack
@@ -389,8 +391,11 @@ const RackLayoutPage = () => {
         room_id: newRoomId,
         // Moving to a room means it's no longer head-end equipment
         install_side: 'room',
+        // Clear rack placement since it's no longer in the rack
+        rack_id: null,
+        rack_position_u: null,
       });
-      console.log('[handleMoveRoom] Moved equipment to room:', newRoomId);
+      console.log('[handleMoveRoom] Moved equipment to room:', newRoomId, '- cleared rack placement');
       await loadData();
     } catch (err) {
       console.error('Failed to move equipment to room:', err);
