@@ -291,7 +291,7 @@ const RackBackView = ({
     const clientCount = connectedClients[item.id]?.length || 0;
 
     return (
-      <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 overflow-hidden">
+      <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800">
         {/* Equipment Header */}
         <div className="p-4">
           <div className="flex items-start justify-between gap-4">
@@ -368,7 +368,7 @@ const RackBackView = ({
   }
 
   return (
-    <div className="bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+    <div className="bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-700">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">

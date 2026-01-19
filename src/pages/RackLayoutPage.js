@@ -36,6 +36,9 @@ const RackLayoutPage = () => {
   // View state
   const [activeView, setActiveView] = useState('front'); // 'front', 'back', 'power'
 
+  // Home Assistant network clients state
+  const [haClients, setHaClients] = useState([]);
+
   // Styles based on theme
   const styles = useMemo(() => ({
     card: {
@@ -92,6 +95,56 @@ const RackLayoutPage = () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
+  }, [loadData]);
+
+  // Fetch HA network clients for back view network linking
+  const fetchHAClients = useCallback(async () => {
+    if (!projectId) return;
+
+    try {
+      // Use Vercel production URL for API calls in development
+      const apiBase = window.location.hostname === 'localhost'
+        ? 'https://unicorn-one.vercel.app'
+        : '';
+      const response = await fetch(`${apiBase}/api/ha/network-clients?project_id=${projectId}`);
+      const result = await response.json();
+
+      if (response.ok && result.clients) {
+        // Transform to expected format for RackBackView
+        const clients = result.clients.map(c => ({
+          mac: c.mac_address,
+          hostname: c.hostname || c.name,
+          ip: c.ip_address,
+          is_online: true,
+          is_wired: c.is_wired,
+          switch_name: c.switch_name,
+          switch_port: c.switch_port
+        }));
+        setHaClients(clients);
+      }
+    } catch (err) {
+      console.error('Failed to fetch HA network clients:', err);
+    }
+  }, [projectId]);
+
+  // Fetch HA clients when view changes to back
+  useEffect(() => {
+    if (activeView === 'back') {
+      fetchHAClients();
+    }
+  }, [activeView, fetchHAClients]);
+
+  // Handle linking equipment to HA network client
+  const handleLinkToHA = useCallback(async (equipmentId, clientMac) => {
+    try {
+      await projectEquipmentService.updateEquipment(equipmentId, {
+        ha_client_mac: clientMac,
+        unifi_client_mac: clientMac
+      });
+      await loadData();
+    } catch (err) {
+      console.error('Failed to link equipment to HA client:', err);
+    }
   }, [loadData]);
 
   // Get equipment that hasn't been assigned to any rack yet (for the "add rack" modal)
@@ -623,6 +676,8 @@ const RackLayoutPage = () => {
                 <RackBackView
                   rack={currentRack}
                   equipment={placedEquipment}
+                  haClients={haClients}
+                  onLinkToHA={handleLinkToHA}
                   onRefresh={handleRefresh}
                 />
               )}
