@@ -23,7 +23,8 @@ import {
   Search,
   Signal,
   Clock,
-  Server
+  Server,
+  Network
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -37,11 +38,12 @@ const HANetworkClientSelector = ({
   mode = 'light'
 }) => {
   const [clients, setClients] = useState([]);
+  const [devices, setDevices] = useState([]); // UniFi infrastructure (switches, APs, gateways)
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filter, setFilter] = useState('all'); // 'all', 'wired', 'wireless'
+  const [filter, setFilter] = useState('all'); // 'all', 'wired', 'wireless', 'devices'
   const [selectedClient, setSelectedClient] = useState(null);
   const [lastRefresh, setLastRefresh] = useState(null);
 
@@ -113,16 +115,34 @@ const HANetworkClientSelector = ({
       }
 
       setClients(result.clients || []);
+      setDevices(result.devices || []);
       setLastRefresh(new Date());
 
-      // Auto-match by MAC address if equipment has one
+      // Auto-match by MAC address if equipment has one - check both clients and devices
       const existingMac = equipmentData?.unifi_client_mac || equipmentData?.mac_address;
       if (existingMac) {
-        const match = result.clients.find(
+        // First check clients
+        const clientMatch = result.clients.find(
           c => c.mac_address?.toLowerCase() === existingMac.toLowerCase()
         );
-        if (match) {
-          setSelectedClient(match);
+        if (clientMatch) {
+          setSelectedClient(clientMatch);
+        } else {
+          // Then check devices
+          const deviceMatch = result.devices?.find(
+            d => d.mac_address?.toLowerCase() === existingMac.toLowerCase()
+          );
+          if (deviceMatch) {
+            // Transform device to look like a client for consistency
+            setSelectedClient({
+              ...deviceMatch,
+              name: deviceMatch.name,
+              hostname: deviceMatch.name,
+              is_wired: true,
+              is_device: true, // Flag to identify it's a UniFi device
+              connection_type: deviceMatch.category
+            });
+          }
         }
       }
     } catch (err) {
@@ -143,6 +163,8 @@ const HANetworkClientSelector = ({
 
   // Filter clients
   const filteredClients = useMemo(() => {
+    if (filter === 'devices') return []; // Devices shown separately
+
     let filtered = clients;
 
     // Apply type filter
@@ -166,10 +188,110 @@ const HANetworkClientSelector = ({
     return filtered;
   }, [clients, filter, searchTerm]);
 
+  // Filter devices
+  const filteredDevices = useMemo(() => {
+    if (filter !== 'devices') return [];
+
+    let filtered = devices;
+
+    // Apply search
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(d =>
+        (d.name || '').toLowerCase().includes(search) ||
+        (d.model || '').toLowerCase().includes(search) ||
+        (d.mac_address || '').toLowerCase().includes(search) ||
+        (d.ip_address || '').toLowerCase().includes(search)
+      );
+    }
+
+    return filtered;
+  }, [devices, filter, searchTerm]);
+
   // Format MAC address
   const formatMac = (mac) => {
     if (!mac) return 'N/A';
     return mac.toUpperCase();
+  };
+
+  // Handle device selection (UniFi infrastructure: switches, APs, gateways)
+  const handleSelectDevice = async (device) => {
+    if (!device || !equipmentData?.id) return;
+
+    setSaving(true);
+    setError(null);
+
+    try {
+      // Prepare update data for a UniFi device (not a client)
+      const updateData = {
+        unifi_client_mac: device.mac_address,
+        unifi_last_ip: device.ip_address,
+        unifi_last_seen: new Date().toISOString(),
+        unifi_data: {
+          hostname: device.name,
+          is_wired: true,
+          is_device: true, // Flag to identify it's a UniFi device, not a client
+          connection_type: device.category,
+          // Device info
+          model: device.model,
+          category: device.category,
+          type: device.type,
+          version: device.version,
+          is_online: device.is_online,
+          // Switch-specific
+          ports_total: device.ports_total,
+          ports_used: device.ports_used,
+          // AP-specific
+          num_sta: device.num_sta,
+          // Timing
+          uptime_seconds: device.uptime_seconds,
+          uptime_formatted: device.uptime_formatted,
+          // Source
+          synced_from: 'home_assistant',
+          synced_at: new Date().toISOString()
+        },
+        ha_client_mac: device.mac_address
+      };
+
+      // Update equipment in database
+      const { error: updateError } = await supabase
+        .from('project_equipment')
+        .update(updateData)
+        .eq('id', equipmentData.id);
+
+      if (updateError) throw updateError;
+
+      // Transform device for selectedClient display
+      setSelectedClient({
+        ...device,
+        name: device.name,
+        hostname: device.name,
+        is_wired: true,
+        is_device: true,
+        connection_type: device.category
+      });
+
+      // Notify parent
+      if (onClientLinked) {
+        await onClientLinked(equipmentData.id, {
+          ...updateData,
+          device
+        });
+      }
+
+      console.log('[HANetworkClientSelector] Equipment linked to UniFi device:', {
+        equipment: equipmentData.name,
+        device: device.name,
+        mac: device.mac_address,
+        category: device.category
+      });
+
+    } catch (err) {
+      console.error('Error linking equipment to UniFi device:', err);
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Handle client selection and save
@@ -188,6 +310,7 @@ const HANetworkClientSelector = ({
         unifi_data: {
           hostname: client.hostname || client.name,
           is_wired: client.is_wired,
+          is_device: false, // It's a network client, not a device
           connection_type: client.connection_type,
           // Wired info
           switch_name: client.switch_name,
@@ -481,7 +604,19 @@ const HANetworkClientSelector = ({
             </div>
 
             {/* Filter buttons */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {/* Devices filter */}
+              <button
+                onClick={() => setFilter('devices')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                style={filter === 'devices' ? {
+                  backgroundColor: palette.primary || '#6366F1',
+                  color: '#FFFFFF'
+                } : styles.mutedCard}
+              >
+                <Server className="w-4 h-4" />
+                Devices ({devices.length})
+              </button>
               {['all', 'wired', 'wireless'].map((f) => (
                 <button
                   key={f}
@@ -503,11 +638,101 @@ const HANetworkClientSelector = ({
             </div>
           </div>
 
-          {/* Client List */}
+          {/* Device/Client List */}
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="w-6 h-6 animate-spin" style={{ color: palette.primary || '#6366F1' }} />
             </div>
+          ) : filter === 'devices' ? (
+            // Devices List
+            filteredDevices.length === 0 ? (
+              <div className="text-center py-8" style={styles.subtleText}>
+                <Server className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                <p>{devices.length === 0 ? 'No UniFi devices found' : 'No matching devices'}</p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {filteredDevices.map((device) => (
+                  <button
+                    key={device.mac_address}
+                    onClick={() => handleSelectDevice(device)}
+                    disabled={saving}
+                    className="w-full p-3 rounded-lg border text-left transition-all hover:shadow-md"
+                    style={{
+                      ...styles.mutedCard,
+                      opacity: saving ? 0.5 : 1
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Device type icon */}
+                      <div
+                        className="p-2 rounded-lg flex-shrink-0"
+                        style={{
+                          backgroundColor: device.category === 'gateway'
+                            ? (palette.danger ? `${palette.danger}20` : '#EF444420')
+                            : device.category === 'switch'
+                            ? (palette.info ? `${palette.info}20` : '#3B82F620')
+                            : (palette.warning ? `${palette.warning}20` : '#F59E0B20')
+                        }}
+                      >
+                        {device.category === 'gateway' ? (
+                          <Network className="w-4 h-4" style={{ color: palette.danger || '#EF4444' }} />
+                        ) : device.category === 'switch' ? (
+                          <Server className="w-4 h-4" style={{ color: palette.info || '#3B82F6' }} />
+                        ) : (
+                          <Wifi className="w-4 h-4" style={{ color: palette.warning || '#F59E0B' }} />
+                        )}
+                      </div>
+
+                      {/* Device info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate" style={styles.textPrimary}>
+                            {device.name}
+                          </span>
+                          <span
+                            className="px-1.5 py-0.5 rounded text-xs font-medium"
+                            style={device.is_online ? {
+                              backgroundColor: '#22C55E20',
+                              color: '#22C55E'
+                            } : {
+                              backgroundColor: '#EF444420',
+                              color: '#EF4444'
+                            }}
+                          >
+                            {device.is_online ? 'Online' : 'Offline'}
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-0.5" style={styles.subtleText}>
+                          <div className="flex gap-3">
+                            <span className="font-mono">{formatMac(device.mac_address)}</span>
+                            <span className="font-mono">{device.ip_address}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {device.model && <span>{device.model}</span>}
+                            <span className="capitalize">{device.category?.replace('_', ' ')}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Uptime badge */}
+                      {device.uptime_formatted && (
+                        <div
+                          className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex-shrink-0"
+                          style={{
+                            backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
+                            ...styles.textSecondary
+                          }}
+                        >
+                          <Clock className="w-3 h-3 inline mr-1" />
+                          {device.uptime_formatted}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
           ) : filteredClients.length === 0 ? (
             <div className="text-center py-8" style={styles.subtleText}>
               <Monitor className="w-10 h-10 mx-auto mb-2 opacity-40" />

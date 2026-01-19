@@ -864,7 +864,7 @@ function HomeAssistantSettings({ projectId }) {
         </div>
       )}
 
-      {/* Network Clients Section */}
+      {/* Network Entities Section (Clients + Devices) */}
       {config?.last_connected_at && (
         <div className="mt-6 pt-6 border-t" style={{ borderColor: styles.card.borderColor }}>
           <button
@@ -874,11 +874,11 @@ function HomeAssistantSettings({ projectId }) {
             <div className="flex items-center gap-2">
               <Network className="w-5 h-5" style={{ color: palette.success }} />
               <span className="font-medium" style={styles.textPrimary}>
-                Network Clients
+                Network Entities
               </span>
-              {networkClients.length > 0 && (
+              {totalNetworkCount > 0 && (
                 <span className="text-sm px-2 py-0.5 rounded-full" style={styles.successBadge}>
-                  {networkClients.length} client{networkClients.length !== 1 ? 's' : ''}
+                  {totalNetworkCount} total
                 </span>
               )}
             </div>
@@ -906,15 +906,45 @@ function HomeAssistantSettings({ projectId }) {
                 </div>
               )}
 
+              {/* Summary Stats */}
+              {networkSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="p-3 rounded-lg text-center" style={styles.mutedCard}>
+                    <div className="text-xl font-bold" style={{ color: palette.primary }}>{networkSummary.total_devices || 0}</div>
+                    <div className="text-xs" style={styles.subtleText}>UniFi Devices</div>
+                  </div>
+                  <div className="p-3 rounded-lg text-center" style={styles.mutedCard}>
+                    <div className="text-xl font-bold" style={{ color: palette.info }}>{networkSummary.wired_clients || 0}</div>
+                    <div className="text-xs" style={styles.subtleText}>Wired Clients</div>
+                  </div>
+                  <div className="p-3 rounded-lg text-center" style={styles.mutedCard}>
+                    <div className="text-xl font-bold" style={{ color: palette.warning }}>{networkSummary.wireless_clients || 0}</div>
+                    <div className="text-xs" style={styles.subtleText}>Wireless Clients</div>
+                  </div>
+                  <div className="p-3 rounded-lg text-center" style={styles.mutedCard}>
+                    <div className="text-xl font-bold" style={{ color: palette.success }}>{networkSummary.total_clients || 0}</div>
+                    <div className="text-xs" style={styles.subtleText}>Total Clients</div>
+                  </div>
+                </div>
+              )}
+
               {/* Filter Buttons */}
-              {networkClients.length > 0 && (
+              {(networkClients.length > 0 || networkDevices.length > 0) && (
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setClientFilter('devices')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
+                    style={clientFilter === 'devices' ? styles.successBadge : styles.mutedCard}
+                  >
+                    <Server className="w-4 h-4" />
+                    UniFi Devices ({networkDevices.length})
+                  </button>
                   <button
                     onClick={() => setClientFilter('all')}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors"
                     style={clientFilter === 'all' ? styles.successBadge : styles.mutedCard}
                   >
-                    All ({networkClients.length})
+                    All Clients ({networkClients.length})
                   </button>
                   <button
                     onClick={() => setClientFilter('wired')}
@@ -935,105 +965,227 @@ function HomeAssistantSettings({ projectId }) {
                 </div>
               )}
 
-              {/* Client List */}
+              {/* Loading State */}
               {loadingClients ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin" style={{ color: palette.info }} />
                 </div>
-              ) : filteredClients.length === 0 && !clientsError ? (
-                <div className="text-center py-6" style={styles.textSecondary}>
-                  <Network className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                  <p>No network clients found</p>
-                </div>
               ) : (
-                <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                  {filteredClients.map((client, idx) => (
-                    <div
-                      key={client.mac_address || idx}
-                      className="p-3 rounded-lg"
-                      style={styles.mutedCard}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                <>
+                  {/* UniFi Devices List */}
+                  {clientFilter === 'devices' && (
+                    networkDevices.length === 0 ? (
+                      <div className="text-center py-6" style={styles.textSecondary}>
+                        <Server className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                        <p>No UniFi devices found</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                        {networkDevices.map((device, idx) => (
                           <div
-                            className="p-2 rounded-lg flex-shrink-0"
-                            style={{ backgroundColor: withAlpha(client.is_wired ? palette.info : palette.warning, 0.15) }}
+                            key={device.mac_address || idx}
+                            className="p-3 rounded-lg"
+                            style={styles.mutedCard}
                           >
-                            {client.is_wired ? (
-                              <Cable className="w-4 h-4" style={{ color: palette.info }} />
-                            ) : (
-                              <Wifi className="w-4 h-4" style={{ color: palette.warning }} />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium truncate" style={styles.textPrimary}>
-                              {client.name}
-                            </div>
-                            <div className="text-xs space-y-0.5" style={styles.subtleText}>
-                              {/* MAC and IP */}
-                              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                                {client.mac_address && (
-                                  <span className="font-mono">{client.mac_address}</span>
-                                )}
-                                {client.ip_address && (
-                                  <span className="font-mono">{client.ip_address}</span>
-                                )}
-                              </div>
-                              {/* Connection details */}
-                              {client.is_wired ? (
-                                // Wired: show switch and port
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                                  {client.switch_name && (
-                                    <span className="flex items-center gap-1">
-                                      <Monitor className="w-3 h-3" />
-                                      {client.switch_name}
-                                    </span>
-                                  )}
-                                  {client.switch_port && (
-                                    <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={styles.infoBadge}>
-                                      Port {client.switch_port}
-                                    </span>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div
+                                  className="p-2 rounded-lg flex-shrink-0"
+                                  style={{
+                                    backgroundColor: withAlpha(
+                                      device.category === 'gateway' ? palette.danger :
+                                      device.category === 'switch' ? palette.info :
+                                      device.category === 'access_point' ? palette.warning :
+                                      palette.primary, 0.15
+                                    )
+                                  }}
+                                >
+                                  {device.category === 'gateway' ? (
+                                    <Network className="w-4 h-4" style={{ color: palette.danger }} />
+                                  ) : device.category === 'switch' ? (
+                                    <Server className="w-4 h-4" style={{ color: palette.info }} />
+                                  ) : device.category === 'access_point' ? (
+                                    <Wifi className="w-4 h-4" style={{ color: palette.warning }} />
+                                  ) : (
+                                    <Server className="w-4 h-4" style={{ color: palette.primary }} />
                                   )}
                                 </div>
-                              ) : (
-                                // Wireless: show SSID, AP, signal
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
-                                  {client.ssid && (
-                                    <span className="flex items-center gap-1">
-                                      <Wifi className="w-3 h-3" />
-                                      {client.ssid}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium truncate" style={styles.textPrimary}>
+                                      {device.name}
                                     </span>
-                                  )}
-                                  {client.ap_name && (
-                                    <span className="flex items-center gap-1">
-                                      <Server className="w-3 h-3" />
-                                      {client.ap_name}
+                                    <span
+                                      className="px-1.5 py-0.5 rounded text-xs font-medium capitalize"
+                                      style={device.is_online ? styles.successBadge : styles.errorBadge}
+                                    >
+                                      {device.is_online ? 'Online' : 'Offline'}
                                     </span>
-                                  )}
-                                  {client.wifi_signal && (
-                                    <span className="flex items-center gap-1">
-                                      <Signal className="w-3 h-3" />
-                                      {client.wifi_signal} dBm
-                                    </span>
-                                  )}
+                                  </div>
+                                  <div className="text-xs space-y-0.5" style={styles.subtleText}>
+                                    {/* Model and Category */}
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                      {device.model && (
+                                        <span>{device.model}</span>
+                                      )}
+                                      <span className="capitalize">{device.category?.replace('_', ' ')}</span>
+                                    </div>
+                                    {/* MAC and IP */}
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                      {device.mac_address && (
+                                        <span className="font-mono">{device.mac_address}</span>
+                                      )}
+                                      {device.ip_address && (
+                                        <span className="font-mono">{device.ip_address}</span>
+                                      )}
+                                    </div>
+                                    {/* Switch-specific: port info */}
+                                    {device.category === 'switch' && device.ports_total > 0 && (
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="flex items-center gap-1">
+                                          <Cable className="w-3 h-3" />
+                                          {device.ports_used}/{device.ports_total} ports in use
+                                        </span>
+                                      </div>
+                                    )}
+                                    {/* AP-specific: connected stations */}
+                                    {device.category === 'access_point' && device.num_sta !== null && (
+                                      <div className="flex items-center gap-2 mt-1">
+                                        <span className="flex items-center gap-1">
+                                          <Wifi className="w-3 h-3" />
+                                          {device.num_sta} client{device.num_sta !== 1 ? 's' : ''} connected
+                                        </span>
+                                      </div>
+                                    )}
+                                    {/* Firmware version */}
+                                    {device.version && (
+                                      <div className="flex items-center gap-1 mt-1">
+                                        <span>v{device.version}</span>
+                                        {device.upgradable && (
+                                          <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={styles.infoBadge}>
+                                            Update available
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Uptime badge */}
+                              {device.uptime_formatted && (
+                                <div
+                                  className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap"
+                                  style={styles.infoBadge}
+                                >
+                                  {device.uptime_formatted}
                                 </div>
                               )}
                             </div>
                           </div>
-                        </div>
-                        {/* Uptime badge */}
-                        {client.uptime_formatted && (
-                          <div
-                            className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap"
-                            style={styles.infoBadge}
-                          >
-                            {client.uptime_formatted}
-                          </div>
-                        )}
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    )
+                  )}
+
+                  {/* Network Clients List */}
+                  {clientFilter !== 'devices' && (
+                    filteredClients.length === 0 && !clientsError ? (
+                      <div className="text-center py-6" style={styles.textSecondary}>
+                        <Network className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                        <p>No network clients found</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                        {filteredClients.map((client, idx) => (
+                          <div
+                            key={client.mac_address || idx}
+                            className="p-3 rounded-lg"
+                            style={styles.mutedCard}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div
+                                  className="p-2 rounded-lg flex-shrink-0"
+                                  style={{ backgroundColor: withAlpha(client.is_wired ? palette.info : palette.warning, 0.15) }}
+                                >
+                                  {client.is_wired ? (
+                                    <Cable className="w-4 h-4" style={{ color: palette.info }} />
+                                  ) : (
+                                    <Wifi className="w-4 h-4" style={{ color: palette.warning }} />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="font-medium truncate" style={styles.textPrimary}>
+                                    {client.name}
+                                  </div>
+                                  <div className="text-xs space-y-0.5" style={styles.subtleText}>
+                                    {/* MAC and IP */}
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                      {client.mac_address && (
+                                        <span className="font-mono">{client.mac_address}</span>
+                                      )}
+                                      {client.ip_address && (
+                                        <span className="font-mono">{client.ip_address}</span>
+                                      )}
+                                    </div>
+                                    {/* Connection details */}
+                                    {client.is_wired ? (
+                                      // Wired: show switch and port
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                                        {client.switch_name && (
+                                          <span className="flex items-center gap-1">
+                                            <Monitor className="w-3 h-3" />
+                                            {client.switch_name}
+                                          </span>
+                                        )}
+                                        {client.switch_port && (
+                                          <span className="px-1.5 py-0.5 rounded text-xs font-medium" style={styles.infoBadge}>
+                                            Port {client.switch_port}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      // Wireless: show SSID, AP, signal
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                                        {client.ssid && (
+                                          <span className="flex items-center gap-1">
+                                            <Wifi className="w-3 h-3" />
+                                            {client.ssid}
+                                          </span>
+                                        )}
+                                        {client.ap_name && (
+                                          <span className="flex items-center gap-1">
+                                            <Server className="w-3 h-3" />
+                                            {client.ap_name}
+                                          </span>
+                                        )}
+                                        {client.wifi_signal && (
+                                          <span className="flex items-center gap-1">
+                                            <Signal className="w-3 h-3" />
+                                            {client.wifi_signal} dBm
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Uptime badge */}
+                              {client.uptime_formatted && (
+                                <div
+                                  className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap"
+                                  style={styles.infoBadge}
+                                >
+                                  {client.uptime_formatted}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  )}
+                </>
               )}
 
               {/* Refresh Button */}
@@ -1044,7 +1196,7 @@ function HomeAssistantSettings({ projectId }) {
                 style={{ color: palette.info }}
               >
                 <RefreshCw className={`w-4 h-4 ${loadingClients ? 'animate-spin' : ''}`} />
-                Refresh Clients
+                Refresh Network
               </button>
             </div>
           )}
