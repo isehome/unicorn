@@ -73,13 +73,22 @@ const RackBackView = ({
     };
   };
 
-  // Get display name for equipment - strip room prefix from "Room - Part Name N" format
+  // Get display name for equipment - show model + instance number (e.g., "U7-Pro 1")
   const getEquipmentName = (item) => {
-    // Try global_part.name if linked
+    // Get instance number from the full name (format: "Room - Part Name N")
+    const fullName = item?.instance_name || item?.name || '';
+    const instanceMatch = fullName.match(/\s(\d+)$/);
+    const instanceNum = instanceMatch ? instanceMatch[1] : '';
+
+    // Priority 1: Model + instance number
+    if (item?.model) {
+      return instanceNum ? `${item.model} ${instanceNum}` : item.model;
+    }
+
+    // Priority 2: Global part name if linked
     if (item.global_part?.name) return item.global_part.name;
 
-    // Extract part name from name (format: "Room - Part Name N")
-    const fullName = item?.instance_name || item?.name;
+    // Priority 3: Extract part name from name (format: "Room - Part Name N")
     if (fullName && fullName.includes(' - ')) {
       const parts = fullName.split(' - ');
       if (parts.length > 1) {
@@ -87,7 +96,7 @@ const RackBackView = ({
       }
     }
 
-    return item.model || item.part_number || fullName || 'Unknown Equipment';
+    return item.part_number || fullName || 'Unknown Equipment';
   };
 
   // Sort equipment by rack position (descending - top of rack first)

@@ -24,21 +24,30 @@ const getEquipmentUHeight = (equipment) => {
  * but in rack view we strip the room prefix to show just the part name
  */
 const getEquipmentDisplayName = (equipment) => {
-  // Try global_part.name if linked
+  // Get instance number from the full name (format: "Room - Part Name N")
+  // Extract the trailing number if present
+  const fullName = equipment?.instance_name || equipment?.name || '';
+  const instanceMatch = fullName.match(/\s(\d+)$/);
+  const instanceNum = instanceMatch ? instanceMatch[1] : '';
+
+  // Priority 1: Model + instance number (shows "U7-Pro 1", "U7-Pro 2", etc)
+  if (equipment?.model) {
+    return instanceNum ? `${equipment.model} ${instanceNum}` : equipment.model;
+  }
+
+  // Priority 2: Global part name if linked
   if (equipment?.global_part?.name) return equipment.global_part.name;
 
-  // Extract part name from name (format: "Room - Part Name N")
-  const fullName = equipment?.instance_name || equipment?.name;
+  // Priority 3: Extract part name from name (format: "Room - Part Name N")
   if (fullName && fullName.includes(' - ')) {
-    // Take everything after the first " - " (the part name portion)
     const parts = fullName.split(' - ');
     if (parts.length > 1) {
       return parts.slice(1).join(' - ');
     }
   }
 
-  // Fallbacks
-  return equipment?.model || equipment?.part_number || fullName || 'Unnamed Equipment';
+  // Fallback
+  return equipment?.part_number || fullName || 'Unnamed Equipment';
 };
 
 /**
@@ -191,22 +200,169 @@ const DropPreview = memo(({ top, height }) => {
 DropPreview.displayName = 'DropPreview';
 
 /**
+ * Shelf Equipment Item - A single piece of equipment displayed on a shelf
+ */
+const ShelfEquipmentItem = memo(({ equipment, width, onClick }) => {
+  const displayName = getEquipmentDisplayName(equipment);
+
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); onClick?.(equipment); }}
+      className="h-full flex items-center gap-1 px-2 py-1 bg-zinc-800 border border-zinc-600 rounded cursor-pointer hover:border-violet-400 transition-colors overflow-hidden"
+      style={{ width }}
+    >
+      <Server size={12} className="text-zinc-400 flex-shrink-0" />
+      <span className="text-xs text-zinc-200 truncate">{displayName}</span>
+    </div>
+  );
+});
+
+ShelfEquipmentItem.displayName = 'ShelfEquipmentItem';
+
+/**
+ * Shelf Component - Represents a draggable shelf in the rack that can hold non-rack-mountable equipment
+ */
+const ShelfBlock = memo(({ shelf, top, height, totalU, shelfEquipment = [], maxItemsPerShelf = 4, onDragStart, onDelete, onEquipmentClick, onEquipmentDrop }) => {
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      shelfId: shelf.id,
+      uHeight: shelf.u_height,
+      isShelf: true,
+      currentPositionU: shelf.rack_position_u,
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+    onDragStart?.(shelf);
+  };
+
+  const handleDragEnd = () => setIsDragging(false);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => setIsDragOver(false);
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      // Only accept equipment drops (not shelf drops)
+      if (!data.isShelf && data.equipmentId) {
+        onEquipmentDrop?.(data.equipmentId, shelf.id);
+      }
+    } catch (err) {
+      console.error('Shelf drop error:', err);
+    }
+  };
+
+  // Calculate item widths based on max items per shelf
+  const itemWidth = `calc(${100 / maxItemsPerShelf}% - 4px)`;
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`absolute left-0 right-0 rounded border-2 cursor-grab active:cursor-grabbing transition-all ${
+        isDragging ? 'opacity-50' : ''
+      } ${
+        isDragOver
+          ? 'border-green-500 bg-green-900/40 shadow-lg shadow-green-500/20'
+          : 'border-blue-600 bg-blue-900/30'
+      }`}
+      style={{
+        top: `${top}px`,
+        height: `${height - 2}px`,
+        zIndex: 15,
+      }}
+    >
+      {/* Shelf header */}
+      <div className={`flex items-center justify-between px-2 py-0.5 border-b transition-colors ${
+        isDragOver ? 'bg-green-900/50 border-green-700' : 'bg-blue-900/50 border-blue-700'
+      }`}>
+        <div className="flex items-center gap-1">
+          <GripVertical size={12} className={isDragOver ? 'text-green-400' : 'text-blue-400'} />
+          <Layers size={12} className={isDragOver ? 'text-green-400' : 'text-blue-400'} />
+          <span className={`text-xs font-medium ${isDragOver ? 'text-green-200' : 'text-blue-200'}`}>
+            {shelf.name || 'Shelf'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs ${isDragOver ? 'text-green-400' : 'text-blue-400'}`}>
+            {shelf.u_height}U @ U{shelf.rack_position_u}
+          </span>
+          {onDelete && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(shelf.id); }}
+              className="p-0.5 hover:bg-red-900/50 rounded text-blue-400 hover:text-red-400 transition-colors"
+              title="Remove shelf"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Shelf content area - equipment displayed side-by-side */}
+      <div className="flex items-center gap-1 px-2 py-1 h-[calc(100%-24px)] overflow-hidden">
+        {shelfEquipment.length > 0 ? (
+          shelfEquipment.slice(0, maxItemsPerShelf).map((eq) => (
+            <ShelfEquipmentItem
+              key={eq.id}
+              equipment={eq}
+              width={itemWidth}
+              onClick={onEquipmentClick}
+            />
+          ))
+        ) : (
+          <span className={`text-xs italic ${isDragOver ? 'text-green-400' : 'text-blue-400/50'}`}>
+            {isDragOver ? 'Drop here!' : 'Drop shelf items here'}
+          </span>
+        )}
+        {shelfEquipment.length > maxItemsPerShelf && (
+          <span className="text-xs text-blue-400 ml-1">+{shelfEquipment.length - maxItemsPerShelf} more</span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+ShelfBlock.displayName = 'ShelfBlock';
+
+/**
  * Unplaced Equipment Card - Small card for equipment not yet in the rack
  */
 const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
   const [isDragging, setIsDragging] = useState(false);
   const uHeight = getEquipmentUHeight(equipment);
   const displayName = getEquipmentDisplayName(equipment);
-  const hasUHeight = uHeight > 0 && equipment.global_part?.u_height;
-  const needsShelf = equipment.needs_shelf;
+  const needsShelf = equipment.needs_shelf || equipment.global_part?.needs_shelf;
+  const shelfUHeight = equipment.shelf_u_height || equipment.global_part?.shelf_u_height;
+
+  // For shelf equipment: show shelf_u_height; for rack equipment: show u_height
+  const displayUHeight = needsShelf ? shelfUHeight : uHeight;
+  const hasUHeight = needsShelf ? !!shelfUHeight : (uHeight > 0 && equipment.global_part?.u_height);
 
   const handleDragStart = (e) => {
     setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       equipmentId: equipment.id,
-      uHeight: needsShelf ? equipment.shelf_u_height || 2 : uHeight,
+      uHeight: needsShelf ? shelfUHeight || 2 : uHeight,
       isMove: false,
       needsShelf,
+      shelfUHeight: shelfUHeight || 2,
+      maxItemsPerShelf: equipment.max_items_per_shelf || equipment.global_part?.max_items_per_shelf || 1,
     }));
     e.dataTransfer.effectAllowed = 'move';
     onDragStart?.(equipment);
@@ -238,13 +394,20 @@ const UnplacedEquipmentCard = memo(({ equipment, onDragStart, onClick }) => {
       </div>
       <span
         className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
-          hasUHeight
-            ? 'bg-zinc-700 text-zinc-300'
-            : 'bg-yellow-900/50 text-yellow-400 border border-dashed border-yellow-600'
+          needsShelf
+            ? hasUHeight
+              ? 'bg-blue-900/50 text-blue-400 border border-blue-700'
+              : 'bg-blue-900/30 text-blue-400 border border-dashed border-blue-600'
+            : hasUHeight
+              ? 'bg-zinc-700 text-zinc-300'
+              : 'bg-yellow-900/50 text-yellow-400 border border-dashed border-yellow-600'
         }`}
-        title={hasUHeight ? `${uHeight} rack units` : 'U-height not set'}
+        title={needsShelf
+          ? (hasUHeight ? `Needs ${displayUHeight}U shelf space` : 'Shelf height not set')
+          : (hasUHeight ? `${displayUHeight} rack units` : 'U-height not set')
+        }
       >
-        {hasUHeight ? `${uHeight}U` : '?U'}
+        {hasUHeight ? `${displayUHeight}U` : '?U'}
       </span>
     </div>
   );
@@ -265,6 +428,7 @@ const EquipmentEditModal = memo(({
   onSave,
   onRemove,
   onExclude,
+  onExcludeGlobal,
   onMoveRoom,
   onLinkToHA
 }) => {
@@ -399,6 +563,18 @@ const EquipmentEditModal = memo(({
       onClose();
     } catch (err) {
       console.error('Failed to exclude:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExcludeGlobal = async () => {
+    setSaving(true);
+    try {
+      await onExcludeGlobal(equipment.id, equipment.global_part_id);
+      onClose();
+    } catch (err) {
+      console.error('Failed to exclude globally:', err);
     } finally {
       setSaving(false);
     }
@@ -845,10 +1021,19 @@ const EquipmentEditModal = memo(({
             <button
               onClick={handleExclude}
               disabled={saving}
-              className="w-full px-3 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 rounded-lg text-red-400 text-sm font-medium transition-colors"
+              className="w-full px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-300 text-sm font-medium transition-colors"
             >
-              Exclude from Rack Layout
+              Hide This Item
             </button>
+            {equipment?.global_part_id && (
+              <button
+                onClick={handleExcludeGlobal}
+                disabled={saving}
+                className="w-full px-3 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-800/50 rounded-lg text-red-400 text-sm font-medium transition-colors"
+              >
+                Never Show This Part Type
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -874,24 +1059,48 @@ const RackFrontView = ({
   onEquipmentRemove,
   onEquipmentEdit,
   onEquipmentExclude,
+  onEquipmentExcludeGlobal,
+  onEquipmentDropOnShelf,
   onMoveRoom,
   onLinkToHA,
   onAddShelf,
+  onShelfMove,
+  onShelfDelete,
   onRefresh,
   getNetworkInfo,
 }) => {
   const [dragState, setDragState] = useState({
     isDragging: false,
     draggedEquipment: null,
+    draggedShelf: null,
     dropPreview: null,
   });
   const [editingEquipment, setEditingEquipment] = useState(null);
+  const [showAddShelfModal, setShowAddShelfModal] = useState(false);
+  const [newShelfU, setNewShelfU] = useState(2);
+  const [newShelfPosition, setNewShelfPosition] = useState(1);
 
   const totalU = rack?.total_u || 42;
 
-  // Calculate occupied U positions
+  // Group equipment by shelf_id
+  const equipmentByShelf = useMemo(() => {
+    const byShelf = new Map();
+    equipment.forEach((eq) => {
+      if (eq.shelf_id) {
+        if (!byShelf.has(eq.shelf_id)) {
+          byShelf.set(eq.shelf_id, []);
+        }
+        byShelf.get(eq.shelf_id).push(eq);
+      }
+    });
+    return byShelf;
+  }, [equipment]);
+
+  // Calculate occupied U positions (including shelves)
   const occupiedPositions = useMemo(() => {
     const positions = new Map();
+
+    // Mark equipment positions
     equipment.forEach((eq) => {
       const posU = eq.rack_position_u;
       if (posU && !eq.shelf_id) {
@@ -901,15 +1110,24 @@ const RackFrontView = ({
         }
       }
     });
-    return positions;
-  }, [equipment]);
 
-  // Build positioned equipment and empty slots
+    // Mark shelf positions
+    (rack?.shelves || []).forEach((shelf) => {
+      for (let u = shelf.rack_position_u; u < shelf.rack_position_u + shelf.u_height; u++) {
+        positions.set(u, { type: 'shelf', item: shelf });
+      }
+    });
+
+    return positions;
+  }, [equipment, rack?.shelves]);
+
+  // Build positioned equipment and empty slots (excluding shelf equipment)
   const { positionedEquipment, emptySlots } = useMemo(() => {
     const positionedEquipment = [];
     const emptySlots = [];
     const processedUs = new Set();
 
+    // Process rack-mounted equipment (not on shelves)
     equipment.forEach((eq) => {
       const posU = eq.rack_position_u;
       if (posU && !eq.shelf_id) {
@@ -926,6 +1144,13 @@ const RackFrontView = ({
       }
     });
 
+    // Also mark shelf U positions as processed
+    (rack?.shelves || []).forEach((shelf) => {
+      for (let u = shelf.rack_position_u; u < shelf.rack_position_u + shelf.u_height; u++) {
+        processedUs.add(u);
+      }
+    });
+
     for (let u = 1; u <= totalU; u++) {
       if (!processedUs.has(u)) {
         const topU = totalU - u;
@@ -934,15 +1159,33 @@ const RackFrontView = ({
     }
 
     return { positionedEquipment, emptySlots };
-  }, [equipment, totalU]);
+  }, [equipment, rack?.shelves, totalU]);
+
+  // Build positioned shelves with their equipment
+  const positionedShelves = useMemo(() => {
+    const shelves = rack?.shelves || [];
+    return shelves.map((shelf) => {
+      const topU = totalU - shelf.rack_position_u - shelf.u_height + 1;
+      return {
+        ...shelf,
+        top: topU * U_HEIGHT,
+        height: shelf.u_height * U_HEIGHT,
+        equipment: equipmentByShelf.get(shelf.id) || [],
+      };
+    });
+  }, [rack?.shelves, totalU, equipmentByShelf]);
 
   // Drag handlers
   const handleDragStart = useCallback((eq) => {
-    setDragState(prev => ({ ...prev, isDragging: true, draggedEquipment: eq }));
+    setDragState(prev => ({ ...prev, isDragging: true, draggedEquipment: eq, draggedShelf: null }));
+  }, []);
+
+  const handleShelfDragStart = useCallback((shelf) => {
+    setDragState(prev => ({ ...prev, isDragging: true, draggedShelf: shelf, draggedEquipment: null }));
   }, []);
 
   const handleDragEnd = useCallback(() => {
-    setDragState({ isDragging: false, draggedEquipment: null, dropPreview: null });
+    setDragState({ isDragging: false, draggedEquipment: null, draggedShelf: null, dropPreview: null });
   }, []);
 
   const calculateDropPosition = useCallback((e, containerRect) => {
@@ -951,11 +1194,22 @@ const RackFrontView = ({
     return Math.max(1, Math.min(totalU - uFromTop, totalU));
   }, [totalU]);
 
-  const isValidDropPosition = useCallback((targetU, uHeight) => {
+  // Check if position is valid for drop (considering what's being dragged)
+  const isValidDropPosition = useCallback((targetU, uHeight, draggedItemId = null, isShelf = false) => {
     for (let u = targetU; u < targetU + uHeight; u++) {
       if (u > totalU) return false;
       const occupied = occupiedPositions.get(u);
-      if (occupied && occupied.type !== 'equipment') return false;
+      if (occupied) {
+        // If dragging a shelf, allow dropping over its own current position
+        if (isShelf && occupied.type === 'shelf' && occupied.item.id === draggedItemId) {
+          continue;
+        }
+        // If dragging equipment, allow dropping over its own current position
+        if (!isShelf && occupied.type === 'equipment' && occupied.item.id === draggedItemId) {
+          continue;
+        }
+        return false;
+      }
     }
     return true;
   }, [occupiedPositions, totalU]);
@@ -964,38 +1218,75 @@ const RackFrontView = ({
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const targetU = calculateDropPosition(e, rect);
-    const uHeight = dragState.draggedEquipment ? getEquipmentUHeight(dragState.draggedEquipment) : 1;
 
-    if (isValidDropPosition(targetU, uHeight)) {
+    // Determine what's being dragged
+    let uHeight = 1;
+    let draggedId = null;
+    let isShelf = false;
+
+    if (dragState.draggedShelf) {
+      uHeight = dragState.draggedShelf.u_height;
+      draggedId = dragState.draggedShelf.id;
+      isShelf = true;
+    } else if (dragState.draggedEquipment) {
+      uHeight = getEquipmentUHeight(dragState.draggedEquipment);
+      draggedId = dragState.draggedEquipment.id;
+    }
+
+    if (isValidDropPosition(targetU, uHeight, draggedId, isShelf)) {
       const topU = totalU - targetU - uHeight + 1;
       setDragState(prev => ({
         ...prev,
-        dropPreview: { targetU, top: topU * U_HEIGHT, height: uHeight * U_HEIGHT },
+        dropPreview: { targetU, top: topU * U_HEIGHT, height: uHeight * U_HEIGHT, isShelf },
       }));
     } else {
       setDragState(prev => ({ ...prev, dropPreview: null }));
     }
-  }, [calculateDropPosition, dragState.draggedEquipment, isValidDropPosition, totalU]);
+  }, [calculateDropPosition, dragState.draggedEquipment, dragState.draggedShelf, isValidDropPosition, totalU]);
 
-  const handleRackDrop = useCallback((e) => {
+  const handleRackDrop = useCallback(async (e) => {
     e.preventDefault();
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'));
       const rect = e.currentTarget.getBoundingClientRect();
       const targetU = calculateDropPosition(e, rect);
 
-      if (isValidDropPosition(targetU, data.uHeight)) {
-        if (data.isMove) {
-          onEquipmentMove?.(data.equipmentId, targetU, null);
-        } else {
-          onEquipmentDrop?.(data.equipmentId, targetU, null);
+      // Handle shelf drop
+      if (data.isShelf) {
+        if (isValidDropPosition(targetU, data.uHeight, data.shelfId, true)) {
+          onShelfMove?.(data.shelfId, targetU);
+        }
+      } else if (data.needsShelf && onAddShelf) {
+        // Equipment needs a shelf - auto-create one
+        const shelfUHeight = data.shelfUHeight || 2;
+        if (isValidDropPosition(targetU, shelfUHeight, null, true)) {
+          // Create shelf and add equipment to it
+          const newShelf = await onAddShelf({
+            rackId: rack?.id,
+            uHeight: shelfUHeight,
+            rackPositionU: targetU,
+            name: `Shelf at U${targetU}`,
+          });
+          // If shelf was created successfully, drop equipment onto it
+          if (newShelf?.id && onEquipmentDropOnShelf) {
+            await onEquipmentDropOnShelf(data.equipmentId, newShelf.id);
+          }
+        }
+      } else {
+        // Handle regular equipment drop
+        if (isValidDropPosition(targetU, data.uHeight, data.equipmentId, false)) {
+          if (data.isMove) {
+            onEquipmentMove?.(data.equipmentId, targetU, null);
+          } else {
+            onEquipmentDrop?.(data.equipmentId, targetU, null);
+          }
         }
       }
     } catch (err) {
       console.error('Drop error:', err);
     }
     handleDragEnd();
-  }, [calculateDropPosition, isValidDropPosition, onEquipmentDrop, onEquipmentMove, handleDragEnd]);
+  }, [calculateDropPosition, isValidDropPosition, onEquipmentDrop, onEquipmentMove, onShelfMove, onAddShelf, onEquipmentDropOnShelf, rack?.id, handleDragEnd]);
 
   // Get network info for editing equipment
   const editingNetworkInfo = editingEquipment && getNetworkInfo ? getNetworkInfo(editingEquipment) : null;
@@ -1009,7 +1300,7 @@ const RackFrontView = ({
         </h3>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {}} // TODO: Add shelf modal
+            onClick={() => setShowAddShelfModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm text-zinc-300 transition-colors"
           >
             <Plus size={14} />
@@ -1067,6 +1358,23 @@ const RackFrontView = ({
             {/* Empty Slots */}
             {emptySlots.map((slot) => (
               <EmptySlot key={slot.uPosition} {...slot} isDragOver={false} />
+            ))}
+
+            {/* Shelves */}
+            {positionedShelves.map((shelf) => (
+              <ShelfBlock
+                key={shelf.id}
+                shelf={shelf}
+                top={shelf.top}
+                height={shelf.height}
+                totalU={totalU}
+                shelfEquipment={shelf.equipment}
+                maxItemsPerShelf={4}
+                onDragStart={handleShelfDragStart}
+                onDelete={onShelfDelete}
+                onEquipmentClick={setEditingEquipment}
+                onEquipmentDrop={onEquipmentDropOnShelf}
+              />
             ))}
 
             {/* Equipment */}
@@ -1139,9 +1447,89 @@ const RackFrontView = ({
           onSave={onEquipmentEdit}
           onRemove={onEquipmentRemove}
           onExclude={onEquipmentExclude}
+          onExcludeGlobal={onEquipmentExcludeGlobal}
           onMoveRoom={onMoveRoom}
           onLinkToHA={onLinkToHA}
         />
+      )}
+
+      {/* Add Shelf Modal */}
+      {showAddShelfModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={() => setShowAddShelfModal(false)}>
+          <div className="bg-zinc-900 rounded-xl border border-zinc-700 p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Layers size={20} className="text-blue-400" />
+                Add Shelf to Rack
+              </h3>
+              <button onClick={() => setShowAddShelfModal(false)} className="text-zinc-400 hover:text-white">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Shelf Height */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Shelf Height (U)</label>
+                <div className="flex gap-2">
+                  {[1, 2, 3, 4].map((u) => (
+                    <button
+                      key={u}
+                      onClick={() => setNewShelfU(u)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        newShelfU === u
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                      }`}
+                    >
+                      {u}U
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Position */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Starting Position (U)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalU - newShelfU + 1}
+                  value={newShelfPosition}
+                  onChange={(e) => setNewShelfPosition(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white"
+                />
+                <p className="text-xs text-zinc-500 mt-1">Position from bottom of rack (U1 = bottom)</p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowAddShelfModal(false)}
+                  className="flex-1 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    onAddShelf?.({
+                      rackId: rack?.id,
+                      uHeight: newShelfU,
+                      rackPositionU: newShelfPosition,
+                      name: `Shelf at U${newShelfPosition}`,
+                    });
+                    setShowAddShelfModal(false);
+                    setNewShelfU(2);
+                    setNewShelfPosition(1);
+                  }}
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-medium transition-colors"
+                >
+                  Add Shelf
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1268,6 +1268,7 @@ export const projectEquipmentService = {
         catalog_id,
         global_part_id,
         name,
+        instance_name,
         description,
         manufacturer,
         model,
@@ -1311,6 +1312,9 @@ export const projectEquipmentService = {
         shelf_id,
         ha_client_mac,
         exclude_from_rack,
+        needs_shelf,
+        shelf_u_height,
+        max_items_per_shelf,
         project_rooms(name, is_headend),
         global_part:global_part_id (
           id,
@@ -1336,7 +1340,11 @@ export const projectEquipmentService = {
           power_outlets_provided,
           power_output_watts,
           ups_va_rating,
-          ups_runtime_minutes
+          ups_runtime_minutes,
+          exclude_from_rack,
+          needs_shelf,
+          shelf_u_height,
+          max_items_per_shelf
         )
       `)
       .eq('project_id', projectId)
@@ -1840,12 +1848,16 @@ export const projectEquipmentService = {
   /**
    * Add a single part/equipment item to a project
    * Runs through the same logic as CSV import: creates project_equipment,
-   * syncs to global_parts, and matches/creates supplier
+   * syncs to global_parts, and matches/creates supplier.
+   *
+   * If global_part_id is provided, links directly to that global part and
+   * uses its data as defaults (partData overrides if explicitly provided).
    *
    * @param {string} projectId - Project UUID
    * @param {object} partData - Part data object
-   * @param {string} partData.name - Part name (required)
-   * @param {string} [partData.part_number] - Part number (enables global_parts sync)
+   * @param {string} partData.name - Part name (required, unless global_part_id provided)
+   * @param {string} [partData.global_part_id] - Link to existing global part (auto-fills data)
+   * @param {string} [partData.part_number] - Part number (enables global_parts sync if no global_part_id)
    * @param {string} [partData.description] - Description
    * @param {string} [partData.manufacturer] - Manufacturer
    * @param {string} [partData.model] - Model
@@ -1862,28 +1874,64 @@ export const projectEquipmentService = {
    */
   async addSinglePart(projectId, partData) {
     if (!projectId) throw new Error('Project ID is required');
-    if (!partData?.name) throw new Error('Part name is required');
 
     // Get current authenticated user
     const { data: { user } } = await supabase.auth.getUser();
 
+    // If global_part_id provided, fetch the global part and use its data as defaults
+    let globalPartId = partData.global_part_id || null;
+    let globalPartData = {};
+
+    if (globalPartId) {
+      console.log('[addSinglePart] Fetching global part:', globalPartId);
+      const { data: globalPart, error: gpError } = await supabase
+        .from('global_parts')
+        .select('*')
+        .eq('id', globalPartId)
+        .single();
+
+      if (gpError) {
+        console.warn('[addSinglePart] Failed to fetch global part:', gpError);
+        // Continue without global part data - user may have provided enough
+      } else if (globalPart) {
+        console.log('[addSinglePart] Using global part data:', globalPart.name);
+        globalPartData = {
+          name: globalPart.name,
+          part_number: globalPart.part_number,
+          manufacturer: globalPart.manufacturer,
+          model: globalPart.model,
+          description: globalPart.description,
+          unit_of_measure: globalPart.unit_of_measure
+        };
+      }
+    }
+
+    // Merge: globalPartData provides defaults, partData overrides
+    const mergedData = { ...globalPartData, ...partData };
+
+    // Validate name is present (from global part or explicit)
+    if (!mergedData.name) {
+      throw new Error('Part name is required');
+    }
+
     // Build equipment record (same logic as buildEquipmentRecords but for single item)
     const equipmentRecord = {
       project_id: projectId,
-      room_id: partData.room_id || null,
-      name: normalizeString(partData.name),
-      description: normalizeString(partData.description) || null,
-      manufacturer: normalizeString(partData.manufacturer) || null,
-      model: normalizeString(partData.model) || null,
-      part_number: normalizeString(partData.part_number) || null,
-      install_side: partData.install_side || 'room_end',
-      equipment_type: partData.equipment_type || 'part',
-      planned_quantity: partData.quantity || 1,
-      unit_of_measure: partData.unit_of_measure || 'ea',
-      unit_cost: toNumber(partData.unit_cost),
-      unit_price: toNumber(partData.unit_price),
-      supplier: normalizeString(partData.supplier) || null,
-      notes: normalizeString(partData.notes) || null,
+      room_id: mergedData.room_id || null,
+      global_part_id: globalPartId, // Link to global part if provided
+      name: normalizeString(mergedData.name),
+      description: normalizeString(mergedData.description) || null,
+      manufacturer: normalizeString(mergedData.manufacturer) || null,
+      model: normalizeString(mergedData.model) || null,
+      part_number: normalizeString(mergedData.part_number) || null,
+      install_side: mergedData.install_side || 'room_end',
+      equipment_type: mergedData.equipment_type || 'part',
+      planned_quantity: mergedData.quantity || 1,
+      unit_of_measure: mergedData.unit_of_measure || 'ea',
+      unit_cost: toNumber(mergedData.unit_cost),
+      unit_price: toNumber(mergedData.unit_price),
+      supplier: normalizeString(mergedData.supplier) || null,
+      notes: normalizeString(mergedData.notes) || null,
       is_active: true,
       metadata: {},
       created_by: user?.id,
@@ -1924,8 +1972,9 @@ export const projectEquipmentService = {
       // Don't throw - inventory record is not critical
     }
 
-    // Step 3: Sync to global_parts if part_number provided
-    if (inserted.part_number) {
+    // Step 3: Sync to global_parts if part_number provided AND not already linked
+    // Skip if we already have a global_part_id (already linked to existing part)
+    if (inserted.part_number && !globalPartId) {
       console.log('[addSinglePart] Syncing to global_parts...');
       await syncGlobalParts([inserted], projectId, null);
     }

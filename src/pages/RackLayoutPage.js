@@ -254,8 +254,9 @@ const RackLayoutPage = () => {
       eq.install_side === 'head_end' &&
       // Exclude equipment that IS a rack (those are the rack enclosures themselves)
       !rackEquipment.some(re => re.id === eq.id) &&
-      // Exclude equipment marked as non-rack equipment
-      !eq.exclude_from_rack
+      // Exclude equipment marked as non-rack (either on equipment OR global_part)
+      !eq.exclude_from_rack &&
+      !eq.global_part?.exclude_from_rack
     );
 
     return { placedEquipment: placed, unplacedEquipment: unplaced };
@@ -356,11 +357,22 @@ const RackLayoutPage = () => {
     }
   }, [loadData]);
 
-  // Handle shelf addition
+  // Handle shelf addition - returns the created shelf for auto-create shelf feature
   const handleAddShelf = useCallback(async (shelfData) => {
-    // TODO: Implement shelf management
-    console.log('Add shelf:', shelfData);
-  }, []);
+    try {
+      const newShelf = await rackService.createShelf({
+        rackId: shelfData.rackId,
+        name: shelfData.name || `Shelf at U${shelfData.rackPositionU}`,
+        uHeight: shelfData.uHeight || 2,
+        rackPositionU: shelfData.rackPositionU,
+      });
+      await loadData();
+      return newShelf; // Return the shelf so drop handler can add equipment to it
+    } catch (err) {
+      console.error('Failed to add shelf:', err);
+      return null;
+    }
+  }, [loadData]);
 
   // Handle creating a new rack from equipment
   const handleCreateRack = useCallback(async (equipmentId, name, location) => {
@@ -423,7 +435,7 @@ const RackLayoutPage = () => {
         console.log('[handleEquipmentEdit] Updated global_part via RPC:', data);
       }
 
-      // Update shelf requirements on project_equipment
+      // Update shelf requirements on project_equipment AND global_parts
       if (updates.needsShelf !== undefined) {
         console.log('[handleEquipmentEdit] Saving shelf requirements:', {
           equipmentId,
@@ -431,12 +443,33 @@ const RackLayoutPage = () => {
           shelf_u_height: updates.shelfUHeight || null,
           max_items_per_shelf: updates.maxItemsPerShelf || 1,
         });
+
+        // Update the individual equipment
         const result = await projectEquipmentService.updateEquipment(equipmentId, {
           needs_shelf: updates.needsShelf,
           shelf_u_height: updates.shelfUHeight || null,
           max_items_per_shelf: updates.maxItemsPerShelf || 1,
         });
         console.log('[handleEquipmentEdit] Shelf update result:', result);
+
+        // Also save to global_parts as default for this part type
+        if (eq?.global_part_id) {
+          const { supabase } = await import('../lib/supabase');
+          const { error } = await supabase
+            .from('global_parts')
+            .update({
+              needs_shelf: updates.needsShelf,
+              shelf_u_height: updates.shelfUHeight || null,
+              max_items_per_shelf: updates.maxItemsPerShelf || 1,
+            })
+            .eq('id', eq.global_part_id);
+
+          if (error) {
+            console.error('[handleEquipmentEdit] Failed to save shelf settings to global_parts:', error);
+          } else {
+            console.log('[handleEquipmentEdit] Shelf settings saved to global_parts for part:', eq.global_part_id);
+          }
+        }
       }
 
       // Update power settings on global_parts
@@ -489,7 +522,7 @@ const RackLayoutPage = () => {
     }
   }, [loadData]);
 
-  // Handle excluding equipment from rack layout
+  // Handle excluding THIS equipment item from rack layout (individual)
   const handleEquipmentExclude = useCallback(async (equipmentId) => {
     try {
       await projectEquipmentService.updateEquipment(equipmentId, {
@@ -500,6 +533,111 @@ const RackLayoutPage = () => {
       console.error('Failed to exclude equipment:', err);
     }
   }, [loadData]);
+
+  // Handle excluding ALL equipment of this part type from rack layout (global)
+  const handleEquipmentExcludeGlobal = useCallback(async (equipmentId, globalPartId) => {
+    try {
+      const { supabase } = await import('../lib/supabase');
+
+      // Find the equipment to get its part_number/model for matching
+      const eq = equipment.find(e => e.id === equipmentId);
+      const partNumber = eq?.part_number;
+      const model = eq?.model;
+
+      // Update the global_part so ALL equipment of this type is excluded
+      if (globalPartId) {
+        await supabase
+          .from('global_parts')
+          .update({ exclude_from_rack: true })
+          .eq('id', globalPartId);
+      }
+
+      // Also update ALL project_equipment with the same part_number in this project
+      // This handles cases where equipment isn't linked to a global_part
+      if (partNumber) {
+        await supabase
+          .from('project_equipment')
+          .update({ exclude_from_rack: true })
+          .eq('project_id', projectId)
+          .eq('part_number', partNumber);
+      } else if (model) {
+        // Fallback to model if no part_number
+        await supabase
+          .from('project_equipment')
+          .update({ exclude_from_rack: true })
+          .eq('project_id', projectId)
+          .eq('model', model);
+      } else {
+        // Just update the single item
+        await projectEquipmentService.updateEquipment(equipmentId, {
+          exclude_from_rack: true,
+        });
+      }
+
+      await loadData();
+    } catch (err) {
+      console.error('Failed to exclude equipment globally:', err);
+    }
+  }, [loadData, equipment, projectId]);
+
+  // Handle moving a shelf to a new position (equipment on the shelf moves with it)
+  const handleShelfMove = useCallback(async (shelfId, newPositionU) => {
+    try {
+      console.log('[handleShelfMove] Moving shelf:', shelfId, 'to U:', newPositionU);
+      await rackService.updateShelf(shelfId, { rack_position_u: newPositionU });
+      await loadData();
+    } catch (err) {
+      console.error('[handleShelfMove] Failed to move shelf:', err);
+    }
+  }, [loadData]);
+
+  // Handle deleting a shelf (equipment on it becomes unplaced)
+  const handleShelfDelete = useCallback(async (shelfId) => {
+    try {
+      console.log('[handleShelfDelete] Deleting shelf:', shelfId);
+
+      // First, unlink all equipment from this shelf
+      const { supabase } = await import('../lib/supabase');
+      await supabase
+        .from('project_equipment')
+        .update({ shelf_id: null, rack_id: null, rack_position_u: null })
+        .eq('shelf_id', shelfId);
+
+      // Then delete the shelf
+      await rackService.deleteShelf(shelfId);
+      await loadData();
+    } catch (err) {
+      console.error('[handleShelfDelete] Failed to delete shelf:', err);
+    }
+  }, [loadData]);
+
+  // Handle dropping equipment onto a shelf
+  const handleEquipmentDropOnShelf = useCallback(async (equipmentId, shelfId) => {
+    try {
+      console.log('[handleEquipmentDropOnShelf] Placing equipment:', equipmentId, 'on shelf:', shelfId);
+
+      // Find the shelf to get its rack_id and position
+      const shelf = selectedRack?.shelves?.find(s => s.id === shelfId);
+      if (!shelf) {
+        console.error('[handleEquipmentDropOnShelf] Shelf not found:', shelfId);
+        return;
+      }
+
+      const { supabase } = await import('../lib/supabase');
+      await supabase
+        .from('project_equipment')
+        .update({
+          rack_id: shelf.rack_id,
+          rack_position_u: shelf.rack_position_u,
+          shelf_id: shelfId,
+        })
+        .eq('id', equipmentId);
+
+      await loadData();
+    } catch (err) {
+      console.error('[handleEquipmentDropOnShelf] Failed:', err);
+    }
+  }, [loadData, selectedRack]);
 
   // Get current rack data (selected rack or default)
   const currentRack = useMemo(() => {
@@ -776,9 +914,13 @@ const RackLayoutPage = () => {
                   onEquipmentRemove={handleEquipmentRemove}
                   onEquipmentEdit={handleEquipmentEdit}
                   onEquipmentExclude={handleEquipmentExclude}
+                  onEquipmentExcludeGlobal={handleEquipmentExcludeGlobal}
+                  onEquipmentDropOnShelf={handleEquipmentDropOnShelf}
                   onMoveRoom={handleMoveRoom}
                   onLinkToHA={handleLinkToHA}
                   onAddShelf={handleAddShelf}
+                  onShelfMove={handleShelfMove}
+                  onShelfDelete={handleShelfDelete}
                   onRefresh={handleRefresh}
                   getNetworkInfo={getNetworkInfo}
                 />

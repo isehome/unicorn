@@ -10,6 +10,8 @@ import {
   FileCheck,
   Link as LinkIcon,
   Upload,
+  Server,
+  Layers,
 } from 'lucide-react';
 import Button from './ui/Button';
 import { useTheme } from '../contexts/ThemeContext';
@@ -61,6 +63,13 @@ const PartDetailPage = () => {
         submittal_sharepoint_url: part.submittal_sharepoint_url || '',
         submittal_sharepoint_drive_id: part.submittal_sharepoint_drive_id || '',
         submittal_sharepoint_item_id: part.submittal_sharepoint_item_id || '',
+        // Rack layout fields
+        u_height: part.u_height || null,
+        is_rack_mountable: part.is_rack_mountable === true,
+        needs_shelf: part.needs_shelf === true,
+        shelf_u_height: part.shelf_u_height || null,
+        max_items_per_shelf: part.max_items_per_shelf || 1,
+        exclude_from_rack: part.exclude_from_rack === true,
       });
     }
   }, [part]);
@@ -92,6 +101,13 @@ const PartDetailPage = () => {
         submittal_sharepoint_url: updated.submittal_sharepoint_url || '',
         submittal_sharepoint_drive_id: updated.submittal_sharepoint_drive_id || '',
         submittal_sharepoint_item_id: updated.submittal_sharepoint_item_id || '',
+        // Rack layout fields
+        u_height: updated.u_height || null,
+        is_rack_mountable: updated.is_rack_mountable === true,
+        needs_shelf: updated.needs_shelf === true,
+        shelf_u_height: updated.shelf_u_height || null,
+        max_items_per_shelf: updated.max_items_per_shelf || 1,
+        exclude_from_rack: updated.exclude_from_rack === true,
       });
     },
     onError: (mutationError) => {
@@ -599,6 +615,153 @@ const PartDetailPage = () => {
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
               Submittal documents are product spec sheets included in end-of-project documentation packages
             </p>
+          </div>
+        </div>
+
+        {/* Rack Layout Section */}
+        <div className={styles.card + ' p-6 space-y-4'}>
+          <p className={styles.sectionTitle}>Rack Layout</p>
+          <p className={styles.textSecondary}>
+            Configure how this part appears in the head-end rack layout view.
+          </p>
+
+          <div className="space-y-4">
+            {/* Rack Mountable Option */}
+            <div className="flex items-start gap-4">
+              <div className="flex-1">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formState.is_rack_mountable)}
+                    onChange={(event) => {
+                      handleFieldChange('is_rack_mountable', event.target.checked);
+                      if (event.target.checked) {
+                        handleFieldChange('needs_shelf', false);
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  <Server className="h-4 w-4 text-zinc-500" />
+                  <span>Rack-mountable equipment</span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                  Equipment that mounts directly in a standard 19" rack
+                </p>
+              </div>
+              {formState.is_rack_mountable && (
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600 dark:text-gray-400">Height:</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => handleFieldChange('u_height', u)}
+                        className={`w-9 h-9 rounded text-sm font-medium transition-colors ${
+                          formState.u_height === u
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-zinc-200 dark:bg-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                        }`}
+                      >
+                        {u}U
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Needs Shelf Option */}
+            <div className="flex items-start gap-4">
+              <div className="flex-1">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(formState.needs_shelf)}
+                    onChange={(event) => {
+                      handleFieldChange('needs_shelf', event.target.checked);
+                      if (event.target.checked) {
+                        handleFieldChange('is_rack_mountable', false);
+                        if (!formState.shelf_u_height) {
+                          handleFieldChange('shelf_u_height', 2);
+                        }
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Layers className="h-4 w-4 text-blue-500" />
+                  <span>Needs shelf space</span>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                  Equipment that sits on a shelf inside the rack (not rack-mountable)
+                </p>
+              </div>
+            </div>
+
+            {/* Shelf Settings (shown when needs_shelf is true) */}
+            {formState.needs_shelf && (
+              <div className="ml-6 p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-4">
+                <div className="flex items-center gap-4">
+                  <label className="text-sm text-blue-700 dark:text-blue-300 w-32">Shelf height:</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => handleFieldChange('shelf_u_height', u)}
+                        className={`w-9 h-9 rounded text-sm font-medium transition-colors ${
+                          formState.shelf_u_height === u
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-white dark:bg-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-blue-100 dark:hover:bg-zinc-600 border border-blue-200 dark:border-blue-700'
+                        }`}
+                      >
+                        {u}U
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <label className="text-sm text-blue-700 dark:text-blue-300 w-32">Items per shelf:</label>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => handleFieldChange('max_items_per_shelf', n)}
+                        className={`w-9 h-9 rounded text-sm font-medium transition-colors ${
+                          formState.max_items_per_shelf === n
+                            ? 'bg-violet-600 text-white'
+                            : 'bg-white dark:bg-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-violet-100 dark:hover:bg-zinc-600 border border-blue-200 dark:border-blue-700'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  {formState.max_items_per_shelf > 1
+                    ? `Up to ${formState.max_items_per_shelf} of these can fit side-by-side on a ${formState.shelf_u_height}U shelf`
+                    : 'One item per shelf'}
+                </p>
+              </div>
+            )}
+
+            {/* Exclude from Rack Option */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formState.exclude_from_rack)}
+                  onChange={(event) => handleFieldChange('exclude_from_rack', event.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <span className="text-red-600 dark:text-red-400">Exclude from rack layout</span>
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                Hide this part type from the rack layout view entirely (e.g., cables, accessories)
+              </p>
+            </div>
           </div>
         </div>
 

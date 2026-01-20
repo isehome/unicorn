@@ -212,6 +212,15 @@ export const partsService = {
     if (payload.required_for_prewire !== undefined) {
       payload.required_for_prewire = Boolean(payload.required_for_prewire);
     }
+    if (payload.is_rack_mountable !== undefined) {
+      payload.is_rack_mountable = Boolean(payload.is_rack_mountable);
+    }
+    if (payload.needs_shelf !== undefined) {
+      payload.needs_shelf = Boolean(payload.needs_shelf);
+    }
+    if (payload.exclude_from_rack !== undefined) {
+      payload.exclude_from_rack = Boolean(payload.exclude_from_rack);
+    }
 
     // Use comprehensive RPC function to bypass RLS for all updates
     const rpcParams = {
@@ -236,6 +245,13 @@ export const partsService = {
       p_submittal_sharepoint_url: payload.submittal_sharepoint_url,
       p_submittal_sharepoint_drive_id: payload.submittal_sharepoint_drive_id,
       p_submittal_sharepoint_item_id: payload.submittal_sharepoint_item_id,
+      // Rack layout fields
+      p_u_height: payload.u_height,
+      p_is_rack_mountable: payload.is_rack_mountable,
+      p_needs_shelf: payload.needs_shelf,
+      p_shelf_u_height: payload.shelf_u_height,
+      p_max_items_per_shelf: payload.max_items_per_shelf,
+      p_exclude_from_rack: payload.exclude_from_rack,
     };
 
     const { data: rpcResult, error: rpcError } = await supabase.rpc('update_global_part', rpcParams);
