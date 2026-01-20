@@ -152,6 +152,39 @@ def format_device(device):
     ports_used = sum(1 for p in port_table if p.get("up", False))
     ports_total = len(port_table)
 
+    # Get the IP address - for gateways, prefer the LAN IP over WAN IP
+    ip_address = device.get("ip", "")
+    if category == "gateway":
+        # For UDM Pro/SE/etc, the 'ip' field might be the WAN IP
+        # Check for LAN IP in various possible locations
+        # 1. Check network_table for LAN network
+        network_table = device.get("network_table", [])
+        for net in network_table:
+            # Look for the LAN network (usually named "LAN" or is the default network)
+            net_name = net.get("name", "").lower()
+            if "lan" in net_name or net.get("is_default", False):
+                lan_ip = net.get("ip_subnet", "").split("/")[0]  # Get IP without CIDR
+                if lan_ip:
+                    ip_address = lan_ip
+                    break
+
+        # 2. Check config_network for LAN IP
+        if not ip_address or ip_address == device.get("ip", ""):
+            config_network = device.get("config_network", {})
+            if config_network.get("ip"):
+                ip_address = config_network.get("ip")
+
+        # 3. Check connect_request_ip (often the internal management IP)
+        if not ip_address or ip_address == device.get("ip", ""):
+            connect_ip = device.get("connect_request_ip", "")
+            # Only use if it looks like a private IP (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+            if connect_ip and (
+                connect_ip.startswith("192.168.") or
+                connect_ip.startswith("10.") or
+                connect_ip.startswith("172.")
+            ):
+                ip_address = connect_ip
+
     return {
         # Identity
         "mac": device.get("mac", ""),
@@ -160,8 +193,8 @@ def format_device(device):
         "type": device_type,
         "category": category,
 
-        # Network
-        "ip": device.get("ip", ""),
+        # Network - use computed ip_address which prefers LAN IP for gateways
+        "ip": ip_address,
         "gateway_mac": device.get("gateway_mac", ""),
 
         # Status

@@ -1338,6 +1338,7 @@ export const projectEquipmentService = {
           power_outlets,
           is_power_device,
           power_outlets_provided,
+          ups_outlets_provided,
           power_output_watts,
           ups_va_rating,
           ups_runtime_minutes,

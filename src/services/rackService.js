@@ -177,7 +177,7 @@ export async function getRack(rackId) {
       equipment:project_equipment(
         *,
         global_part:global_part_id(
-          id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
+          id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, ups_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
         )
       )
     `)
@@ -324,6 +324,8 @@ export async function updateShelf(shelfId, updates) {
     }
   }
 
+  console.log('[rackService.updateShelf] Updating shelf:', shelfId, 'with:', cleanUpdates);
+
   const { data, error } = await supabase
     .from('project_rack_shelves')
     .update(cleanUpdates)
@@ -332,10 +334,11 @@ export async function updateShelf(shelfId, updates) {
     .single();
 
   if (error) {
-    console.error('[rackService] Error updating shelf:', error);
+    console.error('[rackService.updateShelf] Error updating shelf:', error);
     throw error;
   }
 
+  console.log('[rackService.updateShelf] Updated successfully:', data);
   return data;
 }
 
@@ -373,7 +376,7 @@ export async function getRackEquipment(rackId) {
     .select(`
       *,
       global_part:global_part_id(
-        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes, is_wireless
+        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, ups_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes, is_wireless
       ),
       ha_client:project_ha_clients!project_equipment_ha_client_mac_fkey(
         mac, hostname, ip, is_wired, is_online, switch_name, switch_port, ssid, signal
@@ -401,7 +404,7 @@ export async function getUnplacedRackEquipment(projectId) {
     .select(`
       *,
       global_part:global_part_id(
-        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
+        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, ups_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
       )
     `)
     .eq('project_id', projectId)
@@ -437,7 +440,7 @@ export async function placeEquipmentInRack(equipmentId, { rackId, rackPositionU,
     .select(`
       *,
       global_part:global_part_id(
-        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
+        id, name, manufacturer, model, u_height, is_rack_mountable, power_watts, power_outlets, is_power_device, power_outlets_provided, ups_outlets_provided, power_output_watts, ups_va_rating, ups_runtime_minutes
       )
     `)
     .single();

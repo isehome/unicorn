@@ -6346,3 +6346,567 @@ Removed `overflow-hidden` from containers to allow dropdown to display:
 | `src/components/Rack/RackBackView.jsx` | Removed overflow-hidden from equipment card and main container |
 
 ---
+
+### Rack Layout Equipment Display Name Fix
+
+**Problem:** Equipment in the rack layout view was showing the full instance name (e.g., "Network & Structured Wiring - U7-Pro 1") which was too long and got truncated, making it impossible to identify the actual part.
+
+**Solution:** Updated display name logic to show model + instance number (e.g., "U7-Pro 1", "16/2OFC-BK 3").
+
+#### Display Name Priority
+1. `equipment.model` + instance number extracted from full name
+2. `equipment.global_part.name` if linked
+3. Part name extracted from instance name (after " - ")
+4. `equipment.part_number` as fallback
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added `getEquipmentDisplayName()` helper function |
+| `src/components/Rack/RackBackView.jsx` | Updated `getEquipmentName()` with same logic |
+
+---
+
+### Rack Layout Global Part Exclusion
+
+**Goal:** Allow excluding entire part types from rack layout views (e.g., cables, connectors, small accessories that don't belong in a rack).
+
+#### New Features
+
+1. **"Hide This Item"** button - Excludes only the specific equipment instance
+2. **"Never Show This Part Type"** button - Excludes ALL equipment with the same part number globally
+
+#### How Global Exclusion Works
+
+When user clicks "Never Show This Part Type":
+1. Updates `global_parts.exclude_from_rack = true` if equipment has a linked global part
+2. Updates ALL `project_equipment` records with the same `part_number` in the project
+3. Falls back to matching by `model` if no part_number exists
+
+#### Filtering Logic
+
+Equipment is excluded from rack layout if:
+- `equipment.exclude_from_rack = true` (individual exclusion), OR
+- `equipment.global_part.exclude_from_rack = true` (global part exclusion)
+
+#### Database Changes
+
+**New column in `global_parts`:**
+```sql
+ALTER TABLE global_parts
+ADD COLUMN IF NOT EXISTS exclude_from_rack BOOLEAN DEFAULT FALSE;
+```
+
+**Migration:** `supabase/migrations/20260119_add_exclude_from_rack_to_global_parts.sql`
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added `onExcludeGlobal` prop, two separate exclude buttons in modal |
+| `src/pages/RackLayoutPage.js` | Added `handleEquipmentExcludeGlobal` handler, updated filtering logic |
+| `src/services/projectEquipmentService.js` | Added `exclude_from_rack` to global_part fetch query |
+
+#### User Flow
+
+1. Open Rack Layout page
+2. Click on any equipment in the unplaced list
+3. In the modal, choose:
+   - **"Hide This Item"** - Just hides this one item
+   - **"Never Show This Part Type"** - Hides all items with same part number (e.g., all cables)
+4. Page refreshes and excluded items disappear from the list
+
+---
+
+### Power Distribution Tracking for Rack Equipment
+
+**Goal:** Track power distribution devices (UPS, PDU, surge protectors) in racks, including outlets provided, power capacity, and battery backup specs.
+
+#### New Global Part Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `is_power_device` | BOOLEAN | True if device provides power to other equipment |
+| `power_outlets_provided` | INTEGER | Number of outlets the device provides |
+| `power_output_watts` | INTEGER | Maximum power output capacity in watts |
+| `ups_va_rating` | INTEGER | VA rating for UPS devices |
+| `ups_runtime_minutes` | INTEGER | Estimated battery runtime in minutes |
+
+#### Existing Fields Clarified
+
+- `power_watts` - Power the device CONSUMES
+- `power_outlets` - Outlets the device REQUIRES (renamed conceptually to "outlets required")
+
+#### Power Summary in Rack View
+
+The rack back view header now shows:
+- **Power consumption vs capacity** (e.g., "450W / 1500W")
+- **Outlets used vs available** (e.g., "12 / 24 outlets")
+- Power devices highlighted with amber styling
+
+#### UI in Equipment Modal
+
+New "Power Settings" section with:
+- Checkbox: "This is a power distribution device"
+- Power draw (W) input
+- Outlets needed selector (1-4)
+- "Save Power Settings to Parts Database" button
+
+For power devices, additional fields appear:
+- Outlets provided
+- Power output (W)
+- UPS VA rating
+- UPS runtime (minutes)
+
+#### Database Migration
+
+**Migration:** `supabase/migrations/20260119_add_power_distribution_fields.sql`
+
+```sql
+ALTER TABLE global_parts
+ADD COLUMN IF NOT EXISTS is_power_device BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS power_outlets_provided INTEGER DEFAULT 0,
+ADD COLUMN IF NOT EXISTS power_output_watts INTEGER,
+ADD COLUMN IF NOT EXISTS ups_va_rating INTEGER,
+ADD COLUMN IF NOT EXISTS ups_runtime_minutes INTEGER;
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added Power Settings section in equipment modal |
+| `src/components/Rack/RackBackView.jsx` | Added power totals calculation, power summary in header |
+| `src/pages/RackLayoutPage.js` | Added `handleSavePowerSettings` to save to global_parts |
+| `src/services/projectEquipmentService.js` | Added power fields to global_part fetch query |
+
+---
+
+### CSV Import Fixes
+
+#### Problem 1: 409 Conflict Error on Re-import
+
+**Issue:** Uploading a CSV after equipment already existed caused a 409 Conflict error due to foreign key constraint on `purchase_order_items`.
+
+**Solution:** Before deleting equipment during CSV import, first delete associated purchase order items.
+
+#### Problem 2: Inventory Not Returned on Delete
+
+**Issue:** When equipment linked to internal inventory was deleted, the inventory quantity wasn't returned.
+
+**Solution:** Added logic to call `increment_global_inventory` RPC to return inventory when deleting equipment that came from internal inventory.
+
+```javascript
+// Check if PO item came from internal inventory
+if (isInternalInventory && globalPartId && quantity > 0) {
+  await supabase.rpc('increment_global_inventory', {
+    p_global_part_id: globalPartId,
+    p_quantity: quantity
+  });
+}
+```
+
+#### Problem 3: Statement Timeout on Large Imports
+
+**Issue:** Large CSV imports caused statement timeout errors (57014).
+
+**Solution:** Added batching for equipment inserts (100 records at a time).
+
+```javascript
+const BATCH_SIZE = 100;
+for (let i = 0; i < equipmentRecords.length; i += BATCH_SIZE) {
+  const batch = equipmentRecords.slice(i, i + BATCH_SIZE);
+  const { data: inserted } = await supabase
+    .from('project_equipment')
+    .insert(batch)
+    .select();
+  insertedEquipment.push(...(inserted || []));
+}
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/services/projectEquipmentService.js` | Added PO item deletion, inventory return, batched inserts |
+
+---
+
+### Max Items Per Shelf
+
+**Goal:** Allow specifying how many devices can display side-by-side on a shelf in the rack layout.
+
+#### Database Change
+
+```sql
+ALTER TABLE project_equipment
+ADD COLUMN IF NOT EXISTS max_items_per_shelf INTEGER DEFAULT 1;
+```
+
+**Migration:** `supabase/migrations/20260119_add_max_items_per_shelf.sql`
+
+#### UI Addition
+
+In the equipment modal's "Shelf Space" section, added a selector for "Items per shelf" (1-4) to specify how many devices can fit side-by-side.
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added max_items_per_shelf state and selector in modal |
+| `src/services/projectEquipmentService.js` | Added field to updateEquipment |
+
+---
+
+### Shelf Properties Saved to Global Parts (January 19, 2026)
+
+**Goal:** Save shelf properties (`needs_shelf`, `shelf_u_height`, `max_items_per_shelf`) to `global_parts` as equipment preferences/defaults, so all future instances of that part type inherit the shelf settings.
+
+#### Database Change
+
+```sql
+ALTER TABLE global_parts
+ADD COLUMN IF NOT EXISTS needs_shelf BOOLEAN DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS shelf_u_height INTEGER DEFAULT NULL,
+ADD COLUMN IF NOT EXISTS max_items_per_shelf INTEGER DEFAULT 1;
+```
+
+**Migration:** `supabase/migrations/20260119_add_shelf_properties_to_global_parts.sql`
+
+#### Implementation
+
+When user saves shelf settings in the equipment modal:
+1. Saves to `project_equipment` for the individual item
+2. Also saves to `global_parts` as defaults for future instances of that part type
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/RackLayoutPage.js` | Updated `handleEquipmentEdit` to save shelf settings to global_parts |
+
+---
+
+### Add Shelf Feature (January 19, 2026)
+
+**Goal:** Allow adding shelves to rack layouts via the "+ Shelf" button.
+
+#### Implementation
+
+1. Added shelf modal with height and position selectors
+2. Implemented `handleAddShelf` callback in RackLayoutPage
+3. Added `ShelfBlock` component to render shelves visually in the rack
+4. Added `positionedShelves` useMemo to calculate shelf positions
+
+#### UI Flow
+
+1. Click "+ Shelf" button in rack header
+2. Select shelf height (1-4U)
+3. Enter starting position (U number from bottom)
+4. Click "Add Shelf"
+5. Shelf appears in rack view with blue styling
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added shelf modal, ShelfBlock component, shelf rendering |
+| `src/pages/RackLayoutPage.js` | Implemented `handleAddShelf` callback |
+
+---
+
+### UDM Pro LAN IP Fix (January 19, 2026)
+
+**Goal:** Fix UDM Pro (gateway devices) showing WAN address instead of LAN address in rack layout views.
+
+#### Problem
+
+The UniFi API returns `device.ip` for gateways, which can be the WAN IP depending on firmware. This caused the UDM Pro to display its public WAN IP instead of the local management IP.
+
+#### Solution
+
+Updated the Python UniFi collector script to intelligently detect the LAN IP for gateway devices:
+
+1. Check `network_table` for LAN network with `ip_subnet`
+2. Fall back to `config_network.ip` if available
+3. Fall back to `connect_request_ip` if it's a private IP address (192.168.x.x, 10.x.x.x, 172.x.x.x)
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `ha-unifi-integration/scripts/unifi_clients.py` | Updated `format_device()` to prefer LAN IP for gateways |
+
+---
+
+### Draggable Shelves with Grouped Equipment (January 19, 2026)
+
+**Goal:** Make shelves in the rack layout draggable, with all equipment on the shelf moving together as a group.
+
+#### New Features
+
+1. **Draggable shelves** - Grab the shelf header to drag the entire shelf (with contents) to a new position
+2. **Equipment grouping** - Equipment placed on a shelf is grouped and displayed side-by-side
+3. **Drop equipment on shelves** - Drag equipment from the unplaced list directly onto a shelf
+4. **Delete shelves** - X button removes shelf (equipment becomes unplaced)
+5. **Visual feedback** - Shelf turns green when dragging equipment over it
+
+#### Shelf Equipment Display
+
+Equipment on shelves is displayed side-by-side based on `max_items_per_shelf`:
+- If `max_items_per_shelf = 4`, each item takes 25% width
+- If more items than max, shows "+N more" indicator
+- Click on shelf equipment to open edit modal
+
+#### Drag & Drop Behavior
+
+| Action | Result |
+|--------|--------|
+| Drag shelf | Move shelf and all equipment on it to new U position |
+| Drag equipment to shelf | Place equipment on shelf (links via `shelf_id`) |
+| Drag equipment to rack | Place directly in rack (not on shelf) |
+| Delete shelf | Unplace all equipment on it, then delete shelf |
+
+#### Database Model
+
+Equipment on shelves has:
+- `shelf_id` - Links to `project_rack_shelves.id`
+- `rack_id` - Same as shelf's rack
+- `rack_position_u` - Same as shelf's position
+
+When shelf moves, only shelf position updates (equipment stays linked).
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Added ShelfBlock with drag/drop, ShelfEquipmentItem, equipment grouping |
+| `src/pages/RackLayoutPage.js` | Added handleShelfMove, handleShelfDelete, handleEquipmentDropOnShelf |
+
+---
+
+### Shelf Move UI Update Fix (January 19, 2026)
+
+**Problem:** When dragging a shelf to a new position, the database was updated successfully but the UI didn't reflect the change (shelf snapped back to original position).
+
+**Root Cause:** The `loadData` function was fetching fresh rack data from the database but `selectedRack` state still held the OLD stale data. This caused the UI to render with outdated shelf positions.
+
+**Technical Details:**
+
+```javascript
+// BEFORE (buggy):
+const loadData = useCallback(async () => {
+  const racksData = await rackService.getProjectRacks(projectId);
+  setRacks(racksData);
+  
+  // Only set selectedRack if null - stale data!
+  if (racksData?.length > 0 && !selectedRack) {
+    setSelectedRack(racksData[0]);
+  }
+}, [projectId, selectedRack]); // selectedRack in deps caused infinite loop
+
+// AFTER (fixed):
+const loadData = useCallback(async () => {
+  const racksData = await rackService.getProjectRacks(projectId);
+  setRacks(racksData);
+  
+  // Use functional update to get fresh data without dep cycle
+  if (racksData?.length > 0) {
+    setSelectedRack(prevSelected => {
+      if (prevSelected) {
+        const updatedRack = racksData.find(r => r.id === prevSelected.id);
+        return updatedRack || racksData[0];
+      }
+      return racksData[0];
+    });
+  }
+}, [projectId]); // No selectedRack dep - avoids infinite loop
+```
+
+**Key Insight:** Using `setSelectedRack(prevSelected => ...)` (functional update) allows accessing the previous state value without including it in the dependency array, avoiding the circular dependency that caused infinite re-renders.
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/RackLayoutPage.js` | Fixed `loadData` to sync `selectedRack` with fresh data using functional update |
+
+---
+
+### Global Parts Rack Layout Preferences (January 19, 2026)
+
+**Problem:** Rack layout preferences (needs_shelf, shelf_u_height, max_items_per_shelf, etc.) were not saving to global_parts records.
+
+**Root Causes:**
+1. Direct `.update()` calls on `global_parts` table were blocked by RLS
+2. Part Detail page (tab 3) had no UI for rack layout fields
+3. The `update_global_part` RPC function was missing rack layout parameters
+
+**Solution:**
+
+1. **Added Rack Layout UI to PartDetailPage.js:**
+   - Rack-mountable checkbox with U-height selector (1-4U)
+   - Needs shelf checkbox with shelf_u_height and max_items_per_shelf options
+   - Exclude from rack checkbox
+
+2. **Updated partsService.js:**
+   - Added boolean handling for is_rack_mountable, needs_shelf, exclude_from_rack
+   - Added rack layout fields to RPC params (p_u_height, p_is_rack_mountable, etc.)
+
+3. **Updated RackLayoutPage.js:**
+   - Changed direct `.update()` calls to use `update_global_part` RPC function
+   - This bypasses RLS restrictions
+
+4. **SQL Migration:**
+   - `20260119_update_global_part_rpc_rack_layout.sql` - Updated RPC function with rack layout parameters
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/PartDetailPage.js` | Added Rack Layout UI section |
+| `src/services/partsService.js` | Added rack layout fields to RPC params |
+| `src/pages/RackLayoutPage.js` | Use RPC instead of direct update for global_parts |
+| `supabase/migrations/20260119_update_global_part_rpc_rack_layout.sql` | New migration for RPC |
+
+---
+
+### Auto-Create Shelf for Shelf Equipment (January 19, 2026)
+
+**Goal:** When dragging equipment that needs shelf space (e.g., Sonos Amp) into the rack, automatically create a shelf for it.
+
+**Implementation:**
+
+1. `UnplacedEquipmentCard` drag data now includes:
+   - `needsShelf` - boolean from equipment or global_part
+   - `shelfUHeight` - shelf height from equipment or global_part
+   - `maxItemsPerShelf` - items per shelf from equipment or global_part
+
+2. `handleRackDrop` checks if dropped equipment needs a shelf:
+   - If `data.needsShelf && onAddShelf`, create shelf at drop position
+   - Then add equipment to the newly created shelf
+
+3. `handleAddShelf` returns the created shelf so drop handler can use its ID
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Pass shelf data in drag, auto-create shelf on drop |
+| `src/pages/RackLayoutPage.js` | Return shelf from handleAddShelf |
+
+---
+
+### Blue Badge for Shelf Equipment (January 19, 2026)
+
+**Goal:** Visually distinguish equipment that needs shelf space from rack-mountable equipment.
+
+**Implementation:**
+
+- Rack-mountable equipment: Amber/yellow badge (existing)
+- Shelf equipment: Blue badge with shelf_u_height value
+- Equipment without U-height: Dashed border badge with "?U"
+
+#### Visual Styling
+
+```jsx
+// Shelf equipment (blue)
+className="bg-blue-900/50 text-blue-400 border border-blue-700"
+
+// Rack-mountable (amber)  
+className="bg-amber-900/50 text-amber-400 border border-amber-700"
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackFrontView.jsx` | Blue styling for shelf equipment badges |
+
+---
+
+### Rack Layout UI Overhaul (January 19, 2026)
+
+**Goal:** Improve rack layout UI with cleaner header, Front/Back view tabs, Physical/Functional mode toggle, and transparent shelf styling.
+
+#### Changes Made
+
+1. **Renamed "Network View" to "Back View"**
+   - Both tabs now clearly indicate viewing angle: Front View / Back View
+
+2. **Compact Horizontal Stats Bar**
+   - Replaced 4 separate info boxes with single horizontal stats bar
+   - Shows: Total Equipment | Placed | Unplaced | Rack Size (e.g., "42U")
+   - More compact, takes less vertical space
+
+3. **Physical/Functional Layout Toggle**
+   - Both Front and Back views support two modes:
+     - **Physical:** Shows actual rack grid with equipment at U positions
+     - **Functional:** Shows list view sorted by position (Back View) or standard view (Front View)
+   - Toggle is positioned at right side of header bar
+
+4. **Transparent Shelf Styling**
+   - Changed shelf background from `bg-blue-900/30` to `bg-transparent`
+   - Kept blue border: `border-blue-500`
+   - Shelf header has subtle tint: `bg-blue-900/30`
+
+5. **RackBackView Physical Mode**
+   - Added full physical rack grid support matching RackFrontView
+   - Shows equipment blocks at actual U positions
+   - Supports shelves with equipment
+   - Supports drag-and-drop for equipment and shelves
+   - Equipment blocks show network status, IP addresses, power indicators
+
+#### UI Structure
+
+```jsx
+// Header row layout
+<div className="flex flex-wrap items-center gap-4 mb-4">
+  {/* Front/Back View Tabs */}
+  <div className="flex gap-1 bg-zinc-200 ...">
+    <button>Front</button>
+    <button>Back</button>
+  </div>
+
+  {/* Compact Stats Bar */}
+  <div className="flex items-center gap-3 ...">
+    <div>Total: {count}</div>
+    <div>Placed: {count}</div>
+    <div>Unplaced: {count}</div>
+    <div>Size: {size}U</div>
+  </div>
+
+  {/* Physical/Functional Toggle */}
+  <div className="flex gap-1 ... ml-auto">
+    <button>Physical</button>
+    <button>Functional</button>
+  </div>
+</div>
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/RackLayoutPage.js` | New header with tabs, compact stats, layout mode toggle, pass layoutMode to views |
+| `src/components/Rack/RackFrontView.jsx` | Transparent shelf background, subtle header tint |
+| `src/components/Rack/RackBackView.jsx` | Full rewrite to support both physical and functional modes |
+
+#### Props Added to RackBackView
+
+```typescript
+// New props for physical layout mode
+layoutMode: 'physical' | 'functional'
+onEquipmentDrop: (equipmentId, targetU, rackId) => void
+onEquipmentMove: (equipmentId, targetU, shelfId) => void
+onEquipmentRemove: (equipmentId) => void
+onEquipmentEdit: (equipment) => void
+onEquipmentDropOnShelf: (equipmentId, shelfId) => void
+onAddShelf: (shelfData) => Promise<shelf>
+onShelfMove: (shelfId, newPositionU) => void
+onShelfDelete: (shelfId) => void
+getNetworkInfo: (equipment) => networkInfoObject
+```
+
+---

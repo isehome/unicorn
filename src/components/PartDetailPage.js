@@ -12,6 +12,8 @@ import {
   Upload,
   Server,
   Layers,
+  Zap,
+  Plug,
 } from 'lucide-react';
 import Button from './ui/Button';
 import { useTheme } from '../contexts/ThemeContext';
@@ -70,6 +72,12 @@ const PartDetailPage = () => {
         shelf_u_height: part.shelf_u_height || null,
         max_items_per_shelf: part.max_items_per_shelf || 1,
         exclude_from_rack: part.exclude_from_rack === true,
+        // Power fields
+        power_watts: part.power_watts || null,
+        power_outlets: part.power_outlets || 1,
+        is_power_device: part.is_power_device === true,
+        power_outlets_provided: part.power_outlets_provided || null,
+        ups_outlets_provided: part.ups_outlets_provided || null,
       });
     }
   }, [part]);
@@ -108,6 +116,12 @@ const PartDetailPage = () => {
         shelf_u_height: updated.shelf_u_height || null,
         max_items_per_shelf: updated.max_items_per_shelf || 1,
         exclude_from_rack: updated.exclude_from_rack === true,
+        // Power fields
+        power_watts: updated.power_watts || null,
+        power_outlets: updated.power_outlets || 1,
+        is_power_device: updated.is_power_device === true,
+        power_outlets_provided: updated.power_outlets_provided || null,
+        ups_outlets_provided: updated.ups_outlets_provided || null,
       });
     },
     onError: (mutationError) => {
@@ -762,6 +776,143 @@ const PartDetailPage = () => {
                 Hide this part type from the rack layout view entirely (e.g., cables, accessories)
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* Power Section */}
+        <div className={styles.card + ' p-6 space-y-4'}>
+          <p className={styles.sectionTitle}>Power Requirements</p>
+          <p className={styles.textSecondary}>
+            Configure power consumption and outlet requirements for this equipment.
+          </p>
+
+          <div className="space-y-4">
+            {/* Power Consumption */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className={styles.label + ' flex items-center gap-2'}>
+                  <Zap className="h-4 w-4 text-amber-500" />
+                  Power Consumption (Watts)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formState.power_watts || ''}
+                  onChange={(event) => handleFieldChange('power_watts', event.target.value ? Number(event.target.value) : null)}
+                  className={styles.input}
+                  placeholder="e.g., 150"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Typical power draw in watts
+                </p>
+              </div>
+              <div>
+                <label className={styles.label + ' flex items-center gap-2'}>
+                  <Plug className="h-4 w-4 text-zinc-500" />
+                  Power Outlets Required
+                </label>
+                <div className="flex gap-1 mt-1">
+                  {[1, 2, 3, 4].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => handleFieldChange('power_outlets', n)}
+                      className={`w-10 h-10 rounded text-sm font-medium transition-colors ${
+                        formState.power_outlets === n
+                          ? 'bg-zinc-600 text-white'
+                          : 'bg-zinc-200 dark:bg-zinc-700 text-gray-700 dark:text-gray-300 hover:bg-zinc-300 dark:hover:bg-zinc-600'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Number of power outlets this device needs
+                </p>
+              </div>
+            </div>
+
+            {/* Power Device Option */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  type="checkbox"
+                  checked={Boolean(formState.is_power_device)}
+                  onChange={(event) => {
+                    handleFieldChange('is_power_device', event.target.checked);
+                    if (!event.target.checked) {
+                      handleFieldChange('power_outlets_provided', null);
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <Zap className="h-4 w-4 text-amber-500" />
+                <span>This is a power distribution device</span>
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                Check this for UPS units, power conditioners, PDUs, or other devices that provide power outlets
+              </p>
+            </div>
+
+            {/* Power Outlets Provided (shown when is_power_device is true) */}
+            {formState.is_power_device && (
+              <div className="ml-6 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Standard/Surge Protected Outlets */}
+                  <div>
+                    <label className="text-sm font-medium text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                      <Plug className="h-4 w-4" />
+                      Surge Protected Outlets
+                    </label>
+                    <select
+                      value={formState.power_outlets_provided || ''}
+                      onChange={(event) => handleFieldChange('power_outlets_provided', event.target.value ? Number(event.target.value) : null)}
+                      className="mt-2 w-full rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">None</option>
+                      {Array.from({ length: 42 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n} {n === 1 ? 'outlet' : 'outlets'}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      Power conditioning / surge protection only
+                    </p>
+                  </div>
+
+                  {/* UPS Battery Backup Outlets */}
+                  <div>
+                    <label className="text-sm font-medium text-green-700 dark:text-green-300 flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Battery Backup Outlets
+                    </label>
+                    <select
+                      value={formState.ups_outlets_provided || ''}
+                      onChange={(event) => handleFieldChange('ups_outlets_provided', event.target.value ? Number(event.target.value) : null)}
+                      className="mt-2 w-full rounded-lg border border-green-300 dark:border-green-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    >
+                      <option value="">None</option>
+                      {Array.from({ length: 42 }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n} {n === 1 ? 'outlet' : 'outlets'}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                      UPS battery backup + surge protection
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400 border-t border-amber-200 dark:border-amber-700 pt-3">
+                  {(formState.power_outlets_provided || 0) + (formState.ups_outlets_provided || 0) > 0
+                    ? `Total: ${(formState.power_outlets_provided || 0) + (formState.ups_outlets_provided || 0)} outlets (${formState.ups_outlets_provided || 0} with battery backup)`
+                    : 'Configure the number of outlets this device provides'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

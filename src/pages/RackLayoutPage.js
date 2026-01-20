@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Server, RotateCcw, Loader, RefreshCw, Plus, ChevronDown, Check } from 'lucide-react';
+import { Server, RotateCcw, Loader, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { projectsService } from '../services/supabaseService';
@@ -23,17 +23,16 @@ const RackLayoutPage = () => {
   const [equipment, setEquipment] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   // Rack management state
   const [racks, setRacks] = useState([]); // All racks for this project
   const [selectedRack, setSelectedRack] = useState(null); // Currently selected rack
   const [rackEquipment, setRackEquipment] = useState([]); // Equipment that IS a rack (for creating new racks)
-  const [showRackSelector, setShowRackSelector] = useState(false);
   const [showAddRackModal, setShowAddRackModal] = useState(false);
 
   // View state
-  const [activeView, setActiveView] = useState('front'); // 'front', 'back', 'power'
+  const [activeView, setActiveView] = useState('front'); // 'front', 'back'
+  const [layoutMode, setLayoutMode] = useState('physical'); // 'physical', 'functional'
 
   // Home Assistant network clients and devices state
   const [haClients, setHaClients] = useState([]);
@@ -73,9 +72,19 @@ const RackLayoutPage = () => {
       const rackEqData = await rackService.getProjectRackEquipment(projectId);
       setRackEquipment(rackEqData || []);
 
-      // Auto-select first rack if available
-      if (racksData?.length > 0 && !selectedRack) {
-        setSelectedRack(racksData[0]);
+      // Update selectedRack with fresh data (including updated shelf positions)
+      // Use functional update to avoid dependency on selectedRack
+      if (racksData?.length > 0) {
+        setSelectedRack(prevSelected => {
+          if (prevSelected) {
+            // Find the updated version of the currently selected rack
+            const updatedRack = racksData.find(r => r.id === prevSelected.id);
+            return updatedRack || racksData[0];
+          } else {
+            // No rack selected, select first available
+            return racksData[0];
+          }
+        });
       }
 
     } catch (err) {
@@ -84,17 +93,10 @@ const RackLayoutPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [projectId, selectedRack]);
+  }, [projectId]);
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
-
-  // Refresh data
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
   }, [loadData]);
 
   // Fetch HA network clients AND UniFi devices for back view network linking
@@ -248,10 +250,13 @@ const RackLayoutPage = () => {
     );
 
     // Head-end equipment not placed in any rack
+    // Include equipment that:
+    // - Has install_side === 'head_end', OR
+    // - Is in a room that is marked as head-end (project_rooms?.is_headend === true)
     const unplaced = equipment.filter(eq =>
       eq.rack_position_u == null &&
       eq.rack_id == null &&
-      eq.install_side === 'head_end' &&
+      (eq.install_side === 'head_end' || eq.project_rooms?.is_headend === true) &&
       // Exclude equipment that IS a rack (those are the rack enclosures themselves)
       !rackEquipment.some(re => re.id === eq.id) &&
       // Exclude equipment marked as non-rack (either on equipment OR global_part)
@@ -332,14 +337,16 @@ const RackLayoutPage = () => {
 
   // Handle equipment move within rack
   const handleEquipmentMove = useCallback(async (equipmentId, newPositionU, shelfId = null) => {
+    console.log('[handleEquipmentMove] Moving equipment:', { equipmentId, newPositionU, shelfId });
     try {
-      await projectEquipmentService.updateEquipment(equipmentId, {
+      const result = await projectEquipmentService.updateEquipment(equipmentId, {
         rack_position_u: newPositionU,
         shelf_id: shelfId,
       });
+      console.log('[handleEquipmentMove] Update result:', result);
       await loadData();
     } catch (err) {
-      console.error('Failed to move equipment:', err);
+      console.error('[handleEquipmentMove] Failed to move equipment:', err);
     }
   }, [loadData]);
 
@@ -452,22 +459,20 @@ const RackLayoutPage = () => {
         });
         console.log('[handleEquipmentEdit] Shelf update result:', result);
 
-        // Also save to global_parts as default for this part type
+        // Also save to global_parts as default for this part type (using RPC to bypass RLS)
         if (eq?.global_part_id) {
           const { supabase } = await import('../lib/supabase');
-          const { error } = await supabase
-            .from('global_parts')
-            .update({
-              needs_shelf: updates.needsShelf,
-              shelf_u_height: updates.shelfUHeight || null,
-              max_items_per_shelf: updates.maxItemsPerShelf || 1,
-            })
-            .eq('id', eq.global_part_id);
+          const { data: rpcData, error } = await supabase.rpc('update_global_part', {
+            p_part_id: eq.global_part_id,
+            p_needs_shelf: updates.needsShelf,
+            p_shelf_u_height: updates.shelfUHeight || null,
+            p_max_items_per_shelf: updates.maxItemsPerShelf || 1,
+          });
 
           if (error) {
             console.error('[handleEquipmentEdit] Failed to save shelf settings to global_parts:', error);
           } else {
-            console.log('[handleEquipmentEdit] Shelf settings saved to global_parts for part:', eq.global_part_id);
+            console.log('[handleEquipmentEdit] Shelf settings saved to global_parts for part:', eq.global_part_id, rpcData);
           }
         }
       }
@@ -584,8 +589,10 @@ const RackLayoutPage = () => {
   const handleShelfMove = useCallback(async (shelfId, newPositionU) => {
     try {
       console.log('[handleShelfMove] Moving shelf:', shelfId, 'to U:', newPositionU);
-      await rackService.updateShelf(shelfId, { rack_position_u: newPositionU });
+      const result = await rackService.updateShelf(shelfId, { rack_position_u: newPositionU });
+      console.log('[handleShelfMove] Update result:', result);
       await loadData();
+      console.log('[handleShelfMove] Data reloaded');
     } catch (err) {
       console.error('[handleShelfMove] Failed to move shelf:', err);
     }
@@ -675,126 +682,17 @@ const RackLayoutPage = () => {
   return (
     <div className={`min-h-screen ${mode === 'dark' ? 'bg-zinc-900' : 'bg-gray-50'}`}>
       <div className="w-full px-2 sm:px-4 py-4 sm:py-6">
-        {/* Project Name & Controls */}
-        <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            {/* Project badge */}
-            <span
-              className="text-sm px-3 py-1.5 rounded-lg font-medium"
-              style={{
-                backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
-                color: styles.textPrimary,
-              }}
-            >
-              {project?.name || 'Project'}
-            </span>
-
-            {/* Rack Selector */}
-            <div className="relative">
-            <button
-              onClick={() => setShowRackSelector(!showRackSelector)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors ${
-                mode === 'dark'
-                  ? 'bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700'
-                  : 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              <Server size={18} className="text-violet-500" />
-              <span className="font-medium">
-                {selectedRack?.name || 'Select Rack'}
-              </span>
-              {selectedRack && (
-                <span className="text-sm opacity-70">
-                  ({currentRack.total_u}U)
-                </span>
-              )}
-              <ChevronDown size={16} className="opacity-50" />
-            </button>
-
-            {/* Rack Dropdown */}
-            {showRackSelector && (
-              <div
-                className={`absolute top-full left-0 mt-1 w-72 rounded-lg border shadow-xl z-50 ${
-                  mode === 'dark' ? 'bg-zinc-800 border-zinc-700' : 'bg-white border-gray-200'
-                }`}
-              >
-                {racks.length > 0 ? (
-                  <div className="py-1">
-                    {racks.map((rack) => (
-                      <button
-                        key={rack.id}
-                        onClick={() => {
-                          setSelectedRack(rack);
-                          setShowRackSelector(false);
-                        }}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
-                          selectedRack?.id === rack.id
-                            ? 'bg-violet-500/20 text-violet-400'
-                            : mode === 'dark'
-                              ? 'hover:bg-zinc-700 text-white'
-                              : 'hover:bg-gray-100 text-gray-900'
-                        }`}
-                      >
-                        <Server size={16} />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{rack.name}</div>
-                          <div className="text-xs opacity-70 truncate">
-                            {rack.total_u}U • {rack.location_description || 'No location'}
-                          </div>
-                        </div>
-                        {selectedRack?.id === rack.id && (
-                          <Check size={16} className="text-violet-400" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-4 py-3 text-sm text-center" style={{ color: styles.textSecondary }}>
-                    No racks configured yet
-                  </div>
-                )}
-                <div className="border-t border-zinc-700">
-                  <button
-                    onClick={() => {
-                      setShowRackSelector(false);
-                      setShowAddRackModal(true);
-                    }}
-                    className={`w-full flex items-center gap-2 px-4 py-2 text-left transition-colors ${
-                      mode === 'dark'
-                        ? 'hover:bg-zinc-700 text-violet-400'
-                        : 'hover:bg-gray-100 text-violet-600'
-                    }`}
-                  >
-                    <Plus size={16} />
-                    <span className="font-medium">Add New Rack</span>
-                  </button>
-                </div>
-              </div>
-            )}
-            </div>
-
-            {/* Rack count badge */}
-            <span
-              className="text-sm px-2 py-1 rounded-full"
-              style={{
-                backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
-                color: styles.textSecondary,
-              }}
-            >
-              {racks.length} rack{racks.length !== 1 ? 's' : ''} configured
-            </span>
-          </div>
-
-          {/* Refresh button */}
-          <Button
-            onClick={handleRefresh}
-            variant="ghost"
-            size="sm"
-            icon={RefreshCw}
-            loading={refreshing}
+        {/* Project Name */}
+        <div className="flex items-center gap-4 mb-6">
+          <span
+            className="text-sm px-3 py-1.5 rounded-lg font-medium"
+            style={{
+              backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
+              color: styles.textPrimary,
+            }}
           >
-            Refresh
-          </Button>
+            {project?.name || 'Project'}
+          </span>
         </div>
 
         {/* No Rack Selected State */}
@@ -830,69 +728,76 @@ const RackLayoutPage = () => {
         {/* Main Content - Only show if a rack is selected */}
         {selectedRack && (
           <>
-            {/* View Toggle Tabs */}
-            <div className="flex gap-2 mb-6">
-              <button
-                onClick={() => setActiveView('front')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeView === 'front'
-                    ? 'bg-violet-600 text-white'
-                    : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700'
-                }`}
-              >
-                <Server size={18} />
-                Front View
-              </button>
-              <button
-                onClick={() => setActiveView('back')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeView === 'back'
-                    ? 'bg-violet-600 text-white'
-                    : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-700'
-                }`}
-              >
-                <RotateCcw size={18} />
-                Network View
-              </button>
-            </div>
+            {/* Header Row: View Tabs + Layout Toggle + Stats */}
+            <div className="flex flex-wrap items-center gap-4 mb-4">
+              {/* Front/Back View Tabs */}
+              <div className="flex gap-1 bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveView('front')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeView === 'front'
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Server size={14} />
+                  Front
+                </button>
+                <button
+                  onClick={() => setActiveView('back')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeView === 'back'
+                      ? 'bg-violet-600 text-white shadow-sm'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  <RotateCcw size={14} />
+                  Back
+                </button>
+              </div>
 
-            {/* Equipment Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div
-                className="rounded-xl border p-4"
-                style={styles.card}
-              >
-                <p className="text-sm" style={{ color: styles.textSecondary }}>Total Equipment</p>
-                <p className="text-2xl font-semibold" style={{ color: styles.textPrimary }}>
-                  {equipment.filter(e => e.install_side === 'head_end').length}
-                </p>
+              {/* Physical/Functional Toggle */}
+              <div className="flex gap-1 bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
+                <button
+                  onClick={() => setLayoutMode('physical')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    layoutMode === 'physical'
+                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  Physical
+                </button>
+                <button
+                  onClick={() => setLayoutMode('functional')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    layoutMode === 'functional'
+                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
+                  }`}
+                >
+                  Functional
+                </button>
               </div>
-              <div
-                className="rounded-xl border p-4"
-                style={styles.card}
-              >
-                <p className="text-sm" style={{ color: styles.textSecondary }}>In This Rack</p>
-                <p className="text-2xl font-semibold text-green-500">
-                  {placedEquipment.length}
-                </p>
-              </div>
-              <div
-                className="rounded-xl border p-4"
-                style={styles.card}
-              >
-                <p className="text-sm" style={{ color: styles.textSecondary }}>Unplaced</p>
-                <p className="text-2xl font-semibold text-yellow-500">
-                  {unplacedEquipment.length}
-                </p>
-              </div>
-              <div
-                className="rounded-xl border p-4"
-                style={styles.card}
-              >
-                <p className="text-sm" style={{ color: styles.textSecondary }}>Rack Size</p>
-                <p className="text-2xl font-semibold" style={{ color: styles.textPrimary }}>
-                  {currentRack.total_u}U
-                </p>
+
+              {/* Equipment Stats - Compact Horizontal */}
+              <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-sm ml-auto">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-500 dark:text-zinc-400">Parts:</span>
+                  <span className="font-semibold" style={{ color: styles.textPrimary }}>
+                    {equipment.filter(e => e.install_side === 'head_end').length}
+                  </span>
+                </div>
+                <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-500 dark:text-zinc-400">Placed:</span>
+                  <span className="font-semibold text-green-500">{placedEquipment.length}</span>
+                </div>
+                <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-600" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-zinc-500 dark:text-zinc-400">Unplaced:</span>
+                  <span className="font-semibold text-yellow-500">{unplacedEquipment.length}</span>
+                </div>
               </div>
             </div>
 
@@ -904,11 +809,16 @@ const RackLayoutPage = () => {
               {activeView === 'front' && (
                 <RackFrontView
                   rack={currentRack}
+                  racks={racks}
+                  selectedRackId={selectedRack?.id}
+                  onRackSelect={(rack) => setSelectedRack(rack)}
+                  onAddRack={() => setShowAddRackModal(true)}
                   equipment={placedEquipment}
                   unplacedEquipment={unplacedEquipment}
                   projectId={projectId}
                   haClients={haClients}
                   haDevices={haDevices}
+                  layoutMode={layoutMode}
                   onEquipmentDrop={handleEquipmentDrop}
                   onEquipmentMove={handleEquipmentMove}
                   onEquipmentRemove={handleEquipmentRemove}
@@ -921,18 +831,34 @@ const RackLayoutPage = () => {
                   onAddShelf={handleAddShelf}
                   onShelfMove={handleShelfMove}
                   onShelfDelete={handleShelfDelete}
-                  onRefresh={handleRefresh}
                   getNetworkInfo={getNetworkInfo}
                 />
               )}
               {activeView === 'back' && (
                 <RackBackView
                   rack={currentRack}
+                  racks={racks}
+                  selectedRackId={selectedRack?.id}
+                  onRackSelect={(rack) => setSelectedRack(rack)}
+                  onAddRack={() => setShowAddRackModal(true)}
                   equipment={placedEquipment}
+                  unplacedEquipment={unplacedEquipment}
                   haClients={haClients}
                   haDevices={haDevices}
+                  layoutMode={layoutMode}
+                  onEquipmentDrop={handleEquipmentDrop}
+                  onEquipmentMove={handleEquipmentMove}
+                  onEquipmentRemove={handleEquipmentRemove}
+                  onEquipmentEdit={handleEquipmentEdit}
+                  onEquipmentExclude={handleEquipmentExclude}
+                  onEquipmentExcludeGlobal={handleEquipmentExcludeGlobal}
+                  onEquipmentDropOnShelf={handleEquipmentDropOnShelf}
+                  onMoveRoom={handleMoveRoom}
                   onLinkToHA={handleLinkToHA}
-                  onRefresh={fetchHAClients}
+                  onAddShelf={handleAddShelf}
+                  onShelfMove={handleShelfMove}
+                  onShelfDelete={handleShelfDelete}
+                  getNetworkInfo={getNetworkInfo}
                 />
               )}
             </div>

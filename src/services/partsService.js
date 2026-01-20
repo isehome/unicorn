@@ -221,6 +221,9 @@ export const partsService = {
     if (payload.exclude_from_rack !== undefined) {
       payload.exclude_from_rack = Boolean(payload.exclude_from_rack);
     }
+    if (payload.is_power_device !== undefined) {
+      payload.is_power_device = Boolean(payload.is_power_device);
+    }
 
     // Use comprehensive RPC function to bypass RLS for all updates
     const rpcParams = {
@@ -252,9 +255,30 @@ export const partsService = {
       p_shelf_u_height: payload.shelf_u_height,
       p_max_items_per_shelf: payload.max_items_per_shelf,
       p_exclude_from_rack: payload.exclude_from_rack,
+      // Power fields
+      p_power_watts: payload.power_watts,
+      p_power_outlets: payload.power_outlets,
+      p_is_power_device: payload.is_power_device,
+      p_power_outlets_provided: payload.power_outlets_provided,
+      p_ups_outlets_provided: payload.ups_outlets_provided,
     };
 
+    // DEBUG: Log what we're sending to the RPC
+    console.log('partsService.update - rpcParams:', {
+      p_part_id: rpcParams.p_part_id,
+      p_name: rpcParams.p_name,
+      p_needs_shelf: rpcParams.p_needs_shelf,
+      p_shelf_u_height: rpcParams.p_shelf_u_height,
+      p_max_items_per_shelf: rpcParams.p_max_items_per_shelf,
+      p_is_rack_mountable: rpcParams.p_is_rack_mountable,
+      p_u_height: rpcParams.p_u_height,
+      p_exclude_from_rack: rpcParams.p_exclude_from_rack,
+    });
+
     const { data: rpcResult, error: rpcError } = await supabase.rpc('update_global_part', rpcParams);
+
+    // DEBUG: Log the result
+    console.log('partsService.update - rpcResult:', rpcResult);
 
     if (rpcError) {
       console.error('Failed to update part:', rpcError);
