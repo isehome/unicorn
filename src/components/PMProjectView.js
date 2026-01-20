@@ -2696,6 +2696,14 @@ const PMProjectViewEnhanced = () => {
         {/* Quick Actions */}
         <div className="flex flex-wrap gap-3">
           <Button
+            onClick={() => navigate(`/projects/${projectId}/equipment`)}
+            variant="secondary"
+            icon={Package}
+            size="md"
+          >
+            Equipment List
+          </Button>
+          <Button
             onClick={() => navigate(`/projects/${projectId}/procurement`)}
             variant={procurementIssueCount > 0 ? 'danger' : 'primary'}
             icon={procurementIssueCount > 0 ? AlertCircle : ShoppingCart}

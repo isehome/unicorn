@@ -3,7 +3,8 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
 import DateField from './ui/DateField';
-import { Search, Building, Layers, Package, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2 } from 'lucide-react';
+import { Search, Building, Layers, Package, Cable, CheckCircle2, ChevronDown, ChevronRight, FileText, BookOpen, Wifi, ExternalLink, X, User, Clock, ArrowRightLeft, AlertTriangle, Key, Eye, EyeOff, Copy, Plus, Trash2, Edit2, Database, Loader2 } from 'lucide-react';
+import { partsService } from '../services/partsService';
 import CachedSharePointImage from './CachedSharePointImage';
 import { usePhotoViewer } from './photos/PhotoViewerProvider';
 import { projectEquipmentService } from '../services/projectEquipmentService';
@@ -798,6 +799,461 @@ const mapEquipmentRecord = (item) => {
   };
 };
 
+// Add Equipment Modal Component - Search global parts or create new
+const AddEquipmentModal = ({ isOpen, onClose, onAdd, projectId, rooms, mode }) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedGlobalPart, setSelectedGlobalPart] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    part_number: '',
+    manufacturer: '',
+    model: '',
+    description: '',
+    room_id: '',
+    quantity: 1,
+    install_side: 'room_end',
+    unit_cost: '',
+    notes: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const searchRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (isOpen) {
+      setSearchQuery('');
+      setSearchResults([]);
+      setShowSearchResults(false);
+      setSelectedGlobalPart(null);
+      setFormData({
+        name: '',
+        part_number: '',
+        manufacturer: '',
+        model: '',
+        description: '',
+        room_id: '',
+        quantity: 1,
+        install_side: 'room_end',
+        unit_cost: '',
+        notes: ''
+      });
+      setError('');
+    }
+  }, [isOpen]);
+
+  // Search global parts with debounce
+  const searchGlobalParts = useCallback(async (query) => {
+    if (!query || query.length < 2) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      const results = await partsService.list({ search: query });
+      setSearchResults(results.slice(0, 10)); // Limit to 10 results
+      setShowSearchResults(true);
+    } catch (err) {
+      console.error('[AddEquipmentModal] Search failed:', err);
+      setSearchResults([]);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
+
+  // Debounced search
+  const handleSearchChange = useCallback((value) => {
+    setSearchQuery(value);
+    setSelectedGlobalPart(null);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      searchGlobalParts(value);
+    }, 300);
+  }, [searchGlobalParts]);
+
+  // Select a global part from search results
+  const handleSelectGlobalPart = useCallback((globalPart) => {
+    setSelectedGlobalPart(globalPart);
+    setSearchQuery(globalPart.name || globalPart.part_number);
+    setShowSearchResults(false);
+
+    // Auto-fill form with global part data
+    setFormData(prev => ({
+      ...prev,
+      name: globalPart.name || '',
+      part_number: globalPart.part_number || '',
+      manufacturer: globalPart.manufacturer || '',
+      model: globalPart.model || '',
+      description: globalPart.description || ''
+    }));
+  }, []);
+
+  // Use search text as new part name
+  const handleAddAsNew = useCallback(() => {
+    setSelectedGlobalPart(null);
+    setShowSearchResults(false);
+    setFormData(prev => ({
+      ...prev,
+      name: searchQuery
+    }));
+  }, [searchQuery]);
+
+  // Click outside to close search dropdown
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle form submission
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    // Validate
+    const partName = selectedGlobalPart?.name || formData.name;
+    if (!partName?.trim()) {
+      setError('Part name is required');
+      return;
+    }
+
+    if (formData.quantity < 1) {
+      setError('Quantity must be at least 1');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const partData = {
+        global_part_id: selectedGlobalPart?.id || null,
+        name: partName,
+        part_number: formData.part_number || null,
+        manufacturer: formData.manufacturer || null,
+        model: formData.model || null,
+        description: formData.description || null,
+        room_id: formData.room_id || null,
+        quantity: parseInt(formData.quantity, 10) || 1,
+        install_side: formData.install_side,
+        unit_cost: parseFloat(formData.unit_cost) || 0,
+        notes: formData.notes || null
+      };
+
+      await onAdd(partData);
+      onClose();
+    } catch (err) {
+      console.error('[AddEquipmentModal] Failed to add equipment:', err);
+      setError(err.message || 'Failed to add equipment');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const inputStyle = {
+    backgroundColor: mode === 'dark' ? '#27272A' : '#FFFFFF',
+    borderColor: mode === 'dark' ? '#3F3F46' : '#D1D5DB',
+    color: mode === 'dark' ? '#F9FAFB' : '#18181B'
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div
+        className="w-full max-w-lg mx-4 rounded-2xl border shadow-xl max-h-[90vh] overflow-y-auto"
+        style={{
+          backgroundColor: mode === 'dark' ? '#18181B' : '#FFFFFF',
+          borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB'
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}>
+          <h2 className="text-lg font-semibold" style={{ color: mode === 'dark' ? '#F9FAFB' : '#18181B' }}>
+            Add Equipment to Project
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          >
+            <X size={20} style={{ color: mode === 'dark' ? '#A1A1AA' : '#6B7280' }} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Search Global Parts */}
+          <div ref={searchRef} className="relative">
+            <label className="text-sm font-medium mb-1.5 flex items-center gap-2" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>
+              <Database size={14} />
+              Search Parts Database
+            </label>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: mode === 'dark' ? '#71717A' : '#9CA3AF' }} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                placeholder="Search by name, part number, manufacturer..."
+                className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+              />
+              {searchLoading && (
+                <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin" style={{ color: '#8B5CF6' }} />
+              )}
+            </div>
+
+            {/* Search Results Dropdown */}
+            {showSearchResults && (
+              <div
+                className="absolute z-10 w-full mt-1 rounded-lg border shadow-lg max-h-60 overflow-y-auto"
+                style={{
+                  backgroundColor: mode === 'dark' ? '#27272A' : '#FFFFFF',
+                  borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB'
+                }}
+              >
+                {searchResults.length > 0 ? (
+                  <>
+                    {searchResults.map((part) => (
+                      <button
+                        key={part.id}
+                        type="button"
+                        onClick={() => handleSelectGlobalPart(part)}
+                        className="w-full px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors border-b last:border-0"
+                        style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }}
+                      >
+                        <div className="font-medium text-sm" style={{ color: mode === 'dark' ? '#F9FAFB' : '#18181B' }}>
+                          {part.name || part.part_number}
+                        </div>
+                        <div className="text-xs flex items-center gap-2 flex-wrap" style={{ color: mode === 'dark' ? '#A1A1AA' : '#6B7280' }}>
+                          {part.part_number && <span className="font-mono">#{part.part_number}</span>}
+                          {part.manufacturer && <span>{part.manufacturer}</span>}
+                          {part.model && <span style={{ color: mode === 'dark' ? '#71717A' : '#9CA3AF' }}>{part.model}</span>}
+                        </div>
+                      </button>
+                    ))}
+                    {/* Add as new option */}
+                    <button
+                      type="button"
+                      onClick={handleAddAsNew}
+                      className="w-full px-3 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors flex items-center gap-2 text-sm"
+                      style={{ color: '#94AF32' }}
+                    >
+                      <Plus size={14} />
+                      Add "{searchQuery}" as new part
+                    </button>
+                  </>
+                ) : searchQuery.length >= 2 && !searchLoading ? (
+                  <div className="p-3">
+                    <p className="text-sm mb-2" style={{ color: mode === 'dark' ? '#A1A1AA' : '#6B7280' }}>
+                      No parts found matching "{searchQuery}"
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleAddAsNew}
+                      className="flex items-center gap-2 text-sm"
+                      style={{ color: '#94AF32' }}
+                    >
+                      <Plus size={14} />
+                      Add as new part
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {/* Selected Part Indicator */}
+            {selectedGlobalPart && (
+              <div className="mt-2 p-2 rounded-lg flex items-center gap-2" style={{ backgroundColor: mode === 'dark' ? '#27272A' : '#F3F4F6' }}>
+                <CheckCircle2 size={16} style={{ color: '#94AF32' }} />
+                <span className="text-sm" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>
+                  Selected: <span style={{ color: mode === 'dark' ? '#F9FAFB' : '#18181B', fontWeight: 500 }}>{selectedGlobalPart.name}</span>
+                  {selectedGlobalPart.part_number && (
+                    <span style={{ color: mode === 'dark' ? '#71717A' : '#9CA3AF', marginLeft: 4 }}>#{selectedGlobalPart.part_number}</span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Divider */}
+          <div className="border-t" style={{ borderColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB' }} />
+
+          {/* Part Details (editable) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Name *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="Part name"
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+                disabled={!!selectedGlobalPart}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Part Number</label>
+              <input
+                type="text"
+                value={formData.part_number}
+                onChange={(e) => setFormData(prev => ({ ...prev, part_number: e.target.value }))}
+                placeholder="e.g., QSE-IO"
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+                disabled={!!selectedGlobalPart}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Manufacturer</label>
+              <input
+                type="text"
+                value={formData.manufacturer}
+                onChange={(e) => setFormData(prev => ({ ...prev, manufacturer: e.target.value }))}
+                placeholder="e.g., Lutron"
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+                disabled={!!selectedGlobalPart}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Model</label>
+              <input
+                type="text"
+                value={formData.model}
+                onChange={(e) => setFormData(prev => ({ ...prev, model: e.target.value }))}
+                placeholder="Model number"
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+                disabled={!!selectedGlobalPart}
+              />
+            </div>
+          </div>
+
+          {/* Project-specific fields */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Room</label>
+              <select
+                value={formData.room_id}
+                onChange={(e) => setFormData(prev => ({ ...prev, room_id: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+              >
+                <option value="">No room assigned</option>
+                {rooms.map((room) => (
+                  <option key={room.id} value={room.id}>{room.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Quantity</label>
+              <input
+                type="number"
+                min="1"
+                value={formData.quantity}
+                onChange={(e) => setFormData(prev => ({ ...prev, quantity: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={{ ...inputStyle, fontSize: '16px' }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Install Side</label>
+              <select
+                value={formData.install_side}
+                onChange={(e) => setFormData(prev => ({ ...prev, install_side: e.target.value }))}
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={inputStyle}
+              >
+                <option value="room_end">Room End</option>
+                <option value="head_end">Head End</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Unit Cost ($)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.unit_cost}
+                onChange={(e) => setFormData(prev => ({ ...prev, unit_cost: e.target.value }))}
+                placeholder="0.00"
+                className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                style={{ ...inputStyle, fontSize: '16px' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium mb-1 block" style={{ color: mode === 'dark' ? '#A1A1AA' : '#4B5563' }}>Notes</label>
+            <textarea
+              value={formData.notes}
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              placeholder="Optional notes..."
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="px-3 py-2 rounded-lg text-sm bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800">
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 justify-end pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              style={{
+                borderColor: mode === 'dark' ? '#3F3F46' : '#D1D5DB',
+                color: mode === 'dark' ? '#A1A1AA' : '#4B5563'
+              }}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-4 py-2 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving && <Loader2 size={16} className="animate-spin" />}
+              Add to Project
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const EquipmentListPage = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -825,6 +1281,7 @@ const EquipmentListPage = () => {
   const [dateModal, setDateModal] = useState({ isOpen: false, title: '', date: null, userId: null, equipmentId: null }); // Date detail modal state
   const [projectRooms, setProjectRooms] = useState([]); // All rooms for this project
   const [reassignModal, setReassignModal] = useState({ isOpen: false, equipment: null }); // Room reassignment modal state
+  const [showAddModal, setShowAddModal] = useState(false); // Add equipment modal state
 
   const toggleExpanded = (itemId) => {
     setExpandedItems(prev => ({
@@ -1014,6 +1471,15 @@ const EquipmentListPage = () => {
       setLoading(false);
     }
   }, [projectId]);
+
+  // Handle adding new equipment
+  const handleAddEquipment = useCallback(async (partData) => {
+    console.log('[EquipmentListPage] Adding equipment:', partData);
+    const newEquipment = await projectEquipmentService.addSinglePart(projectId, partData);
+    console.log('[EquipmentListPage] Equipment added:', newEquipment.id);
+    // Reload equipment list
+    await loadEquipment();
+  }, [projectId, loadEquipment]);
 
   useEffect(() => {
     loadEquipment();
@@ -1852,6 +2318,15 @@ const EquipmentListPage = () => {
                   <option value="not_installed">Not Installed</option>
                 </select>
               </div>
+
+              {/* Add Equipment Button */}
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-sm font-medium transition-colors"
+              >
+                <Plus size={16} />
+                Add Equipment
+              </button>
             </div>
           </div>
         </div>
@@ -1938,6 +2413,16 @@ const EquipmentListPage = () => {
         rooms={projectRooms}
         currentRoomId={reassignModal.equipment?.roomId}
         onConfirm={handleReassignRoom}
+        mode={mode}
+      />
+
+      {/* Add Equipment Modal */}
+      <AddEquipmentModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddEquipment}
+        projectId={projectId}
+        rooms={projectRooms}
         mode={mode}
       />
     </div>
