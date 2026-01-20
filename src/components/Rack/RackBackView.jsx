@@ -4,9 +4,9 @@
  * Supports both physical (rack grid) and functional (list) layout modes
  */
 
-import React, { useState, useMemo, useCallback, memo } from 'react';
+import React, { useState, useMemo, useCallback, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
-import { WifiOff, Globe, ExternalLink, Zap, Plug, Link2, ChevronDown, GripVertical, Settings, Server, Layers, X, Plus, Check } from 'lucide-react';
+import { WifiOff, Wifi, Globe, ExternalLink, Zap, Plug, Link2, ChevronDown, GripVertical, Settings, Server, Layers, X, Plus, Check, Network, Cable } from 'lucide-react';
 
 // Constants - same as RackFrontView for consistency
 const U_HEIGHT = 50;
@@ -19,9 +19,17 @@ const getEquipmentUHeight = (equipment) => {
 };
 
 /**
- * Get display name for equipment - show model + instance number (e.g., "U7-Pro 1")
+ * Get display name for equipment
+ * Priority: HA hostname (UniFi friendly name) > model + instance > global_part name > fallbacks
+ * @param {object} item - Equipment item
+ * @param {string} haHostname - Optional HA client hostname (UniFi friendly name)
  */
-const getEquipmentDisplayName = (item) => {
+const getEquipmentDisplayName = (item, haHostname = null) => {
+  // If linked to HA and has a hostname, use the UniFi friendly name
+  if (haHostname) {
+    return haHostname;
+  }
+
   const fullName = item?.instance_name || item?.name || '';
   const instanceMatch = fullName.match(/\s(\d+)$/);
   const instanceNum = instanceMatch ? instanceMatch[1] : '';
@@ -365,9 +373,32 @@ const RackBackView = ({
   onShelfMove,
   onShelfDelete,
   getNetworkInfo: getNetworkInfoProp,
+  // New props for power connections
+  connections = [],
+  onCreateConnection,
+  onDeleteConnection,
+  onAddPowerStrip,
+  projectId,
+  // Connection tab is now controlled externally
+  connectionTab = 'power',
 }) => {
   const [linkingEquipmentId, setLinkingEquipmentId] = useState(null);
   const [showRackSelector, setShowRackSelector] = useState(false);
+  // State for power connection drag-and-drop
+  const [draggingPowerInput, setDraggingPowerInput] = useState(null);
+  // State for network connection drag-and-drop
+  const [draggingNetworkPort, setDraggingNetworkPort] = useState(null);
+  const [highlightedConnection, setHighlightedConnection] = useState(null);
+  // State for connection line visualization on hover
+  const [hoveredConnection, setHoveredConnection] = useState(null);
+  const [lineCoords, setLineCoords] = useState(null);
+  const functionalContainerRef = useRef(null);
+  const containerRef = useRef(null);
+  const outletRefs = useRef({});
+  const inputRefs = useRef({});
+  // Network port refs
+  const switchPortRefs = useRef({});
+  const devicePortRefs = useRef({});
   const [dragState, setDragState] = useState({
     isDragging: false,
     draggedEquipment: null,
@@ -820,6 +851,69 @@ const RackBackView = ({
     // Sort by position descending (top of rack first)
     allItems.sort((a, b) => b.posU - a.posU);
 
+    // Get connections for this equipment
+    const getEquipmentConnections = (eqId) => {
+      const inbound = connections.filter(c => c.target_equipment_id === eqId);
+      const outbound = connections.filter(c => c.source_equipment_id === eqId);
+      return { inbound, outbound };
+    };
+
+    // Handle power input drag start
+    const handleInputDragStart = (e, eq, inputNumber) => {
+      e.stopPropagation();
+      e.dataTransfer.setData('application/json', JSON.stringify({
+        type: 'power-input',
+        equipmentId: eq.id,
+        inputNumber,
+        equipmentName: getEquipmentDisplayName(eq),
+      }));
+      e.dataTransfer.effectAllowed = 'link';
+      setDraggingPowerInput({ equipmentId: eq.id, inputNumber });
+    };
+
+    // Handle power input drag end
+    const handleInputDragEnd = () => {
+      setDraggingPowerInput(null);
+    };
+
+    // Handle outlet drag over
+    const handleOutletDragOver = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    // Handle outlet drop
+    const handleOutletDrop = async (e, sourceEq, outletNumber, portType) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      try {
+        const data = JSON.parse(e.dataTransfer.getData('application/json'));
+        if (data.type === 'power-input' && onCreateConnection) {
+          await onCreateConnection({
+            projectId,
+            sourceEquipmentId: sourceEq.id,
+            sourcePortNumber: outletNumber,
+            sourcePortType: portType,
+            targetEquipmentId: data.equipmentId,
+            targetPortNumber: data.inputNumber,
+            connectionType: 'power',
+          });
+        }
+      } catch (err) {
+        console.error('Drop error:', err);
+      }
+      setDraggingPowerInput(null);
+    };
+
+    // Handle disconnect click
+    const handleDisconnect = async (e, connectionId) => {
+      e.stopPropagation();
+      if (onDeleteConnection) {
+        await onDeleteConnection(connectionId);
+      }
+    };
+
     // Helper to render power info for an equipment item
     const renderPowerInfo = (eq) => {
       const watts = eq.global_part?.power_watts;
@@ -828,6 +922,225 @@ const RackBackView = ({
       const surgeOutlets = eq.global_part?.power_outlets_provided || 0;
       const upsOutlets = eq.global_part?.ups_outlets_provided || 0;
       const totalOutlets = surgeOutlets + upsOutlets;
+
+      // Get this equipment's connections
+      const { inbound, outbound } = getEquipmentConnections(eq.id);
+      const inboundByPort = new Map(inbound.map(c => [c.target_port_number, c]));
+      const outboundByPort = new Map(outbound.map(c => [c.source_port_number, c]));
+
+      // Brand colors from styleSystem.js
+      const BRAND = {
+        success: '#94AF32',    // olive green - UPS battery backup
+        info: '#3B82F6',       // blue - surge/standard protection (normal operation)
+        warning: '#F59E0B',    // amber - reserved for trouble/warning conditions
+        primary: '#8B5CF6',    // violet - accent/hover
+        danger: '#EF4444',     // red - disconnect
+      };
+
+      // Render a single outlet (droppable)
+      // Border color = power type (olive green=UPS, blue=surge/standard)
+      // Fill = gray when empty, solid color when connected
+      const renderOutlet = (outletNum, portType, isUps) => {
+        const conn = outboundByPort.get(outletNum);
+        const isConnected = !!conn;
+        const isDragTarget = draggingPowerInput && !isConnected;
+        const outletRefKey = `${eq.id}-outlet-${outletNum}`;
+
+        const connectedDevice = conn?.target_equipment;
+        const connectedName = connectedDevice?.instance_name || connectedDevice?.name || connectedDevice?.global_part?.name;
+
+        // Use brand colors with inline styles
+        // Olive green = UPS battery backup, Blue = surge/standard protection
+        const borderColorValue = isUps ? BRAND.success : BRAND.info;
+        const bgColorValue = isConnected
+          ? (isUps ? BRAND.success : BRAND.info)
+          : '#3f3f46'; // zinc-700
+        // Icon: gray when empty, white when connected
+        const iconColorValue = isConnected ? '#ffffff' : '#a1a1aa'; // zinc-400 when empty
+
+        // Check if this outlet is the source of the hovered connection
+        const isHighlighted = hoveredConnection?.source_equipment_id === eq.id &&
+                             hoveredConnection?.source_port_number === outletNum;
+
+        // Handle hover on outlet to show connection line (bidirectional - works from outlet too)
+        const handleOutletHover = (e) => {
+          if (isConnected && conn) {
+            // Set the hovered connection to trigger line drawing
+            setHoveredConnection(conn);
+
+            // Calculate line coordinates
+            const outletEl = e.currentTarget;
+            const container = functionalContainerRef.current;
+            if (outletEl && container) {
+              const outletRect = outletEl.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+
+              // Find the target input element
+              const inputRefKey = `${conn.target_equipment_id}-input-${conn.target_port_number}`;
+              const inputEl = inputRefs.current[inputRefKey];
+
+              if (inputEl) {
+                const inputRect = inputEl.getBoundingClientRect();
+                setLineCoords({
+                  x1: outletRect.left + outletRect.width / 2 - containerRect.left,
+                  y1: outletRect.top + outletRect.height / 2 - containerRect.top,
+                  x2: inputRect.left + inputRect.width / 2 - containerRect.left,
+                  y2: inputRect.top + inputRect.height / 2 - containerRect.top,
+                  color: isUps ? BRAND.success : BRAND.info,
+                  connectionType: conn.connection_type || 'power',
+                });
+              }
+            }
+          }
+        };
+
+        const handleOutletLeave = () => {
+          setHoveredConnection(null);
+          setLineCoords(null);
+        };
+
+        return (
+          <div
+            key={`outlet-${outletNum}`}
+            ref={(el) => { outletRefs.current[outletRefKey] = el; }}
+            onDragOver={handleOutletDragOver}
+            onDrop={(e) => handleOutletDrop(e, eq, outletNum, portType)}
+            onClick={isConnected ? (e) => handleDisconnect(e, conn.id) : undefined}
+            className="w-6 h-6 rounded flex items-center justify-center relative transition-all duration-150"
+            style={{
+              backgroundColor: isHighlighted ? (isUps ? BRAND.success : BRAND.info) : bgColorValue,
+              border: `2px solid ${isDragTarget ? BRAND.primary : (isHighlighted ? '#ffffff' : borderColorValue)}`,
+              transform: isDragTarget ? 'scale(1.25)' : (isHighlighted ? 'scale(1.15)' : 'scale(1)'),
+              boxShadow: isDragTarget ? `0 0 12px ${BRAND.primary}80` : (isHighlighted ? `0 0 12px ${borderColorValue}` : 'none'),
+              cursor: isConnected ? 'pointer' : 'default',
+            }}
+            title={isConnected ? `${connectedName} - Click to disconnect` : `Outlet ${outletNum} - Drop device here`}
+            onMouseEnter={handleOutletHover}
+            onMouseLeave={handleOutletLeave}
+          >
+            <Plug size={14} style={{ color: isHighlighted ? '#ffffff' : iconColorValue }} />
+          </div>
+        );
+      };
+
+      // Render a power input (draggable)
+      // Border = gray (neutral)
+      // Fill = gray when unplugged, olive green when connected to UPS, blue when connected to surge
+      const renderInput = (inputNum) => {
+        const conn = inboundByPort.get(inputNum);
+        const isConnected = !!conn;
+        const portType = conn?.source_port_type;
+        const inputRefKey = `${eq.id}-input-${inputNum}`;
+
+        // Check if this input is the target of the hovered connection (when hovering outlet)
+        const isHighlighted = hoveredConnection?.target_equipment_id === eq.id &&
+                             hoveredConnection?.target_port_number === inputNum;
+
+        // Background shows connection status using brand colors
+        let bgColorValue = '#3f3f46'; // zinc-700 - unplugged = gray
+        let iconColorValue = '#a1a1aa'; // zinc-400
+        let title = 'Drag to connect to power outlet';
+
+        if (isConnected) {
+          if (portType === 'ups') {
+            bgColorValue = BRAND.success; // olive green - connected to UPS
+            iconColorValue = '#ffffff';
+            title = 'Connected to UPS battery backup - Click to disconnect';
+          } else if (portType === 'surge') {
+            bgColorValue = BRAND.info; // blue - connected to surge/standard protection
+            iconColorValue = '#ffffff';
+            title = 'Connected to surge protected outlet - Click to disconnect';
+          } else {
+            bgColorValue = BRAND.primary; // violet - other connection
+            iconColorValue = '#ffffff';
+            title = 'Connected - Click to disconnect';
+          }
+        }
+
+        // Handle hover to show connection line
+        const handleInputHover = (e) => {
+          if (isConnected && conn) {
+            // Set the hovered connection to trigger line drawing
+            setHoveredConnection(conn);
+
+            // Calculate line coordinates
+            const inputEl = e.currentTarget;
+            const container = functionalContainerRef.current;
+            if (inputEl && container) {
+              const inputRect = inputEl.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+
+              // Find the source outlet element
+              const outletRefKey = `${conn.source_equipment_id}-outlet-${conn.source_port_number}`;
+              const outletEl = outletRefs.current[outletRefKey];
+
+              if (outletEl) {
+                const outletRect = outletEl.getBoundingClientRect();
+                setLineCoords({
+                  x1: outletRect.left + outletRect.width / 2 - containerRect.left,
+                  y1: outletRect.top + outletRect.height / 2 - containerRect.top,
+                  x2: inputRect.left + inputRect.width / 2 - containerRect.left,
+                  y2: inputRect.top + inputRect.height / 2 - containerRect.top,
+                  color: portType === 'ups' ? BRAND.success : BRAND.info,
+                  connectionType: conn.connection_type || 'power', // power goes right, network goes left
+                });
+              }
+            }
+          }
+
+          // Hover styling - highlight but don't turn red (red is for click/disconnect)
+          if (isConnected) {
+            // Connected: highlight with white border to show it's active
+            e.currentTarget.style.borderColor = '#ffffff';
+            e.currentTarget.style.transform = 'scale(1.15)';
+            e.currentTarget.style.boxShadow = `0 0 12px ${bgColorValue}`;
+          } else {
+            // Unconnected: show violet hover for drag hint
+            e.currentTarget.style.borderColor = BRAND.primary;
+            e.currentTarget.style.transform = 'scale(1.1)';
+            e.currentTarget.style.boxShadow = `0 0 8px ${BRAND.primary}50`;
+          }
+        };
+
+        const handleInputLeave = (e) => {
+          setHoveredConnection(null);
+          setLineCoords(null);
+
+          if (isConnected) {
+            e.currentTarget.style.borderColor = '#71717a';
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = 'none';
+          } else {
+            e.currentTarget.style.borderColor = '#71717a';
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = 'none';
+          }
+        };
+
+        return (
+          <div
+            key={`input-${inputNum}`}
+            ref={(el) => { inputRefs.current[inputRefKey] = el; }}
+            draggable={!isConnected}
+            onDragStart={!isConnected ? (e) => handleInputDragStart(e, eq, inputNum) : undefined}
+            onDragEnd={handleInputDragEnd}
+            onClick={isConnected ? (e) => handleDisconnect(e, conn.id) : undefined}
+            className="w-6 h-6 rounded flex items-center justify-center transition-all duration-150"
+            style={{
+              backgroundColor: bgColorValue,
+              border: `2px solid ${isHighlighted ? '#ffffff' : '#71717a'}`, // white when highlighted, zinc-500 otherwise
+              cursor: isConnected ? 'pointer' : 'grab',
+              transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
+              boxShadow: isHighlighted ? `0 0 12px ${bgColorValue}` : 'none',
+            }}
+            title={title}
+            onMouseEnter={handleInputHover}
+            onMouseLeave={handleInputLeave}
+          >
+            <Plug size={14} style={{ color: iconColorValue }} />
+          </div>
+        );
+      };
 
       if (isPowerDevice && totalOutlets > 0) {
         // Power device - show outlets it provides, then power input on right
@@ -838,14 +1151,9 @@ const RackBackView = ({
               <div className="flex items-center gap-1" title={`${upsOutlets} UPS battery backup outlets`}>
                 <Zap size={12} className="text-green-400" />
                 <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(upsOutlets, 6) }).map((_, i) => (
-                    <div
-                      key={`ups-${i}`}
-                      className="w-6 h-6 rounded bg-green-900/50 border border-green-600 flex items-center justify-center"
-                    >
-                      <Plug size={14} className="text-green-400" />
-                    </div>
-                  ))}
+                  {Array.from({ length: Math.min(upsOutlets, 6) }).map((_, i) =>
+                    renderOutlet(i + 1, 'ups', true)
+                  )}
                   {upsOutlets > 6 && (
                     <span className="text-sm text-green-400 ml-1">+{upsOutlets - 6}</span>
                   )}
@@ -856,14 +1164,9 @@ const RackBackView = ({
             {surgeOutlets > 0 && (
               <div className="flex items-center gap-1" title={`${surgeOutlets} surge protected outlets`}>
                 <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(surgeOutlets, 6) }).map((_, i) => (
-                    <div
-                      key={`surge-${i}`}
-                      className="w-6 h-6 rounded bg-amber-900/50 border border-amber-600 flex items-center justify-center"
-                    >
-                      <Plug size={14} className="text-amber-400" />
-                    </div>
-                  ))}
+                  {Array.from({ length: Math.min(surgeOutlets, 6) }).map((_, i) =>
+                    renderOutlet(upsOutlets + i + 1, 'surge', false)
+                  )}
                   {surgeOutlets > 6 && (
                     <span className="text-sm text-amber-400 ml-1">+{surgeOutlets - 6}</span>
                   )}
@@ -872,9 +1175,7 @@ const RackBackView = ({
             )}
             {/* Power input this device requires (gray, on right like other devices) */}
             <div className="flex items-center gap-1 ml-2" title={`Requires ${outletsRequired} outlet(s)`}>
-              <div className="w-6 h-6 rounded bg-zinc-700 border border-zinc-600 flex items-center justify-center">
-                <Plug size={14} className="text-zinc-400" />
-              </div>
+              {renderInput(1)}
             </div>
           </div>
         );
@@ -886,15 +1187,9 @@ const RackBackView = ({
               <span className="text-sm font-medium text-yellow-400">{watts}W</span>
             )}
             <div className="flex items-center gap-1.5">
-              {Array.from({ length: Math.min(outletsRequired, 4) }).map((_, i) => (
-                <div
-                  key={i}
-                  className="w-6 h-6 rounded bg-zinc-700 border border-zinc-600 flex items-center justify-center"
-                  title={`Outlet ${i + 1}`}
-                >
-                  <Plug size={14} className="text-zinc-400" />
-                </div>
-              ))}
+              {Array.from({ length: Math.min(outletsRequired, 4) }).map((_, i) =>
+                renderInput(i + 1)
+              )}
               {outletsRequired > 4 && (
                 <span className="text-sm text-zinc-400 ml-1">+{outletsRequired - 4}</span>
               )}
@@ -904,8 +1199,543 @@ const RackBackView = ({
       }
     };
 
+    // Helper to render network info for an equipment item
+    // Uses HA data to show live connections based on switch_name/switch_port
+    const renderNetworkInfo = (eq) => {
+      const isNetworkSwitch = eq.global_part?.is_network_switch;
+      const switchPorts = eq.global_part?.switch_ports || 0;
+      const poeEnabled = eq.global_part?.poe_enabled;
+      const uplinkPorts = eq.global_part?.uplink_ports || 0;
+      const hasNetworkPort = eq.global_part?.has_network_port !== false; // Default true for most devices
+
+      // Get this equipment's HA network info
+      const networkInfo = getNetworkInfo(eq);
+      const switchName = networkInfo?.switchName;
+      const switchPort = networkInfo?.switchPort;
+
+      // Network colors
+      const NETWORK = {
+        standard: '#06B6D4',   // cyan - standard network port
+        poe: '#8B5CF6',        // violet - PoE enabled port
+        uplink: '#10B981',     // emerald - uplink/SFP port
+        warning: '#F59E0B',    // amber - trouble
+        connected: '#22C55E',  // green - live connection from HA
+      };
+
+      // For switches: build a map of which ports have devices connected (from HA data)
+      // Look through all equipment to find devices that report being connected to this switch
+      const getPortConnections = () => {
+        const portMap = new Map();
+
+        // Get this switch's HA client data (the friendly name is how other devices identify which switch they're connected to)
+        const switchNetInfo = getNetworkInfo(eq);
+
+        // Build list of possible names for this switch (in priority order)
+        // 1. HA client hostname (friendly name from UniFi) - this is what other devices report as switch_name
+        // 2. Equipment instance_name
+        // 3. Equipment name
+        // 4. Global part name
+        // 5. Model name
+        const possibleSwitchNames = [
+          switchNetInfo?.hostname,
+          eq.instance_name,
+          eq.name,
+          eq.global_part?.name,
+          eq.model,
+          eq.global_part?.model
+        ].filter(Boolean).map(n => n.toLowerCase());
+
+        // Look through all equipment's HA client data to find what's connected to this switch
+        equipment.forEach(otherEq => {
+          if (otherEq.id === eq.id) return; // Skip self
+
+          const otherNetInfo = getNetworkInfo(otherEq);
+          if (otherNetInfo?.switchName && otherNetInfo?.switchPort) {
+            // Check if this device is connected to our switch
+            const otherSwitchName = otherNetInfo.switchName.toLowerCase();
+
+            // Match if any of the switch's possible names match the reported switch_name
+            const isMatch = possibleSwitchNames.some(name =>
+              otherSwitchName.includes(name) || name.includes(otherSwitchName)
+            );
+
+            if (isMatch) {
+              portMap.set(otherNetInfo.switchPort, {
+                equipment: otherEq,
+                switchPort: otherNetInfo.switchPort,
+                isOnline: otherNetInfo.isOnline,
+                ip: otherNetInfo.ip,
+                hostname: otherNetInfo.hostname,
+              });
+            }
+          }
+        });
+
+        return portMap;
+      };
+
+      // Render a single switch port with port number
+      const renderSwitchPort = (portNum, portType, isPoe = false, isUplink = false, connectedDevice = null) => {
+        const portRefKey = `${eq.id}-switch-${portNum}`;
+        const isConnected = !!connectedDevice;
+        const isDragTarget = draggingNetworkPort && !isConnected;
+
+        // Color based on connection state and port type
+        let portColor = isUplink ? NETWORK.uplink : (isPoe ? NETWORK.poe : NETWORK.standard);
+        if (isConnected) {
+          portColor = connectedDevice.isOnline ? NETWORK.connected : NETWORK.warning;
+        }
+
+        const bgColorValue = isConnected ? portColor : '#3f3f46';
+        const iconColorValue = isConnected ? '#ffffff' : '#a1a1aa';
+
+        // Build tooltip
+        let title = `Port ${portNum}`;
+        if (isPoe) title += ' (PoE)';
+        if (isUplink) title += ' (Uplink)';
+        if (isConnected) {
+          const deviceName = getEquipmentDisplayName(connectedDevice.equipment);
+          title = `Port ${portNum}: ${deviceName}`;
+          if (connectedDevice.ip) title += ` (${connectedDevice.ip})`;
+          title += connectedDevice.isOnline ? ' - Online' : ' - Offline';
+        }
+
+        // Check if this port is highlighted
+        const isHighlighted = hoveredConnection?.switchId === eq.id &&
+                             hoveredConnection?.portNum === portNum;
+
+        // Handle hover to show connection line
+        const handlePortHover = (e) => {
+          if (isConnected && connectedDevice) {
+            setHoveredConnection({ switchId: eq.id, portNum, deviceId: connectedDevice.equipment.id });
+
+            const portEl = e.currentTarget;
+            const container = functionalContainerRef.current;
+            if (portEl && container) {
+              const portRect = portEl.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+
+              // Find the device's network port element
+              const deviceRefKey = `${connectedDevice.equipment.id}-device-1`;
+              const deviceEl = devicePortRefs.current[deviceRefKey];
+
+              if (deviceEl) {
+                const deviceRect = deviceEl.getBoundingClientRect();
+                setLineCoords({
+                  x1: portRect.left + portRect.width / 2 - containerRect.left,
+                  y1: portRect.top + portRect.height / 2 - containerRect.top,
+                  x2: deviceRect.left + deviceRect.width / 2 - containerRect.left,
+                  y2: deviceRect.top + deviceRect.height / 2 - containerRect.top,
+                  color: portColor,
+                  connectionType: 'network',
+                });
+              }
+            }
+          }
+        };
+
+        const handlePortLeave = () => {
+          setHoveredConnection(null);
+          setLineCoords(null);
+        };
+
+        return (
+          <div
+            key={`switch-${portNum}`}
+            ref={(el) => { switchPortRefs.current[portRefKey] = el; }}
+            className="flex flex-col items-center gap-0.5"
+            onMouseEnter={handlePortHover}
+            onMouseLeave={handlePortLeave}
+          >
+            <div
+              className="w-5 h-5 rounded flex items-center justify-center relative transition-all duration-150"
+              style={{
+                backgroundColor: isHighlighted ? portColor : bgColorValue,
+                border: `2px solid ${isDragTarget ? '#8B5CF6' : (isHighlighted ? '#ffffff' : (isConnected ? portColor : '#52525b'))}`,
+                transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
+                boxShadow: isHighlighted ? `0 0 8px ${portColor}` : 'none',
+              }}
+              title={title}
+            >
+              <Cable size={10} style={{ color: isHighlighted ? '#ffffff' : iconColorValue }} />
+            </div>
+            <span className="text-[9px] text-zinc-500 font-mono">{portNum}</span>
+          </div>
+        );
+      };
+
+      // Render a device's network port (LEFT side of card)
+      const renderDevicePort = (portNum) => {
+        const portRefKey = `${eq.id}-device-${portNum}`;
+
+        // Check if this device is connected via HA data
+        const isConnectedViaHA = switchName && switchPort;
+
+        // Check if highlighted (when hovering the switch port this connects to)
+        const isHighlighted = hoveredConnection?.deviceId === eq.id;
+
+        // Color based on connection state
+        let bgColorValue = '#3f3f46'; // disconnected = gray
+        let iconColorValue = '#a1a1aa';
+        let title = 'Not connected to network';
+        let borderColor = '#71717a';
+
+        if (isConnectedViaHA) {
+          bgColorValue = networkInfo?.isOnline ? NETWORK.connected : NETWORK.warning;
+          iconColorValue = '#ffffff';
+          borderColor = bgColorValue;
+          title = `${switchName} Port ${switchPort}`;
+          if (networkInfo?.ip) title += ` (${networkInfo.ip})`;
+          title += networkInfo?.isOnline ? ' - Online' : ' - Offline';
+        }
+
+        // Handle hover to find and highlight the switch port
+        const handleDevicePortHover = (e) => {
+          if (isConnectedViaHA) {
+            // Find the switch equipment that matches switchName
+            const switchEq = equipment.find(sw => {
+              if (!sw.global_part?.is_network_switch) return false;
+              const swName = (sw.instance_name || sw.name || sw.global_part?.name || '').toLowerCase();
+              const targetName = switchName.toLowerCase();
+              return swName.includes(targetName) || targetName.includes(swName) ||
+                     (sw.model && targetName.includes(sw.model.toLowerCase()));
+            });
+
+            if (switchEq) {
+              setHoveredConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
+
+              const portEl = e.currentTarget;
+              const container = functionalContainerRef.current;
+              if (portEl && container) {
+                const portRect = portEl.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+
+                // Find the switch port element
+                const switchPortRefKey = `${switchEq.id}-switch-${switchPort}`;
+                const switchPortEl = switchPortRefs.current[switchPortRefKey];
+
+                if (switchPortEl) {
+                  const switchRect = switchPortEl.getBoundingClientRect();
+                  setLineCoords({
+                    x1: switchRect.left + switchRect.width / 2 - containerRect.left,
+                    y1: switchRect.top + switchRect.height / 2 - containerRect.top,
+                    x2: portRect.left + portRect.width / 2 - containerRect.left,
+                    y2: portRect.top + portRect.height / 2 - containerRect.top,
+                    color: bgColorValue,
+                    connectionType: 'network',
+                  });
+                }
+              }
+            }
+          }
+
+          // Hover style
+          e.currentTarget.style.transform = 'scale(1.15)';
+          e.currentTarget.style.boxShadow = `0 0 8px ${bgColorValue}`;
+        };
+
+        const handleDevicePortLeave = (e) => {
+          setHoveredConnection(null);
+          setLineCoords(null);
+          e.currentTarget.style.transform = 'scale(1)';
+          e.currentTarget.style.boxShadow = 'none';
+        };
+
+        return (
+          <div
+            key={`device-${portNum}`}
+            ref={(el) => { devicePortRefs.current[portRefKey] = el; }}
+            className="w-6 h-6 rounded flex items-center justify-center transition-all duration-150"
+            style={{
+              backgroundColor: bgColorValue,
+              border: `2px solid ${isHighlighted ? '#ffffff' : borderColor}`,
+              transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
+              boxShadow: isHighlighted ? `0 0 12px ${bgColorValue}` : 'none',
+            }}
+            title={title}
+            onMouseEnter={handleDevicePortHover}
+            onMouseLeave={handleDevicePortLeave}
+          >
+            <Cable size={14} style={{ color: iconColorValue }} />
+          </div>
+        );
+      };
+
+      if (isNetworkSwitch && switchPorts > 0) {
+        // Network switch - show ALL ports with port numbers
+        const portConnections = getPortConnections();
+        const regularPorts = poeEnabled ? 0 : switchPorts - uplinkPorts;
+        const poePorts = poeEnabled ? switchPorts - uplinkPorts : 0;
+
+        return (
+          <div className="flex flex-col gap-2 w-full">
+            {/* Port grid - show all ports */}
+            <div className="flex flex-wrap gap-1 justify-end">
+              {/* Regular/PoE ports */}
+              {Array.from({ length: switchPorts - uplinkPorts }).map((_, i) => {
+                const portNum = i + 1;
+                const isPoe = poeEnabled;
+                const connectedDevice = portConnections.get(portNum);
+                return renderSwitchPort(portNum, isPoe ? 'poe' : 'standard', isPoe, false, connectedDevice);
+              })}
+              {/* Uplink ports */}
+              {uplinkPorts > 0 && (
+                <>
+                  <div className="w-px h-8 bg-zinc-600 mx-1" /> {/* Separator */}
+                  {Array.from({ length: uplinkPorts }).map((_, i) => {
+                    const portNum = switchPorts - uplinkPorts + i + 1;
+                    const connectedDevice = portConnections.get(portNum);
+                    return renderSwitchPort(portNum, 'uplink', false, true, connectedDevice);
+                  })}
+                </>
+              )}
+            </div>
+            {/* Summary: X of Y ports in use */}
+            <div className="text-xs text-zinc-500 text-right">
+              {portConnections.size} of {switchPorts} ports connected
+            </div>
+          </div>
+        );
+      } else if (hasNetworkPort) {
+        // Regular device - show network port on LEFT side OR WiFi indicator for wireless
+        // Check if this is a wireless device (has network info but no switchName/switchPort means wireless)
+        const isWireless = networkInfo?.linked && networkInfo?.isWired === false;
+        const ssid = networkInfo?.ssid;
+        const signal = networkInfo?.signal;
+
+        if (isWireless) {
+          // Wireless device - show WiFi icon with signal strength
+          // Signal strength: typically -30 to -90 dBm, lower absolute value is better
+          // -30 to -50: Excellent, -50 to -60: Good, -60 to -70: Fair, -70 to -90: Weak
+          const signalStrength = signal ? Math.abs(signal) : 0;
+          let signalColor = '#22C55E'; // green - excellent
+          let signalBars = 3;
+          if (signalStrength > 70) {
+            signalColor = '#EF4444'; // red - weak
+            signalBars = 1;
+          } else if (signalStrength > 60) {
+            signalColor = '#F59E0B'; // amber - fair
+            signalBars = 2;
+          } else if (signalStrength > 50) {
+            signalColor = '#22C55E'; // green - good
+            signalBars = 3;
+          }
+
+          const signalLabel = signal ? `${signal} dBm` : 'Unknown';
+          const title = ssid ? `WiFi: ${ssid} (${signalLabel})` : `WiFi (${signalLabel})`;
+
+          return (
+            <div
+              className="flex items-center gap-2 group cursor-pointer"
+              title={title}
+            >
+              <div
+                className="relative w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-300 group-hover:scale-110"
+                style={{
+                  backgroundColor: `${signalColor}20`,
+                  border: `2px solid ${signalColor}`,
+                  boxShadow: `0 0 0 0 ${signalColor}`,
+                  animation: 'none',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.animation = 'wifi-pulse 1.5s ease-in-out infinite';
+                  e.currentTarget.style.boxShadow = `0 0 12px ${signalColor}`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.animation = 'none';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <Wifi size={16} style={{ color: signalColor }} />
+                {/* Signal strength indicator bars */}
+                <div className="absolute -bottom-1 -right-1 flex gap-0.5">
+                  {[1, 2, 3].map((bar) => (
+                    <div
+                      key={bar}
+                      className="w-1 rounded-sm transition-all"
+                      style={{
+                        height: `${bar * 3 + 2}px`,
+                        backgroundColor: bar <= signalBars ? signalColor : '#52525b',
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+              {ssid && (
+                <span className="text-xs text-zinc-400 group-hover:text-zinc-300 transition-colors">
+                  {ssid}
+                </span>
+              )}
+            </div>
+          );
+        }
+
+        // Wired device - show network port
+        // For APs, also show connected stations count
+        const isAccessPoint = networkInfo?.category === 'access_point';
+        const numStations = networkInfo?.numStations;
+
+        return (
+          <div className="flex items-center gap-2">
+            {renderDevicePort(1)}
+            <div className="flex flex-col gap-0.5">
+              {switchName && switchPort && (
+                <span className="text-xs text-zinc-400">
+                  → {switchName} P{switchPort}
+                </span>
+              )}
+              {isAccessPoint && numStations !== null && numStations !== undefined && (
+                <span className="text-xs text-cyan-400/70">
+                  📡 {numStations} station{numStations !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      } else {
+        // Device has no network port
+        return (
+          <div className="flex items-center gap-2 text-zinc-500">
+            <WifiOff size={14} />
+            <span className="text-xs">No network</span>
+          </div>
+        );
+      }
+    };
+
+    // Calculate the routed path for power (right side) or network (left side)
+    const getRoutedPath = (coords) => {
+      if (!coords) return '';
+
+      const { x1, y1, x2, y2, connectionType } = coords;
+      const containerWidth = functionalContainerRef.current?.offsetWidth || 800;
+
+      // Power goes right edge, Network goes left edge
+      // Stay just inside the container edge so the line is visible
+      const ispower = connectionType === 'power';
+      const sideX = ispower ? containerWidth - 8 : 8; // 8px inside the container edge
+      const cornerRadius = 10;
+
+      // Build path: source → right/left edge → down/up → target
+      // Using rounded corners for a cleaner look
+      if (ispower) {
+        // Power: source → right → down → target (right side routing)
+        return `
+          M ${x1} ${y1}
+          L ${sideX - cornerRadius} ${y1}
+          Q ${sideX} ${y1} ${sideX} ${y1 + (y2 > y1 ? cornerRadius : -cornerRadius)}
+          L ${sideX} ${y2 - (y2 > y1 ? cornerRadius : -cornerRadius)}
+          Q ${sideX} ${y2} ${sideX - cornerRadius} ${y2}
+          L ${x2} ${y2}
+        `;
+      } else {
+        // Network: source → left → down → target (left side routing)
+        return `
+          M ${x1} ${y1}
+          L ${sideX + cornerRadius} ${y1}
+          Q ${sideX} ${y1} ${sideX} ${y1 + (y2 > y1 ? cornerRadius : -cornerRadius)}
+          L ${sideX} ${y2 - (y2 > y1 ? cornerRadius : -cornerRadius)}
+          Q ${sideX} ${y2} ${sideX + cornerRadius} ${y2}
+          L ${x2} ${y2}
+        `;
+      }
+    };
+
     return (
-      <div className="p-4">
+      <div className="p-4 relative" ref={functionalContainerRef} style={{ isolation: 'isolate' }}>
+        {/* WiFi pulse animation keyframes */}
+        <style>{`
+          @keyframes wifi-pulse {
+            0% {
+              box-shadow: 0 0 0 0 currentColor;
+              transform: scale(1);
+            }
+            50% {
+              box-shadow: 0 0 12px currentColor;
+              transform: scale(1.1);
+            }
+            100% {
+              box-shadow: 0 0 0 0 currentColor;
+              transform: scale(1);
+            }
+          }
+        `}</style>
+        {/* Animated Connection Line SVG Overlay - positioned above all content */}
+        {lineCoords && (
+          <svg
+            className="absolute pointer-events-none"
+            style={{
+              zIndex: 9999,
+              overflow: 'visible',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              position: 'absolute',
+            }}
+          >
+            <defs>
+              {/* Glow filter */}
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            {/* Background glow path */}
+            <path
+              d={getRoutedPath(lineCoords)}
+              stroke={lineCoords.color}
+              strokeWidth="8"
+              strokeOpacity="0.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+              filter="url(#glow)"
+            />
+            {/* Main animated path with dashes flowing from source to target */}
+            <path
+              d={getRoutedPath(lineCoords)}
+              stroke={lineCoords.color}
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+              strokeDasharray="8 4"
+              style={{
+                animation: 'powerFlow 0.5s linear infinite',
+              }}
+            />
+            {/* Circle at source (outlet) */}
+            <circle
+              cx={lineCoords.x1}
+              cy={lineCoords.y1}
+              r="5"
+              fill={lineCoords.color}
+              filter="url(#glow)"
+            />
+            {/* Arrow/circle at target (input) */}
+            <circle
+              cx={lineCoords.x2}
+              cy={lineCoords.y2}
+              r="6"
+              fill={lineCoords.color}
+              filter="url(#glow)"
+            />
+            <style>
+              {`
+                @keyframes powerFlow {
+                  from { stroke-dashoffset: 12; }
+                  to { stroke-dashoffset: 0; }
+                }
+              `}
+            </style>
+          </svg>
+        )}
         <div className="space-y-2">
           {allItems.length === 0 ? (
             <div className="text-center py-12 text-zinc-500">
@@ -948,6 +1778,10 @@ const RackBackView = ({
                       {shelfEquipment.length > 0 ? (
                         shelfEquipment.map(eq => {
                           const isPowerDevice = eq.global_part?.is_power_device;
+                          const isNetworkSwitch = eq.global_part?.is_network_switch;
+                          const showNetworkLeft = connectionTab === 'network' && !isNetworkSwitch;
+                          const eqNetInfo = getNetworkInfo(eq);
+
                           return (
                             <div
                               key={`shelf-eq-${eq.id}`}
@@ -956,20 +1790,31 @@ const RackBackView = ({
                             >
                               {/* Top row: Name and settings */}
                               <div className="flex items-center gap-4">
-                                {isPowerDevice && (
+                                {/* Network port on LEFT for regular devices */}
+                                {showNetworkLeft && (
+                                  <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    {renderNetworkInfo(eq)}
+                                  </div>
+                                )}
+                                {connectionTab === 'power' && isPowerDevice && (
                                   <Zap size={16} className="text-amber-400 flex-shrink-0" />
+                                )}
+                                {connectionTab === 'network' && isNetworkSwitch && (
+                                  <Network size={16} className="text-cyan-400 flex-shrink-0" />
                                 )}
                                 <div className="flex-1 min-w-0">
                                   <span className="text-sm font-medium text-zinc-100 truncate">
-                                    {getEquipmentDisplayName(eq)}
+                                    {getEquipmentDisplayName(eq, eqNetInfo?.hostname)}
                                   </span>
                                 </div>
                                 <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
                               </div>
-                              {/* Bottom row: Power info */}
-                              <div className="flex items-center justify-end">
-                                {renderPowerInfo(eq)}
-                              </div>
+                              {/* Bottom row: Connection info - Power always right, Network switches right */}
+                              {(connectionTab === 'power' || isNetworkSwitch) && (
+                                <div className="flex items-center justify-end">
+                                  {connectionTab === 'power' ? renderPowerInfo(eq) : renderNetworkInfo(eq)}
+                                </div>
+                              )}
                             </div>
                           );
                         })
@@ -986,6 +1831,12 @@ const RackBackView = ({
                 const eq = item;
                 const uHeight = getEquipmentUHeight(eq);
                 const isPowerDevice = eq.global_part?.is_power_device;
+                const isNetworkSwitch = eq.global_part?.is_network_switch;
+                const eqNetInfo = getNetworkInfo(eq);
+
+                // For network tab: non-switches show port on LEFT, switches show ports on RIGHT
+                const showNetworkLeft = connectionTab === 'network' && !isNetworkSwitch;
+
                 return (
                   <div
                     key={`eq-${eq.id}`}
@@ -994,15 +1845,24 @@ const RackBackView = ({
                   >
                     {/* Top row: U position, name, settings */}
                     <div className="flex items-center gap-4">
+                      {/* Network port on LEFT for regular devices */}
+                      {showNetworkLeft && (
+                        <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {renderNetworkInfo(eq)}
+                        </div>
+                      )}
                       <div className="w-12 text-center">
                         <span className="text-xs font-mono text-zinc-500">U{eq.rack_position_u}</span>
                       </div>
-                      {isPowerDevice && (
+                      {connectionTab === 'power' && isPowerDevice && (
                         <Zap size={16} className="text-amber-400 flex-shrink-0" />
+                      )}
+                      {connectionTab === 'network' && isNetworkSwitch && (
+                        <Network size={16} className="text-cyan-400 flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-medium text-zinc-100 truncate">
-                          {getEquipmentDisplayName(eq)}
+                          {getEquipmentDisplayName(eq, eqNetInfo?.hostname)}
                         </span>
                         <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400 ml-2">
                           {uHeight}U
@@ -1010,10 +1870,12 @@ const RackBackView = ({
                       </div>
                       <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
                     </div>
-                    {/* Bottom row: Power info */}
-                    <div className="flex items-center justify-end">
-                      {renderPowerInfo(eq)}
-                    </div>
+                    {/* Bottom row: Connection info - Power always right, Network switches right, Network devices already shown left */}
+                    {(connectionTab === 'power' || isNetworkSwitch) && (
+                      <div className="flex items-center justify-end">
+                        {connectionTab === 'power' ? renderPowerInfo(eq) : renderNetworkInfo(eq)}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -1119,20 +1981,167 @@ const RackBackView = ({
             </span>
             {powerTotals.outletsProvided > 0 && (
               <span className="text-zinc-500">
-                / <span className="text-green-400" title="UPS battery backup">{powerTotals.upsOutletsProvided}</span>
+                / <span style={{ color: '#94AF32' }} title="UPS battery backup">{powerTotals.upsOutletsProvided}</span>
                 {powerTotals.surgeOutletsProvided > 0 && (
-                  <span className="text-amber-400" title="Surge protected"> + {powerTotals.surgeOutletsProvided}</span>
+                  <span style={{ color: '#3B82F6' }} title="Surge protected"> + {powerTotals.surgeOutletsProvided}</span>
                 )}
               </span>
             )}
           </div>
           {powerTotals.powerDeviceCount > 0 && (
-            <div className="flex items-center gap-1 text-amber-400" title="Power distribution devices">
+            <div className="flex items-center gap-1" style={{ color: '#F59E0B' }} title="Power distribution devices">
               <span>⚡ {powerTotals.powerDeviceCount}</span>
             </div>
           )}
         </div>
       </div>
+
+      {/* Power Key Legend - show only when power tab is active */}
+      {connectionTab === 'power' && (
+        <div className="flex items-center gap-6 px-6 py-2 bg-zinc-800/50 border-b border-zinc-700">
+          <span className="text-xs text-zinc-500 font-medium">POWER KEY:</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* UPS Battery Backup */}
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #94AF32' }}
+              >
+                <Plug size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">UPS Available</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#94AF32', border: '2px solid #94AF32' }}
+              >
+                <Plug size={12} style={{ color: '#ffffff' }} />
+              </div>
+              <span className="text-xs text-zinc-400">UPS Connected</span>
+            </div>
+
+            {/* Surge Protection */}
+            <div className="flex items-center gap-2 ml-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #3B82F6' }}
+              >
+                <Plug size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Surge Available</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3B82F6', border: '2px solid #3B82F6' }}
+              >
+                <Plug size={12} style={{ color: '#ffffff' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Surge Connected</span>
+            </div>
+
+            {/* Unplugged Input */}
+            <div className="flex items-center gap-2 ml-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #71717a' }}
+              >
+                <Plug size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Unplugged</span>
+            </div>
+
+            {/* Trouble/Warning State */}
+            <div className="flex items-center gap-2 ml-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#F59E0B', border: '2px solid #F59E0B' }}
+              >
+                <Plug size={12} style={{ color: '#ffffff' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Trouble</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Network Key Legend - show only when network tab is active */}
+      {connectionTab === 'network' && (
+        <div className="flex items-center gap-6 px-6 py-2 bg-zinc-800/50 border-b border-zinc-700">
+          <span className="text-xs text-zinc-500 font-medium">NETWORK KEY:</span>
+          <div className="flex items-center gap-4 flex-wrap">
+            {/* Switch Port States */}
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #52525b' }}
+              >
+                <Cable size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Port Empty</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#22C55E', border: '2px solid #22C55E' }}
+              >
+                <Cable size={12} style={{ color: '#ffffff' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Online</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#F59E0B', border: '2px solid #F59E0B' }}
+              >
+                <Cable size={12} style={{ color: '#ffffff' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Offline</span>
+            </div>
+
+            {/* Port Types */}
+            <div className="flex items-center gap-2 ml-4">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #06B6D4' }}
+              >
+                <Cable size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Standard</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #8B5CF6' }}
+              >
+                <Cable size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">PoE</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #10B981' }}
+              >
+                <Cable size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Uplink</span>
+            </div>
+
+            {/* Disconnected Device Port */}
+            <div className="flex items-center gap-2 ml-4">
+              <div
+                className="w-5 h-5 rounded flex items-center justify-center"
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #71717a' }}
+              >
+                <Cable size={12} style={{ color: '#a1a1aa' }} />
+              </div>
+              <span className="text-xs text-zinc-400">Not Linked</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Content - based on layout mode */}
       {layoutMode === 'physical' ? renderPhysicalLayout() : renderFunctionalLayout()}
@@ -1218,6 +2227,22 @@ const RackBackView = ({
           )}
         </div>
       </div>
+
+      {/* UniFi Site Link - show only on Network tab */}
+      {connectionTab === 'network' && (
+        <div className="px-6 py-3 border-t border-zinc-700 bg-zinc-800/30">
+          <a
+            href="https://unifi.ui.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
+          >
+            <Globe size={14} />
+            Open UniFi Site Manager
+            <ExternalLink size={12} className="opacity-60" />
+          </a>
+        </div>
+      )}
     </div>
   );
 };
@@ -1251,6 +2276,12 @@ RackBackView.propTypes = {
   onShelfMove: PropTypes.func,
   onShelfDelete: PropTypes.func,
   getNetworkInfo: PropTypes.func,
+  // Power connection props
+  connections: PropTypes.array,
+  onCreateConnection: PropTypes.func,
+  onDeleteConnection: PropTypes.func,
+  onAddPowerStrip: PropTypes.func,
+  projectId: PropTypes.string,
 };
 
 export default memo(RackBackView);

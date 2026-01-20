@@ -25,6 +25,9 @@ module.exports = {
     'bg-red-500/10','text-red-400','border-red-500/30','hover:bg-red-500/20','hover:border-red-500/50',
     'bg-zinc-800','text-zinc-200','border-zinc-700','hover:bg-zinc-700',
     'text-emerald-400','text-purple-400','text-purple-600',
+    // Network connection tab colors
+    'bg-cyan-500/20','text-cyan-300','border-cyan-500/50','text-cyan-400',
+    'bg-amber-500/20','text-amber-300','border-amber-500/50',
   ],
   theme: {
     extend: {

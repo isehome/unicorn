@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { Server, RotateCcw, Loader, Plus } from 'lucide-react';
+import { Server, Zap, Network, Loader, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { projectEquipmentService } from '../services/projectEquipmentService';
 import { projectsService } from '../services/supabaseService';
 import * as rackService from '../services/rackService';
+import * as equipmentConnectionService from '../services/equipmentConnectionService';
 import Button from '../components/ui/Button';
 import RackFrontView from '../components/Rack/RackFrontView';
 import RackBackView from '../components/Rack/RackBackView';
@@ -30,13 +31,15 @@ const RackLayoutPage = () => {
   const [rackEquipment, setRackEquipment] = useState([]); // Equipment that IS a rack (for creating new racks)
   const [showAddRackModal, setShowAddRackModal] = useState(false);
 
-  // View state
-  const [activeView, setActiveView] = useState('front'); // 'front', 'back'
-  const [layoutMode, setLayoutMode] = useState('physical'); // 'physical', 'functional'
+  // View state - simplified to 3 views
+  const [activeView, setActiveView] = useState('front'); // 'front' (physical), 'power' (functional), 'network' (functional)
 
   // Home Assistant network clients and devices state
   const [haClients, setHaClients] = useState([]);
   const [haDevices, setHaDevices] = useState([]); // UniFi infrastructure (switches, APs, gateways)
+
+  // Equipment connections state (power, network, etc.)
+  const [connections, setConnections] = useState([]);
 
   // Styles based on theme
   const styles = useMemo(() => ({
@@ -71,6 +74,16 @@ const RackLayoutPage = () => {
       // Load rack equipment (equipment that IS a rack)
       const rackEqData = await rackService.getProjectRackEquipment(projectId);
       setRackEquipment(rackEqData || []);
+
+      // Load equipment connections (power, network, etc.)
+      try {
+        const connectionsData = await equipmentConnectionService.getProjectConnections(projectId);
+        setConnections(connectionsData || []);
+      } catch (connErr) {
+        // Table might not exist yet if migration hasn't run
+        console.warn('Could not load connections (table may not exist):', connErr.message);
+        setConnections([]);
+      }
 
       // Update selectedRack with fresh data (including updated shelf positions)
       // Use functional update to avoid dependency on selectedRack
@@ -121,32 +134,77 @@ const RackLayoutPage = () => {
             is_online: true,
             is_wired: c.is_wired,
             switch_name: c.switch_name,
-            switch_port: c.switch_port
+            switch_port: c.switch_port,
+            ssid: c.ssid,
+            signal: c.signal
           }));
           setHaClients(clients);
         }
 
         // Transform UniFi devices (switches, APs, gateways) to expected format
         if (result.devices) {
-          const devices = result.devices.map(d => ({
-            mac: d.mac_address,
-            name: d.name,
-            model: d.model,
-            ip: d.ip_address,
-            category: d.category, // 'switch', 'access_point', 'gateway'
-            type: d.type,
-            is_online: d.is_online,
-            version: d.version,
-            uptime: d.uptime_formatted,
-            ports_total: d.ports_total,
-            ports_used: d.ports_used,
-            port_table: d.port_table,
-            num_sta: d.num_sta, // Connected stations for APs
-            cpu: d.cpu,
-            mem: d.mem
-          }));
+          // First pass: build device lookup by MAC
+          const deviceByMac = new Map();
+          result.devices.forEach(d => {
+            if (d.mac_address) {
+              deviceByMac.set(d.mac_address.toLowerCase(), d);
+            }
+          });
+
+          // Second pass: for each device, try to find which switch port it's connected to
+          // by scanning other devices' port_table
+          const deviceUplinkInfo = new Map();
+          result.devices.forEach(switchDev => {
+            if (switchDev.port_table && Array.isArray(switchDev.port_table)) {
+              switchDev.port_table.forEach(port => {
+                // Check if this port has a connected device MAC
+                const portMac = port.lldp_remote_mac || port.client_mac || port.mac;
+                if (portMac) {
+                  const normalizedMac = portMac.toLowerCase();
+                  // Record that this MAC is connected to this switch/port
+                  deviceUplinkInfo.set(normalizedMac, {
+                    switch_name: switchDev.name,
+                    switch_mac: switchDev.mac_address,
+                    switch_port: port.port_idx,
+                    port_name: port.name,
+                    is_uplink: port.is_uplink || false
+                  });
+                }
+              });
+            }
+          });
+
+          const devices = result.devices.map(d => {
+            // Try to find uplink info for this device (how it connects to a switch)
+            const mac = d.mac_address?.toLowerCase();
+            const uplink = mac ? deviceUplinkInfo.get(mac) : null;
+
+            return {
+              mac: d.mac_address,
+              name: d.name,
+              model: d.model,
+              ip: d.ip_address,
+              category: d.category, // 'switch', 'access_point', 'gateway'
+              type: d.type,
+              is_online: d.is_online,
+              version: d.version,
+              uptime: d.uptime_formatted,
+              ports_total: d.ports_total,
+              ports_used: d.ports_used,
+              port_table: d.port_table,
+              num_sta: d.num_sta, // Connected stations for APs
+              cpu: d.cpu,
+              mem: d.mem,
+              // Uplink info (which switch/port this device connects to)
+              uplink_switch_name: uplink?.switch_name || null,
+              uplink_switch_mac: uplink?.switch_mac || null,
+              uplink_switch_port: uplink?.switch_port || null,
+              uplink_port_name: uplink?.port_name || null,
+              is_uplink_port: uplink?.is_uplink || false
+            };
+          });
           setHaDevices(devices);
-          console.log('[RackLayout] Loaded', devices.length, 'UniFi devices:', devices.map(d => d.name));
+          console.log('[RackLayout] Loaded', devices.length, 'UniFi devices:', devices.map(d => `${d.name} (uplink: ${d.uplink_switch_name || 'none'})`));
         }
       }
     } catch (err) {
@@ -154,9 +212,9 @@ const RackLayoutPage = () => {
     }
   }, [projectId]);
 
-  // Fetch HA clients when view changes to back OR front (front view modal needs them too)
+  // Fetch HA clients when view changes (needed for all views)
   useEffect(() => {
-    if (activeView === 'back' || activeView === 'front') {
+    if (activeView === 'front' || activeView === 'power' || activeView === 'network') {
       fetchHAClients();
     }
   }, [activeView, fetchHAClients]);
@@ -164,19 +222,27 @@ const RackLayoutPage = () => {
   // Helper function to get network info for an equipment item (used by RackFrontView)
   const getNetworkInfo = useCallback((item) => {
     let haClient = item.ha_client;
+    let matchedDevice = null;
 
     // If no nested object but we have ha_client_mac, look it up
     if (!haClient && item.ha_client_mac) {
       const mac = item.ha_client_mac.toLowerCase();
 
-      const matchedDevice = haDevices.find(d => d.mac?.toLowerCase() === mac);
+      // First check devices (switches, APs, gateways) - these have uplink info
+      matchedDevice = haDevices.find(d => d.mac?.toLowerCase() === mac);
       if (matchedDevice) {
         haClient = {
           mac: matchedDevice.mac,
           hostname: matchedDevice.name,
           ip: matchedDevice.ip,
           is_online: matchedDevice.is_online,
-          is_wired: true,
+          is_wired: true, // Devices are always wired
+          // Include uplink info (which switch port this device connects to)
+          switch_name: matchedDevice.uplink_switch_name,
+          switch_port: matchedDevice.uplink_switch_port,
+          switch_mac: matchedDevice.uplink_switch_mac,
+          category: matchedDevice.category, // 'switch', 'access_point', 'gateway'
+          num_sta: matchedDevice.num_sta, // For APs: connected stations
         };
       }
 
@@ -191,6 +257,8 @@ const RackLayoutPage = () => {
             is_wired: matchedClient.is_wired,
             switch_name: matchedClient.switch_name,
             switch_port: matchedClient.switch_port,
+            ssid: matchedClient.ssid,
+            signal: matchedClient.signal,
           };
         }
       }
@@ -208,7 +276,13 @@ const RackLayoutPage = () => {
       hostname: haClient.hostname,
       switchName: haClient.switch_name,
       switchPort: haClient.switch_port,
+      switchMac: haClient.switch_mac,
       isWired: haClient.is_wired,
+      ssid: haClient.ssid,
+      signal: haClient.signal,
+      // Additional device info (for infrastructure like APs)
+      category: haClient.category,
+      numStations: haClient.num_sta,
     };
   }, [haClients, haDevices]);
 
@@ -228,6 +302,42 @@ const RackLayoutPage = () => {
       console.error('[handleLinkToHA] Failed to link equipment to HA client:', err);
     }
   }, [loadData]);
+
+  // Handle creating a new equipment connection (power, network, etc.)
+  const handleCreateConnection = useCallback(async (connectionData) => {
+    try {
+      const newConnection = await equipmentConnectionService.createConnection({
+        ...connectionData,
+        projectId,
+      });
+      // Reload connections to get full data with equipment details
+      const connectionsData = await equipmentConnectionService.getProjectConnections(projectId);
+      setConnections(connectionsData || []);
+      return newConnection;
+    } catch (err) {
+      console.error('[handleCreateConnection] Failed:', err);
+      throw err;
+    }
+  }, [projectId]);
+
+  // Handle deleting an equipment connection
+  const handleDeleteConnection = useCallback(async (connectionId) => {
+    try {
+      await equipmentConnectionService.deleteConnection(connectionId);
+      // Remove from local state
+      setConnections(prev => prev.filter(c => c.id !== connectionId));
+    } catch (err) {
+      console.error('[handleDeleteConnection] Failed:', err);
+      throw err;
+    }
+  }, []);
+
+  // Handle adding a power strip on the fly
+  const handleAddPowerStrip = useCallback(async () => {
+    // TODO: Show modal to configure power strip
+    // For now, create a basic one
+    console.log('[handleAddPowerStrip] Not yet implemented - would show modal');
+  }, []);
 
   // Get equipment that hasn't been assigned to any rack yet (for the "add rack" modal)
   const availableRackEquipment = useMemo(() => {
@@ -728,9 +838,9 @@ const RackLayoutPage = () => {
         {/* Main Content - Only show if a rack is selected */}
         {selectedRack && (
           <>
-            {/* Header Row: View Tabs + Layout Toggle + Stats */}
+            {/* Header Row: View Tabs + Stats */}
             <div className="flex flex-wrap items-center gap-4 mb-4">
-              {/* Front/Back View Tabs */}
+              {/* 3 View Tabs: Front (Physical), Power, Network */}
               <div className="flex gap-1 bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
                 <button
                   onClick={() => setActiveView('front')}
@@ -744,39 +854,26 @@ const RackLayoutPage = () => {
                   Front
                 </button>
                 <button
-                  onClick={() => setActiveView('back')}
+                  onClick={() => setActiveView('power')}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    activeView === 'back'
-                      ? 'bg-violet-600 text-white shadow-sm'
+                    activeView === 'power'
+                      ? 'bg-amber-500 text-white shadow-sm'
                       : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                   }`}
                 >
-                  <RotateCcw size={14} />
-                  Back
-                </button>
-              </div>
-
-              {/* Physical/Functional Toggle */}
-              <div className="flex gap-1 bg-zinc-200 dark:bg-zinc-800 rounded-lg p-1">
-                <button
-                  onClick={() => setLayoutMode('physical')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    layoutMode === 'physical'
-                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-                  }`}
-                >
-                  Physical
+                  <Zap size={14} />
+                  Power
                 </button>
                 <button
-                  onClick={() => setLayoutMode('functional')}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                    layoutMode === 'functional'
-                      ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-sm'
+                  onClick={() => setActiveView('network')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeView === 'network'
+                      ? 'bg-cyan-500 text-white shadow-sm'
                       : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
                   }`}
                 >
-                  Functional
+                  <Network size={14} />
+                  Network
                 </button>
               </div>
 
@@ -818,7 +915,7 @@ const RackLayoutPage = () => {
                   projectId={projectId}
                   haClients={haClients}
                   haDevices={haDevices}
-                  layoutMode={layoutMode}
+                  layoutMode="physical"
                   onEquipmentDrop={handleEquipmentDrop}
                   onEquipmentMove={handleEquipmentMove}
                   onEquipmentRemove={handleEquipmentRemove}
@@ -834,7 +931,7 @@ const RackLayoutPage = () => {
                   getNetworkInfo={getNetworkInfo}
                 />
               )}
-              {activeView === 'back' && (
+              {activeView === 'power' && (
                 <RackBackView
                   rack={currentRack}
                   racks={racks}
@@ -845,7 +942,8 @@ const RackLayoutPage = () => {
                   unplacedEquipment={unplacedEquipment}
                   haClients={haClients}
                   haDevices={haDevices}
-                  layoutMode={layoutMode}
+                  layoutMode="functional"
+                  connectionTab="power"
                   onEquipmentDrop={handleEquipmentDrop}
                   onEquipmentMove={handleEquipmentMove}
                   onEquipmentRemove={handleEquipmentRemove}
@@ -859,6 +957,44 @@ const RackLayoutPage = () => {
                   onShelfMove={handleShelfMove}
                   onShelfDelete={handleShelfDelete}
                   getNetworkInfo={getNetworkInfo}
+                  connections={connections}
+                  onCreateConnection={handleCreateConnection}
+                  onDeleteConnection={handleDeleteConnection}
+                  onAddPowerStrip={handleAddPowerStrip}
+                  projectId={projectId}
+                />
+              )}
+              {activeView === 'network' && (
+                <RackBackView
+                  rack={currentRack}
+                  racks={racks}
+                  selectedRackId={selectedRack?.id}
+                  onRackSelect={(rack) => setSelectedRack(rack)}
+                  onAddRack={() => setShowAddRackModal(true)}
+                  equipment={placedEquipment}
+                  unplacedEquipment={unplacedEquipment}
+                  haClients={haClients}
+                  haDevices={haDevices}
+                  layoutMode="functional"
+                  connectionTab="network"
+                  onEquipmentDrop={handleEquipmentDrop}
+                  onEquipmentMove={handleEquipmentMove}
+                  onEquipmentRemove={handleEquipmentRemove}
+                  onEquipmentEdit={handleEquipmentEdit}
+                  onEquipmentExclude={handleEquipmentExclude}
+                  onEquipmentExcludeGlobal={handleEquipmentExcludeGlobal}
+                  onEquipmentDropOnShelf={handleEquipmentDropOnShelf}
+                  onMoveRoom={handleMoveRoom}
+                  onLinkToHA={handleLinkToHA}
+                  onAddShelf={handleAddShelf}
+                  onShelfMove={handleShelfMove}
+                  onShelfDelete={handleShelfDelete}
+                  getNetworkInfo={getNetworkInfo}
+                  connections={connections}
+                  onCreateConnection={handleCreateConnection}
+                  onDeleteConnection={handleDeleteConnection}
+                  onAddPowerStrip={handleAddPowerStrip}
+                  projectId={projectId}
                 />
               )}
             </div>

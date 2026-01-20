@@ -6910,3 +6910,405 @@ getNetworkInfo: (equipment) => networkInfoObject
 ```
 
 ---
+
+### Power Requirements Section in Part Detail Page
+
+**Goal:** Add a dedicated Power Requirements section to the Part Detail Page for configuring power consumption and outlet requirements for equipment.
+
+#### New UI Section
+
+Added a new "POWER REQUIREMENTS" card section with the following fields:
+
+1. **Power Consumption (Watts)** - Input field for typical power draw
+2. **Power Outlets Required** - Dropdown selector (1-42 outlets)
+3. **"This is a power distribution device"** - Checkbox to mark UPS/PDU/surge protectors
+
+When the power device checkbox is enabled, additional fields appear:
+4. **Surge Protected Outlets** - Dropdown (1-42) with amber styling
+5. **Battery Backup Outlets** - Dropdown (1-42) with green styling
+6. **Total outlets summary** - Shows "Total: X outlets (Y with battery backup)"
+
+#### Power Outlets Changed to Dropdown
+
+The "Power Outlets Required" field was changed from a button group (1, 2, 3, 4) to a dropdown selector allowing 1-42 outlets in single increments for large power distribution devices.
+
+```jsx
+<select value={formState.power_outlets || 1} onChange={...}>
+  {Array.from({ length: 42 }, (_, i) => i + 1).map((n) => (
+    <option key={n} value={n}>{n} {n === 1 ? 'outlet' : 'outlets'}</option>
+  ))}
+</select>
+```
+
+#### Form State Fields Added
+
+```javascript
+// Power fields in formState
+power_watts: part?.power_watts || '',
+power_outlets: part?.power_outlets || 1,
+is_power_device: part?.is_power_device || false,
+power_outlets_provided: part?.power_outlets_provided || '',
+ups_outlets_provided: part?.ups_outlets_provided || '',
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/PartDetailPage.js` | Added Power Requirements section with all power fields |
+
+---
+
+### Fix: Power Fields Not Saving to Database
+
+**Problem:** Power fields (watts, outlets, is_power_device, outlets_provided) were not being saved when clicking Save on the Part Detail Page.
+
+**Root Cause:**
+1. The `update_global_part` RPC function was missing the power field parameters
+2. The `partsService.js` was not passing power fields to the RPC call
+
+**Solution:**
+
+1. Created migration to update RPC function with power parameters:
+
+```sql
+-- Added parameters to update_global_part function:
+p_power_watts INTEGER DEFAULT NULL,
+p_power_outlets INTEGER DEFAULT NULL,
+p_is_power_device BOOLEAN DEFAULT NULL,
+p_power_outlets_provided INTEGER DEFAULT NULL,
+p_ups_outlets_provided INTEGER DEFAULT NULL
+```
+
+2. Updated partsService.js to include power fields in RPC params:
+
+```javascript
+// Power fields
+p_power_watts: payload.power_watts,
+p_power_outlets: payload.power_outlets,
+p_is_power_device: payload.is_power_device,
+p_power_outlets_provided: payload.power_outlets_provided,
+p_ups_outlets_provided: payload.ups_outlets_provided,
+```
+
+**Migration:** `supabase/migrations/20260120_update_global_part_rpc_power_fields.sql`
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/services/partsService.js` | Added power fields to RPC params |
+| `supabase/migrations/20260120_update_global_part_rpc_power_fields.sql` | Updated RPC function with power parameters |
+
+---
+
+### UPS Battery Backup Outlets (Separate from Surge-Only Outlets)
+
+**Goal:** Power distribution devices like UPS units have two types of outlets - battery backup outlets (that provide power during outages) and surge-only outlets (that only provide surge protection). Track these separately.
+
+#### New Database Field
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ups_outlets_provided` | INTEGER | Number of UPS battery backup outlets the device provides |
+
+**Migration:** `supabase/migrations/20260120_add_ups_outlets_provided.sql`
+
+```sql
+ALTER TABLE global_parts
+ADD COLUMN IF NOT EXISTS ups_outlets_provided INTEGER DEFAULT 0;
+```
+
+#### Updated RPC Function
+
+**Migration:** `supabase/migrations/20260120_update_global_part_rpc_power_fields.sql`
+
+Added `p_ups_outlets_provided` parameter to the `update_global_part` RPC function.
+
+#### UI Changes - Part Detail Page
+
+The Power Requirements section now shows two dropdown selectors for power distribution devices:
+
+1. **Surge Protected Outlets** (amber) - Power conditioning/surge protection only
+2. **Battery Backup Outlets** (green) - UPS battery backup + surge protection
+
+Both dropdowns allow selecting 1-42 outlets in single increments.
+
+A total is shown below: "Total: 8 outlets (4 with battery backup)"
+
+#### UI Changes - Rack Back View (Functional Mode)
+
+Power devices now display both outlet types with distinct colors:
+- **Green outlets** with Zap icon - UPS battery backup outlets
+- **Amber outlets** - Surge protected only outlets
+- **Gray outlet** on far right - Power input the device requires
+
+The header power summary shows outlets as: `X / Y + Z` where:
+- X = outlets required by all devices
+- Y = UPS battery backup outlets available (green)
+- Z = surge-only outlets available (amber)
+
+Example: `5 / 4 + 4 ⚡1` means 5 outlets needed, 4 UPS + 4 surge available, 1 power device
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/PartDetailPage.js` | Added `ups_outlets_provided` to form state, added Battery Backup Outlets dropdown |
+| `src/services/partsService.js` | Added `p_ups_outlets_provided` to RPC params |
+| `src/services/projectEquipmentService.js` | Added `ups_outlets_provided` to global_part fetch query |
+| `src/services/rackService.js` | Added `ups_outlets_provided` to all global_part fetch queries |
+| `src/components/Rack/RackBackView.jsx` | Updated `renderPowerInfo` and `powerTotals` to handle both outlet types |
+
+---
+
+### Two-Row Layout for Rack Equipment Cards (Functional View)
+
+**Goal:** Improve the rack layout functional view by using a two-row layout for equipment cards - device name/info on top row, power information on bottom row.
+
+#### Layout Structure
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ U1  ⚡ MB1500 1  [3U]                              [⚙]      │  ← Top row: position, icon, name, height, settings
+│        ⚡[🔌][🔌][🔌][🔌] [🔌][🔌][🔌][🔌] [🔌]             │  ← Bottom row: power outlets (green UPS, amber surge, gray input)
+└─────────────────────────────────────────────────────────────┘
+```
+
+For regular devices:
+```
+┌─────────────────────────────────────────────────────────────┐
+│ U32    UDP-Pro 1  [1U]                            [⚙]      │  ← Top row
+│                                                   [🔌]      │  ← Bottom row: power input required
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Power Device Outlet Display Order
+
+1. UPS Battery Backup outlets (green with Zap icon)
+2. Surge-only outlets (amber)
+3. Power input required (gray, on far right to match other devices)
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/components/Rack/RackBackView.jsx` | Changed equipment cards from single-row flex to two-row flex-col layout |
+
+---
+
+### Fix: Unplaced Equipment Not Showing for Head-End Rooms
+
+**Problem:** Equipment added to head-end rooms wasn't appearing in the "Unplaced Equipment" bucket at the bottom of the rack layout page.
+
+**Root Cause:** The filter was checking `eq.install_side === 'head_end'` but equipment in head-end rooms might not have the `install_side` field set directly - instead, the room itself has `is_headend = true`.
+
+**Solution:** Updated the filter to check both conditions:
+
+```javascript
+// Before
+const unplaced = equipment.filter(eq =>
+  eq.rack_position_u == null &&
+  eq.rack_id == null &&
+  eq.install_side === 'head_end' &&  // Only checked equipment field
+  ...
+);
+
+// After
+const unplaced = equipment.filter(eq =>
+  eq.rack_position_u == null &&
+  eq.rack_id == null &&
+  (eq.install_side === 'head_end' || eq.project_rooms?.is_headend === true) &&  // Check both
+  ...
+);
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `src/pages/RackLayoutPage.js` | Updated unplaced equipment filter to include room-based head-end detection |
+| `src/components/Rack/RackBackView.jsx` | Added unplaced equipment section (was missing from back view) |
+
+---
+
+### Equipment Connection Management System (January 20, 2026)
+
+**Feature:** Drag-and-drop power AND network connection management for rack equipment with animated connection visualization.
+
+#### Overview
+
+The Back View now supports visual connection management via tabbed interface (Power | Network), allowing users to:
+- **Power Tab:** Drag power inputs from devices and drop them onto UPS/PDU outlets
+- **Network Tab:** Drag network ports from devices and drop them onto switch ports
+- See animated connection lines showing flow direction on hover
+- Disconnect devices by clicking connected ports
+- View connection status at a glance with color-coded icons
+
+#### Sub-Tab Navigation
+
+The Back View has two tabs that toggle between connection types:
+- **Power Tab** (amber highlight) - Shows power outlets/inputs and power connections
+- **Network Tab** (cyan highlight) - Shows network switch ports and network connections
+
+Each tab has its own KEY legend showing icon states for that connection type.
+
+#### Database Schema
+
+New table: `project_equipment_connections`
+
+```sql
+CREATE TABLE project_equipment_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  source_equipment_id UUID NOT NULL REFERENCES project_equipment(id) ON DELETE CASCADE,
+  source_port_number INTEGER NOT NULL,
+  source_port_type VARCHAR(20),  -- 'ups', 'surge', 'network', etc.
+  target_equipment_id UUID NOT NULL REFERENCES project_equipment(id) ON DELETE CASCADE,
+  target_port_number INTEGER DEFAULT 1,
+  connection_type VARCHAR(20) NOT NULL,  -- 'power', 'network', 'hdmi', etc.
+  cable_label VARCHAR(100),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT unique_source_port UNIQUE(source_equipment_id, source_port_number, connection_type),
+  CONSTRAINT unique_target_port_power UNIQUE(target_equipment_id, target_port_number, connection_type)
+);
+```
+
+#### Color Coding System (Brand Colors)
+
+**Power Tab Colors:**
+| State | Color | Hex | Usage |
+|-------|-------|-----|-------|
+| UPS Battery Backup | Olive Green | `#94AF32` | Border for UPS outlets, fill when connected |
+| Surge/Standard | Blue | `#3B82F6` | Border for surge outlets, fill when connected |
+| Unplugged | Gray | `#3f3f46` | Fill for empty outlets/inputs |
+| Trouble/Warning | Amber | `#F59E0B` | Reserved for error conditions |
+| Accent/Drag | Violet | `#8B5CF6` | Hover states, drag indicators |
+
+**Network Tab Colors:**
+| State | Color | Hex | Usage |
+|-------|-------|-----|-------|
+| Standard Port | Cyan | `#06B6D4` | Border for regular switch ports, fill when connected |
+| PoE Port | Violet | `#8B5CF6` | Border for PoE-enabled ports, fill when connected |
+| Uplink Port | Emerald | `#10B981` | Border for uplink/SFP ports, fill when connected |
+| Disconnected | Gray | `#3f3f46` | Fill for empty/disconnected ports |
+| Accent/Drag | Violet | `#8B5CF6` | Hover states, drag indicators |
+
+#### Icon States
+
+**Power Tab - Outlets (on UPS/PDU):**
+- Border color = power type (green=UPS, blue=surge)
+- Gray fill + gray icon = available/empty
+- Colored fill + white icon = connected/occupied
+
+**Power Tab - Inputs (on consuming devices):**
+- Gray border always (neutral)
+- Gray fill + gray icon = unplugged
+- Green fill + white icon = connected to UPS
+- Blue fill + white icon = connected to surge
+
+**Network Tab - Switch Ports (on network switches):**
+- Border color = port type (cyan=standard, violet=PoE, emerald=uplink)
+- Gray fill + gray icon = available/empty
+- Colored fill + white icon = connected/occupied
+
+**Network Tab - Device Ports (on consuming devices):**
+- Gray border always (neutral)
+- Gray fill + gray icon = disconnected
+- Cyan fill + white icon = connected to standard port
+- Violet fill + white icon = connected to PoE port
+- Emerald fill + white icon = connected to uplink port
+
+#### Connection Line Visualization
+
+When hovering over a connected port:
+1. Animated dashed line appears showing flow direction
+2. **Power connections:** Line routes along right edge of rack
+3. **Network connections:** Line routes along left edge of rack
+4. Both endpoints highlight with white border and glow
+5. Dashes animate to show direction of flow (source → target)
+
+#### User Interactions
+
+| Action | Result |
+|--------|--------|
+| Drag unplugged input | Can drop on available outlet |
+| Drop on outlet | Creates connection, colors update |
+| Hover connected input | Shows animated line to source outlet |
+| Hover connected outlet | Shows animated line to powered device |
+| Click connected input/outlet | Disconnects the connection |
+
+#### Connection Key Legends
+
+**Power Key (shown when Power tab active):**
+- UPS Available / UPS Connected
+- Surge Available / Surge Connected
+- Unplugged
+- Trouble (amber - reserved for warnings)
+
+**Network Key (shown when Network tab active):**
+- Port Available / Port Connected (standard)
+- PoE Available / PoE Connected
+- Uplink Available / Uplink Connected
+- Disconnected
+
+#### Files Created/Modified
+
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260120_create_equipment_connections.sql` | Database migration for connections table |
+| `src/services/equipmentConnectionService.js` | CRUD operations for connections |
+| `src/components/Rack/RackBackView.jsx` | Enhanced with drag-drop, connection lines, power key |
+| `src/pages/RackLayoutPage.js` | Added connection state, handlers, passes props to view |
+
+#### Service Functions (equipmentConnectionService.js)
+
+```javascript
+// Get all connections for a project
+getProjectConnections(projectId)
+
+// Create a new connection
+createConnection({ projectId, sourceEquipmentId, sourcePortNumber, sourcePortType, targetEquipmentId, targetPortNumber, connectionType, cableLabel, notes })
+
+// Delete a connection
+deleteConnection(connectionId)
+
+// Get power status for all equipment in a rack
+getRackPowerStatus(rackId)
+
+// Trace power chain from device back to UPS
+getPowerChain(equipmentId)
+
+// Get switch port usage (for network connections)
+getSwitchPortUsage(switchEquipmentId)
+```
+
+#### Global Part Properties for Connections
+
+**Power-related properties:**
+- `is_power_device` - True for UPS/PDU/power strips
+- `power_watts` - Power consumption in watts
+- `power_outlets` - Number of power inputs required
+- `power_outlets_provided` - Surge-only outlets provided
+- `ups_outlets_provided` - UPS battery-backed outlets provided
+- `power_output_watts` - Total power output capacity
+
+**Network-related properties:**
+- `is_network_switch` - True for network switches
+- `switch_ports` - Total number of switch ports
+- `poe_enabled` - True if switch has PoE capability
+- `uplink_ports` - Number of uplink/SFP ports
+- `has_network_port` - True if device has a network port (default true)
+- `network_ports` - Number of network ports (default 1)
+
+#### Future Enhancements
+
+1. **Power Chain View** - Show full path: Device → Power Strip → Surge → UPS
+2. **Quick-Create Power Strip** - Create power strips on the fly during connection
+3. **Warning States** - Use amber for overloaded circuits, disconnected chains
+4. **VLAN Assignment** - Assign VLANs to network connections
+5. **PoE Budget Tracking** - Track PoE power budget on switches
+
+---

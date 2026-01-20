@@ -7131,3 +7131,184 @@ const unplaced = equipment.filter(eq =>
 | `src/components/Rack/RackBackView.jsx` | Added unplaced equipment section (was missing from back view) |
 
 ---
+
+### Equipment Connection Management System (January 20, 2026)
+
+**Feature:** Drag-and-drop power AND network connection management for rack equipment with animated connection visualization.
+
+#### Overview
+
+The Back View now supports visual connection management via tabbed interface (Power | Network), allowing users to:
+- **Power Tab:** Drag power inputs from devices and drop them onto UPS/PDU outlets
+- **Network Tab:** Drag network ports from devices and drop them onto switch ports
+- See animated connection lines showing flow direction on hover
+- Disconnect devices by clicking connected ports
+- View connection status at a glance with color-coded icons
+
+#### Sub-Tab Navigation
+
+The Back View has two tabs that toggle between connection types:
+- **Power Tab** (amber highlight) - Shows power outlets/inputs and power connections
+- **Network Tab** (cyan highlight) - Shows network switch ports and network connections
+
+Each tab has its own KEY legend showing icon states for that connection type.
+
+#### Database Schema
+
+New table: `project_equipment_connections`
+
+```sql
+CREATE TABLE project_equipment_connections (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  source_equipment_id UUID NOT NULL REFERENCES project_equipment(id) ON DELETE CASCADE,
+  source_port_number INTEGER NOT NULL,
+  source_port_type VARCHAR(20),  -- 'ups', 'surge', 'network', etc.
+  target_equipment_id UUID NOT NULL REFERENCES project_equipment(id) ON DELETE CASCADE,
+  target_port_number INTEGER DEFAULT 1,
+  connection_type VARCHAR(20) NOT NULL,  -- 'power', 'network', 'hdmi', etc.
+  cable_label VARCHAR(100),
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT unique_source_port UNIQUE(source_equipment_id, source_port_number, connection_type),
+  CONSTRAINT unique_target_port_power UNIQUE(target_equipment_id, target_port_number, connection_type)
+);
+```
+
+#### Color Coding System (Brand Colors)
+
+**Power Tab Colors:**
+| State | Color | Hex | Usage |
+|-------|-------|-----|-------|
+| UPS Battery Backup | Olive Green | `#94AF32` | Border for UPS outlets, fill when connected |
+| Surge/Standard | Blue | `#3B82F6` | Border for surge outlets, fill when connected |
+| Unplugged | Gray | `#3f3f46` | Fill for empty outlets/inputs |
+| Trouble/Warning | Amber | `#F59E0B` | Reserved for error conditions |
+| Accent/Drag | Violet | `#8B5CF6` | Hover states, drag indicators |
+
+**Network Tab Colors:**
+| State | Color | Hex | Usage |
+|-------|-------|-----|-------|
+| Standard Port | Cyan | `#06B6D4` | Border for regular switch ports, fill when connected |
+| PoE Port | Violet | `#8B5CF6` | Border for PoE-enabled ports, fill when connected |
+| Uplink Port | Emerald | `#10B981` | Border for uplink/SFP ports, fill when connected |
+| Disconnected | Gray | `#3f3f46` | Fill for empty/disconnected ports |
+| Accent/Drag | Violet | `#8B5CF6` | Hover states, drag indicators |
+
+#### Icon States
+
+**Power Tab - Outlets (on UPS/PDU):**
+- Border color = power type (green=UPS, blue=surge)
+- Gray fill + gray icon = available/empty
+- Colored fill + white icon = connected/occupied
+
+**Power Tab - Inputs (on consuming devices):**
+- Gray border always (neutral)
+- Gray fill + gray icon = unplugged
+- Green fill + white icon = connected to UPS
+- Blue fill + white icon = connected to surge
+
+**Network Tab - Switch Ports (on network switches):**
+- Border color = port type (cyan=standard, violet=PoE, emerald=uplink)
+- Gray fill + gray icon = available/empty
+- Colored fill + white icon = connected/occupied
+
+**Network Tab - Device Ports (on consuming devices):**
+- Gray border always (neutral)
+- Gray fill + gray icon = disconnected
+- Cyan fill + white icon = connected to standard port
+- Violet fill + white icon = connected to PoE port
+- Emerald fill + white icon = connected to uplink port
+
+#### Connection Line Visualization
+
+When hovering over a connected port:
+1. Animated dashed line appears showing flow direction
+2. **Power connections:** Line routes along right edge of rack
+3. **Network connections:** Line routes along left edge of rack
+4. Both endpoints highlight with white border and glow
+5. Dashes animate to show direction of flow (source → target)
+
+#### User Interactions
+
+| Action | Result |
+|--------|--------|
+| Drag unplugged input | Can drop on available outlet |
+| Drop on outlet | Creates connection, colors update |
+| Hover connected input | Shows animated line to source outlet |
+| Hover connected outlet | Shows animated line to powered device |
+| Click connected input/outlet | Disconnects the connection |
+
+#### Connection Key Legends
+
+**Power Key (shown when Power tab active):**
+- UPS Available / UPS Connected
+- Surge Available / Surge Connected
+- Unplugged
+- Trouble (amber - reserved for warnings)
+
+**Network Key (shown when Network tab active):**
+- Port Available / Port Connected (standard)
+- PoE Available / PoE Connected
+- Uplink Available / Uplink Connected
+- Disconnected
+
+#### Files Created/Modified
+
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260120_create_equipment_connections.sql` | Database migration for connections table |
+| `src/services/equipmentConnectionService.js` | CRUD operations for connections |
+| `src/components/Rack/RackBackView.jsx` | Enhanced with drag-drop, connection lines, power key |
+| `src/pages/RackLayoutPage.js` | Added connection state, handlers, passes props to view |
+
+#### Service Functions (equipmentConnectionService.js)
+
+```javascript
+// Get all connections for a project
+getProjectConnections(projectId)
+
+// Create a new connection
+createConnection({ projectId, sourceEquipmentId, sourcePortNumber, sourcePortType, targetEquipmentId, targetPortNumber, connectionType, cableLabel, notes })
+
+// Delete a connection
+deleteConnection(connectionId)
+
+// Get power status for all equipment in a rack
+getRackPowerStatus(rackId)
+
+// Trace power chain from device back to UPS
+getPowerChain(equipmentId)
+
+// Get switch port usage (for network connections)
+getSwitchPortUsage(switchEquipmentId)
+```
+
+#### Global Part Properties for Connections
+
+**Power-related properties:**
+- `is_power_device` - True for UPS/PDU/power strips
+- `power_watts` - Power consumption in watts
+- `power_outlets` - Number of power inputs required
+- `power_outlets_provided` - Surge-only outlets provided
+- `ups_outlets_provided` - UPS battery-backed outlets provided
+- `power_output_watts` - Total power output capacity
+
+**Network-related properties:**
+- `is_network_switch` - True for network switches
+- `switch_ports` - Total number of switch ports
+- `poe_enabled` - True if switch has PoE capability
+- `uplink_ports` - Number of uplink/SFP ports
+- `has_network_port` - True if device has a network port (default true)
+- `network_ports` - Number of network ports (default 1)
+
+#### Future Enhancements
+
+1. **Power Chain View** - Show full path: Device → Power Strip → Surge → UPS
+2. **Quick-Create Power Strip** - Create power strips on the fly during connection
+3. **Warning States** - Use amber for overloaded circuits, disconnected chains
+4. **VLAN Assignment** - Assign VLANs to network connections
+5. **PoE Budget Tracking** - Track PoE power budget on switches
+
+---

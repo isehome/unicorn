@@ -1345,7 +1345,14 @@ export const projectEquipmentService = {
           exclude_from_rack,
           needs_shelf,
           shelf_u_height,
-          max_items_per_shelf
+          max_items_per_shelf,
+          is_network_switch,
+          switch_ports,
+          poe_enabled,
+          uplink_ports,
+          network_ports,
+          has_network_port,
+          is_wireless
         )
       `)
       .eq('project_id', projectId)
