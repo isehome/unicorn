@@ -14,6 +14,9 @@ import {
   Layers,
   Zap,
   Plug,
+  Sparkles,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import Button from './ui/Button';
 import { useTheme } from '../contexts/ThemeContext';
@@ -30,6 +33,11 @@ const PartDetailPage = () => {
   const [formState, setFormState] = useState(null);
   const [formError, setFormError] = useState('');
   const [uploadingSubmittal, setUploadingSubmittal] = useState(false);
+
+  // AI Search state
+  const [aiSearching, setAiSearching] = useState(false);
+  const [aiSearchResult, setAiSearchResult] = useState(null);
+  const [aiSearchError, setAiSearchError] = useState(null);
 
   const {
     data: part,
@@ -235,6 +243,70 @@ const PartDetailPage = () => {
     }));
   };
 
+  // AI-powered data search
+  const handleAiSearch = async () => {
+    if (!part?.id) return;
+
+    setAiSearching(true);
+    setAiSearchResult(null);
+    setAiSearchError(null);
+
+    console.log('[AI Search] Starting search for part:', part.name || part.part_number);
+
+    try {
+      // Use Vercel API in production, proxy in development
+      const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
+      const response = await fetch(`${apiBase}/api/enrich-single-part`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partId: part.id }),
+      });
+
+      const result = await response.json();
+      console.log('[AI Search] Response:', result);
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Search failed');
+      }
+
+      setAiSearchResult(result);
+
+      // Update form with AI-found data
+      if (result.data) {
+        const d = result.data;
+        setFormState((prev) => ({
+          ...prev,
+          // Rack layout
+          is_rack_mountable: d.is_rack_mountable ?? prev.is_rack_mountable,
+          u_height: d.u_height ?? prev.u_height,
+          needs_shelf: d.needs_shelf ?? prev.needs_shelf,
+          // Power
+          power_watts: d.power_watts ?? prev.power_watts,
+          power_outlets: d.power_outlets ?? prev.power_outlets,
+          is_power_device: d.is_power_device ?? prev.is_power_device,
+          power_outlets_provided: d.power_outlets_provided ?? prev.power_outlets_provided,
+          ups_outlets_provided: d.ups_battery_outlets ?? prev.ups_outlets_provided,
+          // Documentation URLs
+          install_manual_urls: d.install_manual_urls?.length > 0
+            ? d.install_manual_urls
+            : prev.install_manual_urls,
+          technical_manual_urls: d.user_guide_urls?.length > 0
+            ? d.user_guide_urls
+            : prev.technical_manual_urls,
+        }));
+      }
+
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: queryKeys.part(part.id) });
+
+    } catch (err) {
+      console.error('[AI Search] Error:', err);
+      setAiSearchError(err.message);
+    } finally {
+      setAiSearching(false);
+    }
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!formState.part_number.trim()) {
@@ -436,6 +508,73 @@ const PartDetailPage = () => {
               />
               <span>⚡ Required for prewire phase</span>
             </label>
+          </div>
+        </div>
+
+        {/* AI-Powered Data Search Section */}
+        <div className={styles.card + ' p-6 space-y-4'}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className={styles.sectionTitle + ' flex items-center gap-2'}>
+                <Sparkles className="h-4 w-4" />
+                AI-Powered Data Search
+              </p>
+              <p className={styles.textSecondary}>
+                Search for specifications, documentation links, and rack layout data automatically.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              onClick={handleAiSearch}
+              disabled={aiSearching}
+              className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white"
+            >
+              {aiSearching ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Searching the web...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Search for Data
+                </>
+              )}
+            </Button>
+
+            {/* Search Result */}
+            {aiSearchResult && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+                <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium mb-2">
+                  <CheckCircle className="h-4 w-4" />
+                  Data Found - Confidence: {Math.round((aiSearchResult.confidence || 0) * 100)}%
+                </div>
+                <p className="text-sm text-green-600 dark:text-green-400">
+                  {aiSearchResult.notes || 'Enrichment data has been applied to the form. Review and save to keep changes.'}
+                </p>
+                {aiSearchResult.data?.sources?.length > 0 && (
+                  <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+                    Sources: {aiSearchResult.data.sources.join(', ')}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Search Error */}
+            {aiSearchError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+                <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-medium">
+                  <XCircle className="h-4 w-4" />
+                  Search Failed
+                </div>
+                <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                  {aiSearchError}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

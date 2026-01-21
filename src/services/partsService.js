@@ -130,6 +130,81 @@ export const partsService = {
     return data || 0;
   },
 
+  // ══════════════════════════════════════════════════════════════
+  // AI ENRICHMENT REVIEW METHODS
+  // ══════════════════════════════════════════════════════════════
+
+  async getAIReviewCount() {
+    if (!supabase) return 0;
+
+    const { count, error } = await supabase
+      .from('global_parts')
+      .select('*', { count: 'exact', head: true })
+      .eq('ai_enrichment_status', 'needs_review');
+
+    if (error) {
+      console.error('Failed to get AI review count:', error);
+      return 0;
+    }
+
+    return count || 0;
+  },
+
+  async reviewPartEnrichment(partId, action, feedback = null, corrections = null) {
+    if (!supabase || !partId) throw new Error('Part ID is required');
+
+    const { data, error } = await supabase.rpc('review_part_enrichment', {
+      p_part_id: partId,
+      p_action: action,
+      p_feedback: feedback,
+      p_corrections: corrections,
+    });
+
+    if (error) {
+      console.error('Failed to review part enrichment:', error);
+      throw new Error(error.message || 'Failed to review part enrichment');
+    }
+
+    return data;
+  },
+
+  async resetPartEnrichment(partId) {
+    if (!supabase || !partId) throw new Error('Part ID is required');
+
+    const { data, error } = await supabase.rpc('reset_part_enrichment', {
+      p_part_id: partId,
+    });
+
+    if (error) {
+      console.error('Failed to reset part enrichment:', error);
+      throw new Error(error.message || 'Failed to reset part enrichment');
+    }
+
+    return data;
+  },
+
+  async triggerPartEnrichment(partId) {
+    if (!supabase || !partId) throw new Error('Part ID is required');
+
+    // Set status to pending so it gets picked up by the next cron run
+    const { error } = await supabase
+      .from('global_parts')
+      .update({
+        ai_enrichment_status: 'pending',
+        ai_enrichment_data: null,
+        ai_enrichment_notes: null,
+        ai_enrichment_confidence: null,
+      })
+      .eq('id', partId);
+
+    if (error) {
+      console.error('Failed to trigger part enrichment:', error);
+      throw new Error(error.message || 'Failed to trigger part enrichment');
+    }
+
+    return { success: true, message: 'Part will be enriched in next cron run' };
+  },
+
   async getById(id) {
     if (!supabase || !id) return null;
 

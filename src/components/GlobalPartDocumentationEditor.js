@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import PropTypes from 'prop-types';
-import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, CheckCircle, Upload, FileCheck } from 'lucide-react';
+import { FileText, Link as LinkIcon, Book, Trash2, Plus, Save, CheckCircle, Upload, FileCheck, Sparkles, AlertCircle } from 'lucide-react';
 import Button from './ui/Button';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../contexts/ThemeContext';
@@ -34,6 +34,10 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+
+  // AI Search state
+  const [searching, setSearching] = useState(false);
+  const [searchResult, setSearchResult] = useState(null);
 
   const handleAddInstallManual = () => {
     if (newInstallManual.trim()) {
@@ -110,6 +114,43 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setSubmittalSharepointItemId('');
   };
 
+  // AI Search for data
+  const handleSearchForData = async () => {
+    if (!part?.id) {
+      setError('No part ID provided');
+      return;
+    }
+
+    setSearching(true);
+    setError(null);
+    setSearchResult(null);
+
+    try {
+      const response = await fetch('/api/enrich-single-part', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partId: part.id })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Search failed');
+      }
+
+      setSearchResult(result);
+
+      // Dispatch event to refresh parts list
+      window.dispatchEvent(new CustomEvent('ai-review-completed'));
+
+    } catch (err) {
+      console.error('AI search failed:', err);
+      setError(err.message || 'Failed to search for data');
+    } finally {
+      setSearching(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!part?.id) {
       setError('No part ID provided');
@@ -162,6 +203,64 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
           <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
             Part #: {part.part_number}
           </p>
+        )}
+      </div>
+
+      {/* AI Search for Data Section */}
+      <div className={`rounded-lg border p-4 ${
+        isDark ? 'border-blue-800 bg-blue-900/20' : 'border-blue-200 bg-blue-50'
+      }`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-500" />
+              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                AI-Powered Data Search
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+              Search manufacturer websites to find power specs, port info, manuals, and more
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Sparkles}
+            onClick={handleSearchForData}
+            disabled={searching}
+            className="!bg-blue-600 !text-white hover:!bg-blue-700 dark:!bg-blue-500 dark:hover:!bg-blue-600"
+          >
+            {searching ? (
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Searching...
+              </span>
+            ) : (
+              'Search for Data'
+            )}
+          </Button>
+        </div>
+
+        {/* Search Result */}
+        {searchResult && (
+          <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+            <div className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-green-700 dark:text-green-300">
+                  Data found! Confidence: {Math.round((searchResult.confidence || 0) * 100)}%
+                </p>
+                {searchResult.notes && (
+                  <p className="mt-1 text-xs text-green-600 dark:text-green-400">
+                    {searchResult.notes}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-green-600 dark:text-green-400">
+                  Part is now ready for AI Review. Close this modal and click "Review AI" to see the data.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
