@@ -22,9 +22,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Use Gemini 3 Pro for document research - most capable model for accurate results
-// Available models: gemini-3-pro, gemini-3-flash, gemini-2.5-pro, gemini-2.5-flash
-const GEMINI_MODEL = 'gemini-3-pro';
+// Use Gemini 3 Pro for document research - most intelligent model
+// Model name from: https://ai.google.dev/gemini-api/docs/gemini-3
+const GEMINI_MODEL = 'gemini-3-pro-preview';
 
 // Lazy initialize Supabase client
 let supabase;
