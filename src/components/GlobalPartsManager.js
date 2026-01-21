@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, FileText, Package, Edit2, Wrench, ExternalLink, Sparkles, CheckCircle } from 'lucide-react';
+import { Search, FileText, Package, Edit2, Wrench, ExternalLink, Sparkles, CheckCircle, Zap, Bot } from 'lucide-react';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
+import GlobalPartAIReviewModal from './GlobalPartAIReviewModal';
 import { supabase } from '../lib/supabase';
 import { partsService } from '../services/partsService';
 import { useTheme } from '../contexts/ThemeContext';
@@ -21,11 +22,14 @@ const GlobalPartsManager = () => {
   const [error, setError] = useState(null);
   const [selectedPart, setSelectedPart] = useState(null);
   const [showEditor, setShowEditor] = useState(false);
-  const [filter, setFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new'
+  const [filter, setFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new', 'ai_review'
   const [editingInventory, setEditingInventory] = useState(null); // { partId, quantity }
   const [savingInventory, setSavingInventory] = useState(null); // partId being saved
   const [newPartsCount, setNewPartsCount] = useState(0);
   const [markingAllReviewed, setMarkingAllReviewed] = useState(false);
+  const [aiReviewCount, setAiReviewCount] = useState(0);
+  const [showAIReview, setShowAIReview] = useState(false);
+  const [selectedPartForAIReview, setSelectedPartForAIReview] = useState(null);
 
   useEffect(() => {
     loadParts();
@@ -41,6 +45,8 @@ const GlobalPartsManager = () => {
       filtered = filtered.filter(part => part.required_for_prewire !== true);
     } else if (filter === 'new') {
       filtered = filtered.filter(part => part.needs_review === true);
+    } else if (filter === 'ai_review') {
+      filtered = filtered.filter(part => part.ai_enrichment_status === 'needs_review');
     }
 
     // Apply search filter
@@ -60,6 +66,10 @@ const GlobalPartsManager = () => {
     // Update new parts count
     const newCount = parts.filter(p => p.needs_review === true).length;
     setNewPartsCount(newCount);
+
+    // Update AI review count
+    const aiCount = parts.filter(p => p.ai_enrichment_status === 'needs_review').length;
+    setAiReviewCount(aiCount);
   }, [searchQuery, parts, filter]);
 
   const loadParts = async () => {
@@ -89,7 +99,19 @@ const GlobalPartsManager = () => {
           quantity_on_hand,
           reorder_point,
           warehouse_location,
-          needs_review
+          needs_review,
+          power_watts,
+          total_ports,
+          poe_ports,
+          poe_port_list,
+          ups_battery_outlets,
+          ups_surge_only_outlets,
+          user_guide_urls,
+          ai_enrichment_status,
+          ai_enrichment_data,
+          ai_enrichment_notes,
+          ai_enrichment_confidence,
+          ai_last_enriched_at
         `)
         .order('part_number', { ascending: true });
 
@@ -245,6 +267,41 @@ const GlobalPartsManager = () => {
       setMarkingAllReviewed(false);
     }
   }, [filter]);
+
+  // AI Review handlers
+  const handleOpenAIReview = useCallback((part) => {
+    setSelectedPartForAIReview(part);
+    setShowAIReview(true);
+  }, []);
+
+  const handleSaveAIReview = useCallback((updatedPart) => {
+    setParts(prev =>
+      prev.map(p =>
+        p.id === updatedPart.id ? { ...p, ...updatedPart } : p
+      )
+    );
+    setShowAIReview(false);
+    setSelectedPartForAIReview(null);
+
+    // If we're on AI review filter and status changed, the part will be filtered out
+    // automatically by the filter effect
+  }, []);
+
+  const handleCancelAIReview = useCallback(() => {
+    setShowAIReview(false);
+    setSelectedPartForAIReview(null);
+  }, []);
+
+  // Listen for AI review completed events (from modal)
+  useEffect(() => {
+    const handleAIReviewCompleted = () => {
+      // Reload parts to get updated data
+      loadParts();
+    };
+
+    window.addEventListener('ai-review-completed', handleAIReviewCompleted);
+    return () => window.removeEventListener('ai-review-completed', handleAIReviewCompleted);
+  }, []);
 
   // ══════════════════════════════════════════════════════════════
   // AI VOICE COPILOT INTEGRATION
@@ -463,6 +520,28 @@ const GlobalPartsManager = () => {
           >
             Trim Prep
           </button>
+          <button
+            onClick={() => setFilter('ai_review')}
+            className={`relative rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              filter === 'ai_review'
+                ? 'bg-blue-500 text-white dark:bg-blue-600'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-1.5">
+              <Bot className="h-3.5 w-3.5" />
+              AI Review
+              {aiReviewCount > 0 && (
+                <span className={`ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
+                  filter === 'ai_review'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-blue-500 text-white'
+                }`}>
+                  {aiReviewCount > 99 ? '99+' : aiReviewCount}
+                </span>
+              )}
+            </span>
+          </button>
         </div>
       </div>
 
@@ -509,6 +588,12 @@ const GlobalPartsManager = () => {
                         New
                       </span>
                     )}
+                    {part.ai_enrichment_status === 'needs_review' && (
+                      <span className="shrink-0 flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                        <Bot className="h-3 w-3" />
+                        AI
+                      </span>
+                    )}
                     {part.required_for_prewire && (
                       <span className="shrink-0 rounded bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
                         Prewire
@@ -534,6 +619,17 @@ const GlobalPartsManager = () => {
                     >
                       <CheckCircle className="h-3 w-3" />
                     </button>
+                  )}
+                  {part.ai_enrichment_status === 'needs_review' && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={Bot}
+                      onClick={() => handleOpenAIReview(part)}
+                      className="!bg-blue-100 !text-blue-700 hover:!bg-blue-200 dark:!bg-blue-900/30 dark:!text-blue-400 dark:hover:!bg-blue-900/50"
+                    >
+                      Review AI
+                    </Button>
                   )}
                   <Button
                     variant="secondary"
@@ -704,6 +800,17 @@ const GlobalPartsManager = () => {
             part={selectedPart}
             onSave={handleSaveDocumentation}
             onCancel={handleCancelEdit}
+          />
+        </Modal>
+      )}
+
+      {/* AI Review Modal */}
+      {showAIReview && selectedPartForAIReview && (
+        <Modal isOpen={showAIReview} onClose={handleCancelAIReview} size="xl">
+          <GlobalPartAIReviewModal
+            part={selectedPartForAIReview}
+            onSave={handleSaveAIReview}
+            onCancel={handleCancelAIReview}
           />
         </Modal>
       )}

@@ -392,6 +392,11 @@ const RackBackView = ({
   // State for connection line visualization on hover
   const [hoveredConnection, setHoveredConnection] = useState(null);
   const [lineCoords, setLineCoords] = useState(null);
+  // State for pinned/clicked connection (persists until click elsewhere)
+  const [pinnedConnection, setPinnedConnection] = useState(null);
+  const [pinnedLineCoords, setPinnedLineCoords] = useState(null);
+  // State for wire drop modal
+  const [wireDropModal, setWireDropModal] = useState(null);
   const functionalContainerRef = useRef(null);
   const containerRef = useRef(null);
   const outletRefs = useRef({});
@@ -407,6 +412,29 @@ const RackBackView = ({
   });
 
   const totalU = rack?.total_u || 42;
+
+  // Debug: Log gateway devices when they change
+  React.useEffect(() => {
+    const gateways = haDevices.filter(d => d.category === 'gateway');
+    if (gateways.length > 0) {
+      console.log('[RackBackView] Gateway devices found:', gateways.map(g => ({
+        name: g.name,
+        mac: g.mac,
+        category: g.category,
+        portTableLength: g.port_table?.length || 0,
+        portTable: g.port_table
+      })));
+    }
+    console.log('[RackBackView] Total haDevices:', haDevices.length);
+    console.log('[RackBackView] Total haClients:', haClients.length);
+
+    // Log equipment with their MAC addresses for debugging connections
+    console.log('[RackBackView] Equipment MAC mappings:', equipment.map(e => ({
+      id: e.id,
+      name: e.instance_name || e.name,
+      ha_client_mac: e.ha_client_mac,
+    })));
+  }, [haDevices, haClients, equipment]);
 
   // Find the selected rack index for display
   const selectedRackIndex = racks.findIndex(r => r.id === selectedRackId);
@@ -466,6 +494,68 @@ const RackBackView = ({
       isWired: haClient.is_wired,
     };
   }, [getNetworkInfoProp, haDevices, haClients]);
+
+  // Helper to check if equipment is a "port host" (switch or gateway with ports)
+  // These devices show their ports on the RIGHT side and other devices connect to them
+  const isPortHost = useCallback((eq) => {
+    // Check if marked as network switch in global_parts
+    if (eq.global_part?.is_network_switch) return true;
+
+    // Check if it's a gateway in HA device data (like Dream Machine)
+    const mac = eq.ha_client_mac?.toLowerCase();
+    if (mac) {
+      const haDevice = haDevices.find(d => d.mac?.toLowerCase() === mac);
+      // Debug: log gateway port detection
+      if (haDevice?.category === 'gateway') {
+        console.log('[Gateway Debug]', eq.instance_name, {
+          mac,
+          haDevice,
+          portTableLength: haDevice?.port_table?.length
+        });
+      }
+      if (haDevice?.category === 'gateway' && haDevice?.port_table?.length > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [haDevices]);
+
+  // Find gateway device and its WAN port info for the WAN modem visualization
+  const gatewayWanInfo = useMemo(() => {
+    // Find gateway in HA devices
+    const gateway = haDevices.find(d => d.category === 'gateway');
+    if (!gateway || !gateway.port_table) return null;
+
+    // Find WAN ports (is_uplink: true on gateway means WAN)
+    const wanPorts = gateway.port_table.filter(p => p.is_uplink);
+    const activeWanPorts = wanPorts.filter(p => p.up);
+
+    // Find equipment in rack that matches this gateway
+    const gatewayEquipment = equipment.find(eq =>
+      eq.ha_client_mac?.toLowerCase() === gateway.mac?.toLowerCase()
+    );
+
+    return {
+      gateway: {
+        name: gateway.name,
+        mac: gateway.mac,
+        ip: gateway.ip, // This is the WAN IP
+        model: gateway.model,
+        category: gateway.category,
+        portTable: gateway.port_table,
+        equipment: gatewayEquipment,
+      },
+      wanPorts: wanPorts.map(p => ({
+        portIdx: p.port_idx,
+        name: p.name,
+        up: p.up,
+        speed: p.speed,
+      })),
+      activeWanCount: activeWanPorts.length,
+      wanIp: gateway.ip, // WAN IP address
+    };
+  }, [haDevices, equipment]);
 
   // Sort equipment by rack position (descending - top of rack first)
   const sortedEquipment = useMemo(() => {
@@ -1203,15 +1293,35 @@ const RackBackView = ({
     // Uses HA data to show live connections based on switch_name/switch_port
     const renderNetworkInfo = (eq) => {
       const isNetworkSwitch = eq.global_part?.is_network_switch;
-      const switchPorts = eq.global_part?.switch_ports || 0;
-      const poeEnabled = eq.global_part?.poe_enabled;
-      const uplinkPorts = eq.global_part?.uplink_ports || 0;
       const hasNetworkPort = eq.global_part?.has_network_port !== false; // Default true for most devices
 
       // Get this equipment's HA network info
       const networkInfo = getNetworkInfo(eq);
       const switchName = networkInfo?.switchName;
       const switchPort = networkInfo?.switchPort;
+
+      // Check if this is a gateway or switch with ports from HA
+      // Look up the HA device data to get real-time port info
+      const mac = eq.ha_client_mac?.toLowerCase();
+      const haDevice = mac ? haDevices.find(d => d.mac?.toLowerCase() === mac) : null;
+      const isGateway = haDevice?.category === 'gateway';
+      const haPortTable = haDevice?.port_table || [];
+
+      // Use HA port count if available, fallback to global_part
+      const switchPorts = haPortTable.length > 0
+        ? haPortTable.length
+        : (haDevice?.ports_total || eq.global_part?.switch_ports || 0);
+
+      // Detect uplink ports from HA data (is_uplink flag) instead of static value
+      const uplinkPortsFromHA = haPortTable.filter(p => p.is_uplink).length;
+      const uplinkPorts = uplinkPortsFromHA > 0 ? uplinkPortsFromHA : (eq.global_part?.uplink_ports || 0);
+
+      // Detect PoE from HA data per-port, or fallback to global_part
+      const hasPoEPorts = haPortTable.some(p => p.poe_enable);
+      const poeEnabled = hasPoEPorts || eq.global_part?.poe_enabled;
+
+      // Determine if this device should show switch-style ports
+      const showSwitchPorts = (isNetworkSwitch || isGateway) && switchPorts > 0;
 
       // Network colors
       const NETWORK = {
@@ -1223,12 +1333,16 @@ const RackBackView = ({
       };
 
       // For switches: build a map of which ports have devices connected (from HA data)
-      // Look through all equipment to find devices that report being connected to this switch
+      // This checks THREE sources:
+      // 1. Equipment in the rack that's linked to HA clients
+      // 2. All HA clients (network devices like computers, phones) reporting connection to this switch
+      // 3. All HA devices (infrastructure like APs) with uplink info pointing to this switch
       const getPortConnections = () => {
         const portMap = new Map();
 
         // Get this switch's HA client data (the friendly name is how other devices identify which switch they're connected to)
         const switchNetInfo = getNetworkInfo(eq);
+        const switchMac = switchNetInfo?.mac?.toLowerCase();
 
         // Build list of possible names for this switch (in priority order)
         // 1. HA client hostname (friendly name from UniFi) - this is what other devices report as switch_name
@@ -1245,37 +1359,173 @@ const RackBackView = ({
           eq.global_part?.model
         ].filter(Boolean).map(n => n.toLowerCase());
 
-        // Look through all equipment's HA client data to find what's connected to this switch
+        // Helper to check if a switch_name matches this switch
+        const matchesSwitchName = (reportedSwitchName) => {
+          if (!reportedSwitchName) return false;
+          const name = reportedSwitchName.toLowerCase();
+          return possibleSwitchNames.some(swName =>
+            name.includes(swName) || swName.includes(name)
+          );
+        };
+
+        // 1. Look through all equipment's HA client data to find what's connected to this switch
         equipment.forEach(otherEq => {
           if (otherEq.id === eq.id) return; // Skip self
 
           const otherNetInfo = getNetworkInfo(otherEq);
           if (otherNetInfo?.switchName && otherNetInfo?.switchPort) {
-            // Check if this device is connected to our switch
-            const otherSwitchName = otherNetInfo.switchName.toLowerCase();
-
-            // Match if any of the switch's possible names match the reported switch_name
-            const isMatch = possibleSwitchNames.some(name =>
-              otherSwitchName.includes(name) || name.includes(otherSwitchName)
-            );
-
-            if (isMatch) {
+            if (matchesSwitchName(otherNetInfo.switchName)) {
               portMap.set(otherNetInfo.switchPort, {
                 equipment: otherEq,
                 switchPort: otherNetInfo.switchPort,
                 isOnline: otherNetInfo.isOnline,
                 ip: otherNetInfo.ip,
                 hostname: otherNetInfo.hostname,
+                source: 'equipment',
               });
             }
           }
         });
 
+        // 2. Check all HA clients (network devices) that report being connected to this switch
+        // Try to link them back to rack equipment via MAC address
+        haClients.forEach(client => {
+          if (!client.switch_name || !client.switch_port) return;
+          if (portMap.has(client.switch_port)) return; // Already have equipment on this port
+
+          if (matchesSwitchName(client.switch_name)) {
+            // Try to find rack equipment with this MAC
+            const linkedEquipment = client.mac
+              ? equipment.find(e => e.ha_client_mac?.toLowerCase() === client.mac.toLowerCase())
+              : null;
+
+            portMap.set(client.switch_port, {
+              equipment: linkedEquipment || null,
+              switchPort: client.switch_port,
+              isOnline: client.is_online !== false,
+              ip: client.ip,
+              hostname: client.hostname || client.mac,
+              mac: client.mac,
+              source: linkedEquipment ? 'ha_client_linked' : 'ha_client',
+            });
+          }
+        });
+
+        // 3. Check all HA devices (infrastructure like APs) that have uplink pointing to this switch
+        // Try to link them back to rack equipment via MAC address
+        haDevices.forEach(device => {
+          if (!device.uplink_switch_port) return;
+          if (portMap.has(device.uplink_switch_port)) return; // Already have something on this port
+
+          // Match by switch MAC or name
+          const matchesByMac = switchMac && device.uplink_switch_mac?.toLowerCase() === switchMac;
+          const matchesByName = matchesSwitchName(device.uplink_switch_name);
+
+          if (matchesByMac || matchesByName) {
+            // Try to find rack equipment with this MAC
+            const linkedEquipment = device.mac
+              ? equipment.find(e => e.ha_client_mac?.toLowerCase() === device.mac.toLowerCase())
+              : null;
+
+            portMap.set(device.uplink_switch_port, {
+              equipment: linkedEquipment || null,
+              switchPort: device.uplink_switch_port,
+              isOnline: device.is_online !== false,
+              ip: device.ip,
+              hostname: device.name,
+              mac: device.mac,
+              category: device.category, // 'access_point', 'switch', 'gateway'
+              numStations: device.num_sta,
+              source: linkedEquipment ? 'ha_device_linked' : 'ha_device',
+            });
+          }
+        });
+
+        // 4. Check HA port_table for connected device MACs (lldp_remote_mac, mac, port_mac)
+        // This catches devices that are connected but not reporting their switch connection
+        if (haPortTable.length > 0) {
+          haPortTable.forEach(port => {
+            if (portMap.has(port.port_idx)) return; // Already identified
+            if (!port.up) return; // Port is down
+
+            const portMac = port.lldp_remote_mac || port.mac || port.port_mac;
+
+            // Always try to find rack equipment by MAC first
+            const linkedEquipment = portMac
+              ? equipment.find(e => e.ha_client_mac?.toLowerCase() === portMac.toLowerCase())
+              : null;
+
+            if (portMac) {
+              // Try to find this MAC in haDevices or haClients for additional info
+              const connectedDevice = haDevices.find(d =>
+                d.mac?.toLowerCase() === portMac.toLowerCase()
+              );
+              const connectedClient = haClients.find(c =>
+                c.mac?.toLowerCase() === portMac.toLowerCase()
+              );
+
+              if (connectedDevice) {
+                portMap.set(port.port_idx, {
+                  equipment: linkedEquipment || null,
+                  switchPort: port.port_idx,
+                  isOnline: connectedDevice.is_online !== false,
+                  ip: connectedDevice.ip,
+                  hostname: connectedDevice.name,
+                  mac: portMac,
+                  category: connectedDevice.category,
+                  source: linkedEquipment ? 'ha_port_table_device_linked' : 'ha_port_table_device',
+                });
+              } else if (connectedClient) {
+                portMap.set(port.port_idx, {
+                  equipment: linkedEquipment || null,
+                  switchPort: port.port_idx,
+                  isOnline: connectedClient.is_online !== false,
+                  ip: connectedClient.ip,
+                  hostname: connectedClient.hostname,
+                  mac: portMac,
+                  source: linkedEquipment ? 'ha_port_table_client_linked' : 'ha_port_table_client',
+                });
+              } else if (linkedEquipment) {
+                // Found equipment by MAC but not in HA devices/clients
+                portMap.set(port.port_idx, {
+                  equipment: linkedEquipment,
+                  switchPort: port.port_idx,
+                  isOnline: true,
+                  ip: null,
+                  hostname: getEquipmentDisplayName(linkedEquipment),
+                  mac: portMac,
+                  source: 'ha_port_table_equipment_only',
+                });
+              } else {
+                // Port is up but device not identified - show as active but unknown
+                portMap.set(port.port_idx, {
+                  equipment: null,
+                  switchPort: port.port_idx,
+                  isOnline: true,
+                  hostname: `Active (${portMac?.substring(0, 8) || 'no MAC'}...)`,
+                  mac: portMac,
+                  source: 'ha_port_up_unknown',
+                });
+              }
+            } else if (port.up) {
+              // Port is up but no MAC - still show as active
+              portMap.set(port.port_idx, {
+                equipment: null,
+                switchPort: port.port_idx,
+                isOnline: true,
+                hostname: 'Active device',
+                source: 'ha_port_up_no_mac',
+              });
+            }
+          });
+        }
+
         return portMap;
       };
 
       // Render a single switch port with port number
-      const renderSwitchPort = (portNum, portType, isPoe = false, isUplink = false, connectedDevice = null) => {
+      // isPortUp: whether the physical port shows link (from HA port_table)
+      const renderSwitchPort = (portNum, portType, isPoe = false, isUplink = false, connectedDevice = null, isPortUp = null) => {
         const portRefKey = `${eq.id}-switch-${portNum}`;
         const isConnected = !!connectedDevice;
         const isDragTarget = draggingNetworkPort && !isConnected;
@@ -1284,52 +1534,196 @@ const RackBackView = ({
         let portColor = isUplink ? NETWORK.uplink : (isPoe ? NETWORK.poe : NETWORK.standard);
         if (isConnected) {
           portColor = connectedDevice.isOnline ? NETWORK.connected : NETWORK.warning;
+        } else if (isPortUp === true && !isConnected) {
+          // Port is active but device not identified - show as blue
+          portColor = '#3B82F6'; // blue - active but unidentified
         }
 
-        const bgColorValue = isConnected ? portColor : '#3f3f46';
-        const iconColorValue = isConnected ? '#ffffff' : '#a1a1aa';
+        // Dim ports that are definitively down
+        const isDown = isPortUp === false;
+        const bgColorValue = isConnected || isPortUp ? portColor : '#3f3f46';
+        const iconColorValue = isConnected ? '#ffffff' : (isPortUp ? '#ffffff' : '#a1a1aa');
+        const portOpacity = isDown ? 0.4 : 1;
 
         // Build tooltip
         let title = `Port ${portNum}`;
         if (isPoe) title += ' (PoE)';
         if (isUplink) title += ' (Uplink)';
         if (isConnected) {
-          const deviceName = getEquipmentDisplayName(connectedDevice.equipment);
+          // Get device name - either from linked equipment or from HA data
+          let deviceName;
+          if (connectedDevice.equipment) {
+            deviceName = getEquipmentDisplayName(connectedDevice.equipment);
+          } else {
+            deviceName = connectedDevice.hostname || connectedDevice.mac || 'Unknown Device';
+            // Add category indicator for infrastructure devices
+            if (connectedDevice.category === 'access_point') {
+              deviceName = `📡 ${deviceName}`;
+              if (connectedDevice.numStations) {
+                deviceName += ` (${connectedDevice.numStations} stations)`;
+              }
+            } else if (connectedDevice.category === 'switch') {
+              deviceName = `🔀 ${deviceName}`;
+            } else if (connectedDevice.category === 'gateway') {
+              deviceName = `🌐 ${deviceName}`;
+            }
+          }
           title = `Port ${portNum}: ${deviceName}`;
           if (connectedDevice.ip) title += ` (${connectedDevice.ip})`;
           title += connectedDevice.isOnline ? ' - Online' : ' - Offline';
+          // Show source for debugging
+          if (!connectedDevice.equipment && connectedDevice.source) {
+            title += ` [${connectedDevice.source}]`;
+          }
         }
 
-        // Check if this port is highlighted
-        const isHighlighted = hoveredConnection?.switchId === eq.id &&
-                             hoveredConnection?.portNum === portNum;
+        // Check if this port is highlighted (hover or pinned)
+        const isHighlighted = (hoveredConnection?.switchId === eq.id && hoveredConnection?.portNum === portNum) ||
+                             (pinnedConnection?.switchId === eq.id && pinnedConnection?.portNum === portNum);
+
+        // Helper to calculate connection line coords between this switch port and the connected device
+        const calculateLineCoords = () => {
+          const container = functionalContainerRef.current;
+          const switchPortEl = switchPortRefs.current[portRefKey];
+          if (!switchPortEl || !container) {
+            console.log('[Line Coords] Missing container or switch port element', { portRefKey, hasContainer: !!container });
+            return null;
+          }
+
+          const switchRect = switchPortEl.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+
+          // Calculate switch port center relative to container
+          const x1 = switchRect.left + switchRect.width / 2 - containerRect.left;
+          const y1 = switchRect.top + switchRect.height / 2 - containerRect.top;
+
+          // Find the target device element
+          let targetEl = null;
+          let targetName = 'unknown';
+
+          // For equipment connections, find the connected device's network port
+          if (connectedDevice?.equipment) {
+            const deviceRefKey = `${connectedDevice.equipment.id}-device-1`;
+            targetEl = devicePortRefs.current[deviceRefKey];
+            targetName = `equipment:${connectedDevice.equipment.id}`;
+          }
+
+          // If not found, try by MAC in equipment list
+          if (!targetEl && connectedDevice?.mac) {
+            const matchingEquipment = equipment.find(e =>
+              e.ha_client_mac?.toLowerCase() === connectedDevice.mac?.toLowerCase()
+            );
+            if (matchingEquipment) {
+              const deviceRefKey = `${matchingEquipment.id}-device-1`;
+              targetEl = devicePortRefs.current[deviceRefKey];
+              targetName = `mac-match:${matchingEquipment.id}`;
+            }
+          }
+
+          if (targetEl) {
+            const deviceRect = targetEl.getBoundingClientRect();
+            const x2 = deviceRect.left + deviceRect.width / 2 - containerRect.left;
+            const y2 = deviceRect.top + deviceRect.height / 2 - containerRect.top;
+
+            console.log('[Line Coords] Success', {
+              portNum,
+              targetName,
+              from: { x1, y1 },
+              to: { x2, y2 },
+              switchRect: { top: switchRect.top, left: switchRect.left },
+              deviceRect: { top: deviceRect.top, left: deviceRect.left },
+              containerRect: { top: containerRect.top, left: containerRect.left },
+            });
+
+            return {
+              x1,
+              y1,
+              x2,
+              y2,
+              color: portColor,
+              connectionType: 'network',
+            };
+          }
+
+          console.log('[Line Coords] No target element found', {
+            portNum,
+            hasEquipment: !!connectedDevice?.equipment,
+            mac: connectedDevice?.mac,
+            availableRefs: Object.keys(devicePortRefs.current),
+          });
+
+          return null;
+        };
+
+        // Handle click to pin/toggle connection line
+        const handlePortClick = (e) => {
+          e.stopPropagation();
+
+          // If already pinned to this port, unpin
+          if (pinnedConnection?.switchId === eq.id && pinnedConnection?.portNum === portNum) {
+            setPinnedConnection(null);
+            setPinnedLineCoords(null);
+            setWireDropModal(null);
+            return;
+          }
+
+          // If port has a connection, pin it
+          if (isConnected && connectedDevice) {
+            const connectionInfo = {
+              switchId: eq.id,
+              portNum,
+              deviceId: connectedDevice.equipment?.id || null,
+              connectedDevice,
+              portColor,
+            };
+            setPinnedConnection(connectionInfo);
+
+            // Calculate line coords after a short delay to ensure refs are set
+            setTimeout(() => {
+              const coords = calculateLineCoords();
+              setPinnedLineCoords(coords);
+            }, 10);
+
+            // If connected via wire drop, show wire drop modal
+            if (connectedDevice.wireDrop) {
+              setWireDropModal({
+                wireDrop: connectedDevice.wireDrop,
+                equipment: connectedDevice.equipment,
+                portNum,
+              });
+            }
+          } else if (isPortUp) {
+            // Active port but no identified device - still allow highlighting
+            setPinnedConnection({ switchId: eq.id, portNum, deviceId: null });
+            setPinnedLineCoords(null);
+          }
+        };
 
         // Handle hover to show connection line
-        const handlePortHover = (e) => {
+        const handlePortHover = () => {
           if (isConnected && connectedDevice) {
-            setHoveredConnection({ switchId: eq.id, portNum, deviceId: connectedDevice.equipment.id });
+            // Check if device is linked to rack equipment (either directly or via MAC match)
+            const hasEquipment = connectedDevice.equipment ||
+              (connectedDevice.mac && equipment.some(e =>
+                e.ha_client_mac?.toLowerCase() === connectedDevice.mac?.toLowerCase()
+              ));
 
-            const portEl = e.currentTarget;
-            const container = functionalContainerRef.current;
-            if (portEl && container) {
-              const portRect = portEl.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-
-              // Find the device's network port element
-              const deviceRefKey = `${connectedDevice.equipment.id}-device-1`;
-              const deviceEl = devicePortRefs.current[deviceRefKey];
-
-              if (deviceEl) {
-                const deviceRect = deviceEl.getBoundingClientRect();
-                setLineCoords({
-                  x1: portRect.left + portRect.width / 2 - containerRect.left,
-                  y1: portRect.top + portRect.height / 2 - containerRect.top,
-                  x2: deviceRect.left + deviceRect.width / 2 - containerRect.left,
-                  y2: deviceRect.top + deviceRect.height / 2 - containerRect.top,
-                  color: portColor,
-                  connectionType: 'network',
-                });
-              }
+            if (hasEquipment) {
+              setHoveredConnection({
+                switchId: eq.id,
+                portNum,
+                deviceId: connectedDevice.equipment?.id || null,
+                mac: connectedDevice.mac
+              });
+              // Calculate coords after a short delay
+              setTimeout(() => {
+                const coords = calculateLineCoords();
+                if (coords) setLineCoords(coords);
+              }, 10);
+            } else {
+              // For non-equipment connections (HA clients/devices not in rack),
+              // just highlight the port without drawing a line
+              setHoveredConnection({ switchId: eq.id, portNum, deviceId: null });
             }
           }
         };
@@ -1343,15 +1737,17 @@ const RackBackView = ({
           <div
             key={`switch-${portNum}`}
             ref={(el) => { switchPortRefs.current[portRefKey] = el; }}
-            className="flex flex-col items-center gap-0.5"
+            className="flex flex-col items-center gap-0.5 cursor-pointer"
+            style={{ opacity: portOpacity }}
             onMouseEnter={handlePortHover}
             onMouseLeave={handlePortLeave}
+            onClick={handlePortClick}
           >
             <div
               className="w-5 h-5 rounded flex items-center justify-center relative transition-all duration-150"
               style={{
                 backgroundColor: isHighlighted ? portColor : bgColorValue,
-                border: `2px solid ${isDragTarget ? '#8B5CF6' : (isHighlighted ? '#ffffff' : (isConnected ? portColor : '#52525b'))}`,
+                border: `2px solid ${isDragTarget ? '#8B5CF6' : (isHighlighted ? '#ffffff' : (isConnected || isPortUp ? portColor : '#52525b'))}`,
                 transform: isHighlighted ? 'scale(1.15)' : 'scale(1)',
                 boxShadow: isHighlighted ? `0 0 8px ${portColor}` : 'none',
               }}
@@ -1371,8 +1767,9 @@ const RackBackView = ({
         // Check if this device is connected via HA data
         const isConnectedViaHA = switchName && switchPort;
 
-        // Check if highlighted (when hovering the switch port this connects to)
-        const isHighlighted = hoveredConnection?.deviceId === eq.id;
+        // Check if highlighted (when hovering OR pinned)
+        const isHighlighted = hoveredConnection?.deviceId === eq.id ||
+                             pinnedConnection?.deviceId === eq.id;
 
         // Color based on connection state
         let bgColorValue = '#3f3f46'; // disconnected = gray
@@ -1389,18 +1786,96 @@ const RackBackView = ({
           title += networkInfo?.isOnline ? ' - Online' : ' - Offline';
         }
 
+        // Find the switch/gateway equipment that this device connects to
+        const findSwitchEquipment = () => {
+          if (!isConnectedViaHA) return null;
+
+          // First, try to find by checking HA devices/clients to get the switch MAC
+          const myMac = eq.ha_client_mac?.toLowerCase();
+          let upstreamSwitchMac = null;
+
+          // Check HA clients for this device's upstream switch
+          const myHaClient = haClients.find(c => c.mac?.toLowerCase() === myMac);
+          if (myHaClient?.switch_mac) {
+            upstreamSwitchMac = myHaClient.switch_mac.toLowerCase();
+          }
+
+          // Check HA devices for this device's upstream switch
+          const myHaDevice = haDevices.find(d => d.mac?.toLowerCase() === myMac);
+          if (myHaDevice?.uplink_switch_mac) {
+            upstreamSwitchMac = myHaDevice.uplink_switch_mac.toLowerCase();
+          }
+
+          // If we have the upstream switch MAC, find equipment by MAC
+          if (upstreamSwitchMac) {
+            const matchByMac = equipment.find(sw =>
+              sw.ha_client_mac?.toLowerCase() === upstreamSwitchMac
+            );
+            if (matchByMac) return matchByMac;
+          }
+
+          // Fallback: match by switch name (for switches and gateways)
+          return equipment.find(sw => {
+            // Check if it's a network switch or gateway
+            const isPortHost = sw.global_part?.is_network_switch ||
+              haDevices.some(d =>
+                d.mac?.toLowerCase() === sw.ha_client_mac?.toLowerCase() &&
+                (d.category === 'switch' || d.category === 'gateway')
+              );
+            if (!isPortHost) return false;
+
+            const swName = (sw.instance_name || sw.name || sw.global_part?.name || '').toLowerCase();
+            const targetName = switchName.toLowerCase();
+            return swName.includes(targetName) || targetName.includes(swName) ||
+                   (sw.model && targetName.includes(sw.model.toLowerCase()));
+          });
+        };
+
+        // Handle click to pin/toggle connection line
+        const handleDevicePortClick = (e) => {
+          e.stopPropagation();
+
+          // If already pinned to this device, unpin
+          if (pinnedConnection?.deviceId === eq.id) {
+            setPinnedConnection(null);
+            setPinnedLineCoords(null);
+            return;
+          }
+
+          // If connected, find switch and pin the connection
+          if (isConnectedViaHA) {
+            const switchEq = findSwitchEquipment();
+            if (switchEq) {
+              setPinnedConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
+
+              // Calculate line coords
+              const portEl = e.currentTarget;
+              const container = functionalContainerRef.current;
+              if (portEl && container) {
+                const portRect = portEl.getBoundingClientRect();
+                const containerRect = container.getBoundingClientRect();
+                const switchPortRefKey = `${switchEq.id}-switch-${switchPort}`;
+                const switchPortEl = switchPortRefs.current[switchPortRefKey];
+                if (switchPortEl) {
+                  const switchRect = switchPortEl.getBoundingClientRect();
+                  setPinnedLineCoords({
+                    x1: switchRect.left + switchRect.width / 2 - containerRect.left,
+                    y1: switchRect.top + switchRect.height / 2 - containerRect.top,
+                    x2: portRect.left + portRect.width / 2 - containerRect.left,
+                    y2: portRect.top + portRect.height / 2 - containerRect.top,
+                    color: bgColorValue,
+                    connectionType: 'network',
+                  });
+                }
+              }
+            }
+          }
+        };
+
         // Handle hover to find and highlight the switch port
         const handleDevicePortHover = (e) => {
           if (isConnectedViaHA) {
-            // Find the switch equipment that matches switchName
-            const switchEq = equipment.find(sw => {
-              if (!sw.global_part?.is_network_switch) return false;
-              const swName = (sw.instance_name || sw.name || sw.global_part?.name || '').toLowerCase();
-              const targetName = switchName.toLowerCase();
-              return swName.includes(targetName) || targetName.includes(swName) ||
-                     (sw.model && targetName.includes(sw.model.toLowerCase()));
-            });
-
+            const switchEq = findSwitchEquipment();
             if (switchEq) {
               setHoveredConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
 
@@ -1445,7 +1920,7 @@ const RackBackView = ({
           <div
             key={`device-${portNum}`}
             ref={(el) => { devicePortRefs.current[portRefKey] = el; }}
-            className="w-6 h-6 rounded flex items-center justify-center transition-all duration-150"
+            className="w-6 h-6 rounded flex items-center justify-center transition-all duration-150 cursor-pointer"
             style={{
               backgroundColor: bgColorValue,
               border: `2px solid ${isHighlighted ? '#ffffff' : borderColor}`,
@@ -1455,15 +1930,85 @@ const RackBackView = ({
             title={title}
             onMouseEnter={handleDevicePortHover}
             onMouseLeave={handleDevicePortLeave}
+            onClick={handleDevicePortClick}
           >
             <Cable size={14} style={{ color: iconColorValue }} />
           </div>
         );
       };
 
-      if (isNetworkSwitch && switchPorts > 0) {
-        // Network switch - show ALL ports with port numbers
+      if (showSwitchPorts) {
+        // Network switch or gateway - show ALL ports with port numbers
         const portConnections = getPortConnections();
+
+        // If we have HA port_table data, use it for accurate per-port info
+        if (haPortTable.length > 0) {
+          // Sort all ports by port_idx for consistent ordering
+          const sortedPorts = [...haPortTable].sort((a, b) => a.port_idx - b.port_idx);
+          const portsUp = haPortTable.filter(p => p.up).length;
+
+          // For gateways: WAN ports (is_uplink) go FIRST, then LAN ports
+          // For switches: LAN ports go FIRST, then uplink port at end
+          const isGatewayDevice = isGateway;
+
+          let orderedPorts;
+          if (isGatewayDevice) {
+            // Gateway: Show LAN ports first (not uplink), then WAN/uplink ports separated
+            const lanPorts = sortedPorts.filter(p => !p.is_uplink);
+            const wanPorts = sortedPorts.filter(p => p.is_uplink);
+            orderedPorts = { lan: lanPorts, uplink: wanPorts };
+          } else {
+            // Switch: Show all ports in order, with uplink port(s) separated at end
+            const regularPorts = sortedPorts.filter(p => !p.is_uplink);
+            const uplinkPorts = sortedPorts.filter(p => p.is_uplink);
+            orderedPorts = { lan: regularPorts, uplink: uplinkPorts };
+          }
+
+          return (
+            <div className="flex flex-col gap-2 w-full">
+              {/* Port grid using HA port_table data - sorted by port number */}
+              <div className="flex flex-wrap gap-1 justify-end">
+                {/* Regular/LAN ports - sorted by port_idx */}
+                {orderedPorts.lan.map(port => {
+                  const connectedDevice = portConnections.get(port.port_idx);
+                  const isPoe = port.poe_enable;
+                  const isPortUp = port.up;
+                  return renderSwitchPort(
+                    port.port_idx,
+                    isPoe ? 'poe' : 'standard',
+                    isPoe,
+                    false,
+                    connectedDevice,
+                    isPortUp
+                  );
+                })}
+                {/* Uplink/WAN ports - separated with divider */}
+                {orderedPorts.uplink.length > 0 && (
+                  <>
+                    <div className="w-px h-8 bg-zinc-600 mx-1" /> {/* Separator */}
+                    {orderedPorts.uplink.map(port => {
+                      const connectedDevice = portConnections.get(port.port_idx);
+                      return renderSwitchPort(
+                        port.port_idx,
+                        'uplink',
+                        false,
+                        true,
+                        connectedDevice,
+                        port.up
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+              {/* Summary: Show active ports from HA data */}
+              <div className="text-xs text-zinc-500 text-right">
+                {portsUp} of {haPortTable.length} ports active
+              </div>
+            </div>
+          );
+        }
+
+        // Fallback: use static port count from global_part
         const regularPorts = poeEnabled ? 0 : switchPorts - uplinkPorts;
         const poePorts = poeEnabled ? switchPorts - uplinkPorts : 0;
 
@@ -1641,8 +2186,82 @@ const RackBackView = ({
       }
     };
 
+    // Handle click on container background to clear pinned connection
+    const handleContainerClick = (e) => {
+      // Only clear if clicking the container itself, not a child element
+      if (e.target === e.currentTarget || e.target.closest('[data-clear-pinned]')) {
+        setPinnedConnection(null);
+        setPinnedLineCoords(null);
+        setWireDropModal(null);
+      }
+    };
+
     return (
-      <div className="p-4 relative" ref={functionalContainerRef} style={{ isolation: 'isolate' }}>
+      <div
+        className="p-4 relative"
+        ref={functionalContainerRef}
+        style={{ isolation: 'isolate' }}
+        onClick={handleContainerClick}
+      >
+        {/* Wire Drop Modal */}
+        {wireDropModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]" onClick={() => setWireDropModal(null)}>
+            <div className="bg-zinc-800 border border-zinc-600 rounded-lg p-4 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-zinc-100">Wire Drop Connection</h3>
+                <button onClick={() => setWireDropModal(null)} className="text-zinc-400 hover:text-zinc-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2 border-b border-zinc-700">
+                  <span className="text-zinc-400">Room</span>
+                  <span className="text-zinc-100">{wireDropModal.wireDrop?.room_name || 'Unknown'}</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-zinc-700">
+                  <span className="text-zinc-400">Wire Drop ID</span>
+                  <span className="text-zinc-100 font-mono">{wireDropModal.wireDrop?.label || wireDropModal.wireDrop?.id?.slice(0, 8)}</span>
+                </div>
+                {wireDropModal.equipment && (
+                  <div className="flex items-center justify-between py-2 border-b border-zinc-700">
+                    <span className="text-zinc-400">Equipment</span>
+                    <span className="text-zinc-100">{getEquipmentDisplayName(wireDropModal.equipment)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between py-2 border-b border-zinc-700">
+                  <span className="text-zinc-400">Switch Port</span>
+                  <span className="text-zinc-100">Port {wireDropModal.portNum}</span>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  {wireDropModal.wireDrop?.id && (
+                    <button
+                      onClick={() => {
+                        // Navigate to wire drop - this would need to be wired up to your routing
+                        console.log('Navigate to wire drop:', wireDropModal.wireDrop.id);
+                        setWireDropModal(null);
+                      }}
+                      className="flex-1 px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded text-sm transition-colors"
+                    >
+                      View Wire Drop
+                    </button>
+                  )}
+                  {wireDropModal.equipment?.id && (
+                    <button
+                      onClick={() => {
+                        // Navigate to equipment - this would need to be wired up to your routing
+                        console.log('Navigate to equipment:', wireDropModal.equipment.id);
+                        setWireDropModal(null);
+                      }}
+                      className="flex-1 px-3 py-2 bg-zinc-600 hover:bg-zinc-500 text-white rounded text-sm transition-colors"
+                    >
+                      View Equipment
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* WiFi pulse animation keyframes */}
         <style>{`
           @keyframes wifi-pulse {
@@ -1661,7 +2280,8 @@ const RackBackView = ({
           }
         `}</style>
         {/* Animated Connection Line SVG Overlay - positioned above all content */}
-        {lineCoords && (
+        {/* Shows pinned line (from click) OR hover line, with pinned taking precedence */}
+        {(pinnedLineCoords || lineCoords) && (
           <svg
             className="absolute pointer-events-none"
             style={{
@@ -1686,46 +2306,60 @@ const RackBackView = ({
                 </feMerge>
               </filter>
             </defs>
-            {/* Background glow path */}
-            <path
-              d={getRoutedPath(lineCoords)}
-              stroke={lineCoords.color}
-              strokeWidth="8"
-              strokeOpacity="0.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              filter="url(#glow)"
-            />
-            {/* Main animated path with dashes flowing from source to target */}
-            <path
-              d={getRoutedPath(lineCoords)}
-              stroke={lineCoords.color}
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-              strokeDasharray="8 4"
-              style={{
-                animation: 'powerFlow 0.5s linear infinite',
-              }}
-            />
-            {/* Circle at source (outlet) */}
-            <circle
-              cx={lineCoords.x1}
-              cy={lineCoords.y1}
-              r="5"
-              fill={lineCoords.color}
-              filter="url(#glow)"
-            />
-            {/* Arrow/circle at target (input) */}
-            <circle
-              cx={lineCoords.x2}
-              cy={lineCoords.y2}
-              r="6"
-              fill={lineCoords.color}
-              filter="url(#glow)"
-            />
+            {/* Render pinned line (solid, always visible when pinned) */}
+            {pinnedLineCoords && (
+              <>
+                <path
+                  d={getRoutedPath(pinnedLineCoords)}
+                  stroke={pinnedLineCoords.color}
+                  strokeWidth="8"
+                  strokeOpacity="0.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  filter="url(#glow)"
+                />
+                <path
+                  d={getRoutedPath(pinnedLineCoords)}
+                  stroke={pinnedLineCoords.color}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  strokeDasharray="8 4"
+                  style={{ animation: 'powerFlow 0.5s linear infinite' }}
+                />
+                <circle cx={pinnedLineCoords.x1} cy={pinnedLineCoords.y1} r="5" fill={pinnedLineCoords.color} filter="url(#glow)" />
+                <circle cx={pinnedLineCoords.x2} cy={pinnedLineCoords.y2} r="6" fill={pinnedLineCoords.color} filter="url(#glow)" />
+              </>
+            )}
+            {/* Render hover line only if no pinned line (to avoid visual overlap) */}
+            {lineCoords && !pinnedLineCoords && (
+              <>
+                <path
+                  d={getRoutedPath(lineCoords)}
+                  stroke={lineCoords.color}
+                  strokeWidth="8"
+                  strokeOpacity="0.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  filter="url(#glow)"
+                />
+                <path
+                  d={getRoutedPath(lineCoords)}
+                  stroke={lineCoords.color}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  strokeDasharray="8 4"
+                  style={{ animation: 'powerFlow 0.5s linear infinite' }}
+                />
+                <circle cx={lineCoords.x1} cy={lineCoords.y1} r="5" fill={lineCoords.color} filter="url(#glow)" />
+                <circle cx={lineCoords.x2} cy={lineCoords.y2} r="6" fill={lineCoords.color} filter="url(#glow)" />
+              </>
+            )}
             <style>
               {`
                 @keyframes powerFlow {
@@ -1736,6 +2370,113 @@ const RackBackView = ({
             </style>
           </svg>
         )}
+
+        {/* WAN Modem Section - shown when gateway exists and network tab is active */}
+        {connectionTab === 'network' && gatewayWanInfo && (
+          <div className="mb-4 rounded-lg border border-zinc-600 bg-zinc-800 overflow-hidden">
+            {/* Internet Header */}
+            <div className="flex items-center justify-between px-4 py-2 bg-zinc-700/50 border-b border-zinc-600">
+              <div className="flex items-center gap-3">
+                <Globe size={18} className="text-zinc-300" />
+                <span className="text-sm font-medium text-zinc-200">Internet / WAN</span>
+              </div>
+              {gatewayWanInfo.wanIp && (
+                <span className="text-xs font-mono text-zinc-300 bg-zinc-900/50 px-2 py-0.5 rounded border border-zinc-600">
+                  {gatewayWanInfo.wanIp}
+                </span>
+              )}
+            </div>
+
+            {/* WAN Modems - clickable to show connection to gateway */}
+            <div className="p-3 space-y-2">
+              {gatewayWanInfo.wanPorts.map((wanPort, idx) => {
+                const isActive = wanPort.up;
+                const modemName = idx === 0 ? 'Primary Modem' : (idx === 1 ? 'Starlink Backup' : `Modem ${idx + 1}`);
+                const modemIcon = idx === 1 ? '🛰️' : '📡';
+                const isSelected = pinnedConnection?.wanPortIdx === wanPort.portIdx;
+
+                // Handle click to show WAN connection line
+                const handleWanClick = (e) => {
+                  e.stopPropagation();
+                  if (!isActive || !gatewayWanInfo.gateway.equipment) return;
+
+                  // If already selected, unpin
+                  if (isSelected) {
+                    setPinnedConnection(null);
+                    setPinnedLineCoords(null);
+                    return;
+                  }
+
+                  // Pin this WAN connection
+                  setPinnedConnection({
+                    wanPortIdx: wanPort.portIdx,
+                    gatewayId: gatewayWanInfo.gateway.equipment?.id,
+                    isWanConnection: true,
+                  });
+
+                  // Calculate line from modem row to gateway's WAN port
+                  const container = functionalContainerRef.current;
+                  const modemEl = e.currentTarget;
+                  const gatewayEqId = gatewayWanInfo.gateway.equipment?.id;
+                  const switchPortRefKey = `${gatewayEqId}-switch-${wanPort.portIdx}`;
+                  const switchPortEl = switchPortRefs.current[switchPortRefKey];
+
+                  if (container && modemEl && switchPortEl) {
+                    const containerRect = container.getBoundingClientRect();
+                    const modemRect = modemEl.getBoundingClientRect();
+                    const switchRect = switchPortEl.getBoundingClientRect();
+
+                    setPinnedLineCoords({
+                      x1: modemRect.left + modemRect.width / 2 - containerRect.left,
+                      y1: modemRect.bottom - containerRect.top,
+                      x2: switchRect.left + switchRect.width / 2 - containerRect.left,
+                      y2: switchRect.top + switchRect.height / 2 - containerRect.top,
+                      color: '#10B981', // emerald for WAN/uplink
+                      connectionType: 'network',
+                    });
+                  }
+                };
+
+                return (
+                  <div
+                    key={`wan-${wanPort.portIdx}`}
+                    ref={(el) => { if (el) switchPortRefs.current[`wan-modem-${wanPort.portIdx}`] = el; }}
+                    onClick={handleWanClick}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-emerald-900/30 border-emerald-500 ring-2 ring-emerald-500/50'
+                        : isActive
+                          ? 'bg-zinc-900/50 border-zinc-500 hover:border-zinc-400'
+                          : 'bg-zinc-900/30 border-zinc-700 opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{modemIcon}</span>
+                      <div>
+                        <div className="text-sm font-medium text-zinc-100">{modemName}</div>
+                        <div className="text-xs text-zinc-400">
+                          WAN {idx + 1} → Gateway {wanPort.name || `Port ${wanPort.portIdx}`}
+                          {wanPort.speed > 0 && ` • ${wanPort.speed >= 1000 ? `${wanPort.speed/1000}G` : `${wanPort.speed}M`}`}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {isActive ? (
+                        <span className="flex items-center gap-1 text-xs text-green-400">
+                          <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-500">Inactive</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           {allItems.length === 0 ? (
             <div className="text-center py-12 text-zinc-500">
@@ -1778,8 +2519,8 @@ const RackBackView = ({
                       {shelfEquipment.length > 0 ? (
                         shelfEquipment.map(eq => {
                           const isPowerDevice = eq.global_part?.is_power_device;
-                          const isNetworkSwitch = eq.global_part?.is_network_switch;
-                          const showNetworkLeft = connectionTab === 'network' && !isNetworkSwitch;
+                          const eqIsPortHost = isPortHost(eq); // Switch or gateway with ports
+                          const showNetworkLeft = connectionTab === 'network' && !eqIsPortHost;
                           const eqNetInfo = getNetworkInfo(eq);
 
                           return (
@@ -1799,7 +2540,7 @@ const RackBackView = ({
                                 {connectionTab === 'power' && isPowerDevice && (
                                   <Zap size={16} className="text-amber-400 flex-shrink-0" />
                                 )}
-                                {connectionTab === 'network' && isNetworkSwitch && (
+                                {connectionTab === 'network' && eqIsPortHost && (
                                   <Network size={16} className="text-cyan-400 flex-shrink-0" />
                                 )}
                                 <div className="flex-1 min-w-0">
@@ -1809,8 +2550,8 @@ const RackBackView = ({
                                 </div>
                                 <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
                               </div>
-                              {/* Bottom row: Connection info - Power always right, Network switches right */}
-                              {(connectionTab === 'power' || isNetworkSwitch) && (
+                              {/* Bottom row: Connection info - Power always right, Port hosts (switches/gateways) right */}
+                              {(connectionTab === 'power' || eqIsPortHost) && (
                                 <div className="flex items-center justify-end">
                                   {connectionTab === 'power' ? renderPowerInfo(eq) : renderNetworkInfo(eq)}
                                 </div>
@@ -1831,11 +2572,11 @@ const RackBackView = ({
                 const eq = item;
                 const uHeight = getEquipmentUHeight(eq);
                 const isPowerDevice = eq.global_part?.is_power_device;
-                const isNetworkSwitch = eq.global_part?.is_network_switch;
+                const eqIsPortHost = isPortHost(eq); // Switch or gateway with ports
                 const eqNetInfo = getNetworkInfo(eq);
 
-                // For network tab: non-switches show port on LEFT, switches show ports on RIGHT
-                const showNetworkLeft = connectionTab === 'network' && !isNetworkSwitch;
+                // For network tab: non-port-hosts show port on LEFT, port hosts (switches/gateways) show ports on RIGHT
+                const showNetworkLeft = connectionTab === 'network' && !eqIsPortHost;
 
                 return (
                   <div
@@ -1857,7 +2598,7 @@ const RackBackView = ({
                       {connectionTab === 'power' && isPowerDevice && (
                         <Zap size={16} className="text-amber-400 flex-shrink-0" />
                       )}
-                      {connectionTab === 'network' && isNetworkSwitch && (
+                      {connectionTab === 'network' && eqIsPortHost && (
                         <Network size={16} className="text-cyan-400 flex-shrink-0" />
                       )}
                       <div className="flex-1 min-w-0">
@@ -1870,8 +2611,8 @@ const RackBackView = ({
                       </div>
                       <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
                     </div>
-                    {/* Bottom row: Connection info - Power always right, Network switches right, Network devices already shown left */}
-                    {(connectionTab === 'power' || isNetworkSwitch) && (
+                    {/* Bottom row: Connection info - Power always right, Port hosts (switches/gateways) right, Network devices already shown left */}
+                    {(connectionTab === 'power' || eqIsPortHost) && (
                       <div className="flex items-center justify-end">
                         {connectionTab === 'power' ? renderPowerInfo(eq) : renderNetworkInfo(eq)}
                       </div>

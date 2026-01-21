@@ -207,10 +207,10 @@ def format_device(device):
         "version": device.get("version", ""),
         "upgradable": device.get("upgradable", False),
 
-        # Switch-specific
+        # Switch/Gateway port info (Dream Machine gateways also have ports)
         "ports_total": ports_total,
         "ports_used": ports_used,
-        "port_table": [format_port(p) for p in port_table] if category == "switch" else [],
+        "port_table": [format_port(p) for p in port_table] if category in ["switch", "gateway"] else [],
 
         # AP-specific
         "num_sta": device.get("num_sta", 0),  # Number of connected stations
@@ -225,7 +225,7 @@ def format_device(device):
 
 
 def format_port(port):
-    """Format a switch port entry."""
+    """Format a switch port entry with MAC address fields for device identification."""
     return {
         "port_idx": port.get("port_idx"),
         "name": port.get("name", f"Port {port.get('port_idx', '?')}"),
@@ -236,6 +236,10 @@ def format_port(port):
         "poe_mode": port.get("poe_mode", ""),
         "poe_power": port.get("poe_power", ""),
         "is_uplink": port.get("is_uplink", False),
+        # MAC address fields for identifying connected devices
+        "mac": port.get("mac", ""),
+        "lldp_remote_mac": port.get("lldp_remote_mac", ""),  # LLDP discovered MAC
+        "port_mac": port.get("port_mac", ""),  # Alternative MAC field
     }
 
 

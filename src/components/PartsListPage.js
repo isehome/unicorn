@@ -5,6 +5,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAppState } from '../contexts/AppStateContext';
 import { partsService } from '../services/partsService';
 import Button from './ui/Button';
+import Modal from './ui/Modal';
+import GlobalPartDocumentationEditor from './GlobalPartDocumentationEditor';
+import GlobalPartAIReviewModal from './GlobalPartAIReviewModal';
 import {
   Boxes,
   Plus,
@@ -18,6 +21,8 @@ import {
   X,
   Sparkles,
   CheckCircle,
+  Bot,
+  FileText,
 } from 'lucide-react';
 import { queryKeys } from '../lib/queryClient';
 
@@ -44,8 +49,13 @@ const PartsListPage = () => {
   const [inventoryMode, setInventoryMode] = useState(false);
   const [editedParts, setEditedParts] = useState({});
   const [editedInventory, setEditedInventory] = useState({}); // { partId: quantity }
-  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new'
+  const [phaseFilter, setPhaseFilter] = useState('all'); // 'all', 'prewire', 'trim', 'new', 'ai_review'
   const [markingAllReviewed, setMarkingAllReviewed] = useState(false);
+  // Documentation & AI Review state
+  const [selectedPartForDocs, setSelectedPartForDocs] = useState(null);
+  const [showDocsEditor, setShowDocsEditor] = useState(false);
+  const [selectedPartForAIReview, setSelectedPartForAIReview] = useState(null);
+  const [showAIReview, setShowAIReview] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { theme, mode } = useTheme();
@@ -144,6 +154,8 @@ const PartsListPage = () => {
       filtered = filtered.filter(part => part.required_for_prewire !== true);
     } else if (phaseFilter === 'new') {
       filtered = filtered.filter(part => part.needs_review === true);
+    } else if (phaseFilter === 'ai_review') {
+      filtered = filtered.filter(part => part.ai_enrichment_status === 'needs_review');
     }
 
     // Apply search filter
@@ -175,6 +187,11 @@ const PartsListPage = () => {
   // Count new parts needing review
   const newPartsCount = useMemo(() => {
     return parts.filter(p => p.needs_review === true).length;
+  }, [parts]);
+
+  // Count parts needing AI review
+  const aiReviewCount = useMemo(() => {
+    return parts.filter(p => p.ai_enrichment_status === 'needs_review').length;
   }, [parts]);
 
   // ══════════════════════════════════════════════════════════════
@@ -397,6 +414,57 @@ const PartsListPage = () => {
     } finally {
       setMarkingAllReviewed(false);
     }
+  }, [queryClient]);
+
+  // Documentation Editor handlers
+  const handleOpenDocsEditor = useCallback((part, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setSelectedPartForDocs(part);
+    setShowDocsEditor(true);
+  }, []);
+
+  const handleSaveDocumentation = useCallback((updatedPart) => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+    setShowDocsEditor(false);
+    setSelectedPartForDocs(null);
+  }, [queryClient]);
+
+  const handleCancelDocsEditor = useCallback(() => {
+    setShowDocsEditor(false);
+    setSelectedPartForDocs(null);
+  }, []);
+
+  // AI Review handlers
+  const handleOpenAIReview = useCallback((part, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setSelectedPartForAIReview(part);
+    setShowAIReview(true);
+  }, []);
+
+  const handleSaveAIReview = useCallback((updatedPart) => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+    setShowAIReview(false);
+    setSelectedPartForAIReview(null);
+  }, [queryClient]);
+
+  const handleCancelAIReview = useCallback(() => {
+    setShowAIReview(false);
+    setSelectedPartForAIReview(null);
+  }, []);
+
+  // Listen for AI review completed events
+  useEffect(() => {
+    const handleAIReviewCompleted = () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.parts });
+    };
+    window.addEventListener('ai-review-completed', handleAIReviewCompleted);
+    return () => window.removeEventListener('ai-review-completed', handleAIReviewCompleted);
   }, [queryClient]);
 
   const renderPartCard = (part) => {
@@ -638,6 +706,12 @@ const PartsListPage = () => {
                     New
                   </span>
                 )}
+                {part.ai_enrichment_status === 'needs_review' && (
+                  <span className="shrink-0 flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                    <Bot className="h-3 w-3" />
+                    AI
+                  </span>
+                )}
               </div>
               <h3 className="text-lg font-semibold mt-1"
                 style={{ color: styles.textPrimary }}
@@ -661,9 +735,26 @@ const PartsListPage = () => {
                   title="Mark as reviewed"
                 >
                   <CheckCircle className="h-3 w-3" />
-                  Review
                 </button>
               )}
+              {part.ai_enrichment_status === 'needs_review' && (
+                <button
+                  onClick={(e) => handleOpenAIReview(part, e)}
+                  className="flex items-center gap-1 rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50"
+                  title="Review AI enrichment"
+                >
+                  <Bot className="h-3 w-3" />
+                  AI
+                </button>
+              )}
+              <button
+                onClick={(e) => handleOpenDocsEditor(part, e)}
+                className="flex items-center gap-1 rounded bg-violet-100 px-2 py-1 text-xs font-medium text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:hover:bg-violet-900/50"
+                title="Edit documentation"
+              >
+                <FileText className="h-3 w-3" />
+                Docs
+              </button>
               <div
                 className="flex flex-col items-end text-sm px-3 py-2 rounded-lg"
                 style={styles.muted}
@@ -852,6 +943,28 @@ const PartsListPage = () => {
           }`}
         >
           Trim Prep
+        </button>
+        <button
+          onClick={() => setPhaseFilter('ai_review')}
+          className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            phaseFilter === 'ai_review'
+              ? 'bg-blue-500 text-white dark:bg-blue-600'
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-zinc-800 dark:text-gray-300 dark:hover:bg-gray-700'
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <Bot className="h-3.5 w-3.5" />
+            AI Review
+            {aiReviewCount > 0 && (
+              <span className={`ml-1 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold ${
+                phaseFilter === 'ai_review'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-blue-500 text-white'
+              }`}>
+                {aiReviewCount > 99 ? '99+' : aiReviewCount}
+              </span>
+            )}
+          </span>
         </button>
       </div>
 
@@ -1085,6 +1198,28 @@ const PartsListPage = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Documentation Editor Modal */}
+      {showDocsEditor && selectedPartForDocs && (
+        <Modal isOpen={showDocsEditor} onClose={handleCancelDocsEditor} size="lg">
+          <GlobalPartDocumentationEditor
+            part={selectedPartForDocs}
+            onSave={handleSaveDocumentation}
+            onCancel={handleCancelDocsEditor}
+          />
+        </Modal>
+      )}
+
+      {/* AI Review Modal */}
+      {showAIReview && selectedPartForAIReview && (
+        <Modal isOpen={showAIReview} onClose={handleCancelAIReview} size="xl">
+          <GlobalPartAIReviewModal
+            part={selectedPartForAIReview}
+            onSave={handleSaveAIReview}
+            onCancel={handleCancelAIReview}
+          />
+        </Modal>
       )}
     </div>
   );
