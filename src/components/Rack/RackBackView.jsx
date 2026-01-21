@@ -1603,9 +1603,15 @@ const RackBackView = ({
           const switchRect = switchPortEl.getBoundingClientRect();
           const containerRect = container.getBoundingClientRect();
 
-          // Calculate switch port center relative to container
+          // Calculate switch port position - line connects to BOTTOM of port icon (like a cable plugging in)
           const x1 = switchRect.left + switchRect.width / 2 - containerRect.left;
-          const y1 = switchRect.top + switchRect.height / 2 - containerRect.top;
+          const y1 = switchRect.bottom - containerRect.top; // Bottom of port, not center
+
+          // Find the switch card element to get its bottom edge
+          const switchCardEl = switchPortEl.closest('[data-equipment-card]');
+          const switchCardBottom = switchCardEl
+            ? switchCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+            : y1 + 40;
 
           // Find the target device element
           let targetEl = null;
@@ -1632,17 +1638,23 @@ const RackBackView = ({
 
           if (targetEl) {
             const deviceRect = targetEl.getBoundingClientRect();
+            // Line connects to BOTTOM of device port (like a cable plugging in from below)
             const x2 = deviceRect.left + deviceRect.width / 2 - containerRect.left;
-            const y2 = deviceRect.top + deviceRect.height / 2 - containerRect.top;
+            const y2 = deviceRect.bottom - containerRect.top; // Bottom of port, not center
+
+            // Find the device card element to get its bottom edge
+            const deviceCardEl = targetEl.closest('[data-equipment-card]');
+            const deviceCardBottom = deviceCardEl
+              ? deviceCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+              : y2 + 40;
 
             console.log('[Line Coords] Success', {
               portNum,
               targetName,
               from: { x1, y1 },
               to: { x2, y2 },
-              switchRect: { top: switchRect.top, left: switchRect.left },
-              deviceRect: { top: deviceRect.top, left: deviceRect.left },
-              containerRect: { top: containerRect.top, left: containerRect.left },
+              switchCardBottom,
+              deviceCardBottom,
             });
 
             return {
@@ -1650,6 +1662,8 @@ const RackBackView = ({
               y1,
               x2,
               y2,
+              sourceCardBottom: switchCardBottom,
+              destCardBottom: deviceCardBottom,
               color: portColor,
               connectionType: 'network',
             };
@@ -1753,6 +1767,17 @@ const RackBackView = ({
             onMouseLeave={handlePortLeave}
             onClick={handlePortClick}
           >
+            {/* Port number ABOVE the port */}
+            <span
+              className="text-[9px] font-mono transition-all duration-150"
+              style={{
+                color: isHighlighted ? '#ffffff' : '#71717a',
+                fontWeight: isHighlighted ? 'bold' : 'normal',
+                textShadow: isHighlighted ? `0 0 6px ${portColor}` : 'none',
+              }}
+            >
+              {portNum}
+            </span>
             <div
               className="w-5 h-5 rounded flex items-center justify-center relative transition-all duration-150"
               style={{
@@ -1765,7 +1790,6 @@ const RackBackView = ({
             >
               <Cable size={10} style={{ color: isHighlighted ? '#ffffff' : iconColorValue }} />
             </div>
-            <span className="text-[9px] text-zinc-500 font-mono">{portNum}</span>
           </div>
         );
       };
@@ -1816,16 +1840,25 @@ const RackBackView = ({
             upstreamSwitchMac = myHaDevice.uplink_switch_mac.toLowerCase();
           }
 
+          console.log('[findSwitchEquipment] Debug:', {
+            myMac,
+            switchName,
+            upstreamSwitchMac,
+            myHaClient: myHaClient ? { mac: myHaClient.mac, switch_mac: myHaClient.switch_mac, switch_name: myHaClient.switch_name } : null,
+            equipmentCount: equipment.length,
+          });
+
           // If we have the upstream switch MAC, find equipment by MAC
           if (upstreamSwitchMac) {
             const matchByMac = equipment.find(sw =>
               sw.ha_client_mac?.toLowerCase() === upstreamSwitchMac
             );
+            console.log('[findSwitchEquipment] MAC match result:', matchByMac?.name || matchByMac?.instance_name || 'null');
             if (matchByMac) return matchByMac;
           }
 
           // Fallback: match by switch name (for switches and gateways)
-          return equipment.find(sw => {
+          const nameMatch = equipment.find(sw => {
             // Check if it's a network switch or gateway
             const isPortHost = sw.global_part?.is_network_switch ||
               haDevices.some(d =>
@@ -1836,9 +1869,13 @@ const RackBackView = ({
 
             const swName = (sw.instance_name || sw.name || sw.global_part?.name || '').toLowerCase();
             const targetName = switchName.toLowerCase();
-            return swName.includes(targetName) || targetName.includes(swName) ||
+            const matches = swName.includes(targetName) || targetName.includes(swName) ||
                    (sw.model && targetName.includes(sw.model.toLowerCase()));
+            console.log('[findSwitchEquipment] Name compare:', { swName, targetName, isPortHost, matches });
+            return matches;
           });
+          console.log('[findSwitchEquipment] Name match result:', nameMatch?.name || nameMatch?.instance_name || 'null');
+          return nameMatch;
         };
 
         // Handle click to pin/toggle connection line
@@ -1868,11 +1905,25 @@ const RackBackView = ({
                 const switchPortEl = switchPortRefs.current[switchPortRefKey];
                 if (switchPortEl) {
                   const switchRect = switchPortEl.getBoundingClientRect();
+
+                  // Find card bottoms for routing
+                  const switchCardEl = switchPortEl.closest('[data-equipment-card]');
+                  const switchCardBottom = switchCardEl
+                    ? switchCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+                    : switchRect.bottom - containerRect.top + 40;
+
+                  const deviceCardEl = portEl.closest('[data-equipment-card]');
+                  const deviceCardBottom = deviceCardEl
+                    ? deviceCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+                    : portRect.bottom - containerRect.top + 40;
+
                   setPinnedLineCoords({
                     x1: switchRect.left + switchRect.width / 2 - containerRect.left,
-                    y1: switchRect.top + switchRect.height / 2 - containerRect.top,
+                    y1: switchRect.bottom - containerRect.top, // Bottom of switch port
                     x2: portRect.left + portRect.width / 2 - containerRect.left,
-                    y2: portRect.top + portRect.height / 2 - containerRect.top,
+                    y2: portRect.bottom - containerRect.top, // Bottom of device port
+                    sourceCardBottom: switchCardBottom,
+                    destCardBottom: deviceCardBottom,
                     color: bgColorValue,
                     connectionType: 'network',
                   });
@@ -1884,8 +1935,15 @@ const RackBackView = ({
 
         // Handle hover to find and highlight the switch port
         const handleDevicePortHover = (e) => {
+          console.log('[DevicePortHover]', {
+            equipmentName: eq.name || eq.instance_name,
+            isConnectedViaHA,
+            switchName,
+            switchPort
+          });
           if (isConnectedViaHA) {
             const switchEq = findSwitchEquipment();
+            console.log('[DevicePortHover] findSwitchEquipment result:', switchEq?.name || switchEq?.instance_name || 'null');
             if (switchEq) {
               setHoveredConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
 
@@ -1898,14 +1956,29 @@ const RackBackView = ({
                 // Find the switch port element
                 const switchPortRefKey = `${switchEq.id}-switch-${switchPort}`;
                 const switchPortEl = switchPortRefs.current[switchPortRefKey];
+                console.log('[DevicePortHover] switchPortRefKey:', switchPortRefKey, 'found:', !!switchPortEl);
 
                 if (switchPortEl) {
                   const switchRect = switchPortEl.getBoundingClientRect();
+
+                  // Find card bottoms for routing
+                  const switchCardEl = switchPortEl.closest('[data-equipment-card]');
+                  const switchCardBottom = switchCardEl
+                    ? switchCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+                    : switchRect.bottom - containerRect.top + 40;
+
+                  const deviceCardEl = portEl.closest('[data-equipment-card]');
+                  const deviceCardBottom = deviceCardEl
+                    ? deviceCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+                    : portRect.bottom - containerRect.top + 40;
+
                   setLineCoords({
                     x1: switchRect.left + switchRect.width / 2 - containerRect.left,
-                    y1: switchRect.top + switchRect.height / 2 - containerRect.top,
+                    y1: switchRect.bottom - containerRect.top, // Bottom of switch port
                     x2: portRect.left + portRect.width / 2 - containerRect.left,
-                    y2: portRect.top + portRect.height / 2 - containerRect.top,
+                    y2: portRect.bottom - containerRect.top, // Bottom of device port
+                    sourceCardBottom: switchCardBottom,
+                    destCardBottom: deviceCardBottom,
                     color: bgColorValue,
                     connectionType: 'network',
                   });
@@ -1938,7 +2011,10 @@ const RackBackView = ({
               boxShadow: isHighlighted ? `0 0 12px ${bgColorValue}` : 'none',
             }}
             title={title}
-            onMouseEnter={handleDevicePortHover}
+            onMouseEnter={(e) => {
+              console.log('[DevicePort INLINE] mouseEnter for', eq.name || eq.instance_name);
+              handleDevicePortHover(e);
+            }}
             onMouseLeave={handleDevicePortLeave}
             onClick={handleDevicePortClick}
           >
@@ -1948,67 +2024,35 @@ const RackBackView = ({
       };
 
       if (showSwitchPorts) {
-        // Network switch or gateway - show ALL ports with port numbers
+        // Network switch or gateway - show ALL ports in numerical order
         const portConnections = getPortConnections();
 
         // If we have HA port_table data, use it for accurate per-port info
         if (haPortTable.length > 0) {
-          // Sort all ports by port_idx for consistent ordering
+          // Sort ALL ports by port_idx - no separation of uplinks
           const sortedPorts = [...haPortTable].sort((a, b) => a.port_idx - b.port_idx);
           const portsUp = haPortTable.filter(p => p.up).length;
 
-          // For gateways: WAN ports (is_uplink) go FIRST, then LAN ports
-          // For switches: LAN ports go FIRST, then uplink port at end
-          const isGatewayDevice = isGateway;
-
-          let orderedPorts;
-          if (isGatewayDevice) {
-            // Gateway: Show LAN ports first (not uplink), then WAN/uplink ports separated
-            const lanPorts = sortedPorts.filter(p => !p.is_uplink);
-            const wanPorts = sortedPorts.filter(p => p.is_uplink);
-            orderedPorts = { lan: lanPorts, uplink: wanPorts };
-          } else {
-            // Switch: Show all ports in order, with uplink port(s) separated at end
-            const regularPorts = sortedPorts.filter(p => !p.is_uplink);
-            const uplinkPorts = sortedPorts.filter(p => p.is_uplink);
-            orderedPorts = { lan: regularPorts, uplink: uplinkPorts };
-          }
-
           return (
             <div className="flex flex-col gap-2 w-full">
-              {/* Port grid using HA port_table data - sorted by port number */}
+              {/* Port grid - ALL ports in numerical order */}
               <div className="flex flex-wrap gap-1 justify-end">
-                {/* Regular/LAN ports - sorted by port_idx */}
-                {orderedPorts.lan.map(port => {
+                {sortedPorts.map(port => {
                   const connectedDevice = portConnections.get(port.port_idx);
                   const isPoe = port.poe_enable;
                   const isPortUp = port.up;
+                  const isUplink = port.is_uplink;
+                  // Determine port type for coloring: uplink gets emerald, PoE gets violet, standard gets cyan
+                  const portType = isUplink ? 'uplink' : (isPoe ? 'poe' : 'standard');
                   return renderSwitchPort(
                     port.port_idx,
-                    isPoe ? 'poe' : 'standard',
+                    portType,
                     isPoe,
-                    false,
+                    isUplink,
                     connectedDevice,
                     isPortUp
                   );
                 })}
-                {/* Uplink/WAN ports - separated with divider */}
-                {orderedPorts.uplink.length > 0 && (
-                  <>
-                    <div className="w-px h-8 bg-zinc-600 mx-1" /> {/* Separator */}
-                    {orderedPorts.uplink.map(port => {
-                      const connectedDevice = portConnections.get(port.port_idx);
-                      return renderSwitchPort(
-                        port.port_idx,
-                        'uplink',
-                        false,
-                        true,
-                        connectedDevice,
-                        port.up
-                      );
-                    })}
-                  </>
-                )}
               </div>
               {/* Summary: Show active ports from HA data */}
               <div className="text-xs text-zinc-500 text-right">
@@ -2019,31 +2063,20 @@ const RackBackView = ({
         }
 
         // Fallback: use static port count from global_part
-        const regularPorts = poeEnabled ? 0 : switchPorts - uplinkPorts;
-        const poePorts = poeEnabled ? switchPorts - uplinkPorts : 0;
-
+        // Show ALL ports in numerical order (no separation)
         return (
           <div className="flex flex-col gap-2 w-full">
-            {/* Port grid - show all ports */}
+            {/* Port grid - ALL ports in numerical order */}
             <div className="flex flex-wrap gap-1 justify-end">
-              {/* Regular/PoE ports */}
-              {Array.from({ length: switchPorts - uplinkPorts }).map((_, i) => {
+              {Array.from({ length: switchPorts }).map((_, i) => {
                 const portNum = i + 1;
-                const isPoe = poeEnabled;
+                // Last 'uplinkPorts' are uplinks (if any)
+                const isUplink = uplinkPorts > 0 && portNum > (switchPorts - uplinkPorts);
+                const isPoe = poeEnabled && !isUplink;
                 const connectedDevice = portConnections.get(portNum);
-                return renderSwitchPort(portNum, isPoe ? 'poe' : 'standard', isPoe, false, connectedDevice);
+                const portType = isUplink ? 'uplink' : (isPoe ? 'poe' : 'standard');
+                return renderSwitchPort(portNum, portType, isPoe, isUplink, connectedDevice);
               })}
-              {/* Uplink ports */}
-              {uplinkPorts > 0 && (
-                <>
-                  <div className="w-px h-8 bg-zinc-600 mx-1" /> {/* Separator */}
-                  {Array.from({ length: uplinkPorts }).map((_, i) => {
-                    const portNum = switchPorts - uplinkPorts + i + 1;
-                    const connectedDevice = portConnections.get(portNum);
-                    return renderSwitchPort(portNum, 'uplink', false, true, connectedDevice);
-                  })}
-                </>
-              )}
             </div>
             {/* Summary: X of Y ports in use */}
             <div className="text-xs text-zinc-500 text-right">
@@ -2158,41 +2191,81 @@ const RackBackView = ({
       }
     };
 
-    // Calculate the routed path for power (right side) or network (left side)
+    // Calculate the routed path for network connections
+    // Orthogonal routing that runs along the BOTTOM of equipment cards:
+    // 1. Down from source port to bottom of source device card
+    // 2. Horizontally along bottom of source card to left edge
+    // 3. Vertically through left side channel
+    // 4. Horizontally along bottom of destination device card
+    // 5. Up to destination port (entering from bottom)
     const getRoutedPath = (coords) => {
       if (!coords) return '';
 
-      const { x1, y1, x2, y2, connectionType } = coords;
+      const { x1, y1, x2, y2, connectionType, sourceCardBottom, destCardBottom } = coords;
       const containerWidth = functionalContainerRef.current?.offsetWidth || 800;
+      const r = 5; // corner radius
 
-      // Power goes right edge, Network goes left edge
-      // Stay just inside the container edge so the line is visible
       const ispower = connectionType === 'power';
-      const sideX = ispower ? containerWidth - 8 : 8; // 8px inside the container edge
-      const cornerRadius = 10;
 
-      // Build path: source → right/left edge → down/up → target
-      // Using rounded corners for a cleaner look
       if (ispower) {
-        // Power: source → right → down → target (right side routing)
+        // Power: right-side routing
+        const sideX = containerWidth - 8;
         return `
           M ${x1} ${y1}
-          L ${sideX - cornerRadius} ${y1}
-          Q ${sideX} ${y1} ${sideX} ${y1 + (y2 > y1 ? cornerRadius : -cornerRadius)}
-          L ${sideX} ${y2 - (y2 > y1 ? cornerRadius : -cornerRadius)}
-          Q ${sideX} ${y2} ${sideX - cornerRadius} ${y2}
+          L ${sideX - r} ${y1}
+          Q ${sideX} ${y1} ${sideX} ${y1 + (y2 > y1 ? r : -r)}
+          L ${sideX} ${y2 - (y2 > y1 ? r : -r)}
+          Q ${sideX} ${y2} ${sideX - r} ${y2}
           L ${x2} ${y2}
         `;
       } else {
-        // Network: source → left → down → target (left side routing)
-        return `
-          M ${x1} ${y1}
-          L ${sideX + cornerRadius} ${y1}
-          Q ${sideX} ${y1} ${sideX} ${y1 + (y2 > y1 ? cornerRadius : -cornerRadius)}
-          L ${sideX} ${y2 - (y2 > y1 ? cornerRadius : -cornerRadius)}
-          Q ${sideX} ${y2} ${sideX + cornerRadius} ${y2}
-          L ${x2} ${y2}
-        `;
+        // Network: orthogonal routing through left side channel
+        // Lines run along the BOTTOM of each equipment card
+        const sideX = 10; // Left edge channel
+
+        // Use provided card bottoms or estimate
+        const srcBottom = sourceCardBottom || (y1 + 50);
+        const dstBottom = destCardBottom || (y2 + 50);
+
+        // Going down (source above destination) or up
+        const goingDown = y2 > y1;
+
+        // Build path segments:
+        // 1. Source port → straight down
+        // 2. Turn left → run along source card bottom
+        // 3. Turn down/up → through side channel
+        // 4. Turn right → run along dest card bottom
+        // 5. Turn up → to dest port
+
+        if (goingDown) {
+          // Source is ABOVE destination
+          return `
+            M ${x1} ${y1}
+            L ${x1} ${srcBottom - r}
+            Q ${x1} ${srcBottom} ${x1 - r} ${srcBottom}
+            L ${sideX + r} ${srcBottom}
+            Q ${sideX} ${srcBottom} ${sideX} ${srcBottom + r}
+            L ${sideX} ${dstBottom - r}
+            Q ${sideX} ${dstBottom} ${sideX + r} ${dstBottom}
+            L ${x2 - r} ${dstBottom}
+            Q ${x2} ${dstBottom} ${x2} ${dstBottom - r}
+            L ${x2} ${y2}
+          `;
+        } else {
+          // Source is BELOW destination (going UP)
+          return `
+            M ${x1} ${y1}
+            L ${x1} ${srcBottom - r}
+            Q ${x1} ${srcBottom} ${x1 - r} ${srcBottom}
+            L ${sideX + r} ${srcBottom}
+            Q ${sideX} ${srcBottom} ${sideX} ${srcBottom - r}
+            L ${sideX} ${dstBottom + r}
+            Q ${sideX} ${dstBottom} ${sideX + r} ${dstBottom}
+            L ${x2 - r} ${dstBottom}
+            Q ${x2} ${dstBottom} ${x2} ${dstBottom - r}
+            L ${x2} ${y2}
+          `;
+        }
       }
     };
 
@@ -2401,11 +2474,83 @@ const RackBackView = ({
             <div className="p-3 space-y-2">
               {gatewayWanInfo.wanPorts.map((wanPort, idx) => {
                 const isActive = wanPort.up;
-                const modemName = idx === 0 ? 'Primary Modem' : (idx === 1 ? 'Starlink Backup' : `Modem ${idx + 1}`);
-                const modemIcon = idx === 1 ? '🛰️' : '📡';
+                // Detect Starlink by port name or WAN name containing 'starlink'
+                const portNameLower = (wanPort.name || '').toLowerCase();
+                const isStarlink = portNameLower.includes('starlink') || portNameLower.includes('satellite');
+                // Only show satellite icon for Starlink, otherwise use generic modem icon
+                const modemIcon = isStarlink ? '🛰️' : '📶';
+                // Name based on detection
+                const modemName = isStarlink
+                  ? (idx === 0 ? 'Starlink Primary' : 'Starlink Backup')
+                  : (idx === 0 ? 'Primary Modem' : `Modem ${idx + 1}`);
                 const isSelected = pinnedConnection?.wanPortIdx === wanPort.portIdx;
 
-                // Handle click to show WAN connection line
+                // Calculate WAN connection line coordinates
+                const calculateWanLineCoords = (modemCardEl) => {
+                  if (!isActive || !gatewayWanInfo.gateway.equipment) return null;
+
+                  const container = functionalContainerRef.current;
+                  const gatewayEqId = gatewayWanInfo.gateway.equipment?.id;
+
+                  // Get the modem's port indicator element
+                  const modemPortRefKey = `wan-port-${wanPort.portIdx}`;
+                  const modemPortEl = switchPortRefs.current[modemPortRefKey];
+
+                  // Get the gateway's port element
+                  const gatewayPortRefKey = `${gatewayEqId}-switch-${wanPort.portIdx}`;
+                  const gatewayPortEl = switchPortRefs.current[gatewayPortRefKey];
+
+                  if (container && modemPortEl && gatewayPortEl) {
+                    const containerRect = container.getBoundingClientRect();
+                    const modemPortRect = modemPortEl.getBoundingClientRect();
+                    const gatewayPortRect = gatewayPortEl.getBoundingClientRect();
+                    const modemCardRect = modemCardEl.getBoundingClientRect();
+
+                    // Find gateway card bottom
+                    const gatewayCardEl = gatewayPortEl.closest('[data-equipment-card]');
+                    const gatewayCardBottom = gatewayCardEl
+                      ? gatewayCardEl.getBoundingClientRect().bottom - containerRect.top + 8
+                      : gatewayPortRect.bottom - containerRect.top + 40;
+
+                    // Modem card bottom
+                    const modemCardBottom = modemCardRect.bottom - containerRect.top + 8;
+
+                    return {
+                      // From modem port (bottom of port icon)
+                      x1: modemPortRect.left + modemPortRect.width / 2 - containerRect.left,
+                      y1: modemPortRect.bottom - containerRect.top,
+                      // To gateway port (bottom of port icon)
+                      x2: gatewayPortRect.left + gatewayPortRect.width / 2 - containerRect.left,
+                      y2: gatewayPortRect.bottom - containerRect.top,
+                      sourceCardBottom: modemCardBottom,
+                      destCardBottom: gatewayCardBottom,
+                      color: '#10B981', // emerald for WAN/uplink
+                      connectionType: 'network',
+                    };
+                  }
+                  return null;
+                };
+
+                // Handle hover to show WAN connection line
+                const handleWanHover = (e) => {
+                  if (!isActive || !gatewayWanInfo.gateway.equipment) return;
+
+                  setHoveredConnection({
+                    wanPortIdx: wanPort.portIdx,
+                    gatewayId: gatewayWanInfo.gateway.equipment?.id,
+                    isWanConnection: true,
+                  });
+
+                  const coords = calculateWanLineCoords(e.currentTarget);
+                  if (coords) setLineCoords(coords);
+                };
+
+                const handleWanLeave = () => {
+                  setHoveredConnection(null);
+                  setLineCoords(null);
+                };
+
+                // Handle click to pin/toggle WAN connection line
                 const handleWanClick = (e) => {
                   e.stopPropagation();
                   if (!isActive || !gatewayWanInfo.gateway.equipment) return;
@@ -2424,36 +2569,23 @@ const RackBackView = ({
                     isWanConnection: true,
                   });
 
-                  // Calculate line from modem row to gateway's WAN port
-                  const container = functionalContainerRef.current;
-                  const modemEl = e.currentTarget;
-                  const gatewayEqId = gatewayWanInfo.gateway.equipment?.id;
-                  const switchPortRefKey = `${gatewayEqId}-switch-${wanPort.portIdx}`;
-                  const switchPortEl = switchPortRefs.current[switchPortRefKey];
-
-                  if (container && modemEl && switchPortEl) {
-                    const containerRect = container.getBoundingClientRect();
-                    const modemRect = modemEl.getBoundingClientRect();
-                    const switchRect = switchPortEl.getBoundingClientRect();
-
-                    setPinnedLineCoords({
-                      x1: modemRect.left + modemRect.width / 2 - containerRect.left,
-                      y1: modemRect.bottom - containerRect.top,
-                      x2: switchRect.left + switchRect.width / 2 - containerRect.left,
-                      y2: switchRect.top + switchRect.height / 2 - containerRect.top,
-                      color: '#10B981', // emerald for WAN/uplink
-                      connectionType: 'network',
-                    });
-                  }
+                  const coords = calculateWanLineCoords(e.currentTarget);
+                  if (coords) setPinnedLineCoords(coords);
                 };
+
+                // Check if this modem is highlighted (hover or pinned)
+                const isHighlighted = (hoveredConnection?.wanPortIdx === wanPort.portIdx) ||
+                                     (pinnedConnection?.wanPortIdx === wanPort.portIdx);
 
                 return (
                   <div
                     key={`wan-${wanPort.portIdx}`}
                     ref={(el) => { if (el) switchPortRefs.current[`wan-modem-${wanPort.portIdx}`] = el; }}
                     onClick={handleWanClick}
+                    onMouseEnter={handleWanHover}
+                    onMouseLeave={handleWanLeave}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all cursor-pointer ${
-                      isSelected
+                      isSelected || isHighlighted
                         ? 'bg-emerald-900/30 border-emerald-500 ring-2 ring-emerald-500/50'
                         : isActive
                           ? 'bg-zinc-900/50 border-zinc-500 hover:border-zinc-400'
@@ -2470,7 +2602,34 @@ const RackBackView = ({
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      {/* Port indicator - ref for connection line targeting */}
+                      <div
+                        ref={(el) => { if (el) switchPortRefs.current[`wan-port-${wanPort.portIdx}`] = el; }}
+                        className="flex flex-col items-center gap-0.5"
+                      >
+                        <span
+                          className="text-[9px] font-mono transition-all duration-150"
+                          style={{
+                            color: (isSelected || isHighlighted) ? '#10B981' : '#71717a',
+                            fontWeight: (isSelected || isHighlighted) ? 'bold' : 'normal',
+                            textShadow: (isSelected || isHighlighted) ? '0 0 6px #10B981' : 'none',
+                          }}
+                        >
+                          {wanPort.portIdx}
+                        </span>
+                        <div
+                          className="w-5 h-5 rounded flex items-center justify-center transition-all duration-150"
+                          style={{
+                            backgroundColor: isActive ? ((isSelected || isHighlighted) ? '#10B981' : '#22C55E') : '#3f3f46',
+                            border: `2px solid ${(isSelected || isHighlighted) ? '#ffffff' : (isActive ? '#10B981' : '#52525b')}`,
+                            transform: (isSelected || isHighlighted) ? 'scale(1.15)' : 'scale(1)',
+                            boxShadow: (isSelected || isHighlighted) ? '0 0 8px #10B981' : 'none',
+                          }}
+                        >
+                          <Cable size={10} style={{ color: isActive ? '#ffffff' : '#a1a1aa' }} />
+                        </div>
+                      </div>
                       {isActive ? (
                         <span className="flex items-center gap-1 text-xs text-green-400">
                           <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
@@ -2536,6 +2695,7 @@ const RackBackView = ({
                           return (
                             <div
                               key={`shelf-eq-${eq.id}`}
+                              data-equipment-card={eq.id}
                               onClick={() => setEditingEquipment(eq)}
                               className="flex flex-col gap-2 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:border-violet-500 transition-colors"
                             >
@@ -2597,6 +2757,7 @@ const RackBackView = ({
                 return (
                   <div
                     key={`eq-${eq.id}`}
+                    data-equipment-card={eq.id}
                     onClick={() => setEditingEquipment(eq)}
                     className="flex flex-col gap-2 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:border-violet-500 transition-colors"
                   >
