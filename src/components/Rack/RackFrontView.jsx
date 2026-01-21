@@ -150,7 +150,13 @@ const EquipmentBlock = memo(({
           </button>
         )}
 
-        <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
+        <button
+          onClick={(e) => { e.stopPropagation(); onClick?.(equipment); }}
+          className="p-1 rounded hover:bg-zinc-700 transition-colors"
+          title="Edit equipment"
+        >
+          <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+        </button>
       </div>
     </div>
   );
@@ -1560,7 +1566,13 @@ const RackFrontView = ({
                                 {networkInfo?.ip && (
                                   <span className="text-xs text-blue-400 font-mono flex-shrink-0">{networkInfo.ip}</span>
                                 )}
-                                <Settings size={14} className="text-zinc-500 flex-shrink-0" />
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setEditingEquipment(eq); }}
+                                  className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                                  title="Edit equipment"
+                                >
+                                  <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+                                </button>
                               </div>
                             );
                           })
@@ -1602,7 +1614,13 @@ const RackFrontView = ({
                       {networkInfo?.ip && (
                         <span className="text-xs text-blue-400 font-mono flex-shrink-0">{networkInfo.ip}</span>
                       )}
-                      <Settings size={14} className="text-zinc-500 flex-shrink-0" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingEquipment(eq); }}
+                        className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                        title="Edit equipment"
+                      >
+                        <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+                      </button>
                     </div>
                   );
                 }

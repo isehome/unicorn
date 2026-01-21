@@ -161,7 +161,13 @@ const EquipmentBlockPhysical = memo(({
           <span className="text-xs text-yellow-400 flex-shrink-0">{watts}W</span>
         )}
 
-        <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
+        <button
+          onClick={(e) => { e.stopPropagation(); onClick?.(equipment); }}
+          className="p-1 rounded hover:bg-zinc-700 transition-colors"
+          title="Edit equipment"
+        >
+          <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+        </button>
       </div>
     </div>
   );
@@ -2548,7 +2554,13 @@ const RackBackView = ({
                                     {getEquipmentDisplayName(eq, eqNetInfo?.hostname)}
                                   </span>
                                 </div>
-                                <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onEquipmentEdit?.(eq); }}
+                                  className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                                  title="Edit equipment"
+                                >
+                                  <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+                                </button>
                               </div>
                               {/* Bottom row: Connection info - Power always right, Port hosts (switches/gateways) right */}
                               {(connectionTab === 'power' || eqIsPortHost) && (
@@ -2609,7 +2621,13 @@ const RackBackView = ({
                           {uHeight}U
                         </span>
                       </div>
-                      <Settings size={14} className="text-zinc-500 hover:text-zinc-300 flex-shrink-0" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEquipmentEdit?.(eq); }}
+                        className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                        title="Edit equipment"
+                      >
+                        <Settings size={14} className="text-zinc-500 hover:text-zinc-300" />
+                      </button>
                     </div>
                     {/* Bottom row: Connection info - Power always right, Port hosts (switches/gateways) right, Network devices already shown left */}
                     {(connectionTab === 'power' || eqIsPortHost) && (
