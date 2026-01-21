@@ -706,6 +706,19 @@ async function downloadAndUploadDocuments(part, enrichmentData) {
     const manualsPath = `Parts/${manufacturer}/${partNumber}/manuals`;
     const techDocsPath = `Parts/${manufacturer}/${partNumber}/technical`;
 
+    console.log(`[DocumentLibrary] SharePoint config:`, {
+      rootUrl,
+      manufacturer,
+      partNumber,
+      manualsPath,
+      techDocsPath,
+      installManualUrls: enrichmentData.install_manual_urls?.length || 0,
+      technicalManualUrls: enrichmentData.technical_manual_urls?.length || 0,
+      quickStartUrl: !!enrichmentData.quick_start_url,
+      datasheetUrl: !!enrichmentData.datasheet_url,
+      submittalUrl: !!enrichmentData.submittal_url
+    });
+
     const uploadedUrls = {};
 
     // Download install manuals
@@ -762,13 +775,13 @@ async function downloadAndUploadDocuments(part, enrichmentData) {
  */
 async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, prefix, part) {
   try {
-    // Skip non-PDF URLs for download (but we still saved the URL)
-    if (!sourceUrl.toLowerCase().includes('.pdf') && !sourceUrl.toLowerCase().includes('pdf')) {
-      console.log(`[DocumentLibrary] Skipping non-PDF URL: ${sourceUrl}`);
-      return null;
-    }
+    // Log the URL we're attempting to download
+    const urlLower = sourceUrl.toLowerCase();
+    const looksLikePdf = urlLower.includes('.pdf') || urlLower.includes('pdf');
+    console.log(`[DocumentLibrary] Attempting download: ${sourceUrl} (looksLikePdf: ${looksLikePdf})`);
 
-    console.log(`[DocumentLibrary] Downloading: ${sourceUrl}`);
+    // Try to download - we'll check content-type to verify it's actually a PDF
+    // Many manufacturer download URLs don't have "pdf" in them
 
     const response = await fetch(sourceUrl, {
       headers: {
