@@ -22,8 +22,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Use Gemini 2.5 Pro for thorough research with grounding
-const GEMINI_MODEL = 'gemini-2.5-pro-preview-05-06';
+// Use Gemini 2.5 Flash for document research
+// Note: googleSearch grounding requires special API access, so we use standard generation
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 // Lazy initialize Supabase client
 let supabase;
@@ -99,22 +100,21 @@ module.exports = async function handler(req, res) {
       .update({ ai_enrichment_status: 'processing' })
       .eq('id', partId);
 
-    // Initialize Gemini with grounding enabled
+    // Initialize Gemini
     const GenAI = getGemini();
     const genAI = new GenAI(geminiKey);
 
-    // Configure model with Google Search grounding for real-time web research
+    // Configure model for document research
+    // Note: Google Search grounding requires special API access/billing
+    // Using standard generation with detailed prompts for web research
     const model = genAI.getGenerativeModel({
-      model: GEMINI_MODEL,
-      tools: [{
-        googleSearch: {}
-      }]
+      model: GEMINI_MODEL
     });
 
     // ========================================
     // PASS 1: Research the part thoroughly
     // ========================================
-    console.log(`[DocumentLibrary] PASS 1: Comprehensive research with grounding...`);
+    console.log(`[DocumentLibrary] PASS 1: Comprehensive research...`);
     const enrichmentData = await buildDocumentLibrary(model, part);
 
     console.log(`[DocumentLibrary] Research complete:`, {
@@ -421,7 +421,7 @@ Return a JSON object. Take your time to be thorough.
 Now, thoroughly research ${manufacturer} ${partNumber} and build its document library.`;
 
   try {
-    console.log(`[DocumentLibrary] Sending research request to Gemini 2.5 Pro with grounding...`);
+    console.log(`[DocumentLibrary] Sending research request to Gemini...`);
 
     const result = await model.generateContent({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
