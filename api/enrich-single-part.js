@@ -105,17 +105,26 @@ module.exports = async function handler(req, res) {
     const genAI = new GenAI(geminiKey);
 
     // Configure model for document research
-    // Note: Google Search grounding requires special API access/billing
-    // Using standard generation with detailed prompts for web research
     const model = genAI.getGenerativeModel({
       model: GEMINI_MODEL
     });
 
     // ========================================
-    // PASS 1: Research the part thoroughly
+    // PASS 0: Real Web Scraping - Actually fetch product pages
     // ========================================
-    console.log(`[DocumentLibrary] PASS 1: Comprehensive research...`);
-    const enrichmentData = await buildDocumentLibrary(model, part);
+    console.log(`[DocumentLibrary] PASS 0: Real web scraping for ${part.manufacturer} ${part.part_number}...`);
+    const scrapedData = await scrapeRealProductPages(part);
+    console.log(`[DocumentLibrary] PASS 0 complete:`, {
+      productPageFound: !!scrapedData.product_page_url,
+      contentLength: scrapedData.scraped_content?.length || 0,
+      pdfUrls: scrapedData.discovered_pdf_urls?.length || 0
+    });
+
+    // ========================================
+    // PASS 1: AI Analysis of scraped content
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 1: AI analysis of scraped content...`);
+    const enrichmentData = await analyzeScrapedContent(model, part, scrapedData);
 
     console.log(`[DocumentLibrary] Research complete:`, {
       confidence: enrichmentData.confidence,
@@ -1207,6 +1216,458 @@ ${enrichmentData.product_page_url ? `### Product Page\n- ${enrichmentData.produc
     console.error('[DocumentLibrary] AI summary generation error:', error);
     return null;
   }
+}
+
+// ============================================
+// PASS 0: REAL WEB SCRAPING
+// ============================================
+
+/**
+ * Known manufacturer URL patterns - these are REAL, verified URLs
+ * Updated 2026-01-21 based on actual website research
+ */
+const MANUFACTURER_URLS = {
+  'panamax': {
+    domain: 'panamax.com',
+    // Panamax uses category pages like /battery-backups/ and product slugs
+    // PDFs are hosted on S3: https://s3.niceforyou.support/products/{PART}/pdf_{PART}_manual.pdf
+    categoryPages: [
+      'https://panamax.com/battery-backups/',
+      'https://panamax.com/rack-mount-and-component-power/',
+      'https://panamax.com/compact-power/',
+      'https://panamax.com/floor-models/',
+      'https://panamax.com/power-distribution/',
+      'https://panamax.com/accessories/'
+    ],
+    // Direct PDF URL patterns on S3 (niceforyou.support is the Nice/Panamax S3 bucket)
+    pdfPatterns: (partNumber) => [
+      `https://s3.niceforyou.support/products/${partNumber}/pdf_${partNumber}_manual.pdf`,
+      `https://s3.niceforyou.support/products/${partNumber}/pdf_${partNumber}_datasheet.pdf`,
+      `https://s3.niceforyou.support/products/${partNumber}/pdf_${partNumber}_quickstart.pdf`
+    ],
+    altDomain: 'niceforyou.com'
+  },
+  'nice': {
+    domain: 'niceforyou.com',
+    pdfPatterns: (partNumber) => [
+      `https://s3.niceforyou.support/products/${partNumber}/pdf_${partNumber}_manual.pdf`,
+      `https://s3.niceforyou.support/products/${partNumber}/pdf_${partNumber}_datasheet.pdf`
+    ]
+  },
+  'ubiquiti': {
+    domain: 'ui.com',
+    productPattern: (partNumber) => `https://store.ui.com/us/en/products/${partNumber.toLowerCase()}`,
+    docsUrl: 'https://help.ui.com'
+  },
+  'lutron': {
+    domain: 'lutron.com',
+    searchUrl: (partNumber) => `https://www.lutron.com/en-US/pages/search.aspx?q=${encodeURIComponent(partNumber)}`,
+    // Lutron PDFs follow this pattern
+    pdfPatterns: (partNumber) => [
+      `https://www.lutron.com/TechnicalDocumentLibrary/${partNumber}.pdf`
+    ]
+  },
+  'control4': {
+    domain: 'control4.com',
+    searchUrl: (partNumber) => `https://www.control4.com/search?q=${encodeURIComponent(partNumber)}`
+  },
+  'sonos': {
+    domain: 'sonos.com',
+    searchUrl: (partNumber) => `https://www.sonos.com/en-us/search?q=${encodeURIComponent(partNumber)}`
+  }
+};
+
+/**
+ * Scrape REAL product pages from the web
+ * Updated strategy: First try known PDF URLs directly, then scrape product pages
+ */
+async function scrapeRealProductPages(part) {
+  const manufacturer = (part.manufacturer || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const partNumber = part.part_number || '';
+  const productName = part.name || '';
+
+  console.log(`[WebScraper] Scraping for: ${manufacturer} ${partNumber}`);
+
+  const result = {
+    product_page_url: null,
+    support_page_url: null,
+    scraped_content: '',
+    discovered_pdf_urls: [],
+    verified_pdf_urls: [],  // PDFs that actually exist (HEAD request succeeded)
+    discovered_images: [],
+    specifications: {}
+  };
+
+  const mfrConfig = MANUFACTURER_URLS[manufacturer];
+
+  // STRATEGY 1: Try known PDF URL patterns first (most reliable)
+  if (mfrConfig && mfrConfig.pdfPatterns) {
+    const pdfUrls = mfrConfig.pdfPatterns(partNumber);
+    console.log(`[WebScraper] Trying known PDF patterns for ${manufacturer}:`, pdfUrls);
+
+    for (const pdfUrl of pdfUrls) {
+      try {
+        // Use HEAD request to check if PDF exists without downloading it
+        const response = await fetch(pdfUrl, {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+
+        if (response.ok) {
+          console.log(`[WebScraper] ✓ VERIFIED PDF: ${pdfUrl}`);
+          result.verified_pdf_urls.push(pdfUrl);
+          result.discovered_pdf_urls.push(pdfUrl);
+        } else {
+          console.log(`[WebScraper] PDF not found (${response.status}): ${pdfUrl}`);
+        }
+      } catch (error) {
+        console.log(`[WebScraper] Error checking PDF ${pdfUrl}: ${error.message}`);
+      }
+    }
+  }
+
+  // STRATEGY 2: Scrape manufacturer's product pages
+  const urlsToTry = [];
+
+  // Try manufacturer's main website
+  if (mfrConfig) {
+    // Add category pages to scrape
+    if (mfrConfig.categoryPages) {
+      urlsToTry.push(...mfrConfig.categoryPages);
+    }
+    if (mfrConfig.productPattern) {
+      urlsToTry.push(mfrConfig.productPattern(partNumber));
+    }
+    if (mfrConfig.searchUrl) {
+      urlsToTry.push(mfrConfig.searchUrl(partNumber));
+    }
+    // Try direct product page URL patterns
+    if (mfrConfig.domain) {
+      urlsToTry.push(`https://${mfrConfig.domain}/product/${partNumber.toLowerCase()}/`);
+      urlsToTry.push(`https://www.${mfrConfig.domain}/product/${partNumber.toLowerCase()}/`);
+    }
+  }
+
+  // Try common patterns for any manufacturer
+  const domain = mfrConfig?.domain || `${manufacturer}.com`;
+  urlsToTry.push(`https://${domain}/?s=${encodeURIComponent(partNumber)}`);
+  urlsToTry.push(`https://www.${domain}/?s=${encodeURIComponent(partNumber)}`);
+
+  // Try each URL until we get content
+  for (const url of urlsToTry.slice(0, 5)) { // Limit to 5 URLs to avoid timeouts
+    try {
+      console.log(`[WebScraper] Trying page: ${url}`);
+
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        },
+        redirect: 'follow'
+      });
+
+      if (!response.ok) {
+        console.log(`[WebScraper] ${url} returned ${response.status}`);
+        continue;
+      }
+
+      const html = await response.text();
+
+      // Check if we got a real product page (not a 404 page or empty result)
+      if (html.length < 1000 || html.includes('Page not found') || html.includes('No results')) {
+        console.log(`[WebScraper] ${url} - no useful content`);
+        continue;
+      }
+
+      // Check if page contains our part number (to verify it's relevant)
+      if (!html.toLowerCase().includes(partNumber.toLowerCase())) {
+        console.log(`[WebScraper] ${url} - doesn't contain ${partNumber}`);
+        continue;
+      }
+
+      console.log(`[WebScraper] ✓ Got content from ${url} (${html.length} chars)`);
+
+      // Extract content
+      result.product_page_url = url;
+      result.scraped_content = extractTextContent(html);
+
+      // Find PDF links in the page
+      const pdfMatches = html.match(/href=["']([^"']*\.pdf[^"']*)["']/gi) || [];
+      for (const match of pdfMatches) {
+        const pdfUrl = match.replace(/href=["']/i, '').replace(/["']$/, '');
+        try {
+          const absoluteUrl = new URL(pdfUrl, url).href;
+          if (!result.discovered_pdf_urls.includes(absoluteUrl)) {
+            result.discovered_pdf_urls.push(absoluteUrl);
+            console.log(`[WebScraper] Found PDF link: ${absoluteUrl}`);
+          }
+        } catch (e) {}
+      }
+
+      // Find image URLs
+      const imgMatches = html.match(/src=["']([^"']*\.(jpg|jpeg|png|webp)[^"']*)["']/gi) || [];
+      for (const match of imgMatches) {
+        const imgUrl = match.replace(/src=["']/i, '').replace(/["']$/, '');
+        try {
+          const absoluteUrl = new URL(imgUrl, url).href;
+          if (!result.discovered_images.includes(absoluteUrl) &&
+              !absoluteUrl.includes('icon') &&
+              !absoluteUrl.includes('logo') &&
+              absoluteUrl.includes(partNumber.toLowerCase())) {
+            result.discovered_images.push(absoluteUrl);
+          }
+        } catch (e) {}
+      }
+
+      // If we found good content with PDFs, break
+      if (result.scraped_content.length > 500 && result.discovered_pdf_urls.length > 0) {
+        break;
+      }
+    } catch (error) {
+      console.log(`[WebScraper] Error fetching ${url}: ${error.message}`);
+    }
+  }
+
+  // STRATEGY 3: Verify any discovered PDFs that weren't already verified
+  for (const pdfUrl of result.discovered_pdf_urls) {
+    if (!result.verified_pdf_urls.includes(pdfUrl)) {
+      try {
+        const response = await fetch(pdfUrl, {
+          method: 'HEAD',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+
+        if (response.ok) {
+          console.log(`[WebScraper] ✓ Verified discovered PDF: ${pdfUrl}`);
+          result.verified_pdf_urls.push(pdfUrl);
+        }
+      } catch (error) {
+        console.log(`[WebScraper] Could not verify PDF: ${pdfUrl}`);
+      }
+    }
+  }
+
+  console.log(`[WebScraper] Scraping complete:`, {
+    foundPage: !!result.product_page_url,
+    contentLength: result.scraped_content.length,
+    discoveredPdfCount: result.discovered_pdf_urls.length,
+    verifiedPdfCount: result.verified_pdf_urls.length,
+    imageCount: result.discovered_images.length
+  });
+
+  return result;
+}
+
+/**
+ * Extract clean text content from HTML
+ */
+function extractTextContent(html) {
+  // Remove scripts, styles, etc
+  let text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  // Convert to text
+  text = text
+    .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '\n## $1\n')
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+
+  return text.substring(0, 50000); // Limit content size
+}
+
+/**
+ * Analyze scraped content with AI to extract structured data
+ */
+async function analyzeScrapedContent(model, part, scrapedData) {
+  const manufacturer = part.manufacturer || 'Unknown';
+  const partNumber = part.part_number || 'Unknown';
+
+  // Prefer verified PDFs over discovered ones
+  const reliablePdfUrls = scrapedData.verified_pdf_urls?.length > 0
+    ? scrapedData.verified_pdf_urls
+    : scrapedData.discovered_pdf_urls || [];
+
+  console.log(`[analyzeScrapedContent] Processing ${reliablePdfUrls.length} PDF URLs (${scrapedData.verified_pdf_urls?.length || 0} verified)`);
+
+  // If we have verified PDFs but no scraped content, still return useful data
+  if (reliablePdfUrls.length > 0 && (!scrapedData.scraped_content || scrapedData.scraped_content.length < 100)) {
+    console.log('[analyzeScrapedContent] Using verified PDFs without page content');
+    return {
+      data: {
+        product_page_url: scrapedData.product_page_url,
+        verified_pdf_urls: scrapedData.verified_pdf_urls,
+        discovered_pdf_urls: scrapedData.discovered_pdf_urls,
+        install_manual_urls: reliablePdfUrls.filter(u =>
+          u.toLowerCase().includes('manual') || u.toLowerCase().includes('guide')
+        ),
+        technical_manual_urls: reliablePdfUrls.filter(u =>
+          u.toLowerCase().includes('datasheet') || u.toLowerCase().includes('spec') || u.toLowerCase().includes('sheet')
+        ),
+        class3_documents: reliablePdfUrls.map(url => ({
+          type: url.toLowerCase().includes('manual') ? 'install_manual' : 'datasheet',
+          url: url,
+          source: 'verified_manufacturer',
+          verified: true
+        })),
+        class2_documents: [],
+        class1_documents: []
+      },
+      confidence: 0.8, // High confidence for verified PDFs
+      notes: `Found ${reliablePdfUrls.length} verified PDF documents from manufacturer`
+    };
+  }
+
+  // If we have scraped content, ask AI to analyze it
+  if (scrapedData.scraped_content && scrapedData.scraped_content.length > 100) {
+    const prompt = `Analyze this scraped product page content and extract structured information.
+
+**PRODUCT:** ${manufacturer} ${partNumber} - ${part.name || ''}
+
+**SCRAPED CONTENT FROM:** ${scrapedData.product_page_url || 'Unknown'}
+
+**CONTENT:**
+${scrapedData.scraped_content.substring(0, 15000)}
+
+**VERIFIED PDF URLs (THESE ARE REAL AND EXIST):**
+${reliablePdfUrls.slice(0, 10).join('\n') || 'None found'}
+
+**TASK:**
+Extract the following information from the scraped content. Only include information you can actually find in the content above.
+
+Return JSON:
+{
+  "product_description": "<brief description from the page>",
+  "specifications": {
+    "device_type": "<rack_equipment|power_device|network_switch|shelf_device|other>",
+    "power_watts": <number or null>,
+    "dimensions": "<WxDxH if found>",
+    "weight": "<if found>",
+    "is_rack_mountable": <true/false/null>,
+    "u_height": <number or null>,
+    "features": ["<list of key features>"]
+  },
+  "install_manual_urls": ["<URLs from discovered PDFs that look like manuals>"],
+  "datasheet_urls": ["<URLs that look like datasheets>"],
+  "confidence": <0.0 to 1.0 based on how much info you found>,
+  "notes": "<what you found or didn't find>"
+}`;
+
+    try {
+      const result = await model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096
+        }
+      });
+
+      const responseText = result.response.text();
+
+      // Parse JSON from response
+      let jsonText = responseText;
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1].trim();
+      }
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        // Use verified PDFs with fallback to discovered PDFs
+        const allPdfUrls = [...new Set([
+          ...(scrapedData.verified_pdf_urls || []),
+          ...(scrapedData.discovered_pdf_urls || [])
+        ])];
+
+        return {
+          data: {
+            product_page_url: scrapedData.product_page_url,
+            scraped_content: scrapedData.scraped_content.substring(0, 5000),
+            verified_pdf_urls: scrapedData.verified_pdf_urls,
+            discovered_pdf_urls: scrapedData.discovered_pdf_urls,
+            product_description: parsed.product_description,
+            device_type: parsed.specifications?.device_type,
+            power_watts: parsed.specifications?.power_watts,
+            is_rack_mountable: parsed.specifications?.is_rack_mountable,
+            u_height: parsed.specifications?.u_height,
+            // Prefer verified PDFs for manual/datasheet categorization
+            install_manual_urls: parsed.install_manual_urls?.length > 0
+              ? parsed.install_manual_urls
+              : allPdfUrls.filter(u => u.toLowerCase().includes('manual') || u.toLowerCase().includes('guide')),
+            technical_manual_urls: parsed.datasheet_urls?.length > 0
+              ? parsed.datasheet_urls
+              : allPdfUrls.filter(u => u.toLowerCase().includes('datasheet') || u.toLowerCase().includes('spec') || u.toLowerCase().includes('sheet')),
+            class3_documents: allPdfUrls.map(url => ({
+              type: url.toLowerCase().includes('manual') ? 'install_manual' : 'datasheet',
+              url: url,
+              source: (scrapedData.verified_pdf_urls || []).includes(url) ? 'verified_manufacturer' : 'web_scrape',
+              verified: (scrapedData.verified_pdf_urls || []).includes(url)
+            })),
+            class2_documents: [],
+            class1_documents: []
+          },
+          confidence: (scrapedData.verified_pdf_urls?.length > 0) ? 0.85 : (parsed.confidence || 0.5),
+          notes: parsed.notes || 'Analyzed from scraped web content'
+        };
+      }
+    } catch (error) {
+      console.error('[DocumentLibrary] AI analysis error:', error.message);
+    }
+  }
+
+  // Fallback: return minimal data with verified/discovered URLs
+  const allPdfUrls = [...new Set([
+    ...(scrapedData.verified_pdf_urls || []),
+    ...(scrapedData.discovered_pdf_urls || [])
+  ])];
+
+  return {
+    data: {
+      product_page_url: scrapedData.product_page_url,
+      verified_pdf_urls: scrapedData.verified_pdf_urls,
+      discovered_pdf_urls: scrapedData.discovered_pdf_urls,
+      install_manual_urls: allPdfUrls.filter(u =>
+        u.toLowerCase().includes('manual') || u.toLowerCase().includes('guide')
+      ),
+      technical_manual_urls: allPdfUrls.filter(u =>
+        u.toLowerCase().includes('datasheet') || u.toLowerCase().includes('spec') || u.toLowerCase().includes('sheet')
+      ),
+      class3_documents: allPdfUrls.map(url => ({
+        type: url.toLowerCase().includes('manual') ? 'install_manual' : 'datasheet',
+        url: url,
+        source: (scrapedData.verified_pdf_urls || []).includes(url) ? 'verified_manufacturer' : 'web_scrape',
+        verified: (scrapedData.verified_pdf_urls || []).includes(url)
+      })),
+      class2_documents: [],
+      class1_documents: []
+    },
+    confidence: (scrapedData.verified_pdf_urls?.length > 0) ? 0.7 : (scrapedData.product_page_url ? 0.3 : 0.1),
+    notes: scrapedData.verified_pdf_urls?.length > 0
+      ? `Found ${scrapedData.verified_pdf_urls.length} verified PDFs from manufacturer`
+      : (scrapedData.product_page_url
+        ? 'Found product page but limited information extracted'
+        : 'Could not find product page - using fallback data')
+  };
 }
 
 // ============================================
