@@ -6,13 +6,19 @@
 -- =====================================================
 
 -- Device classification
-ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS device_type text; -- rack_equipment, power_device, network_switch, shelf_device, wireless_device, other
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS device_type text; -- rack_equipment, power_device, network_switch, shelf_device, wireless_device, accessory, other
 
 -- Rack mounting info
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS is_rack_mountable boolean;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS u_height integer;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS needs_shelf boolean;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS is_wireless boolean;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS exclude_from_rack boolean DEFAULT false;
+
+-- Physical dimensions (for calculating items per shelf)
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS width_inches numeric;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS depth_inches numeric;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS height_inches numeric;
 
 -- Power device info
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS power_outlets integer DEFAULT 1; -- outlets NEEDED by device
@@ -26,8 +32,15 @@ ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS ups_runtime_minutes numeric;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS is_network_switch boolean;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS switch_ports integer;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS poe_enabled boolean;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS poe_budget_watts numeric;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS uplink_ports integer;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS has_network_port boolean DEFAULT true;
+
+-- Additional documentation URLs
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS quick_start_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS datasheet_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS submittal_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS support_page_url text;
 
 -- =====================================================
 -- UPDATE SAVE FUNCTION TO HANDLE ALL NEW FIELDS
@@ -57,7 +70,13 @@ BEGIN
     is_rack_mountable = COALESCE((p_enrichment_data->>'is_rack_mountable')::boolean, is_rack_mountable),
     u_height = COALESCE((p_enrichment_data->>'u_height')::integer, u_height),
     needs_shelf = COALESCE((p_enrichment_data->>'needs_shelf')::boolean, needs_shelf),
+    shelf_u_height = COALESCE((p_enrichment_data->>'shelf_u_height')::integer, shelf_u_height),
+    max_items_per_shelf = COALESCE((p_enrichment_data->>'max_items_per_shelf')::integer, max_items_per_shelf),
     is_wireless = COALESCE((p_enrichment_data->>'is_wireless')::boolean, is_wireless),
+    exclude_from_rack = COALESCE((p_enrichment_data->>'exclude_from_rack')::boolean, exclude_from_rack),
+    width_inches = COALESCE((p_enrichment_data->>'width_inches')::numeric, width_inches),
+    depth_inches = COALESCE((p_enrichment_data->>'depth_inches')::numeric, depth_inches),
+    height_inches = COALESCE((p_enrichment_data->>'height_inches')::numeric, height_inches),
 
     -- Power fields
     power_watts = COALESCE((p_enrichment_data->>'power_watts')::numeric, power_watts),
@@ -75,12 +94,13 @@ BEGIN
     total_ports = COALESCE((p_enrichment_data->>'total_ports')::integer, total_ports),
     switch_ports = COALESCE((p_enrichment_data->>'switch_ports')::integer, switch_ports),
     poe_enabled = COALESCE((p_enrichment_data->>'poe_enabled')::boolean, poe_enabled),
+    poe_budget_watts = COALESCE((p_enrichment_data->>'poe_budget_watts')::numeric, poe_budget_watts),
     poe_ports = COALESCE((p_enrichment_data->>'poe_ports')::integer, poe_ports),
     poe_port_list = COALESCE(p_enrichment_data->>'poe_port_list', poe_port_list),
     uplink_ports = COALESCE((p_enrichment_data->>'uplink_ports')::integer, uplink_ports),
     has_network_port = COALESCE((p_enrichment_data->>'has_network_port')::boolean, has_network_port),
 
-    -- Documentation URLs
+    -- Documentation URLs (arrays)
     user_guide_urls = CASE
       WHEN p_enrichment_data->'user_guide_urls' IS NOT NULL
            AND jsonb_typeof(p_enrichment_data->'user_guide_urls') = 'array'
@@ -94,7 +114,13 @@ BEGIN
            AND jsonb_array_length(p_enrichment_data->'install_manual_urls') > 0
       THEN ARRAY(SELECT jsonb_array_elements_text(p_enrichment_data->'install_manual_urls'))
       ELSE install_manual_urls
-    END
+    END,
+
+    -- Documentation URLs (single fields)
+    quick_start_url = COALESCE(p_enrichment_data->>'quick_start_url', quick_start_url),
+    datasheet_url = COALESCE(p_enrichment_data->>'datasheet_url', datasheet_url),
+    submittal_url = COALESCE(p_enrichment_data->>'submittal_url', submittal_url),
+    support_page_url = COALESCE(p_enrichment_data->>'support_page_url', support_page_url)
 
   WHERE id = p_part_id
   RETURNING jsonb_build_object(
@@ -106,6 +132,9 @@ BEGIN
     'device_type', device_type,
     'is_rack_mountable', is_rack_mountable,
     'u_height', u_height,
+    'needs_shelf', needs_shelf,
+    'shelf_u_height', shelf_u_height,
+    'max_items_per_shelf', max_items_per_shelf,
     'power_watts', power_watts
   ) INTO v_result;
 

@@ -154,7 +154,7 @@ async function enrichPart(model, part) {
 
   const prompt = `You are a technical product researcher for AV/IT installation equipment used in home automation, commercial AV, and IT infrastructure.
 
-**TASK:** Research and extract technical specifications for this product to auto-populate rack layout and documentation fields.
+**TASK:** Research and extract technical specifications for this product to auto-populate rack layout, power requirements, and documentation fields.
 
 **PRODUCT INFORMATION:**
 - Name: ${part.name || 'Unknown'}
@@ -165,52 +165,67 @@ async function enrichPart(model, part) {
 
 **SEARCH STRATEGY:**
 1. Search for "${productIdentifier} specifications" or "${productIdentifier} datasheet"
-2. Look for official manufacturer product pages
-3. Check for PDF datasheets or spec sheets
-4. Focus on verified, official sources only
+2. Look for official manufacturer product pages and support/downloads sections
+3. Check for PDF datasheets, spec sheets, quick start guides, installation manuals
+4. Look for "${part.manufacturer || ''} ${part.part_number || ''} PDF" for direct document links
+5. Focus on verified, official sources only
 
 **EXTRACT ALL APPLICABLE SPECIFICATIONS:**
 
 ## 1. RACK LAYOUT INFORMATION (Critical for rack planning)
-- **Is it rack mountable?** (standard 19" rack mount)
-- **Rack unit height** (1U, 2U, 3U, 4U, etc.)
-- **Needs a shelf?** (if not rack-mountable but can sit on shelf)
-- **Is it a wireless device?** (no network cable needed)
+- **Is it rack mountable?** (standard 19" rack mount with ears)
+- **Rack unit height** (1U, 2U, 3U, 4U, etc.) - only if rack mountable
+- **Needs a shelf?** (if not rack-mountable but can sit on shelf in rack)
+- **Physical dimensions** (width x depth x height in inches or mm)
+- **Items per shelf** - how many can fit side-by-side on a standard 19" rack shelf? (based on width)
+- **Recommended shelf height** - 1U, 2U, etc. based on device height
+- **Is it a wireless device?** (WiFi/Bluetooth, no ethernet required)
+- **Exclude from rack?** (cables, accessories, wall-mount only devices)
 
 ## 2. POWER INFORMATION
-- **Power consumption** (operating watts, not peak)
+- **Power consumption** (typical operating watts, not max/peak)
 - **Number of power outlets needed** (typically 1, some devices need 2)
-- **Is it a power distribution device?** (PDU, UPS, surge protector, power strip)
+- **Is it a power distribution device?** (PDU, UPS, surge protector, power strip, power conditioner)
 - If power device:
-  - Number of outlets provided
+  - Total number of outlets provided
   - Total output watts/VA capacity
   - For UPS: battery backup outlet count vs surge-only outlet count
   - For UPS: VA rating and estimated runtime at half load
 
 ## 3. NETWORK SWITCH INFORMATION (if applicable)
 - **Is it a network switch/router/hub?**
-- **Total number of ports**
-- **PoE/PoE+ capable?**
-- **Number of PoE ports**
-- **Which ports are PoE** (e.g., "1-8" or "1-24")
+- **Total number of network ports**
+- **PoE/PoE+ capable?** and total PoE budget in watts
+- **Number of PoE ports** and which ports (e.g., "1-8" or "1-24")
 - **Number of uplink/SFP ports**
 
-## 4. DOCUMENTATION LINKS
-- Installation/quick start guide URL
-- User manual/guide URL
-- Only official manufacturer links
+## 4. DOCUMENTATION - Find ALL available PDFs
+Search the manufacturer's website for these document types:
+- **Quick Start Guide** - brief setup instructions
+- **Installation Manual** - detailed installation guide
+- **User Manual/Guide** - full user documentation
+- **Datasheet/Spec Sheet** - technical specifications PDF
+- **Submittal Document** - product spec sheet for project documentation
+
+Return DIRECT LINKS to PDF files when possible (ending in .pdf), not just web pages.
 
 **RESPONSE FORMAT:**
 Return ONLY a valid JSON object (no markdown, no explanation):
 
 {
-  "device_type": "<rack_equipment|power_device|network_switch|shelf_device|wireless_device|other>",
+  "device_type": "<rack_equipment|power_device|network_switch|shelf_device|wireless_device|accessory|other>",
 
   "rack_info": {
     "is_rack_mountable": <true/false>,
-    "u_height": <1-10 or null>,
+    "u_height": <1-10 or null if not rack mountable>,
     "needs_shelf": <true/false>,
-    "is_wireless": <true/false>
+    "shelf_u_height": <1-4 recommended shelf height, or null>,
+    "max_items_per_shelf": <1-4 how many fit side by side, or null>,
+    "is_wireless": <true/false>,
+    "exclude_from_rack": <true/false for cables/accessories>,
+    "width_inches": <number or null>,
+    "depth_inches": <number or null>,
+    "height_inches": <number or null>
   },
 
   "power_info": {
@@ -229,15 +244,20 @@ Return ONLY a valid JSON object (no markdown, no explanation):
     "is_network_switch": <true/false>,
     "total_ports": <number or null>,
     "poe_enabled": <true/false>,
+    "poe_budget_watts": <number or null>,
     "poe_ports": <number or null>,
     "poe_port_list": "<string like '1-8' or null>",
     "uplink_ports": <number or null>,
-    "has_network_port": <true/false, whether device has ethernet port>
+    "has_network_port": <true/false>
   },
 
   "documentation": {
-    "install_manual_urls": ["<url>"] or [],
-    "user_guide_urls": ["<url>"] or []
+    "quick_start_url": "<direct PDF URL or null>",
+    "install_manual_url": "<direct PDF URL or null>",
+    "user_guide_url": "<direct PDF URL or null>",
+    "datasheet_url": "<direct PDF URL or null>",
+    "submittal_url": "<direct PDF URL or null>",
+    "support_page_url": "<manufacturer support/downloads page URL>"
   },
 
   "sources": ["<urls where you found this info>"],
@@ -247,11 +267,12 @@ Return ONLY a valid JSON object (no markdown, no explanation):
 
 **IMPORTANT RULES:**
 - Use null for values you cannot verify from official sources
-- is_rack_mountable: true if product comes with rack ears OR mentions "1U", "2U", etc.
-- u_height: Only set if definitely rack mountable
-- needs_shelf: true for small devices like Apple TV, media players, small amplifiers
-- is_power_device: true for PDU, UPS, surge protectors, power conditioners
-- is_network_switch: true for switches, routers, hubs, access points with switching
+- is_rack_mountable: true ONLY if product includes rack ears or is designed for 19" rack
+- needs_shelf: true for small devices (amplifiers, media players, hubs) that sit ON a shelf
+- shelf_u_height: typically 1U or 2U based on device height
+- max_items_per_shelf: calculate from width (19" shelf = ~17" usable, so 8.5" device = 2 per shelf)
+- exclude_from_rack: true for cables, brackets, accessories, wall-mount-only devices
+- For documentation: prefer direct .pdf links over web pages
 - confidence: 1.0 = official datasheet, 0.5 = reseller site, 0.3 = uncertain
 - Do NOT guess - null is better than wrong data`;
 
@@ -282,6 +303,23 @@ Return ONLY a valid JSON object (no markdown, no explanation):
     const networkInfo = parsed.network_info || {};
     const documentation = parsed.documentation || {};
 
+    // Build documentation URL arrays from new structure
+    const installManualUrls = [];
+    const userGuideUrls = [];
+
+    if (documentation.quick_start_url) installManualUrls.push(documentation.quick_start_url);
+    if (documentation.install_manual_url) installManualUrls.push(documentation.install_manual_url);
+    if (documentation.user_guide_url) userGuideUrls.push(documentation.user_guide_url);
+    if (documentation.datasheet_url) userGuideUrls.push(documentation.datasheet_url);
+
+    // Also support old array format for backwards compatibility
+    if (Array.isArray(documentation.install_manual_urls)) {
+      installManualUrls.push(...documentation.install_manual_urls);
+    }
+    if (Array.isArray(documentation.user_guide_urls)) {
+      userGuideUrls.push(...documentation.user_guide_urls);
+    }
+
     return {
       data: {
         // Device classification
@@ -291,7 +329,13 @@ Return ONLY a valid JSON object (no markdown, no explanation):
         is_rack_mountable: sanitizeBoolean(rackInfo.is_rack_mountable),
         u_height: sanitizeNumber(rackInfo.u_height),
         needs_shelf: sanitizeBoolean(rackInfo.needs_shelf),
+        shelf_u_height: sanitizeNumber(rackInfo.shelf_u_height),
+        max_items_per_shelf: sanitizeNumber(rackInfo.max_items_per_shelf),
         is_wireless: sanitizeBoolean(rackInfo.is_wireless),
+        exclude_from_rack: sanitizeBoolean(rackInfo.exclude_from_rack),
+        width_inches: sanitizeNumber(rackInfo.width_inches),
+        depth_inches: sanitizeNumber(rackInfo.depth_inches),
+        height_inches: sanitizeNumber(rackInfo.height_inches),
 
         // Power fields
         power_watts: sanitizeNumber(powerInfo.power_watts),
@@ -309,14 +353,19 @@ Return ONLY a valid JSON object (no markdown, no explanation):
         switch_ports: sanitizeNumber(networkInfo.total_ports),
         total_ports: sanitizeNumber(networkInfo.total_ports),
         poe_enabled: sanitizeBoolean(networkInfo.poe_enabled),
+        poe_budget_watts: sanitizeNumber(networkInfo.poe_budget_watts),
         poe_ports: sanitizeNumber(networkInfo.poe_ports),
         poe_port_list: sanitizeString(networkInfo.poe_port_list),
         uplink_ports: sanitizeNumber(networkInfo.uplink_ports),
         has_network_port: sanitizeBoolean(networkInfo.has_network_port, true), // default true
 
-        // Documentation
-        install_manual_urls: sanitizeUrlArray(documentation.install_manual_urls),
-        user_guide_urls: sanitizeUrlArray(documentation.user_guide_urls),
+        // Documentation URLs
+        install_manual_urls: sanitizeUrlArray(installManualUrls),
+        user_guide_urls: sanitizeUrlArray(userGuideUrls),
+        quick_start_url: sanitizeString(documentation.quick_start_url),
+        datasheet_url: sanitizeString(documentation.datasheet_url),
+        submittal_url: sanitizeString(documentation.submittal_url),
+        support_page_url: sanitizeString(documentation.support_page_url),
 
         // Sources
         sources: sanitizeUrlArray(parsed.sources)
