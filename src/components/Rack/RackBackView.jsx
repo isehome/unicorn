@@ -7,6 +7,7 @@
 import React, { useState, useMemo, useCallback, useRef, memo } from 'react';
 import PropTypes from 'prop-types';
 import { WifiOff, Wifi, Globe, ExternalLink, Zap, Plug, Link2, ChevronDown, GripVertical, Settings, Server, Layers, X, Plus, Check, Network, Cable } from 'lucide-react';
+import EquipmentEditModal from './EquipmentEditModal';
 
 // Constants - same as RackFrontView for consistency
 const U_HEIGHT = 50;
@@ -416,6 +417,9 @@ const RackBackView = ({
     draggedShelf: null,
     dropPreview: null,
   });
+
+  // State for equipment edit modal (same as RackFrontView)
+  const [editingEquipment, setEditingEquipment] = useState(null);
 
   const totalU = rack?.total_u || 42;
 
@@ -2532,7 +2536,7 @@ const RackBackView = ({
                           return (
                             <div
                               key={`shelf-eq-${eq.id}`}
-                              onClick={() => onEquipmentEdit?.(eq)}
+                              onClick={() => setEditingEquipment(eq)}
                               className="flex flex-col gap-2 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:border-violet-500 transition-colors"
                             >
                               {/* Top row: Name and settings */}
@@ -2555,7 +2559,7 @@ const RackBackView = ({
                                   </span>
                                 </div>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); onEquipmentEdit?.(eq); }}
+                                  onClick={(e) => { e.stopPropagation(); setEditingEquipment(eq); }}
                                   className="p-1 rounded hover:bg-zinc-700 transition-colors"
                                   title="Edit equipment"
                                 >
@@ -2593,7 +2597,7 @@ const RackBackView = ({
                 return (
                   <div
                     key={`eq-${eq.id}`}
-                    onClick={() => onEquipmentEdit?.(eq)}
+                    onClick={() => setEditingEquipment(eq)}
                     className="flex flex-col gap-2 px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:border-violet-500 transition-colors"
                   >
                     {/* Top row: U position, name, settings */}
@@ -2622,7 +2626,7 @@ const RackBackView = ({
                         </span>
                       </div>
                       <button
-                        onClick={(e) => { e.stopPropagation(); onEquipmentEdit?.(eq); }}
+                        onClick={(e) => { e.stopPropagation(); setEditingEquipment(eq); }}
                         className="p-1 rounded hover:bg-zinc-700 transition-colors"
                         title="Edit equipment"
                       >
@@ -2946,7 +2950,7 @@ const RackBackView = ({
                       }));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
-                    onClick={() => onEquipmentEdit?.(eq)}
+                    onClick={() => setEditingEquipment(eq)}
                     className="flex items-center gap-2 px-3 py-2 rounded bg-zinc-800 border border-zinc-700 cursor-grab active:cursor-grabbing hover:border-zinc-500 transition-all"
                   >
                     <GripVertical size={14} className="text-zinc-500 flex-shrink-0" />
@@ -3001,6 +3005,24 @@ const RackBackView = ({
             <ExternalLink size={12} className="opacity-60" />
           </a>
         </div>
+      )}
+
+      {/* Equipment Edit Modal */}
+      {editingEquipment && (
+        <EquipmentEditModal
+          equipment={editingEquipment}
+          projectId={projectId}
+          networkInfo={getNetworkInfo ? getNetworkInfo(editingEquipment) : null}
+          haClients={haClients}
+          haDevices={haDevices}
+          onClose={() => setEditingEquipment(null)}
+          onSave={onEquipmentEdit}
+          onRemove={onEquipmentRemove}
+          onExclude={onEquipmentExclude}
+          onExcludeGlobal={onEquipmentExcludeGlobal}
+          onMoveRoom={onMoveRoom}
+          onLinkToHA={onLinkToHA}
+        />
       )}
     </div>
   );

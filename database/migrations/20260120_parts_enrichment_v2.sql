@@ -36,11 +36,35 @@ ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS poe_budget_watts numeric;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS uplink_ports integer;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS has_network_port boolean DEFAULT true;
 
--- Additional documentation URLs
+-- Additional documentation URLs (original source URLs from web)
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS quick_start_url text;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS datasheet_url text;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS submittal_url text;
 ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS support_page_url text;
+
+-- SharePoint URLs for downloaded documents
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS quick_start_sharepoint_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS datasheet_sharepoint_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS submittal_sharepoint_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS install_manual_sharepoint_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS user_guide_sharepoint_url text;
+
+-- Technical manuals array (for all supporting documentation)
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS technical_manual_urls text[];
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS technical_manual_sharepoint_urls text[];
+
+-- Document classification storage (JSONB for flexible document metadata)
+-- Class 3 = Manufacturer direct (trustworthy)
+-- Class 2 = Distributors/resellers (reliable)
+-- Class 1 = Community/forums (opinion)
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS class3_documents jsonb;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS class2_documents jsonb;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS class1_documents jsonb;
+
+-- Search/research metadata
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS manufacturer_website text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS product_page_url text;
+ALTER TABLE global_parts ADD COLUMN IF NOT EXISTS search_summary jsonb;
 
 -- =====================================================
 -- UPDATE SAVE FUNCTION TO HANDLE ALL NEW FIELDS
@@ -120,7 +144,40 @@ BEGIN
     quick_start_url = COALESCE(p_enrichment_data->>'quick_start_url', quick_start_url),
     datasheet_url = COALESCE(p_enrichment_data->>'datasheet_url', datasheet_url),
     submittal_url = COALESCE(p_enrichment_data->>'submittal_url', submittal_url),
-    support_page_url = COALESCE(p_enrichment_data->>'support_page_url', support_page_url)
+    support_page_url = COALESCE(p_enrichment_data->>'support_page_url', support_page_url),
+
+    -- SharePoint URLs for downloaded documents
+    quick_start_sharepoint_url = COALESCE(p_enrichment_data->>'quick_start_sharepoint_url', quick_start_sharepoint_url),
+    datasheet_sharepoint_url = COALESCE(p_enrichment_data->>'datasheet_sharepoint_url', datasheet_sharepoint_url),
+    submittal_sharepoint_url = COALESCE(p_enrichment_data->>'submittal_sharepoint_url', submittal_sharepoint_url),
+    install_manual_sharepoint_url = COALESCE(p_enrichment_data->>'install_manual_sharepoint_url', install_manual_sharepoint_url),
+    user_guide_sharepoint_url = COALESCE(p_enrichment_data->>'user_guide_sharepoint_url', user_guide_sharepoint_url),
+
+    -- Technical manual URLs (array)
+    technical_manual_urls = CASE
+      WHEN p_enrichment_data->'technical_manual_urls' IS NOT NULL
+           AND jsonb_typeof(p_enrichment_data->'technical_manual_urls') = 'array'
+           AND jsonb_array_length(p_enrichment_data->'technical_manual_urls') > 0
+      THEN ARRAY(SELECT jsonb_array_elements_text(p_enrichment_data->'technical_manual_urls'))
+      ELSE technical_manual_urls
+    END,
+    technical_manual_sharepoint_urls = CASE
+      WHEN p_enrichment_data->'technical_manual_sharepoint_urls' IS NOT NULL
+           AND jsonb_typeof(p_enrichment_data->'technical_manual_sharepoint_urls') = 'array'
+           AND jsonb_array_length(p_enrichment_data->'technical_manual_sharepoint_urls') > 0
+      THEN ARRAY(SELECT jsonb_array_elements_text(p_enrichment_data->'technical_manual_sharepoint_urls'))
+      ELSE technical_manual_sharepoint_urls
+    END,
+
+    -- Document classification (JSONB)
+    class3_documents = COALESCE(p_enrichment_data->'class3_documents', class3_documents),
+    class2_documents = COALESCE(p_enrichment_data->'class2_documents', class2_documents),
+    class1_documents = COALESCE(p_enrichment_data->'class1_documents', class1_documents),
+
+    -- Search metadata
+    manufacturer_website = COALESCE(p_enrichment_data->>'manufacturer_website', manufacturer_website),
+    product_page_url = COALESCE(p_enrichment_data->>'product_page_url', product_page_url),
+    search_summary = COALESCE(p_enrichment_data->'search_summary', search_summary)
 
   WHERE id = p_part_id
   RETURNING jsonb_build_object(
@@ -162,3 +219,16 @@ COMMENT ON COLUMN global_parts.switch_ports IS 'Total network switch ports';
 COMMENT ON COLUMN global_parts.poe_enabled IS 'Whether switch supports PoE';
 COMMENT ON COLUMN global_parts.uplink_ports IS 'Number of SFP/uplink ports';
 COMMENT ON COLUMN global_parts.has_network_port IS 'Whether device has an ethernet port';
+COMMENT ON COLUMN global_parts.quick_start_sharepoint_url IS 'SharePoint URL for downloaded quick start guide';
+COMMENT ON COLUMN global_parts.datasheet_sharepoint_url IS 'SharePoint URL for downloaded datasheet';
+COMMENT ON COLUMN global_parts.submittal_sharepoint_url IS 'SharePoint URL for downloaded submittal document';
+COMMENT ON COLUMN global_parts.install_manual_sharepoint_url IS 'SharePoint URL for downloaded installation manual';
+COMMENT ON COLUMN global_parts.user_guide_sharepoint_url IS 'SharePoint URL for downloaded user guide';
+COMMENT ON COLUMN global_parts.technical_manual_urls IS 'Array of technical documentation URLs (datasheets, spec sheets, etc.)';
+COMMENT ON COLUMN global_parts.technical_manual_sharepoint_urls IS 'Array of SharePoint URLs for downloaded technical docs';
+COMMENT ON COLUMN global_parts.class3_documents IS 'JSONB array of Class 3 (manufacturer) documents with metadata';
+COMMENT ON COLUMN global_parts.class2_documents IS 'JSONB array of Class 2 (distributor) documents with metadata';
+COMMENT ON COLUMN global_parts.class1_documents IS 'JSONB array of Class 1 (community) documents with metadata';
+COMMENT ON COLUMN global_parts.manufacturer_website IS 'Official manufacturer website domain';
+COMMENT ON COLUMN global_parts.product_page_url IS 'Direct link to product page on manufacturer site';
+COMMENT ON COLUMN global_parts.search_summary IS 'JSONB metadata about document library research performed';

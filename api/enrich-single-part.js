@@ -1,8 +1,20 @@
 /**
- * Single Part Enrichment API
+ * Single Part Enrichment API - Document Library Builder
  *
- * Enriches a single part on-demand using Gemini AI.
- * This is triggered manually from the UI for immediate results.
+ * This is a THOROUGH enrichment system that builds a comprehensive document library
+ * for each part using a multi-pass search strategy with document classification.
+ *
+ * Search Strategy (in order):
+ *   PASS 1: Manufacturer's website directly (Class 3 - Trustworthy)
+ *   PASS 2: General Google search (Class 2 - Reliable)
+ *   PASS 3: Community sources like Reddit (Class 1 - Opinion/Community)
+ *
+ * Document Destinations:
+ *   - Install Manual / User Guide → install_manual_urls (primary docs only)
+ *   - Technical docs, datasheets, spec sheets → technical_manual_urls
+ *   - Sales sheets, one-pagers, product pages → submittal_url
+ *
+ * Uses Gemini 2.5 Pro with Google Search grounding for real-time web research.
  *
  * Endpoint: POST /api/enrich-single-part
  * Body: { partId: string }
@@ -10,7 +22,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+// Use Gemini 2.5 Pro for thorough research with grounding
+const GEMINI_MODEL = 'gemini-2.5-pro-preview-05-06';
 
 // Lazy initialize Supabase client
 let supabase;
@@ -54,7 +67,7 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'partId is required' });
   }
 
-  console.log(`[EnrichSinglePart] Starting enrichment for part: ${partId}`);
+  console.log(`[DocumentLibrary] Starting comprehensive document library build for part: ${partId}`);
 
   try {
     // Check for Gemini API key
@@ -74,11 +87,11 @@ module.exports = async function handler(req, res) {
       .single();
 
     if (fetchError || !part) {
-      console.error('[EnrichSinglePart] Part not found:', fetchError);
+      console.error('[DocumentLibrary] Part not found:', fetchError);
       return res.status(404).json({ error: 'Part not found' });
     }
 
-    console.log(`[EnrichSinglePart] Found part: ${part.name || part.part_number}`);
+    console.log(`[DocumentLibrary] Building library for: ${part.manufacturer} ${part.part_number} - ${part.name}`);
 
     // Mark as processing
     await getSupabase()
@@ -86,21 +99,52 @@ module.exports = async function handler(req, res) {
       .update({ ai_enrichment_status: 'processing' })
       .eq('id', partId);
 
-    // Initialize Gemini
+    // Initialize Gemini with grounding enabled
     const GenAI = getGemini();
     const genAI = new GenAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
-    // Enrich the part
-    const enrichmentData = await enrichPart(model, part);
-
-    console.log(`[EnrichSinglePart] Enrichment complete:`, {
-      confidence: enrichmentData.confidence,
-      fieldsFound: Object.keys(enrichmentData.data).filter(k =>
-        enrichmentData.data[k] !== null &&
-        !(Array.isArray(enrichmentData.data[k]) && enrichmentData.data[k].length === 0)
-      ).length
+    // Configure model with Google Search grounding for real-time web research
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      tools: [{
+        googleSearch: {}
+      }]
     });
+
+    // ========================================
+    // PASS 1: Research the part thoroughly
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 1: Comprehensive research with grounding...`);
+    const enrichmentData = await buildDocumentLibrary(model, part);
+
+    console.log(`[DocumentLibrary] Research complete:`, {
+      confidence: enrichmentData.confidence,
+      class3Docs: enrichmentData.data.class3_documents?.length || 0,
+      class2Docs: enrichmentData.data.class2_documents?.length || 0,
+      class1Docs: enrichmentData.data.class1_documents?.length || 0,
+      totalDocs: (enrichmentData.data.class3_documents?.length || 0) +
+                 (enrichmentData.data.class2_documents?.length || 0) +
+                 (enrichmentData.data.class1_documents?.length || 0)
+    });
+
+    // ========================================
+    // PASS 2: Verify documents (verification agent)
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 2: Verifying discovered documents...`);
+    const verifiedData = await verifyDocuments(model, part, enrichmentData.data);
+
+    // Merge verified data
+    Object.assign(enrichmentData.data, verifiedData);
+
+    // ========================================
+    // PASS 3: Download and upload to SharePoint
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 3: Downloading and uploading to SharePoint...`);
+    const downloadedDocs = await downloadAndUploadDocuments(part, enrichmentData.data);
+    if (downloadedDocs) {
+      Object.assign(enrichmentData.data, downloadedDocs);
+      console.log(`[DocumentLibrary] Documents uploaded to SharePoint:`, Object.keys(downloadedDocs).length);
+    }
 
     // Save results using RPC
     const { data: saveResult, error: saveError } = await getSupabase()
@@ -112,9 +156,11 @@ module.exports = async function handler(req, res) {
       });
 
     if (saveError) {
-      console.error('[EnrichSinglePart] Failed to save:', saveError);
+      console.error('[DocumentLibrary] Failed to save:', saveError);
       throw saveError;
     }
+
+    console.log(`[DocumentLibrary] ✓ Document library complete for ${part.part_number}`);
 
     return res.status(200).json({
       success: true,
@@ -123,12 +169,17 @@ module.exports = async function handler(req, res) {
       name: part.name,
       confidence: enrichmentData.confidence,
       notes: enrichmentData.notes,
+      documentsFound: {
+        class3: enrichmentData.data.class3_documents?.length || 0,
+        class2: enrichmentData.data.class2_documents?.length || 0,
+        class1: enrichmentData.data.class1_documents?.length || 0
+      },
       data: enrichmentData.data,
       ...saveResult
     });
 
   } catch (error) {
-    console.error('[EnrichSinglePart] Error:', error);
+    console.error('[DocumentLibrary] Error:', error);
 
     // Update status to error
     await getSupabase()
@@ -140,145 +191,248 @@ module.exports = async function handler(req, res) {
       .eq('id', partId);
 
     return res.status(500).json({
-      error: 'Enrichment failed',
+      error: 'Document library build failed',
       details: error.message
     });
   }
 };
 
 /**
- * Enrich a single part using Gemini AI
+ * Build a comprehensive document library for this part
+ * Uses a methodical, thorough approach with multi-pass search strategy
  */
-async function enrichPart(model, part) {
-  const productIdentifier = buildProductIdentifier(part);
+async function buildDocumentLibrary(model, part) {
+  const manufacturer = part.manufacturer || 'Unknown';
+  const partNumber = part.part_number || 'Unknown';
+  const productName = part.name || partNumber;
+  const model_number = part.model || partNumber;
 
-  const prompt = `You are a technical product researcher for AV/IT installation equipment used in home automation, commercial AV, and IT infrastructure.
+  const prompt = `You are a DOCUMENT LIBRARY SPECIALIST responsible for building a comprehensive documentation archive for AV/IT equipment. Your job is to find EVERY piece of documentation available for this product.
 
-**TASK:** Research and extract technical specifications for this product to auto-populate rack layout, power requirements, and documentation fields.
+**YOUR MISSION:**
+Build a complete document library for this part. You are responsible for finding ALL available documentation. Take your time. Be thorough. Think carefully about where documentation might be hidden.
 
-**PRODUCT INFORMATION:**
-- Name: ${part.name || 'Unknown'}
-- Part Number: ${part.part_number || 'Unknown'}
-- Manufacturer: ${part.manufacturer || 'Unknown'}
-- Model: ${part.model || part.part_number || 'Unknown'}
-- Category: ${part.category || 'Unknown'}
+**PRODUCT TO RESEARCH:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Manufacturer: ${manufacturer}
+Part Number: ${partNumber}
+Model: ${model_number}
+Product Name: ${productName}
+Category: ${part.category || 'Unknown'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**SEARCH STRATEGY:**
-1. Search for "${productIdentifier} specifications" or "${productIdentifier} datasheet"
-2. Look for official manufacturer product pages and support/downloads sections
-3. Check for PDF datasheets, spec sheets, quick start guides, installation manuals
-4. Look for "${part.manufacturer || ''} ${part.part_number || ''} PDF" for direct document links
-5. Focus on verified, official sources only
+**SEARCH STRATEGY - Execute in this EXACT order:**
 
-**EXTRACT ALL APPLICABLE SPECIFICATIONS:**
+## PASS 1: MANUFACTURER'S WEBSITE (Class 3 - Trustworthy)
+This is your PRIMARY source. Exhaust this before moving on.
 
-## 1. RACK LAYOUT INFORMATION (Critical for rack planning)
-- **Is it rack mountable?** (standard 19" rack mount with ears)
-- **Rack unit height** (1U, 2U, 3U, 4U, etc.) - only if rack mountable
-- **Needs a shelf?** (if not rack-mountable but can sit on shelf in rack)
-- **Physical dimensions** (width x depth x height in inches or mm)
-- **Items per shelf** - how many can fit side-by-side on a standard 19" rack shelf? (based on width)
-- **Recommended shelf height** - 1U, 2U, etc. based on device height
-- **Is it a wireless device?** (WiFi/Bluetooth, no ethernet required)
-- **Exclude from rack?** (cables, accessories, wall-mount only devices)
+1. First, identify the manufacturer's official website domain
+2. Navigate directly to their website and find:
+   - Product page for this exact part number
+   - Support/Downloads section
+   - Documentation/Resources section
+   - Technical Library
+   - Product Registration pages (often have manuals)
 
-## 2. POWER INFORMATION
-- **Power consumption** (typical operating watts, not max/peak)
-- **Number of power outlets needed** (typically 1, some devices need 2)
-- **Is it a power distribution device?** (PDU, UPS, surge protector, power strip, power conditioner)
-- If power device:
-  - Total number of outlets provided
-  - Total output watts/VA capacity
-  - For UPS: battery backup outlet count vs surge-only outlet count
-  - For UPS: VA rating and estimated runtime at half load
+3. Search patterns to try on manufacturer site:
+   - "${partNumber}" in their search
+   - "${model_number}" in their search
+   - "${productName}" in their search
+   - Browse to product category and find the product
 
-## 3. NETWORK SWITCH INFORMATION (if applicable)
-- **Is it a network switch/router/hub?**
-- **Total number of network ports**
-- **PoE/PoE+ capable?** and total PoE budget in watts
-- **Number of PoE ports** and which ports (e.g., "1-8" or "1-24")
-- **Number of uplink/SFP ports**
+4. For each product page found, look for:
+   - Downloads tab/section
+   - Resources tab/section
+   - Support tab/section
+   - Related documents section
+   - "View PDF" or document icons
 
-## 4. DOCUMENTATION - Find ALL available PDFs
-Search the manufacturer's website for these document types:
-- **Quick Start Guide** - brief setup instructions
-- **Installation Manual** - detailed installation guide
-- **User Manual/Guide** - full user documentation
-- **Datasheet/Spec Sheet** - technical specifications PDF
-- **Submittal Document** - product spec sheet for project documentation
+5. Document types to find (ALL OF THEM):
+   □ Installation Manual / Install Guide
+   □ User Manual / User Guide
+   □ Quick Start Guide
+   □ Datasheet / Spec Sheet
+   □ Technical Specifications PDF
+   □ Submittal Sheet / Cut Sheet
+   □ Product Brochure / Sales Sheet
+   □ CAD Drawings / Dimensions
+   □ Firmware/Software downloads page
+   □ FAQ / Troubleshooting guides
+   □ Warranty information
+   □ Compliance/Certification documents
 
-Return DIRECT LINKS to PDF files when possible (ending in .pdf), not just web pages.
+## PASS 2: GENERAL WEB SEARCH (Class 2 - Reliable)
+After exhausting manufacturer site, search the broader web:
+
+1. Search: "${manufacturer} ${partNumber} PDF"
+2. Search: "${manufacturer} ${partNumber} manual"
+3. Search: "${manufacturer} ${partNumber} datasheet"
+4. Search: "${manufacturer} ${partNumber} installation guide"
+5. Search: "${manufacturer} ${partNumber} specifications"
+
+Look at:
+- Distributor sites (often have spec sheets)
+- Reseller product pages
+- Industry databases
+- PDF hosting sites with legitimate copies
+
+## PASS 3: COMMUNITY SOURCES (Class 1 - Opinion/Community)
+Finally, check community resources:
+
+1. Reddit discussions about this product
+2. AVS Forum threads
+3. Professional forums
+4. YouTube video descriptions (for manual links)
+
+**DOCUMENT CLASSIFICATION:**
+
+CLASS 3 (Trustworthy):
+- Direct from manufacturer's website
+- Official support portal downloads
+- Manufacturer's documentation CDN
+
+CLASS 2 (Reliable):
+- Authorized distributor sites
+- Reputable reseller spec sheets
+- Industry database listings
+
+CLASS 1 (Community/Opinion):
+- Forum posts and discussions
+- Community-sourced documents
+- User-uploaded content
+
+**TECHNICAL SPECIFICATIONS TO EXTRACT:**
+
+While searching for documents, also extract these specs:
+
+1. RACK/MOUNTING INFO:
+   - Is it rack mountable (19" with ears)?
+   - Rack height in U (1U, 2U, etc.)
+   - Needs shelf if not rack mountable?
+   - Physical dimensions (W x D x H)
+   - How many fit on a standard shelf?
+
+2. POWER INFO:
+   - Power consumption (watts)
+   - Is it a power device (UPS/PDU)?
+   - Outlets provided if power device
+
+3. NETWORK INFO:
+   - Is it a network switch?
+   - Number of ports
+   - PoE capable? Budget watts?
 
 **RESPONSE FORMAT:**
-Return ONLY a valid JSON object (no markdown, no explanation):
+Return a JSON object. Take your time to be thorough.
 
 {
-  "device_type": "<rack_equipment|power_device|network_switch|shelf_device|wireless_device|accessory|other>",
+  "manufacturer_website": "<official manufacturer domain>",
+  "product_page_url": "<direct link to product page>",
+  "support_page_url": "<link to support/downloads for this product>",
 
-  "rack_info": {
-    "is_rack_mountable": <true/false>,
-    "u_height": <1-10 or null if not rack mountable>,
-    "needs_shelf": <true/false>,
-    "shelf_u_height": <1-4 recommended shelf height, or null>,
-    "max_items_per_shelf": <1-4 how many fit side by side, or null>,
-    "is_wireless": <true/false>,
-    "exclude_from_rack": <true/false for cables/accessories>,
-    "width_inches": <number or null>,
-    "depth_inches": <number or null>,
-    "height_inches": <number or null>
+  "class3_documents": [
+    {
+      "type": "<install_manual|user_guide|quick_start|datasheet|submittal|technical_spec|brochure|cad|firmware|faq|warranty|compliance>",
+      "title": "<document title>",
+      "url": "<direct URL, prefer .pdf>",
+      "source": "<where you found it>",
+      "notes": "<any relevant notes>"
+    }
+  ],
+
+  "class2_documents": [
+    {
+      "type": "<same types as above>",
+      "title": "<document title>",
+      "url": "<direct URL>",
+      "source": "<distributor/reseller name>",
+      "notes": "<any notes>"
+    }
+  ],
+
+  "class1_documents": [
+    {
+      "type": "<discussion|review|tutorial|community_doc>",
+      "title": "<title or description>",
+      "url": "<URL>",
+      "source": "<reddit|forum|youtube|etc>",
+      "notes": "<summary of useful info>"
+    }
+  ],
+
+  "specifications": {
+    "device_type": "<rack_equipment|power_device|network_switch|shelf_device|wireless_device|accessory|other>",
+
+    "rack_info": {
+      "is_rack_mountable": <true/false>,
+      "u_height": <number or null>,
+      "needs_shelf": <true/false>,
+      "shelf_u_height": <1-4 or null>,
+      "max_items_per_shelf": <number or null>,
+      "is_wireless": <true/false>,
+      "exclude_from_rack": <true/false>,
+      "width_inches": <number or null>,
+      "depth_inches": <number or null>,
+      "height_inches": <number or null>
+    },
+
+    "power_info": {
+      "power_watts": <number or null>,
+      "power_outlets_required": <number or 1>,
+      "is_power_device": <true/false>,
+      "outlets_provided": <number or null>,
+      "output_watts": <number or null>,
+      "ups_va_rating": <number or null>,
+      "ups_battery_outlets": <number or null>,
+      "ups_surge_only_outlets": <number or null>
+    },
+
+    "network_info": {
+      "is_network_switch": <true/false>,
+      "total_ports": <number or null>,
+      "poe_enabled": <true/false>,
+      "poe_budget_watts": <number or null>,
+      "poe_ports": <number or null>,
+      "uplink_ports": <number or null>,
+      "has_network_port": <true/false>
+    }
   },
 
-  "power_info": {
-    "power_watts": <number or null>,
-    "power_outlets_required": <number, default 1>,
-    "is_power_device": <true/false>,
-    "outlets_provided": <number or null>,
-    "output_watts": <number or null>,
-    "ups_va_rating": <number or null>,
-    "ups_battery_outlets": <number or null>,
-    "ups_surge_only_outlets": <number or null>,
-    "ups_runtime_half_load_minutes": <number or null>
+  "search_summary": {
+    "manufacturer_site_searched": <true/false>,
+    "support_section_found": <true/false>,
+    "total_documents_found": <number>,
+    "search_notes": "<what you searched, what you found, what was missing>"
   },
 
-  "network_info": {
-    "is_network_switch": <true/false>,
-    "total_ports": <number or null>,
-    "poe_enabled": <true/false>,
-    "poe_budget_watts": <number or null>,
-    "poe_ports": <number or null>,
-    "poe_port_list": "<string like '1-8' or null>",
-    "uplink_ports": <number or null>,
-    "has_network_port": <true/false>
-  },
-
-  "documentation": {
-    "quick_start_url": "<direct PDF URL or null>",
-    "install_manual_url": "<direct PDF URL or null>",
-    "user_guide_url": "<direct PDF URL or null>",
-    "datasheet_url": "<direct PDF URL or null>",
-    "submittal_url": "<direct PDF URL or null>",
-    "support_page_url": "<manufacturer support/downloads page URL>"
-  },
-
-  "sources": ["<urls where you found this info>"],
   "confidence": <0.0 to 1.0>,
-  "notes": "<brief note about what was found/not found>"
+  "notes": "<summary of your research>"
 }
 
-**IMPORTANT RULES:**
-- Use null for values you cannot verify from official sources
-- is_rack_mountable: true ONLY if product includes rack ears or is designed for 19" rack
-- needs_shelf: true for small devices (amplifiers, media players, hubs) that sit ON a shelf
-- shelf_u_height: typically 1U or 2U based on device height
-- max_items_per_shelf: calculate from width (19" shelf = ~17" usable, so 8.5" device = 2 per shelf)
-- exclude_from_rack: true for cables, brackets, accessories, wall-mount-only devices
-- For documentation: prefer direct .pdf links over web pages
-- confidence: 1.0 = official datasheet, 0.5 = reseller site, 0.3 = uncertain
-- Do NOT guess - null is better than wrong data`;
+**CRITICAL INSTRUCTIONS:**
+1. TAKE YOUR TIME. Thorough research is more important than speed.
+2. Actually visit the manufacturer's website and navigate to the product.
+3. Look for hidden download sections - they're often in tabs or expandable sections.
+4. Prefer DIRECT PDF links (ending in .pdf) over web pages when available.
+5. If you can't find something, note what you searched for in search_notes.
+6. Don't guess URLs - only include URLs you actually found.
+7. The goal is to build a COMPLETE documentation archive. Missing a document is worse than taking extra time.
+
+Now, thoroughly research ${manufacturer} ${partNumber} and build its document library.`;
 
   try {
-    const result = await model.generateContent(prompt);
+    console.log(`[DocumentLibrary] Sending research request to Gemini 2.5 Pro with grounding...`);
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.2,  // Lower temperature for more focused research
+        maxOutputTokens: 8192
+      }
+    });
+
     const responseText = result.response.text();
+    console.log(`[DocumentLibrary] Received response (${responseText.length} chars)`);
 
     // Parse JSON from response
     let jsonText = responseText;
@@ -292,38 +446,77 @@ Return ONLY a valid JSON object (no markdown, no explanation):
     // Find JSON object
     const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      console.error('[DocumentLibrary] Failed to parse response:', responseText.substring(0, 500));
       throw new Error('Failed to parse AI response as JSON');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Extract nested data with safe access
-    const rackInfo = parsed.rack_info || {};
-    const powerInfo = parsed.power_info || {};
-    const networkInfo = parsed.network_info || {};
-    const documentation = parsed.documentation || {};
+    // Process the structured response
+    const specs = parsed.specifications || {};
+    const rackInfo = specs.rack_info || {};
+    const powerInfo = specs.power_info || {};
+    const networkInfo = specs.network_info || {};
 
-    // Build documentation URL arrays from new structure
+    // Categorize documents into appropriate fields
     const installManualUrls = [];
-    const userGuideUrls = [];
+    const technicalManualUrls = [];
+    let submittalUrl = null;
+    let quickStartUrl = null;
+    let datasheetUrl = null;
+    let supportPageUrl = parsed.support_page_url || parsed.product_page_url || null;
 
-    if (documentation.quick_start_url) installManualUrls.push(documentation.quick_start_url);
-    if (documentation.install_manual_url) installManualUrls.push(documentation.install_manual_url);
-    if (documentation.user_guide_url) userGuideUrls.push(documentation.user_guide_url);
-    if (documentation.datasheet_url) userGuideUrls.push(documentation.datasheet_url);
+    // Process Class 3 documents (most trustworthy)
+    const class3Docs = parsed.class3_documents || [];
+    for (const doc of class3Docs) {
+      if (!doc.url) continue;
 
-    // Also support old array format for backwards compatibility
-    if (Array.isArray(documentation.install_manual_urls)) {
-      installManualUrls.push(...documentation.install_manual_urls);
+      const docType = (doc.type || '').toLowerCase();
+
+      if (docType === 'install_manual' || docType === 'user_guide') {
+        // Primary install/user docs go to install_manual_urls
+        installManualUrls.push(doc.url);
+      } else if (docType === 'quick_start') {
+        quickStartUrl = quickStartUrl || doc.url;
+        // Also add to technical manuals
+        technicalManualUrls.push(doc.url);
+      } else if (docType === 'submittal' || docType === 'brochure') {
+        submittalUrl = submittalUrl || doc.url;
+      } else if (docType === 'datasheet' || docType === 'technical_spec') {
+        datasheetUrl = datasheetUrl || doc.url;
+        technicalManualUrls.push(doc.url);
+      } else {
+        // All other docs go to technical manuals
+        technicalManualUrls.push(doc.url);
+      }
     }
-    if (Array.isArray(documentation.user_guide_urls)) {
-      userGuideUrls.push(...documentation.user_guide_urls);
+
+    // Process Class 2 documents
+    const class2Docs = parsed.class2_documents || [];
+    for (const doc of class2Docs) {
+      if (!doc.url) continue;
+
+      const docType = (doc.type || '').toLowerCase();
+
+      // Class 2 docs only go to install_manual if we have NOTHING from Class 3
+      if ((docType === 'install_manual' || docType === 'user_guide') && installManualUrls.length === 0) {
+        installManualUrls.push(doc.url);
+      } else if (docType === 'submittal' || docType === 'brochure') {
+        submittalUrl = submittalUrl || doc.url;
+      } else {
+        technicalManualUrls.push(doc.url);
+      }
+    }
+
+    // Use product page as submittal if no submittal found
+    if (!submittalUrl && parsed.product_page_url) {
+      submittalUrl = parsed.product_page_url;
     }
 
     return {
       data: {
         // Device classification
-        device_type: sanitizeString(parsed.device_type) || 'other',
+        device_type: sanitizeString(specs.device_type) || 'other',
 
         // Rack layout fields
         is_rack_mountable: sanitizeBoolean(rackInfo.is_rack_mountable),
@@ -346,7 +539,6 @@ Return ONLY a valid JSON object (no markdown, no explanation):
         ups_va_rating: sanitizeNumber(powerInfo.ups_va_rating),
         ups_battery_outlets: sanitizeNumber(powerInfo.ups_battery_outlets),
         ups_surge_only_outlets: sanitizeNumber(powerInfo.ups_surge_only_outlets),
-        ups_runtime_minutes: sanitizeNumber(powerInfo.ups_runtime_half_load_minutes),
 
         // Network switch fields
         is_network_switch: sanitizeBoolean(networkInfo.is_network_switch),
@@ -355,40 +547,314 @@ Return ONLY a valid JSON object (no markdown, no explanation):
         poe_enabled: sanitizeBoolean(networkInfo.poe_enabled),
         poe_budget_watts: sanitizeNumber(networkInfo.poe_budget_watts),
         poe_ports: sanitizeNumber(networkInfo.poe_ports),
-        poe_port_list: sanitizeString(networkInfo.poe_port_list),
         uplink_ports: sanitizeNumber(networkInfo.uplink_ports),
-        has_network_port: sanitizeBoolean(networkInfo.has_network_port, true), // default true
+        has_network_port: sanitizeBoolean(networkInfo.has_network_port, true),
 
-        // Documentation URLs
-        install_manual_urls: sanitizeUrlArray(installManualUrls),
-        user_guide_urls: sanitizeUrlArray(userGuideUrls),
-        quick_start_url: sanitizeString(documentation.quick_start_url),
-        datasheet_url: sanitizeString(documentation.datasheet_url),
-        submittal_url: sanitizeString(documentation.submittal_url),
-        support_page_url: sanitizeString(documentation.support_page_url),
+        // Document URLs - categorized appropriately
+        install_manual_urls: sanitizeUrlArray([...new Set(installManualUrls)]),
+        technical_manual_urls: sanitizeUrlArray([...new Set(technicalManualUrls)]),
+        user_guide_urls: [], // Deprecated - merged into install_manual_urls
+        quick_start_url: sanitizeString(quickStartUrl),
+        datasheet_url: sanitizeString(datasheetUrl),
+        submittal_url: sanitizeString(submittalUrl),
+        support_page_url: sanitizeString(supportPageUrl),
 
-        // Sources
-        sources: sanitizeUrlArray(parsed.sources)
+        // Raw document lists for reference (stored as JSONB)
+        class3_documents: class3Docs,
+        class2_documents: class2Docs,
+        class1_documents: parsed.class1_documents || [],
+
+        // Search metadata
+        manufacturer_website: sanitizeString(parsed.manufacturer_website),
+        product_page_url: sanitizeString(parsed.product_page_url),
+        search_summary: parsed.search_summary || {}
       },
       confidence: Math.min(1, Math.max(0, parseFloat(parsed.confidence) || 0.5)),
-      notes: sanitizeString(parsed.notes) || 'Enrichment completed'
+      notes: sanitizeString(parsed.notes) || 'Document library research completed'
     };
 
   } catch (error) {
-    console.error(`[enrichPart] Error:`, error);
-    throw new Error(`AI response parsing failed: ${error.message}`);
+    console.error(`[DocumentLibrary] Research error:`, error);
+    throw new Error(`Document library research failed: ${error.message}`);
   }
 }
 
-function buildProductIdentifier(part) {
-  const terms = [
-    part.manufacturer,
-    part.model || part.part_number,
-    part.name
-  ].filter(Boolean);
-  const unique = [...new Set(terms.map(t => t.toLowerCase()))];
-  return unique.join(' ');
+/**
+ * Verification Agent - Validates discovered documents
+ * Checks if URLs are accessible and documents are what they claim to be
+ */
+async function verifyDocuments(model, part, enrichmentData) {
+  const docsToVerify = [];
+
+  // Collect all document URLs to verify
+  if (enrichmentData.install_manual_urls?.length > 0) {
+    enrichmentData.install_manual_urls.forEach(url => docsToVerify.push({ url, type: 'install_manual' }));
+  }
+  if (enrichmentData.technical_manual_urls?.length > 0) {
+    enrichmentData.technical_manual_urls.forEach(url => docsToVerify.push({ url, type: 'technical_manual' }));
+  }
+  if (enrichmentData.quick_start_url) {
+    docsToVerify.push({ url: enrichmentData.quick_start_url, type: 'quick_start' });
+  }
+  if (enrichmentData.datasheet_url) {
+    docsToVerify.push({ url: enrichmentData.datasheet_url, type: 'datasheet' });
+  }
+  if (enrichmentData.submittal_url) {
+    docsToVerify.push({ url: enrichmentData.submittal_url, type: 'submittal' });
+  }
+
+  if (docsToVerify.length === 0) {
+    console.log('[DocumentLibrary] No documents to verify');
+    return { verified_documents: [], verification_notes: 'No documents found to verify' };
+  }
+
+  console.log(`[DocumentLibrary] Verifying ${docsToVerify.length} documents...`);
+
+  const verificationPrompt = `You are a DOCUMENT VERIFICATION AGENT. Your job is to verify that the following document URLs are valid and accessible.
+
+**PRODUCT:** ${part.manufacturer} ${part.part_number}
+
+**DOCUMENTS TO VERIFY:**
+${docsToVerify.map((d, i) => `${i + 1}. [${d.type}] ${d.url}`).join('\n')}
+
+**YOUR TASK:**
+1. Check each URL to verify it's accessible
+2. Confirm the document is actually for this product (not a different product)
+3. Confirm the document type is correct
+
+**RESPONSE FORMAT:**
+{
+  "verified_documents": [
+    {
+      "url": "<url>",
+      "type": "<document type>",
+      "verified": <true/false>,
+      "accessible": <true/false>,
+      "correct_product": <true/false>,
+      "actual_type": "<what type it actually is>",
+      "notes": "<any issues found>"
+    }
+  ],
+  "verification_notes": "<summary of verification>",
+  "urls_to_remove": ["<any URLs that should be removed>"],
+  "confidence_adjustment": <-0.3 to +0.1 adjustment based on verification results>
 }
+
+Verify each document and report your findings.`;
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: verificationPrompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096
+      }
+    });
+
+    const responseText = result.response.text();
+
+    // Parse JSON
+    let jsonText = responseText;
+    const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonText = codeBlockMatch[1].trim();
+    }
+
+    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Remove any URLs that verification says should be removed
+      const urlsToRemove = new Set(parsed.urls_to_remove || []);
+
+      return {
+        verified_documents: parsed.verified_documents || [],
+        verification_notes: parsed.verification_notes || 'Verification completed',
+        // Filter out bad URLs from the main lists
+        install_manual_urls: (enrichmentData.install_manual_urls || []).filter(u => !urlsToRemove.has(u)),
+        technical_manual_urls: (enrichmentData.technical_manual_urls || []).filter(u => !urlsToRemove.has(u))
+      };
+    }
+  } catch (error) {
+    console.error('[DocumentLibrary] Verification error:', error.message);
+  }
+
+  // Return unchanged if verification fails
+  return { verification_notes: 'Verification skipped due to error' };
+}
+
+/**
+ * Download documents from discovered URLs and upload to SharePoint
+ */
+async function downloadAndUploadDocuments(part, enrichmentData) {
+  try {
+    // Get company SharePoint URL from settings
+    const { data: settings, error: settingsError } = await getSupabase()
+      .from('company_settings')
+      .select('company_sharepoint_root_url')
+      .limit(1)
+      .single();
+
+    if (settingsError || !settings?.company_sharepoint_root_url) {
+      console.log('[DocumentLibrary] No SharePoint URL configured, skipping document download');
+      return null;
+    }
+
+    const rootUrl = settings.company_sharepoint_root_url;
+    const manufacturer = sanitizePathSegment(part.manufacturer || 'Unknown');
+    const partNumber = sanitizePathSegment(part.part_number || part.id);
+    const manualsPath = `Parts/${manufacturer}/${partNumber}/manuals`;
+    const techDocsPath = `Parts/${manufacturer}/${partNumber}/technical`;
+
+    const uploadedUrls = {};
+
+    // Download install manuals
+    if (enrichmentData.install_manual_urls?.length > 0) {
+      const uploadedManuals = [];
+      for (let i = 0; i < Math.min(enrichmentData.install_manual_urls.length, 3); i++) {
+        const url = enrichmentData.install_manual_urls[i];
+        const result = await downloadAndUploadSingleDocument(rootUrl, manualsPath, url, `install-manual-${i + 1}`, part);
+        if (result) uploadedManuals.push(result);
+      }
+      if (uploadedManuals.length > 0) {
+        uploadedUrls.install_manual_sharepoint_urls = uploadedManuals;
+        uploadedUrls.install_manual_sharepoint_url = uploadedManuals[0];
+      }
+    }
+
+    // Download technical manuals
+    if (enrichmentData.technical_manual_urls?.length > 0) {
+      const uploadedTechDocs = [];
+      for (let i = 0; i < Math.min(enrichmentData.technical_manual_urls.length, 5); i++) {
+        const url = enrichmentData.technical_manual_urls[i];
+        const result = await downloadAndUploadSingleDocument(rootUrl, techDocsPath, url, `tech-doc-${i + 1}`, part);
+        if (result) uploadedTechDocs.push(result);
+      }
+      if (uploadedTechDocs.length > 0) {
+        uploadedUrls.technical_manual_sharepoint_urls = uploadedTechDocs;
+      }
+    }
+
+    // Download single documents
+    const singleDocs = [
+      { source: 'quick_start_url', dest: 'quick_start_sharepoint_url', prefix: 'quick-start', path: manualsPath },
+      { source: 'datasheet_url', dest: 'datasheet_sharepoint_url', prefix: 'datasheet', path: techDocsPath },
+      { source: 'submittal_url', dest: 'submittal_sharepoint_url', prefix: 'submittal', path: techDocsPath }
+    ];
+
+    for (const doc of singleDocs) {
+      if (enrichmentData[doc.source]) {
+        const result = await downloadAndUploadSingleDocument(rootUrl, doc.path, enrichmentData[doc.source], doc.prefix, part);
+        if (result) uploadedUrls[doc.dest] = result;
+      }
+    }
+
+    return Object.keys(uploadedUrls).length > 0 ? uploadedUrls : null;
+
+  } catch (error) {
+    console.error('[DocumentLibrary] Document download error:', error);
+    return null;
+  }
+}
+
+/**
+ * Download a single document and upload to SharePoint
+ */
+async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, prefix, part) {
+  try {
+    // Skip non-PDF URLs for download (but we still saved the URL)
+    if (!sourceUrl.toLowerCase().includes('.pdf') && !sourceUrl.toLowerCase().includes('pdf')) {
+      console.log(`[DocumentLibrary] Skipping non-PDF URL: ${sourceUrl}`);
+      return null;
+    }
+
+    console.log(`[DocumentLibrary] Downloading: ${sourceUrl}`);
+
+    const response = await fetch(sourceUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      },
+      redirect: 'follow'
+    });
+
+    if (!response.ok) {
+      console.log(`[DocumentLibrary] Failed to download ${sourceUrl}: ${response.status}`);
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || 'application/pdf';
+
+    // Verify it's actually a PDF
+    if (!contentType.includes('pdf') && !contentType.includes('octet-stream')) {
+      console.log(`[DocumentLibrary] Not a PDF (${contentType}): ${sourceUrl}`);
+      return null;
+    }
+
+    const buffer = await response.arrayBuffer();
+
+    // Check file size (skip if > 50MB)
+    if (buffer.byteLength > 50 * 1024 * 1024) {
+      console.log(`[DocumentLibrary] File too large (${Math.round(buffer.byteLength / 1024 / 1024)}MB): ${sourceUrl}`);
+      return null;
+    }
+
+    const base64 = Buffer.from(buffer).toString('base64');
+
+    // Generate filename
+    const urlPath = new URL(sourceUrl).pathname;
+    let filename = decodeURIComponent(urlPath.split('/').pop() || `${prefix}.pdf`);
+
+    // Clean up filename
+    filename = filename.replace(/[<>:"/\\|?*]/g, '-');
+
+    if (!filename.toLowerCase().endsWith('.pdf')) {
+      filename = `${filename}.pdf`;
+    }
+
+    // Add part number prefix for clarity
+    const partNum = sanitizePathSegment(part.part_number || 'unknown');
+    if (!filename.toLowerCase().includes(partNum.toLowerCase())) {
+      filename = `${partNum}-${filename}`;
+    }
+
+    console.log(`[DocumentLibrary] Uploading: ${subPath}/${filename}`);
+
+    const uploadUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
+      : 'https://unicorn-one.vercel.app/api/graph-upload';
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rootUrl,
+        subPath,
+        filename,
+        fileBase64: base64,
+        contentType: 'application/pdf'
+      })
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`[DocumentLibrary] SharePoint upload failed: ${errorText}`);
+      return null;
+    }
+
+    const uploadResult = await uploadResponse.json();
+    console.log(`[DocumentLibrary] ✓ Uploaded: ${filename}`);
+
+    return uploadResult.url || uploadResult.webUrl;
+
+  } catch (error) {
+    console.error(`[DocumentLibrary] Error with ${sourceUrl}:`, error.message);
+    return null;
+  }
+}
+
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
 
 function sanitizeNumber(value) {
   if (value === null || value === undefined) return null;
@@ -424,4 +890,13 @@ function sanitizeUrlArray(arr) {
         return false;
       }
     });
+}
+
+function sanitizePathSegment(str) {
+  if (!str) return 'unknown';
+  return str
+    .replace(/[<>:"/\\|?*]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 100);
 }
