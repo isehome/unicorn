@@ -22,9 +22,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-// Use Gemini 2.5 Flash for document research
-// Note: googleSearch grounding requires special API access, so we use standard generation
-const GEMINI_MODEL = 'gemini-2.5-flash';
+// Use Gemini 3 Pro for document research - most capable model for accurate results
+// Available models: gemini-3-pro, gemini-3-flash, gemini-2.5-pro, gemini-2.5-flash
+const GEMINI_MODEL = 'gemini-3-pro';
 
 // Lazy initialize Supabase client
 let supabase;
@@ -137,13 +137,33 @@ module.exports = async function handler(req, res) {
     Object.assign(enrichmentData.data, verifiedData);
 
     // ========================================
-    // PASS 3: Download and upload to SharePoint
+    // PASS 3: Download PDFs and upload to SharePoint
     // ========================================
-    console.log(`[DocumentLibrary] PASS 3: Downloading and uploading to SharePoint...`);
+    console.log(`[DocumentLibrary] PASS 3: Downloading PDFs and uploading to SharePoint...`);
     const downloadedDocs = await downloadAndUploadDocuments(part, enrichmentData.data);
     if (downloadedDocs) {
       Object.assign(enrichmentData.data, downloadedDocs);
-      console.log(`[DocumentLibrary] Documents uploaded to SharePoint:`, Object.keys(downloadedDocs).length);
+      console.log(`[DocumentLibrary] PDFs uploaded to SharePoint:`, Object.keys(downloadedDocs).length);
+    }
+
+    // ========================================
+    // PASS 4: Scrape product pages verbatim (no AI interpretation)
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 4: Scraping product pages for verbatim content...`);
+    const scrapedDocs = await scrapeAndUploadVerbatimContent(part, enrichmentData.data);
+    if (scrapedDocs) {
+      Object.assign(enrichmentData.data, scrapedDocs);
+      console.log(`[DocumentLibrary] Verbatim content uploaded:`, Object.keys(scrapedDocs).length);
+    }
+
+    // ========================================
+    // PASS 5: Generate AI Summary (clearly labeled)
+    // ========================================
+    console.log(`[DocumentLibrary] PASS 5: Generating AI summary file...`);
+    const summaryResult = await generateAndUploadAISummary(model, part, enrichmentData.data);
+    if (summaryResult) {
+      Object.assign(enrichmentData.data, summaryResult);
+      console.log(`[DocumentLibrary] AI summary uploaded: ${summaryResult.ai_summary_url}`);
     }
 
     // Save results using RPC
@@ -410,15 +430,17 @@ Return a JSON object. Take your time to be thorough.
 }
 
 **CRITICAL INSTRUCTIONS:**
-1. TAKE YOUR TIME. Thorough research is more important than speed.
-2. Actually visit the manufacturer's website and navigate to the product.
-3. Look for hidden download sections - they're often in tabs or expandable sections.
-4. Prefer DIRECT PDF links (ending in .pdf) over web pages when available.
-5. If you can't find something, note what you searched for in search_notes.
-6. Don't guess URLs - only include URLs you actually found.
-7. The goal is to build a COMPLETE documentation archive. Missing a document is worse than taking extra time.
+1. ONLY return URLs you are CONFIDENT actually exist based on your knowledge.
+2. DO NOT guess or construct URLs - if you're not sure a URL exists, don't include it.
+3. It's better to return FEWER accurate URLs than many guessed URLs that may 404.
+4. For the manufacturer website, use the ACTUAL domain you know exists (e.g., pframeax.com, niceforyou.com, etc.)
+5. If you don't have reliable information about this product's documentation, set confidence LOW and note this.
+6. Prefer well-known distributor sites (like CDW, B&H, Amazon) if manufacturer URLs are uncertain.
+7. The product_page_url and support_page_url should be real pages you know exist.
 
-Now, thoroughly research ${manufacturer} ${partNumber} and build its document library.`;
+**URL ACCURACY IS CRITICAL** - Every 404 error wastes time and resources. Only include URLs you're confident about.
+
+Now, research ${manufacturer} ${partNumber} and return only URLs you're confident exist.`;
 
   try {
     console.log(`[DocumentLibrary] Sending research request to Gemini...`);
@@ -861,6 +883,328 @@ async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, pref
 
   } catch (error) {
     console.error(`[DocumentLibrary] Error with ${sourceUrl}:`, error.message);
+    return null;
+  }
+}
+
+// ============================================
+// PASS 4: VERBATIM CONTENT SCRAPING
+// ============================================
+
+/**
+ * Scrape product pages and extract verbatim content (NO AI interpretation)
+ * This creates precise, trustworthy markdown files from manufacturer websites
+ */
+async function scrapeAndUploadVerbatimContent(part, enrichmentData) {
+  try {
+    const { data: settings } = await getSupabase()
+      .from('company_settings')
+      .select('company_sharepoint_root_url')
+      .limit(1)
+      .single();
+
+    if (!settings?.company_sharepoint_root_url) {
+      console.log('[DocumentLibrary] No SharePoint URL configured, skipping verbatim scraping');
+      return null;
+    }
+
+    const rootUrl = settings.company_sharepoint_root_url;
+    const manufacturer = sanitizePathSegment(part.manufacturer || 'Unknown');
+    const partNumber = sanitizePathSegment(part.part_number || part.id);
+    const techDocsPath = `Parts/${manufacturer}/${partNumber}/technical`;
+
+    const uploadedDocs = {};
+    const urlsToScrape = [];
+
+    // Collect URLs to scrape (product pages, not PDFs)
+    if (enrichmentData.product_page_url) {
+      urlsToScrape.push({ url: enrichmentData.product_page_url, type: 'PRODUCT-PAGE' });
+    }
+    if (enrichmentData.support_page_url && enrichmentData.support_page_url !== enrichmentData.product_page_url) {
+      urlsToScrape.push({ url: enrichmentData.support_page_url, type: 'SUPPORT-PAGE' });
+    }
+
+    // Also scrape datasheet URLs that aren't PDFs
+    if (enrichmentData.datasheet_url && !enrichmentData.datasheet_url.toLowerCase().includes('.pdf')) {
+      urlsToScrape.push({ url: enrichmentData.datasheet_url, type: 'DATASHEET' });
+    }
+
+    console.log(`[DocumentLibrary] Scraping ${urlsToScrape.length} pages for verbatim content`);
+
+    for (const { url, type } of urlsToScrape) {
+      try {
+        console.log(`[DocumentLibrary] Scraping verbatim: ${url}`);
+
+        const response = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          redirect: 'follow'
+        });
+
+        if (!response.ok) {
+          console.log(`[DocumentLibrary] Failed to fetch ${url}: ${response.status}`);
+          continue;
+        }
+
+        const html = await response.text();
+
+        // Extract text content verbatim (no AI processing)
+        const verbatimContent = extractVerbatimContent(html, url, part, type);
+
+        if (!verbatimContent || verbatimContent.length < 100) {
+          console.log(`[DocumentLibrary] Insufficient content from ${url}`);
+          continue;
+        }
+
+        // Create markdown file with clear labeling
+        const filename = `${partNumber}-${type}-VERBATIM.md`;
+        const markdown = createVerbatimMarkdown(verbatimContent, url, part, type);
+
+        // Upload to SharePoint
+        const uploadUrl = process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}/api/graph-upload`
+          : 'https://unicorn-one.vercel.app/api/graph-upload';
+
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            rootUrl,
+            subPath: techDocsPath,
+            filename,
+            fileBase64: Buffer.from(markdown).toString('base64'),
+            contentType: 'text/markdown'
+          })
+        });
+
+        if (uploadResponse.ok) {
+          const result = await uploadResponse.json();
+          uploadedDocs[`verbatim_${type.toLowerCase()}_url`] = result.url || result.webUrl;
+          console.log(`[DocumentLibrary] ✓ Uploaded verbatim: ${filename}`);
+        }
+      } catch (error) {
+        console.error(`[DocumentLibrary] Error scraping ${url}:`, error.message);
+      }
+    }
+
+    return Object.keys(uploadedDocs).length > 0 ? uploadedDocs : null;
+  } catch (error) {
+    console.error('[DocumentLibrary] Verbatim scraping error:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract text content from HTML verbatim - NO AI interpretation
+ * This is pure extraction, preserving the original manufacturer's words
+ */
+function extractVerbatimContent(html, url, part, type) {
+  // Remove scripts, styles, and other non-content elements
+  let text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  // Convert common HTML elements to markdown-friendly format
+  text = text
+    .replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, '\n# $1\n')
+    .replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, '\n## $1\n')
+    .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n')
+    .replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, '\n#### $1\n')
+    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, '- $1\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n')
+    .replace(/<tr[^>]*>([\s\S]*?)<\/tr>/gi, '$1\n')
+    .replace(/<td[^>]*>([\s\S]*?)<\/td>/gi, '$1 | ')
+    .replace(/<th[^>]*>([\s\S]*?)<\/th>/gi, '**$1** | ');
+
+  // Remove remaining HTML tags
+  text = text.replace(/<[^>]+>/g, '');
+
+  // Clean up whitespace
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n\s*\n\s*\n/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+
+  return text;
+}
+
+/**
+ * Create a markdown file with clear labeling that this is VERBATIM content
+ */
+function createVerbatimMarkdown(content, sourceUrl, part, type) {
+  const timestamp = new Date().toISOString();
+
+  return `# ${part.manufacturer} ${part.part_number} - ${type} (VERBATIM)
+
+> ⚠️ **VERBATIM CONTENT**: This document contains exact text extracted from the manufacturer's website.
+> No AI interpretation or modification has been applied. This is source material.
+
+**Source URL:** ${sourceUrl}
+**Extracted:** ${timestamp}
+**Manufacturer:** ${part.manufacturer}
+**Part Number:** ${part.part_number}
+**Product Name:** ${part.name || 'N/A'}
+
+---
+
+## Extracted Content
+
+${content}
+
+---
+
+*This document was automatically extracted from the manufacturer's website.*
+*Content is verbatim - refer to source URL for the most current information.*
+`;
+}
+
+// ============================================
+// PASS 5: AI SUMMARY GENERATION
+// ============================================
+
+/**
+ * Generate an AI summary file - CLEARLY LABELED as AI-generated
+ * This provides quick reference but agents know to verify against source docs
+ */
+async function generateAndUploadAISummary(model, part, enrichmentData) {
+  try {
+    const { data: settings } = await getSupabase()
+      .from('company_settings')
+      .select('company_sharepoint_root_url')
+      .limit(1)
+      .single();
+
+    if (!settings?.company_sharepoint_root_url) {
+      console.log('[DocumentLibrary] No SharePoint URL configured, skipping AI summary');
+      return null;
+    }
+
+    const rootUrl = settings.company_sharepoint_root_url;
+    const manufacturer = sanitizePathSegment(part.manufacturer || 'Unknown');
+    const partNumber = sanitizePathSegment(part.part_number || part.id);
+    const basePath = `Parts/${manufacturer}/${partNumber}`;
+
+    // Generate summary using AI
+    const summaryPrompt = `You are creating a QUICK REFERENCE SUMMARY for an AV/IT product.
+This summary will be clearly marked as AI-generated, so focus on being helpful and accurate.
+
+**PRODUCT:**
+- Manufacturer: ${part.manufacturer}
+- Part Number: ${part.part_number}
+- Name: ${part.name || 'N/A'}
+- Category: ${part.category || 'N/A'}
+
+**DISCOVERED INFORMATION:**
+${JSON.stringify(enrichmentData.specifications || {}, null, 2)}
+
+**DOCUMENT SOURCES FOUND:**
+- Product Page: ${enrichmentData.product_page_url || 'Not found'}
+- Support Page: ${enrichmentData.support_page_url || 'Not found'}
+- Install Manuals: ${enrichmentData.install_manual_urls?.length || 0} found
+- Technical Docs: ${enrichmentData.technical_manual_urls?.length || 0} found
+- Datasheet: ${enrichmentData.datasheet_url || 'Not found'}
+
+**CREATE A SUMMARY WITH:**
+1. One-paragraph product overview
+2. Key specifications (bullet points)
+3. Installation notes (if applicable)
+4. Rack/mounting information (if applicable)
+5. Power requirements
+6. Network capabilities (if applicable)
+7. Links to detailed documentation
+
+Format as clean markdown. Be concise but comprehensive.`;
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: summaryPrompt }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 2048
+      }
+    });
+
+    const summaryContent = result.response.text();
+
+    // Create the AI summary markdown with clear labeling
+    const timestamp = new Date().toISOString();
+    const markdown = `# ${part.manufacturer} ${part.part_number} - AI SUMMARY
+
+> 🤖 **AI-GENERATED SUMMARY**: This document was created by an AI assistant.
+> For precise specifications, always refer to the VERBATIM source documents or official manufacturer PDFs.
+> This summary is for quick reference only.
+
+**Generated:** ${timestamp}
+**Manufacturer:** ${part.manufacturer}
+**Part Number:** ${part.part_number}
+**Product Name:** ${part.name || 'N/A'}
+
+---
+
+${summaryContent}
+
+---
+
+## Source Documents
+
+For verified, precise information, refer to these source documents:
+
+${enrichmentData.install_manual_urls?.length > 0 ? `### Install Manuals\n${enrichmentData.install_manual_urls.map(u => `- ${u}`).join('\n')}\n` : ''}
+${enrichmentData.technical_manual_urls?.length > 0 ? `### Technical Documents\n${enrichmentData.technical_manual_urls.map(u => `- ${u}`).join('\n')}\n` : ''}
+${enrichmentData.datasheet_url ? `### Datasheet\n- ${enrichmentData.datasheet_url}\n` : ''}
+${enrichmentData.product_page_url ? `### Product Page\n- ${enrichmentData.product_page_url}\n` : ''}
+
+---
+
+*This AI-generated summary should be used for quick reference only.*
+*Always verify critical specifications against manufacturer documentation.*
+`;
+
+    // Upload to SharePoint
+    const filename = `${partNumber}-AI-SUMMARY.md`;
+    const uploadUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
+      : 'https://unicorn-one.vercel.app/api/graph-upload';
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rootUrl,
+        subPath: basePath,
+        filename,
+        fileBase64: Buffer.from(markdown).toString('base64'),
+        contentType: 'text/markdown'
+      })
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`[DocumentLibrary] AI summary upload failed: ${errorText}`);
+      return null;
+    }
+
+    const uploadResult = await uploadResponse.json();
+    console.log(`[DocumentLibrary] ✓ Uploaded AI summary: ${filename}`);
+
+    return {
+      ai_summary_url: uploadResult.url || uploadResult.webUrl,
+      ai_summary_generated_at: timestamp
+    };
+
+  } catch (error) {
+    console.error('[DocumentLibrary] AI summary generation error:', error);
     return null;
   }
 }
