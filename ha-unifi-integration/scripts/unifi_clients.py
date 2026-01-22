@@ -185,6 +185,11 @@ def format_device(device):
             ):
                 ip_address = connect_ip
 
+    # Extract uplink info for topology building
+    uplink = device.get("uplink", {})
+    uplink_mac = uplink.get("uplink_mac", "") or uplink.get("mac", "")
+    uplink_remote_port = uplink.get("uplink_remote_port")
+
     return {
         # Identity
         "mac": device.get("mac", ""),
@@ -196,6 +201,12 @@ def format_device(device):
         # Network - use computed ip_address which prefers LAN IP for gateways
         "ip": ip_address,
         "gateway_mac": device.get("gateway_mac", ""),
+
+        # Uplink/topology info - critical for automatic port connections!
+        "uplink_mac": uplink_mac,  # MAC of the upstream device this device is connected to
+        "uplink_remote_port": uplink_remote_port,  # Port number on the upstream device
+        "uplink_device_name": uplink.get("uplink_device_name", ""),  # Name of upstream device
+        "uplink_type": uplink.get("type", ""),  # Connection type (wire, etc.)
 
         # Status
         "state": device.get("state", 0),  # 1 = connected
@@ -221,6 +232,13 @@ def format_device(device):
         "cpu": device.get("system-stats", {}).get("cpu", ""),
         "mem": device.get("system-stats", {}).get("mem", ""),
         "loadavg_1": device.get("sys_stats", {}).get("loadavg_1", ""),
+
+        # LLDP/Topology data - critical for port-to-device mapping!
+        "lldp_table": device.get("lldp_table", []),  # LLDP neighbor discovery table
+        "uplink": device.get("uplink", {}),  # Uplink connection info
+        "uplink_table": device.get("uplink_table", []),  # All uplink connections
+        "downlink_table": device.get("downlink_table", []),  # Downstream devices
+        "ethernet_table": device.get("ethernet_table", []),  # Ethernet interfaces
     }
 
 
@@ -240,6 +258,13 @@ def format_port(port):
         "mac": port.get("mac", ""),
         "lldp_remote_mac": port.get("lldp_remote_mac", ""),  # LLDP discovered MAC
         "port_mac": port.get("port_mac", ""),  # Alternative MAC field
+        # Additional MAC/topology fields
+        "mac_table": port.get("mac_table", []),  # All learned MACs on this port
+        "lldp_info": port.get("lldp_info", {}),  # Full LLDP neighbor info
+        "media": port.get("media", ""),  # Media type (e.g., GE, SFP+)
+        "stp_state": port.get("stp_state", ""),  # Spanning tree state
+        "tx_bytes": port.get("tx_bytes", 0),
+        "rx_bytes": port.get("rx_bytes", 0),
     }
 
 
@@ -292,6 +317,11 @@ def format_client(client, device_names):
         "satisfaction": client.get("satisfaction", 100),
         "noted": client.get("noted", False),
         "usergroup_id": client.get("usergroup_id", ""),
+
+        # Additional switch/topology fields for port mapping
+        "switch_mac": sw_mac,  # Alias for sw_mac (for clarity)
+        "switch_port": client.get("sw_port"),  # Alias for sw_port
+        "switch_name": device_names.get(sw_mac, "Unknown Switch"),  # Alias for sw_name
     }
 
 

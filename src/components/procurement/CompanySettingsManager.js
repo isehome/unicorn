@@ -12,7 +12,11 @@ import {
   CheckCircle,
   FolderOpen,
   HelpCircle,
-  Palette
+  Palette,
+  Clock,
+  DollarSign,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import BrandColorPicker from '../ui/BrandColorPicker';
 
@@ -30,6 +34,7 @@ const CompanySettingsManager = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [showBrandColors, setShowBrandColors] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -46,7 +51,8 @@ const CompanySettingsManager = () => {
     company_sharepoint_root_url: '',
     brand_color_primary: '#8B5CF6',
     brand_color_secondary: '#94AF32',
-    brand_color_tertiary: '#3B82F6'
+    brand_color_tertiary: '#3B82F6',
+    default_service_hourly_rate: 150
   });
 
   useEffect(() => {
@@ -74,7 +80,8 @@ const CompanySettingsManager = () => {
           company_sharepoint_root_url: data.company_sharepoint_root_url || '',
           brand_color_primary: data.brand_color_primary || '#8B5CF6',
           brand_color_secondary: data.brand_color_secondary || '#94AF32',
-          brand_color_tertiary: data.brand_color_tertiary || '#3B82F6'
+          brand_color_tertiary: data.brand_color_tertiary || '#3B82F6',
+          default_service_hourly_rate: data.default_service_hourly_rate ?? 150
         });
       }
     } catch (err) {
@@ -270,54 +277,73 @@ const CompanySettingsManager = () => {
           )}
         </div>
 
-        {/* Brand Colors Section */}
-        <div>
-          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-            <Palette className="w-4 h-4 text-violet-600" />
-            Brand Colors
-          </h4>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            Choose colors for external-facing communications like customer emails and portals.
-          </p>
+        {/* Brand Colors Section - Collapsible */}
+        <div className="border border-gray-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowBrandColors(!showBrandColors)}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4 text-violet-600" />
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Brand Colors</h4>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                (Customer-facing portals & emails)
+              </span>
+            </div>
+            {showBrandColors ? (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
 
-          <div className="space-y-6 p-4 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
-            <BrandColorPicker
-              value={formData.brand_color_primary}
-              onChange={(color) => handleInputChange('brand_color_primary', color)}
-              label="Primary Color"
-              description="Used for headers, accent borders, and links"
-            />
+          {showBrandColors && (
+            <div className="p-4 pt-0 border-t border-gray-200 dark:border-zinc-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                Choose colors for external-facing communications like customer emails and portals.
+              </p>
 
-            <BrandColorPicker
-              value={formData.brand_color_secondary}
-              onChange={(color) => handleInputChange('brand_color_secondary', color)}
-              label="Secondary Color"
-              description="Used for action buttons and important banners"
-            />
+              <div className="space-y-6 p-4 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
+                <BrandColorPicker
+                  value={formData.brand_color_primary}
+                  onChange={(color) => handleInputChange('brand_color_primary', color)}
+                  label="Primary Color"
+                  description="Used for headers, accent borders, and links"
+                />
 
-            <BrandColorPicker
-              value={formData.brand_color_tertiary}
-              onChange={(color) => handleInputChange('brand_color_tertiary', color)}
-              label="Tertiary Color"
-              description="Used for subtle accents and informational elements"
-            />
+                <BrandColorPicker
+                  value={formData.brand_color_secondary}
+                  onChange={(color) => handleInputChange('brand_color_secondary', color)}
+                  label="Secondary Color"
+                  description="Used for action buttons and important banners"
+                />
 
-            {/* Color Preview */}
-            <div className="pt-4 border-t border-gray-200 dark:border-zinc-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Preview</p>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_primary }}>
-                  <span className="text-white text-xs font-medium">Primary</span>
-                </div>
-                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_secondary }}>
-                  <span className="text-white text-xs font-medium">Secondary</span>
-                </div>
-                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_tertiary }}>
-                  <span className="text-white text-xs font-medium">Tertiary</span>
+                <BrandColorPicker
+                  value={formData.brand_color_tertiary}
+                  onChange={(color) => handleInputChange('brand_color_tertiary', color)}
+                  label="Tertiary Color"
+                  description="Used for subtle accents and informational elements"
+                />
+
+                {/* Color Preview */}
+                <div className="pt-4 border-t border-gray-200 dark:border-zinc-700">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Preview</p>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_primary }}>
+                      <span className="text-white text-xs font-medium">Primary</span>
+                    </div>
+                    <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_secondary }}>
+                      <span className="text-white text-xs font-medium">Secondary</span>
+                    </div>
+                    <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_tertiary }}>
+                      <span className="text-white text-xs font-medium">Tertiary</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Orders Contact Section */}
@@ -429,6 +455,44 @@ const CompanySettingsManager = () => {
             />
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
               Folder structure will be: [Root]/[Manufacturer]/[PartNumber]/submittals/, schematics/, manuals/
+            </p>
+          </div>
+        </div>
+
+        {/* Service Settings Section */}
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-violet-600" />
+            Service Settings
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Configure default settings for service tickets and time tracking.
+          </p>
+          <div>
+            <label className="block text-xs text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+              Default Hourly Rate
+              <span className="relative group">
+                <HelpCircle className="w-3.5 h-3.5 text-gray-400 cursor-help" />
+                <span className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 text-xs bg-gray-900 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                  Default labor rate for service tickets. Can be overridden per ticket.
+                </span>
+              </span>
+            </label>
+            <div className="relative w-48">
+              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={formData.default_service_hourly_rate}
+                onChange={(e) => handleInputChange('default_service_hourly_rate', parseFloat(e.target.value) || 0)}
+                className="w-full pl-8 pr-12 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm"
+                placeholder="150"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">/hr</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              This rate will be used when calculating labor costs on service tickets unless a different rate is set on the individual ticket.
             </p>
           </div>
         </div>

@@ -18,6 +18,7 @@ import {
   UserPlus
 } from 'lucide-react';
 import { serviceTicketService, customerLookupService } from '../../services/serviceTicketService';
+import { companySettingsService } from '../../services/companySettingsService';
 import { useAppState } from '../../contexts/AppStateContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
@@ -217,6 +218,17 @@ const NewTicketForm = () => {
       setSaving(true);
       setError('');
 
+      // Fetch company default hourly rate
+      let defaultHourlyRate = 150;
+      try {
+        const companySettings = await companySettingsService.getCompanySettings();
+        if (companySettings?.default_service_hourly_rate) {
+          defaultHourlyRate = companySettings.default_service_hourly_rate;
+        }
+      } catch (err) {
+        console.log('[NewTicketForm] Using fallback hourly rate');
+      }
+
       const ticketData = {
         ...form,
         title: form.title.trim(),
@@ -225,6 +237,7 @@ const NewTicketForm = () => {
         customer_phone: form.customer_phone.trim() || null,
         customer_email: form.customer_email.trim() || null,
         customer_address: form.customer_address.trim() || null,
+        hourly_rate: defaultHourlyRate,
         source: 'manual',
         created_by: user?.id
       };

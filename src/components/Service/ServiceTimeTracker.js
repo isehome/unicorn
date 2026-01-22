@@ -4,7 +4,7 @@
  * Shows check-in/out button, elapsed time, and time log history
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Clock,
   LogIn,
@@ -20,6 +20,7 @@ import { useServiceTimeTracking, formatElapsedTime } from '../../hooks/useServic
 import ServiceTimeEntryModal from './ServiceTimeEntryModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { brandColors } from '../../styles/styleSystem';
+import { companySettingsService } from '../../services/companySettingsService';
 
 /**
  * Format date for display
@@ -53,6 +54,7 @@ const ServiceTimeTracker = ({ ticket, technicians = [], onUpdate }) => {
   const [showEntryModal, setShowEntryModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [companyDefaultRate, setCompanyDefaultRate] = useState(150);
 
   const {
     isCheckedIn,
@@ -67,7 +69,23 @@ const ServiceTimeTracker = ({ ticket, technicians = [], onUpdate }) => {
     refresh
   } = useServiceTimeTracking(ticket?.id, user);
 
-  const hourlyRate = ticket?.hourly_rate || 150;
+  // Fetch company default hourly rate
+  useEffect(() => {
+    const fetchCompanyRate = async () => {
+      try {
+        const settings = await companySettingsService.getCompanySettings();
+        if (settings?.default_service_hourly_rate) {
+          setCompanyDefaultRate(settings.default_service_hourly_rate);
+        }
+      } catch (err) {
+        console.log('[ServiceTimeTracker] Using fallback rate, could not fetch company settings');
+      }
+    };
+    fetchCompanyRate();
+  }, []);
+
+  // Use ticket rate if set, otherwise use company default
+  const hourlyRate = ticket?.hourly_rate ?? companyDefaultRate;
   const laborCost = Math.round(totalHours * hourlyRate * 100) / 100;
 
   const handleCheckIn = async () => {

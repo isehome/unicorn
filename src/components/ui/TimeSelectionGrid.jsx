@@ -6,6 +6,18 @@ const START_HOUR = 6; // 6 AM
 const END_HOUR = 22; // 10 PM
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 
+/**
+ * Format a Date object as 'YYYY-MM-DD' using local time (not UTC).
+ * This prevents timezone-related date shifts.
+ */
+const formatLocalDateStr = (date) => {
+    if (!date || !(date instanceof Date) || isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const TimeSelectionGrid = ({
     date,
     events = [],
@@ -26,11 +38,13 @@ const TimeSelectionGrid = ({
     // Filter events for the selected date
     const dayEvents = useMemo(() => {
         if (!date) return [];
-        const dateStr = date.toISOString().split('T')[0];
+        // Use local date formatting to avoid timezone shifts
+        const dateStr = formatLocalDateStr(date);
 
         return events.filter(event => {
             if (!event.start) return false;
-            const eventDate = new Date(event.start).toISOString().split('T')[0];
+            // Compare using local dates to avoid timezone-related mismatches
+            const eventDate = formatLocalDateStr(new Date(event.start));
             return eventDate === dateStr;
         }).map(event => {
             const start = new Date(event.start);

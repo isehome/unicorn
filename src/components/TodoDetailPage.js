@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, AlertCircle, FileText, CalendarPlus, Info, User, Plus, Trash2, CheckCircle, Loader2 } from 'lucide-react';
+import { Calendar, AlertCircle, FileText, CalendarPlus, Info, User, Plus, Trash2, CheckCircle, Loader2 } from 'lucide-react';
 import Button from './ui/Button';
 import DateInput from './ui/DateInput';
 import DateField from './ui/DateField';
@@ -11,6 +11,19 @@ import { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent, fetchEve
 import { projectStakeholdersService, todoStakeholdersService } from '../services/supabaseService';
 import { stakeholderColors, enhancedStyles, paletteByMode } from '../styles/styleSystem';
 import { supabase } from '../lib/supabase';
+
+/**
+ * Safely parse a 'YYYY-MM-DD' date string into a local Date object.
+ * Using new Date('YYYY-MM-DD') interprets the date as UTC midnight,
+ * which can shift to the previous day in local timezones behind UTC.
+ * This function parses the date as local midnight instead.
+ */
+const parseLocalDate = (dateStr) => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!year || !month || !day || isNaN(year) || isNaN(month) || isNaN(day)) return null;
+    return new Date(year, month - 1, day); // month is 0-indexed
+};
 
 const TodoDetailPage = () => {
     const { projectId, todoId } = useParams();
@@ -149,8 +162,10 @@ const TodoDetailPage = () => {
     useEffect(() => {
         const loadEvents = async () => {
             if (!doBy || !authContext.accessToken) return;
+            const parsedDate = parseLocalDate(doBy);
+            if (!parsedDate) return;
             setLoadingEvents(true);
-            const result = await fetchEventsForDate(authContext, new Date(doBy));
+            const result = await fetchEventsForDate(authContext, parsedDate);
             if (result.connected) {
                 setCalendarEvents(result.events);
             }
@@ -408,40 +423,7 @@ const TodoDetailPage = () => {
 
     return (
         <div className={`min-h-screen ${mode === 'dark' ? 'bg-zinc-900' : 'bg-zinc-50'}`}>
-            {/* Sticky Header */}
-            <div className={`sticky top-0 z-10 border-b ${mode === 'dark' ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-zinc-200'}`}>
-                <div className="max-w-4xl mx-auto px-4 py-3">
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => navigate(-1)}
-                            className={`p-2 rounded-lg transition-colors ${mode === 'dark' ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100'}`}
-                        >
-                            <ArrowLeft size={20} className={mode === 'dark' ? 'text-zinc-300' : 'text-zinc-600'} />
-                        </button>
-                        <div className="flex-1 min-w-0">
-                            <h1 className={`font-semibold truncate ${mode === 'dark' ? 'text-zinc-100' : 'text-zinc-900'}`}>
-                                {todo.title || 'Todo Details'}
-                            </h1>
-                            <p className={`text-sm ${mode === 'dark' ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                                {todo.completed ? 'Completed' : 'Open'}
-                            </p>
-                        </div>
-                        <span
-                            className="px-2 py-1 rounded-full text-xs font-medium"
-                            style={{
-                                backgroundColor: todo.completed
-                                    ? withAlpha(palette.success || '#22c55e', 0.15)
-                                    : withAlpha(palette.warning || '#f59e0b', 0.15),
-                                color: todo.completed ? (palette.success || '#22c55e') : (palette.warning || '#f59e0b')
-                            }}
-                        >
-                            {todo.completed ? 'Completed' : 'Open'}
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Scrollable Content */}
+            {/* Page Content - AppHeader handles back navigation */}
             <div className="max-w-4xl mx-auto px-4 py-4 space-y-4 pb-8">
                 {/* Title */}
                 <div className={`p-4 rounded-xl border ${mode === 'dark' ? 'bg-zinc-800/50 border-zinc-700' : 'bg-white border-zinc-200'}`}>
@@ -605,7 +587,7 @@ const TodoDetailPage = () => {
                             </div>
                         ) : (
                             <TimeSelectionGrid
-                                date={new Date(doBy)}
+                                date={parseLocalDate(doBy)}
                                 events={calendarEvents}
                                 selectedStartTime={doByTime}
                                 selectedDuration={plannedHours}

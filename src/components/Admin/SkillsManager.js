@@ -276,7 +276,54 @@ const SkillsManager = ({ onSuccess, onError }) => {
     }
   };
 
+  // Delete confirmation modal state
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { type: 'category', item: {...} }
+
   // Delete handlers
+  const handleDeleteCategory = async (category) => {
+    try {
+      setSaving(true);
+
+      // Get all classes for this category
+      const categoryClasses = getClassesForCategory(category.id);
+      const classIds = categoryClasses.map(c => c.id);
+
+      // Delete all skills in these classes first (to handle foreign key constraints)
+      if (classIds.length > 0) {
+        const { error: skillsError } = await supabase
+          .from('global_skills')
+          .delete()
+          .in('class_id', classIds);
+        if (skillsError) throw skillsError;
+      }
+
+      // Delete all classes in this category
+      if (classIds.length > 0) {
+        const { error: classesError } = await supabase
+          .from('skill_classes')
+          .delete()
+          .in('id', classIds);
+        if (classesError) throw classesError;
+      }
+
+      // Delete the category itself
+      const { error: catError } = await supabase
+        .from('skill_categories')
+        .delete()
+        .eq('id', category.id);
+      if (catError) throw catError;
+
+      setDeleteConfirm(null);
+      setEditingItem(null);
+      onSuccess?.(`Deleted category "${category.label}" and all its contents`);
+      await loadData();
+    } catch (err) {
+      onError?.(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDeleteSkill = async (skillId) => {
     if (!window.confirm('Delete this skill? This will remove it from all employees.')) return;
     try {
@@ -753,11 +800,22 @@ const SkillsManager = ({ onSuccess, onError }) => {
                   </button>
                 </div>
               </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="secondary" size="sm" onClick={() => setEditingItem(null)}>Cancel</Button>
-                <Button size="sm" icon={Save} onClick={() => handleUpdateCategory(editingItem.data)} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save'}
+              <div className="flex gap-2 justify-between">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={Trash2}
+                  onClick={() => setDeleteConfirm({ type: 'category', item: editingItem.data })}
+                  disabled={saving}
+                >
+                  Delete Category
                 </Button>
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setEditingItem(null)}>Cancel</Button>
+                  <Button size="sm" icon={Save} onClick={() => handleUpdateCategory(editingItem.data)} disabled={saving}>
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
               </div>
             </div>
           ) : (
@@ -1018,6 +1076,61 @@ const SkillsManager = ({ onSuccess, onError }) => {
       {categories.length === 0 && (
         <div className="text-center py-8 text-gray-500">
           No categories yet. Add a category or import from CSV.
+        </div>
+      )}
+
+      {/* Delete Category Confirmation Modal */}
+      {deleteConfirm?.type === 'category' && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-zinc-800 rounded-xl max-w-md w-full overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-zinc-700 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                <AlertTriangle size={20} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Delete Category?
+              </h3>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                Are you sure you want to delete <strong>"{deleteConfirm.item.label}"</strong>?
+              </p>
+
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="text-sm text-red-600 dark:text-red-400 font-medium mb-2">
+                  This will permanently delete:
+                </p>
+                <ul className="text-sm text-red-600 dark:text-red-400 list-disc list-inside space-y-1">
+                  <li>The category itself</li>
+                  <li>{getClassesForCategory(deleteConfirm.item.id).length} class(es) within this category</li>
+                  <li>{getSkillsForCategory(deleteConfirm.item.name).length} skill(s) and their employee assignments</li>
+                </ul>
+              </div>
+
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                This action cannot be undone.
+              </p>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 dark:border-zinc-700 flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setDeleteConfirm(null)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                icon={saving ? Loader2 : Trash2}
+                onClick={() => handleDeleteCategory(deleteConfirm.item)}
+                disabled={saving}
+              >
+                {saving ? 'Deleting...' : 'Delete Category'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -9,6 +9,7 @@ import { useAppState } from './AppStateContext';
 import { supabase } from '../lib/supabase';
 import { pageContextService } from '../services/pageContextService';
 import { getPatternRoute } from '../config/pageRegistry';
+import { companySettingsService } from '../services/companySettingsService';
 
 // Audio settings - Gemini expects 16kHz input, sends 24kHz output
 const GEMINI_INPUT_SAMPLE_RATE = 16000;
@@ -430,11 +431,23 @@ ${buildContextString(state)}`;
                 }
 
                 case 'ticket': {
+                    // Fetch company default hourly rate for new tickets
+                    let defaultHourlyRate = 150;
+                    try {
+                        const settings = await companySettingsService.getCompanySettings();
+                        if (settings?.default_service_hourly_rate) {
+                            defaultHourlyRate = settings.default_service_hourly_rate;
+                        }
+                    } catch (err) {
+                        console.log('[AIBrain] Using fallback hourly rate for ticket');
+                    }
+
                     const { data, error } = await supabase.from('service_tickets').insert({
                         title,
                         description: description || null,
                         priority: priority || 'medium',
                         status: 'new',
+                        hourly_rate: defaultHourlyRate,
                         created_by: userId,
                     }).select().single();
                     if (error) throw error;

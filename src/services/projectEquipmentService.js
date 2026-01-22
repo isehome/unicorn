@@ -1316,6 +1316,18 @@ export const projectEquipmentService = {
         shelf_u_height,
         max_items_per_shelf,
         project_rooms(name, is_headend),
+        wire_drop_equipment_links (
+          id,
+          link_side,
+          wire_drop:wire_drop_id (
+            id,
+            uid,
+            drop_name,
+            room_name,
+            floor,
+            location
+          )
+        ),
         global_part:global_part_id (
           id,
           part_number,

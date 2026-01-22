@@ -135,6 +135,7 @@ const RackLayoutPage = () => {
             is_wired: c.is_wired,
             switch_name: c.switch_name,
             switch_port: c.switch_port,
+            switch_mac: c.switch_mac,  // MAC of the switch this client is connected to
             ssid: c.ssid,
             signal: c.signal
           }));
@@ -142,49 +143,16 @@ const RackLayoutPage = () => {
         }
 
         // Transform UniFi devices (switches, APs, gateways) to expected format
+        // SIMPLE APPROACH: Just pass through the data. The port_table has MAC addresses,
+        // we have a list of all devices with their MACs. That's all we need.
         if (result.devices) {
-          // First pass: build device lookup by MAC
-          const deviceByMac = new Map();
-          result.devices.forEach(d => {
-            if (d.mac_address) {
-              deviceByMac.set(d.mac_address.toLowerCase(), d);
-            }
-          });
-
-          // Second pass: for each device, try to find which switch port it's connected to
-          // by scanning other devices' port_table
-          const deviceUplinkInfo = new Map();
-          result.devices.forEach(switchDev => {
-            if (switchDev.port_table && Array.isArray(switchDev.port_table)) {
-              switchDev.port_table.forEach(port => {
-                // Check if this port has a connected device MAC
-                const portMac = port.lldp_remote_mac || port.client_mac || port.mac;
-                if (portMac) {
-                  const normalizedMac = portMac.toLowerCase();
-                  // Record that this MAC is connected to this switch/port
-                  deviceUplinkInfo.set(normalizedMac, {
-                    switch_name: switchDev.name,
-                    switch_mac: switchDev.mac_address,
-                    switch_port: port.port_idx,
-                    port_name: port.name,
-                    is_uplink: port.is_uplink || false
-                  });
-                }
-              });
-            }
-          });
-
-          const devices = result.devices.map(d => {
-            // Try to find uplink info for this device (how it connects to a switch)
-            const mac = d.mac_address?.toLowerCase();
-            const uplink = mac ? deviceUplinkInfo.get(mac) : null;
-
-            return {
+          const devices = result.devices.map(d => ({
               mac: d.mac_address,
+              mac_address: d.mac_address,
               name: d.name,
               model: d.model,
               ip: d.ip_address,
-              category: d.category, // 'switch', 'access_point', 'gateway'
+              category: d.category,
               type: d.type,
               is_online: d.is_online,
               version: d.version,
@@ -192,19 +160,60 @@ const RackLayoutPage = () => {
               ports_total: d.ports_total,
               ports_used: d.ports_used,
               port_table: d.port_table,
-              num_sta: d.num_sta, // Connected stations for APs
+              num_sta: d.num_sta,
               cpu: d.cpu,
               mem: d.mem,
-              // Uplink info (which switch/port this device connects to)
-              uplink_switch_name: uplink?.switch_name || null,
-              uplink_switch_mac: uplink?.switch_mac || null,
-              uplink_switch_port: uplink?.switch_port || null,
-              uplink_port_name: uplink?.port_name || null,
-              is_uplink_port: uplink?.is_uplink || false
-            };
-          });
+              gateway_mac: d.gateway_mac || null,
+              // Uplink info (from device's own reporting)
+              uplink_switch_name: d.uplink_device_name || null,
+              uplink_switch_mac: d.uplink_mac || null,
+              uplink_switch_port: d.uplink_remote_port || null,
+              uplink_remote_port: d.uplink_remote_port || null,
+              // Topology tables (pass through for reference)
+              downlink_table: d.downlink_table || [],
+              lldp_table: d.lldp_table || [],
+              uplink_table: d.uplink_table || [],
+          }));
+
           setHaDevices(devices);
-          console.log('[RackLayout] Loaded', devices.length, 'UniFi devices:', devices.map(d => `${d.name} (uplink: ${d.uplink_switch_name || 'none'})`));
+          console.log('[RackLayout] Loaded', devices.length, 'UniFi devices');
+
+          // ===== TOPOLOGY DEBUG SUMMARY =====
+          const topologySummary = devices.map(dev => ({
+            name: dev.name,
+            category: dev.category,
+            has_uplink_mac: !!dev.uplink_switch_mac,
+            has_uplink_port: !!dev.uplink_remote_port,
+            downlink_count: (dev.downlink_table || []).length,
+            lldp_count: (dev.lldp_table || []).length,
+          }));
+          console.log('%c[TOPOLOGY] Data Summary:', 'color: cyan; font-weight: bold', topologySummary);
+
+          // Check if any device has topology data
+          const hasTopologyData = devices.some(d =>
+            d.uplink_switch_mac || d.uplink_remote_port || (d.downlink_table?.length > 0) || (d.lldp_table?.length > 0)
+          );
+          if (!hasTopologyData) {
+            console.warn('%c[TOPOLOGY] ⚠️ NO TOPOLOGY DATA - Check HA Python script has uplink/downlink_table fields!', 'color: orange; font-weight: bold');
+          } else {
+            console.log('%c[TOPOLOGY] ✓ Topology data present', 'color: lime; font-weight: bold');
+          }
+
+          // Debug: Log full device data to see what uplink info is available
+          devices.forEach(dev => {
+            console.log(`[RackLayout DEBUG] Device "${dev.name}" (${dev.category}):`, {
+              mac: dev.mac,
+              uplink_mac: dev.uplink_switch_mac,
+              uplink_port: dev.uplink_remote_port,
+              gateway_mac: dev.gateway_mac,
+              downlink_table: dev.downlink_table,
+              lldp_table: dev.lldp_table,
+              uplink_table: dev.uplink_table,
+              // Also check the raw API response
+              _raw_uplink: result.devices.find(rd => rd.mac === dev.mac)?.uplink,
+              _raw_uplink_mac: result.devices.find(rd => rd.mac === dev.mac)?.uplink_mac,
+            });
+          });
         }
       }
     } catch (err) {
@@ -973,6 +982,7 @@ const RackLayoutPage = () => {
                   onAddRack={() => setShowAddRackModal(true)}
                   equipment={placedEquipment}
                   unplacedEquipment={unplacedEquipment}
+                  allProjectEquipment={equipment}
                   haClients={haClients}
                   haDevices={haDevices}
                   layoutMode="functional"

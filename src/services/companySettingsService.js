@@ -50,6 +50,7 @@ class CompanySettingsService {
           brand_color_primary: settingsData.brand_color_primary || '#8B5CF6',
           brand_color_secondary: settingsData.brand_color_secondary || '#94AF32',
           brand_color_tertiary: settingsData.brand_color_tertiary || '#3B82F6',
+          default_service_hourly_rate: settingsData.default_service_hourly_rate ?? 150,
           created_by: user?.id || null,
           updated_by: user?.id || null
         }])
@@ -88,6 +89,7 @@ class CompanySettingsService {
           brand_color_primary: settingsData.brand_color_primary,
           brand_color_secondary: settingsData.brand_color_secondary,
           brand_color_tertiary: settingsData.brand_color_tertiary,
+          default_service_hourly_rate: settingsData.default_service_hourly_rate,
           updated_by: user?.id || null
         })
         .eq('id', settingsId)

@@ -99,6 +99,19 @@ module.exports = async (req, res) => {
 
     console.log('[HA Network] Found', rawClients.length, 'clients and', rawDevices.length, 'devices');
 
+    // ===== TOPOLOGY DEBUG =====
+    // Log what topology data is available from HA
+    const topologySummary = rawDevices.map(d => ({
+      name: d.name,
+      category: d.category,
+      has_uplink_mac: !!(d.uplink_mac || d.uplink?.uplink_mac),
+      has_uplink_port: !!(d.uplink_remote_port || d.uplink?.uplink_remote_port),
+      downlink_count: (d.downlink_table || []).length,
+      lldp_count: (d.lldp_table || []).length,
+      uplink_raw: d.uplink ? 'present' : 'missing',
+    }));
+    console.log('[HA Network] TOPOLOGY SUMMARY:', JSON.stringify(topologySummary, null, 2));
+
     // Format with full network details
     const clients = rawClients.map(c => {
       // Format uptime
@@ -220,6 +233,23 @@ module.exports = async (req, res) => {
 
         // Gateway MAC (for topology)
         gateway_mac: d.gateway_mac || null,
+
+        // *** UPLINK/TOPOLOGY DATA - CRITICAL for port mapping ***
+        // These fields come from the Python collector's format_device function
+        // and tell us how this device connects to the network
+        uplink_mac: d.uplink_mac || null,              // MAC of upstream device this connects to
+        uplink_remote_port: d.uplink_remote_port || null, // Port number on the upstream device
+        uplink_device_name: d.uplink_device_name || null, // Name of upstream device
+        uplink_type: d.uplink_type || null,            // Connection type (wire, etc.)
+
+        // Full uplink object (has additional details)
+        uplink: d.uplink || null,
+
+        // Topology tables - useful for building full network map
+        lldp_table: d.lldp_table || [],               // LLDP neighbor discovery
+        uplink_table: d.uplink_table || [],           // All uplink connections
+        downlink_table: d.downlink_table || [],       // Downstream devices connected to this
+        ethernet_table: d.ethernet_table || [],       // Ethernet interfaces
 
         // Raw data for debugging
         _raw: d

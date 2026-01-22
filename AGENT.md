@@ -3718,6 +3718,52 @@ The application needs a proper user capabilities/roles system to control access 
 
 # PART 6: CHANGELOG
 
+## 2026-01-22
+
+### Configurable Default Service Hourly Rate (Bug BR-2026-01-12-0001)
+
+Added company-configurable default hourly rate for service tickets, replacing the hardcoded $150/hr value.
+
+**Problem Solved:**
+- Service ticket hourly rate was hardcoded to $150/hr throughout the codebase
+- No way for companies to set their own default service rate
+- Rate showed as $150/hr regardless of company preference
+
+**Solution:**
+Added `default_service_hourly_rate` to company settings, allowing admins to configure their default hourly rate. This rate is used when:
+1. Creating new service tickets (NewTicketForm, AI Brain)
+2. Displaying time tracking costs (ServiceTimeTracker)
+3. Individual tickets can still override with a per-ticket rate
+
+**Database Changes:**
+```sql
+ALTER TABLE company_settings ADD COLUMN default_service_hourly_rate NUMERIC DEFAULT 150;
+```
+
+**Files Created:**
+| File | Purpose |
+|------|---------|
+| `database/migrations/20260122_add_default_service_hourly_rate.sql` | Add default hourly rate column |
+
+**Files Modified:**
+| File | Changes |
+|------|---------|
+| `src/services/companySettingsService.js` | Added `default_service_hourly_rate` to create/update methods |
+| `src/components/procurement/CompanySettingsManager.js` | Added "Service Settings" section with hourly rate input |
+| `src/components/Service/ServiceTimeTracker.js` | Fetch company default rate when ticket has no rate |
+| `src/components/Service/NewTicketForm.js` | Set company default rate on new ticket creation |
+| `src/contexts/AIBrainContext.js` | Set company default rate when AI creates tickets |
+
+**Rate Priority (highest to lowest):**
+1. Ticket-level `hourly_rate` (per-ticket override)
+2. Company-level `default_service_hourly_rate` (from company settings)
+3. Fallback value of 150 (if company settings unavailable)
+
+**Admin UI Location:**
+Admin → Company Settings → Service Settings → Default Hourly Rate
+
+---
+
 ## 2026-01-16
 
 ### Company SharePoint URL for Global Parts Documentation
