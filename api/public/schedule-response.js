@@ -21,6 +21,18 @@ const supabase = createClient(
 const RESPONSE_SECRET = process.env.SCHEDULE_RESPONSE_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 /**
+ * Fetch company settings including brand colors
+ */
+async function fetchCompanySettings() {
+  const { data } = await supabase
+    .from('company_settings')
+    .select('company_name, brand_color_primary, brand_color_secondary, brand_color_tertiary')
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
+/**
  * Generate a secure token for a schedule response link
  */
 function generateResponseToken(scheduleId, action) {
@@ -48,24 +60,33 @@ module.exports = async (req, res) => {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Fetch company settings for branding (do this first so all pages are branded)
+  const companySettings = await fetchCompanySettings();
+  const brandColors = {
+    primary: companySettings?.brand_color_primary || '#8B5CF6',
+    secondary: companySettings?.brand_color_secondary || '#94AF32',
+    tertiary: companySettings?.brand_color_tertiary || '#3B82F6'
+  };
+  const companyName = companySettings?.company_name || 'INTELLIGENT SYSTEMS';
+
   const { action, scheduleId, token } = req.query;
 
   // Validate parameters
   if (!action || !scheduleId || !token) {
-    return res.status(400).send(renderPage('Missing Parameters', 'The link appears to be invalid. Please contact your service provider.', 'error'));
+    return res.status(400).send(renderPage('Missing Parameters', 'The link appears to be invalid. Please contact your service provider.', 'error', brandColors, companyName));
   }
 
   if (!['accept', 'decline'].includes(action)) {
-    return res.status(400).send(renderPage('Invalid Action', 'The link appears to be invalid.', 'error'));
+    return res.status(400).send(renderPage('Invalid Action', 'The link appears to be invalid.', 'error', brandColors, companyName));
   }
 
   // Validate token
   try {
     if (!validateResponseToken(scheduleId, action, token)) {
-      return res.status(403).send(renderPage('Invalid Link', 'This link has expired or is invalid. Please contact your service provider.', 'error'));
+      return res.status(403).send(renderPage('Invalid Link', 'This link has expired or is invalid. Please contact your service provider.', 'error', brandColors, companyName));
     }
   } catch (e) {
-    return res.status(403).send(renderPage('Invalid Link', 'This link is invalid.', 'error'));
+    return res.status(403).send(renderPage('Invalid Link', 'This link is invalid.', 'error', brandColors, companyName));
   }
 
   try {
@@ -86,7 +107,7 @@ module.exports = async (req, res) => {
       .single();
 
     if (fetchError || !schedule) {
-      return res.status(404).send(renderPage('Appointment Not Found', 'This appointment could not be found. It may have been cancelled or rescheduled.', 'error'));
+      return res.status(404).send(renderPage('Appointment Not Found', 'This appointment could not be found. It may have been cancelled or rescheduled.', 'error', brandColors, companyName));
     }
 
     // Check if already responded
@@ -95,19 +116,21 @@ module.exports = async (req, res) => {
       return res.send(renderPage(
         'Already Responded',
         `You have already ${prevResponse} this appointment. If you need to change your response, please contact your service provider.`,
-        'info'
+        'info',
+        brandColors,
+        companyName
       ));
     }
 
     // Check schedule status
     if (schedule.schedule_status !== 'pending_customer') {
       if (schedule.schedule_status === 'confirmed') {
-        return res.send(renderPage('Appointment Confirmed', 'This appointment is already confirmed.', 'success'));
+        return res.send(renderPage('Appointment Confirmed', 'This appointment is already confirmed.', 'success', brandColors, companyName));
       }
       if (schedule.schedule_status === 'cancelled') {
-        return res.send(renderPage('Appointment Cancelled', 'This appointment has been cancelled.', 'info'));
+        return res.send(renderPage('Appointment Cancelled', 'This appointment has been cancelled.', 'info', brandColors, companyName));
       }
-      return res.send(renderPage('Cannot Respond', 'This appointment is not currently awaiting your response.', 'info'));
+      return res.send(renderPage('Cannot Respond', 'This appointment is not currently awaiting your response.', 'info', brandColors, companyName));
     }
 
     // Get ticket details for the confirmation page
@@ -136,7 +159,7 @@ module.exports = async (req, res) => {
 
     if (updateError) {
       console.error('[schedule-response] Update error:', updateError);
-      return res.status(500).send(renderPage('Error', 'Failed to record your response. Please try again or contact your service provider.', 'error'));
+      return res.status(500).send(renderPage('Error', 'Failed to record your response. Please try again or contact your service provider.', 'error', brandColors, companyName));
     }
 
     // If declined, update ticket status back to triaged
@@ -161,7 +184,7 @@ module.exports = async (req, res) => {
         'Appointment Confirmed! ✓',
         `
           <p>Thank you for confirming your service appointment.</p>
-          <div style="background: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <div style="background: #f0fdf4; border: 1px solid ${brandColors.secondary}; border-radius: 8px; padding: 16px; margin: 16px 0;">
             <p style="margin: 4px 0;"><strong>Date:</strong> ${dateStr}</p>
             <p style="margin: 4px 0;"><strong>Time:</strong> ${timeStr}</p>
             ${schedule.technician_name ? `<p style="margin: 4px 0;"><strong>Technician:</strong> ${schedule.technician_name}</p>` : ''}
@@ -169,7 +192,9 @@ module.exports = async (req, res) => {
           </div>
           <p>A technician will arrive during the scheduled time window. If you need to reschedule, please contact us.</p>
         `,
-        'success'
+        'success',
+        brandColors,
+        companyName
       ));
     } else {
       return res.send(renderPage(
@@ -182,25 +207,42 @@ module.exports = async (req, res) => {
           </div>
           <p>Our team will contact you to reschedule at a more convenient time.</p>
         `,
-        'warning'
+        'warning',
+        brandColors,
+        companyName
       ));
     }
 
   } catch (error) {
     console.error('[schedule-response] Error:', error);
-    return res.status(500).send(renderPage('Error', 'An unexpected error occurred. Please try again later.', 'error'));
+    return res.status(500).send(renderPage('Error', 'An unexpected error occurred. Please try again later.', 'error', brandColors, companyName));
   }
 };
 
 /**
- * Render a simple HTML response page
+ * Render a simple HTML response page with company branding
  */
-function renderPage(title, message, type = 'info') {
+function renderPage(title, message, type = 'info', brandColors = {}, companyName = 'INTELLIGENT SYSTEMS') {
+  // Default brand colors if not provided
+  const primary = brandColors.primary || '#8B5CF6';
+  const secondary = brandColors.secondary || '#94AF32';
+  const tertiary = brandColors.tertiary || '#3B82F6';
+
+  // Calculate a darker shade of primary for gradient (darken by ~20%)
+  const darkenColor = (hex) => {
+    const r = Math.max(0, parseInt(hex.slice(1, 3), 16) - 40);
+    const g = Math.max(0, parseInt(hex.slice(3, 5), 16) - 40);
+    const b = Math.max(0, parseInt(hex.slice(5, 7), 16) - 40);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+  const primaryDark = darkenColor(primary);
+
+  // Status colors - use brand secondary for success, keep standard colors for error/warning/info
   const colors = {
-    success: { bg: '#f0fdf4', border: '#22c55e', icon: '✓' },
+    success: { bg: '#f0fdf4', border: secondary, icon: '✓' },
     error: { bg: '#fef2f2', border: '#ef4444', icon: '✗' },
     warning: { bg: '#fffbeb', border: '#f59e0b', icon: '!' },
-    info: { bg: '#eff6ff', border: '#3b82f6', icon: 'ℹ' }
+    info: { bg: '#eff6ff', border: tertiary, icon: 'ℹ' }
   };
   const color = colors[type] || colors.info;
 
@@ -210,12 +252,12 @@ function renderPage(title, message, type = 'info') {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${title} - ISE Home Service</title>
+      <title>${title} - ${companyName}</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+          background: linear-gradient(135deg, ${primaryDark} 0%, ${primary} 100%);
           min-height: 100vh;
           display: flex;
           align-items: center;
@@ -267,7 +309,7 @@ function renderPage(title, message, type = 'info') {
           color: #6b7280;
           border-top: 1px solid #e5e7eb;
         }
-        .logo { font-weight: bold; color: #4f46e5; }
+        .logo { font-weight: bold; color: ${primary}; }
       </style>
     </head>
     <body>
@@ -280,7 +322,7 @@ function renderPage(title, message, type = 'info') {
           ${message}
         </div>
         <div class="footer">
-          <span class="logo">INTELLIGENT SYSTEMS</span> | Field Operations
+          <span class="logo">${companyName}</span> | Field Operations
         </div>
       </div>
     </body>

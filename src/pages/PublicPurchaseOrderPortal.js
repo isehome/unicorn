@@ -51,6 +51,11 @@ const PublicPurchaseOrderPortal = () => {
   const purchaseOrder = portalData?.purchaseOrder;
   const company = portalData?.company;
 
+  // Brand colors from company settings (with defaults)
+  const brandColors = company?.brandColors || {};
+  const brandPrimary = brandColors.primary || '#8B5CF6';
+  const brandSecondary = brandColors.secondary || '#94AF32';
+
   const updateEntry = (id, field, value) => {
     setFormEntries((prev) =>
       prev.map((entry) =>
@@ -116,7 +121,7 @@ const PublicPurchaseOrderPortal = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
-        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: brandPrimary, borderTopColor: 'transparent' }} />
       </div>
     );
   }
@@ -142,7 +147,7 @@ const PublicPurchaseOrderPortal = () => {
             {company?.logoUrl ? (
               <img src={company.logoUrl} alt={company?.name || 'Logo'} className="h-24 max-w-[200px] object-contain rounded" />
             ) : (
-              <Truck className="w-16 h-16 text-violet-500" />
+              <Truck className="w-16 h-16" style={{ color: brandPrimary }} />
             )}
             <div>
               <p className="text-sm uppercase text-gray-500 tracking-wide">Vendor Tracking Portal</p>
@@ -192,7 +197,7 @@ const PublicPurchaseOrderPortal = () => {
         <section className="rounded-2xl border p-4 space-y-4" style={sectionStyles.card}>
           <h3 className="text-sm font-semibold">Add Tracking Information</h3>
           {successMessage && (
-            <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+            <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg" style={{ color: brandSecondary, backgroundColor: `${brandSecondary}15` }}>
               <CheckCircle className="w-4 h-4" />
               {successMessage}
             </div>
@@ -293,7 +298,7 @@ const PublicPurchaseOrderPortal = () => {
                       </button>
                       <p className="text-xs text-gray-500">Status: {entry.status}</p>
                     </div>
-                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <CheckCircle className="w-4 h-4" style={{ color: brandSecondary }} />
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
                     Added <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} />

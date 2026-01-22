@@ -255,6 +255,12 @@ const PublicShadePortal = () => {
   const shades = portalData?.shades || [];
   const stakeholder = portalData?.stakeholder || null;
 
+  // Brand colors from company settings (with defaults)
+  const brandColors = company?.brandColors || {};
+  const brandPrimary = brandColors.primary || '#8B5CF6';
+  const brandSecondary = brandColors.secondary || '#94AF32';
+  // brandTertiary available if needed: brandColors.tertiary || '#3B82F6'
+
   const groupedShades = shades.reduce((acc, shade) => {
     const room = shade.roomName || 'Unassigned';
     if (!acc[room]) acc[room] = [];
@@ -305,7 +311,7 @@ const PublicShadePortal = () => {
       borderRadius: '8px'
     },
     logoPlaceholder: {
-      color: '#8b5cf6'
+      color: brandPrimary
     },
     label: {
       fontSize: '12px',
@@ -337,7 +343,7 @@ const PublicShadePortal = () => {
       padding: '12px 24px',
       borderRadius: '12px',
       border: 'none',
-      backgroundColor: '#8b5cf6',
+      backgroundColor: brandPrimary,
       color: '#ffffff',
       fontSize: '16px',
       fontWeight: '500',
@@ -447,7 +453,7 @@ const PublicShadePortal = () => {
       color: '#6b7280'
     },
     fabricLink: {
-      color: '#8b5cf6',
+      color: brandPrimary,
       textDecoration: 'underline',
       cursor: 'pointer'
     },
@@ -457,13 +463,13 @@ const PublicShadePortal = () => {
       color: '#6b7280'
     },
     contactLink: {
-      color: '#8b5cf6',
+      color: brandPrimary,
       textDecoration: 'none'
     },
     spinner: {
       width: '32px',
       height: '32px',
-      border: '2px solid #8b5cf6',
+      border: `2px solid ${brandPrimary}`,
       borderTopColor: 'transparent',
       borderRadius: '50%',
       animation: 'spin 1s linear infinite'
@@ -592,16 +598,16 @@ const PublicShadePortal = () => {
             {allApproved && (
               <div style={{
                 borderRadius: '12px',
-                backgroundColor: '#dcfce7',
-                border: '1px solid #86efac',
+                backgroundColor: `${brandSecondary}15`,
+                border: `1px solid ${brandSecondary}40`,
                 padding: '16px',
                 marginBottom: '16px',
                 textAlign: 'center'
               }}>
-                <p style={{ fontSize: '16px', fontWeight: '600', color: '#15803d', margin: 0 }}>
+                <p style={{ fontSize: '16px', fontWeight: '600', color: brandSecondary, margin: 0 }}>
                   ✓ All window coverings have been approved!
                 </p>
-                <p style={{ fontSize: '14px', color: '#166534', marginTop: '8px', margin: '8px 0 0 0' }}>
+                <p style={{ fontSize: '14px', color: brandSecondary, marginTop: '8px', margin: '8px 0 0 0', opacity: 0.85 }}>
                   Thank you for your review. The project team has been notified.
                 </p>
               </div>
@@ -636,7 +642,7 @@ const PublicShadePortal = () => {
                 </div>
                 <div>
                   <p style={styles.statLabel}>Approved</p>
-                  <p style={{ ...styles.statValue, color: '#16a34a' }}>{shades.filter(s => s.approvalStatus === 'approved').length}</p>
+                  <p style={{ ...styles.statValue, color: brandSecondary }}>{shades.filter(s => s.approvalStatus === 'approved').length}</p>
                 </div>
               </div>
             </div>
@@ -726,7 +732,7 @@ const PublicShadePortal = () => {
                                       alignItems: 'center',
                                       gap: '6px',
                                       padding: '6px 12px',
-                                      backgroundColor: approvingShade === shade.id ? '#d1d5db' : '#15803d',
+                                      backgroundColor: approvingShade === shade.id ? '#d1d5db' : brandSecondary,
                                       color: '#ffffff',
                                       border: 'none',
                                       borderRadius: '8px',
@@ -793,7 +799,7 @@ const PublicShadePortal = () => {
                                         <div key={comment.id} style={{ padding: '8px', backgroundColor: '#ffffff', borderRadius: '6px', marginBottom: '8px', border: '1px solid #e5e7eb' }}>
                                           <p style={{ fontSize: '13px', color: '#18181B', margin: 0 }}>{comment.text}</p>
                                           <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', margin: 0 }}>
-                                            by <span style={{ fontWeight: '500', color: comment.email === stakeholder?.email ? '#15803d' : '#8b5cf6' }}>{comment.author}</span>
+                                            by <span style={{ fontWeight: '500', color: comment.email === stakeholder?.email ? brandSecondary : brandPrimary }}>{comment.author}</span>
                                             {' '}• {new Date(comment.createdAt).toLocaleString()}
                                           </p>
                                         </div>
@@ -834,7 +840,7 @@ const PublicShadePortal = () => {
                                         alignItems: 'center',
                                         gap: '4px',
                                         padding: '8px 12px',
-                                        backgroundColor: (newComments[shade.id] || '').trim() ? '#8b5cf6' : '#d1d5db',
+                                        backgroundColor: (newComments[shade.id] || '').trim() ? brandPrimary : '#d1d5db',
                                         color: '#ffffff',
                                         border: 'none',
                                         borderRadius: '6px',

@@ -7,22 +7,22 @@ import Button from '../components/ui/Button';
 import { publicIssuePortalService } from '../services/publicIssuePortalService';
 import { AlertTriangle, Paperclip, Download, Image as ImageIcon } from 'lucide-react';
 
-const getStatusBadge = (status) => {
+const getStatusBadge = (status, brandSecondary = '#94AF32') => {
   const normalized = (status || '').toLowerCase();
   if (normalized === 'resolved' || normalized === 'completed') {
-    return { label: 'Completed', className: 'bg-green-100 text-green-700' };
+    return { label: 'Completed', style: { backgroundColor: `${brandSecondary}20`, color: brandSecondary } };
   }
   if (normalized === 'blocked') {
-    return { label: 'Blocked', className: 'bg-rose-100 text-rose-700' };
+    return { label: 'Blocked', style: { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' } };
   }
-  return { label: status || 'Open', className: 'bg-blue-100 text-blue-700' };
+  return { label: status || 'Open', style: { backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3B82F6' } };
 };
 
-const uploadStatusBadge = (status) => {
+const uploadStatusBadge = (status, brandSecondary = '#94AF32') => {
   const normalized = (status || '').toLowerCase();
-  if (normalized === 'approved') return { label: 'Approved', className: 'bg-green-100 text-green-700' };
-  if (normalized === 'rejected') return { label: 'Rejected', className: 'bg-rose-100 text-rose-700' };
-  return { label: 'Pending review', className: 'bg-amber-100 text-amber-700' };
+  if (normalized === 'approved') return { label: 'Approved', style: { backgroundColor: `${brandSecondary}20`, color: brandSecondary } };
+  if (normalized === 'rejected') return { label: 'Rejected', style: { backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' } };
+  return { label: 'Pending review', style: { backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#F59E0B' } };
 };
 
 const formatBytes = (bytes = 0) => {
@@ -149,6 +149,11 @@ const PublicIssuePortal = () => {
   const photos = portalData?.photos || [];
   const currentStakeholderEmail = (portalData?.stakeholder?.email || '').toLowerCase().trim();
 
+  // Brand colors from company settings (with defaults)
+  const brandColors = company?.brandColors || {};
+  const brandPrimary = brandColors.primary || '#8B5CF6';
+  const brandSecondary = brandColors.secondary || '#94AF32';
+
   const renderVerification = () => (
     <form onSubmit={handleVerify} className="max-w-md mx-auto bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-gray-700 p-6 space-y-4">
       <div className="text-center">
@@ -174,7 +179,7 @@ const PublicIssuePortal = () => {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-zinc-900">
         <div className="flex flex-col items-center gap-2 text-gray-600 dark:text-gray-300">
-          <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: brandPrimary, borderTopColor: 'transparent' }} />
           <span className="text-sm">Loading issue…</span>
         </div>
       </div>
@@ -204,7 +209,7 @@ const PublicIssuePortal = () => {
             {company?.logoUrl ? (
               <img src={company.logoUrl} alt={company?.name || 'Company logo'} className="h-24 max-w-[200px] object-contain rounded" />
             ) : (
-              <ImageIcon className="w-16 h-16 text-violet-500" />
+              <ImageIcon className="w-16 h-16" style={{ color: brandPrimary }} />
             )}
             <div>
               <p className="text-sm uppercase text-gray-500 tracking-wide">External Issue Portal</p>
@@ -236,8 +241,8 @@ const PublicIssuePortal = () => {
                   <h1 className="text-xl font-semibold text-gray-900 dark:text-white">{issue?.title}</h1>
                 </div>
                 {issue && (
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full ${getStatusBadge(issue.status).className}`}>
-                    {getStatusBadge(issue.status).label}
+                  <span className="text-xs font-semibold px-3 py-1 rounded-full" style={getStatusBadge(issue.status, brandSecondary).style}>
+                    {getStatusBadge(issue.status, brandSecondary).label}
                   </span>
                 )}
               </div>
@@ -334,7 +339,7 @@ const PublicIssuePortal = () => {
                         <div className="text-sm text-gray-900 dark:text-gray-100">{entry.text}</div>
                         <div className="text-[11px] text-gray-500 mt-1">
                           by{' '}
-                          <span className="font-medium" style={{ color: isFromExternalStakeholder ? palette.success : palette.accent }}>
+                          <span className="font-medium" style={{ color: isFromExternalStakeholder ? brandSecondary : brandPrimary }}>
                             {entry.author || 'Team'}
                           </span>
                           {' '}• <DateField date={entry.createdAt} variant="inline" colorMode="timestamp" showTime={true} className="text-[11px]" />
@@ -360,7 +365,7 @@ const PublicIssuePortal = () => {
               ) : (
                 <div className="space-y-2">
                   {uploads.map((upload) => {
-                    const badge = uploadStatusBadge(upload.status);
+                    const badge = uploadStatusBadge(upload.status, brandSecondary);
                     return (
                       <div key={upload.id} className="rounded-xl border px-3 py-2">
                         <div className="flex items-start justify-between gap-3">
@@ -374,7 +379,7 @@ const PublicIssuePortal = () => {
                               Submitted on <DateField date={upload.submittedAt} variant="inline" colorMode="timestamp" showTime={true} />
                             </div>
                           </div>
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={badge.style}>
                             {badge.label}
                           </span>
                         </div>

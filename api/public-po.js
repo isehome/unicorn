@@ -56,7 +56,7 @@ async function fetchTracking(poId) {
 async function fetchCompanySettings() {
   const { data } = await supabase
     .from('company_settings')
-    .select('company_name, company_logo_url, orders_contact_name, orders_contact_email, orders_contact_phone')
+    .select('company_name, company_logo_url, orders_contact_name, orders_contact_email, orders_contact_phone, brand_color_primary, brand_color_secondary, brand_color_tertiary')
     .limit(1)
     .maybeSingle();
   return data || null;
@@ -121,6 +121,11 @@ async function buildPortalPayload(link) {
         name: company.orders_contact_name,
         email: company.orders_contact_email,
         phone: company.orders_contact_phone
+      },
+      brandColors: {
+        primary: company.brand_color_primary || '#8B5CF6',
+        secondary: company.brand_color_secondary || '#94AF32',
+        tertiary: company.brand_color_tertiary || '#3B82F6'
       }
     } : null
   };
