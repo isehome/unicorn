@@ -131,6 +131,32 @@ const url = photo.sharepointDriveId
   : `/api/image-proxy?url=${encodeURIComponent(photo.url)}`;
 ```
 
+### Company Brand Colors (Customer-Facing)
+
+**Two separate branding systems exist:**
+- **Unicorn Brand** - Internal app (`styleSystem.js`) - for employees/admins
+- **Company Brand** - Configurable in Admin settings - for customer-facing portals/emails
+
+External portals must fetch and use company brand colors:
+```javascript
+// API: Fetch from company_settings table
+const brandColors = {
+  primary: company.brand_color_primary || '#8B5CF6',
+  secondary: company.brand_color_secondary || '#94AF32',
+  tertiary: company.brand_color_tertiary || '#3B82F6'
+};
+
+// Frontend: Extract with defaults
+const brandColors = company?.brandColors || {};
+const brandPrimary = brandColors.primary || '#8B5CF6';
+const brandSecondary = brandColors.secondary || '#94AF32';
+
+// Use in inline styles
+<div style={{ color: brandSecondary }}>Success!</div>
+```
+
+See `AGENT.md` → "Company Brand Colors" for full implementation guide.
+
 ## Voice AI System
 
 ### Architecture

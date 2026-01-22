@@ -5260,6 +5260,171 @@ See `src/pages/PublicIssuePortal.js` and `api/public-issue.js` for reference imp
 - [ ] Session management with appropriate expiry
 - [ ] CORS headers configured for API endpoints
 - [ ] No sensitive data exposed before verification
+- [ ] Company brand colors fetched and applied (see below)
+
+### Company Brand Colors (Customer-Facing Branding)
+
+**Important Distinction: Two Branding Systems**
+
+| Branding Type | Purpose | Where Used | Colors |
+|---------------|---------|------------|--------|
+| **Unicorn Brand** | Internal app branding | All authenticated internal UI | `#8B5CF6` (primary), `#94AF32` (success) |
+| **Company Brand** | Customer-facing branding | External portals, emails | Configurable per company |
+
+**Unicorn brand colors** are hardcoded in `styleSystem.js` and used throughout the internal app for employees/technicians/admins.
+
+**Company brand colors** are configurable in Admin → Company Settings and used for all external/customer-facing interfaces.
+
+#### Database Schema
+
+```sql
+-- In company_settings table
+brand_color_primary   TEXT DEFAULT '#8B5CF6'  -- Primary accent color
+brand_color_secondary TEXT DEFAULT '#94AF32'  -- Success/action color
+brand_color_tertiary  TEXT DEFAULT '#3B82F6'  -- Links/info color
+```
+
+#### Admin UI Configuration
+
+Brand colors are managed in `src/components/procurement/CompanySettingsManager.js`:
+- Uses `BrandColorPicker` component with 16 preset colors + custom hex input
+- Preview bar shows all three colors side-by-side
+- Changes saved via `companySettingsService.save()`
+
+#### API Endpoint Pattern
+
+All external portal APIs must fetch and return brand colors:
+
+```javascript
+// In your API endpoint (e.g., api/public-issue.js)
+async function fetchCompanySettings() {
+  const { data } = await supabase
+    .from('company_settings')
+    .select('company_name, company_logo_url, brand_color_primary, brand_color_secondary, brand_color_tertiary')
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
+// Include in response payload
+company: company ? {
+  name: company.company_name,
+  logoUrl: company.company_logo_url,
+  brandColors: {
+    primary: company.brand_color_primary || '#8B5CF6',
+    secondary: company.brand_color_secondary || '#94AF32',
+    tertiary: company.brand_color_tertiary || '#3B82F6'
+  }
+} : null
+```
+
+#### Frontend Portal Pattern
+
+Extract and use brand colors with fallback defaults:
+
+```jsx
+// In your public portal component
+const company = portalData?.company || null;
+
+// Brand colors from company settings (with defaults)
+const brandColors = company?.brandColors || {};
+const brandPrimary = brandColors.primary || '#8B5CF6';
+const brandSecondary = brandColors.secondary || '#94AF32';
+const brandTertiary = brandColors.tertiary || '#3B82F6';
+
+// Use in inline styles (required for public portals)
+<div style={{ borderColor: brandPrimary }}>...</div>
+<span style={{ color: brandSecondary }}>Success!</span>
+<a style={{ color: brandTertiary }}>Link</a>
+
+// Loading spinner with brand color
+<div style={{
+  borderColor: brandPrimary,
+  borderTopColor: 'transparent'
+}} className="animate-spin" />
+
+// Success message with brand secondary
+<div style={{
+  color: brandSecondary,
+  backgroundColor: `${brandSecondary}15`
+}}>
+  ✓ Action completed!
+</div>
+```
+
+#### Email Template Pattern
+
+For emails (e.g., `api/_calendarResponseProcessor.js`):
+
+```javascript
+// Fetch company settings including brand colors
+let brandPrimary = '#8B5CF6';
+let brandSecondary = '#94AF32';
+let brandTertiary = '#3B82F6';
+
+const { data: companySettings } = await supabase
+  .from('company_settings')
+  .select('company_logo_url, brand_color_primary, brand_color_secondary, brand_color_tertiary')
+  .single();
+
+if (companySettings) {
+  brandPrimary = companySettings.brand_color_primary || brandPrimary;
+  brandSecondary = companySettings.brand_color_secondary || brandSecondary;
+  brandTertiary = companySettings.brand_color_tertiary || brandTertiary;
+}
+
+// Use in email HTML
+const emailBody = `
+  <div style="background-color: ${brandPrimary};">Header</div>
+  <button style="background-color: ${brandSecondary};">Accept</button>
+`;
+```
+
+#### Server-Rendered HTML Pattern
+
+For server-rendered pages (e.g., `api/public/schedule-response.js`):
+
+```javascript
+async function fetchCompanySettings() {
+  const { data } = await supabase
+    .from('company_settings')
+    .select('company_name, brand_color_primary, brand_color_secondary, brand_color_tertiary')
+    .limit(1)
+    .maybeSingle();
+  return data || null;
+}
+
+module.exports = async (req, res) => {
+  const companySettings = await fetchCompanySettings();
+  const brandColors = {
+    primary: companySettings?.brand_color_primary || '#8B5CF6',
+    secondary: companySettings?.brand_color_secondary || '#94AF32',
+    tertiary: companySettings?.brand_color_tertiary || '#3B82F6'
+  };
+
+  res.send(renderPage('Title', 'Content', 'success', brandColors));
+};
+```
+
+#### Portals Using Company Brand Colors
+
+| Portal | File | Brand Color Usage |
+|--------|------|-------------------|
+| Shade Approval | `PublicShadePortal.js` | Buttons, success states, comments |
+| PO Tracking | `PublicPurchaseOrderPortal.js` | Spinner, checkmarks, success messages |
+| Issue Portal | `PublicIssuePortal.js` | Status badges, comment authors, uploads |
+| Schedule Response | `api/public/schedule-response.js` | Page gradient, status icons, footer |
+| Service Emails | `api/_calendarResponseProcessor.js` | Header, action buttons, links |
+
+#### Key Implementation Rules
+
+1. **Always provide defaults** - Never assume brand colors exist
+2. **Use inline styles** - Public portals can't rely on Tailwind/theme context
+3. **Fetch early** - Get company settings before rendering any UI
+4. **Consistent mapping**:
+   - `brandPrimary` → Headers, accents, primary buttons, links
+   - `brandSecondary` → Success states, action buttons, confirmations
+   - `brandTertiary` → Info badges, secondary links
 
 ---
 
@@ -7312,3 +7477,397 @@ getSwitchPortUsage(switchEquipmentId)
 5. **PoE Budget Tracking** - Track PoE power budget on switches
 
 ---
+
+## 2026-01-21
+
+### AI Document Library Builder (Parts Enrichment Agent V2)
+
+A comprehensive AI-powered system that automatically builds documentation libraries for global parts using a multi-pass search strategy with document classification and verification.
+
+#### Overview
+
+The Document Library Builder is an AI agent that:
+1. **Searches manufacturer websites** for official documentation (Class 3 - Trustworthy)
+2. **Searches the broader web** for distributor/reseller docs (Class 2 - Reliable)
+3. **Checks community sources** for discussions and reviews (Class 1 - Opinion)
+4. **Verifies discovered documents** using a second-pass verification agent
+5. **Downloads PDFs** and uploads them to SharePoint for archival
+6. **Extracts technical specifications** (rack dimensions, power, network info)
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Part Detail Page UI                               │
+│                  "Search for Data" Button                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  /api/enrich-single-part.js                          │
+│           Document Library Builder (Vercel Function)                 │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  PASS 1: buildDocumentLibrary()                               │   │
+│  │  • Model: gemini-2.5-pro-preview-05-06                       │   │
+│  │  • Google Search Grounding ENABLED (real-time web search)    │   │
+│  │  • Temperature: 0.2 (focused research)                       │   │
+│  │                                                               │   │
+│  │  Search Strategy (executed in order):                        │   │
+│  │  1. Manufacturer website → Class 3 documents                 │   │
+│  │  2. Google search → Class 2 documents                        │   │
+│  │  3. Community sources → Class 1 documents                    │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  PASS 2: verifyDocuments()                                    │   │
+│  │  • Verification agent checks each discovered URL             │   │
+│  │  • Confirms accessibility and correct product match          │   │
+│  │  • Removes bad/broken URLs                                   │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  PASS 3: downloadAndUploadDocuments()                         │   │
+│  │  • Downloads PDF files from verified URLs                    │   │
+│  │  • Uploads to SharePoint via /api/graph-upload               │   │
+│  │  • Organizes into folder structure                           │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                │                                     │
+│                                ▼                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │  Save to Database via save_parts_enrichment() RPC             │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### Document Classification System
+
+Documents are classified into three trust levels:
+
+| Class | Source | Trust Level | Examples |
+|-------|--------|-------------|----------|
+| **Class 3** | Manufacturer Direct | Trustworthy | Official product pages, support portals, manufacturer CDNs |
+| **Class 2** | Distributors/Resellers | Reliable | Authorized distributor spec sheets, reseller product pages |
+| **Class 1** | Community | Opinion | Reddit discussions, AVS Forum, YouTube descriptions |
+
+#### Document Routing Logic
+
+Documents are automatically sorted into the correct database fields:
+
+| Document Type | Destination Field | Notes |
+|--------------|-------------------|-------|
+| Installation Manual | `install_manual_urls[]` | Primary install docs only |
+| User Guide | `install_manual_urls[]` | Merged with install manuals |
+| Quick Start Guide | `quick_start_url` + `technical_manual_urls[]` | Also added to technical |
+| Datasheet / Spec Sheet | `datasheet_url` + `technical_manual_urls[]` | Primary + technical |
+| Technical Specs | `technical_manual_urls[]` | All supporting tech docs |
+| Submittal / Brochure | `submittal_url` | Sales one-pagers, product pages |
+| Product Page | `submittal_url` (fallback) | Used if no submittal found |
+| CAD, Firmware, FAQ, etc. | `technical_manual_urls[]` | All other technical docs |
+
+#### SharePoint Folder Structure
+
+Downloaded documents are organized in SharePoint:
+
+```
+{company_sharepoint_root_url}/
+└── Parts/
+    └── {Manufacturer}/
+        └── {PartNumber}/
+            ├── manuals/           ← Install manuals, user guides, quick starts
+            │   ├── {PartNum}-install-manual-1.pdf
+            │   ├── {PartNum}-user-guide.pdf
+            │   └── {PartNum}-quick-start.pdf
+            └── technical/         ← Datasheets, specs, submittals
+                ├── {PartNum}-datasheet.pdf
+                ├── {PartNum}-tech-doc-1.pdf
+                └── {PartNum}-submittal.pdf
+```
+
+#### AI Prompt Strategy
+
+The AI is instructed to be a "Document Library Specialist" with these behaviors:
+
+1. **Be Thorough** - "Take your time. Thorough research is more important than speed."
+2. **Exhaust Manufacturer First** - Must fully search manufacturer site before web search
+3. **Look for Hidden Sections** - Check Downloads tabs, Support sections, expandable areas
+4. **Prefer Direct PDFs** - Return `.pdf` links when possible, not web pages
+5. **Don't Guess** - "null is better than wrong data"
+6. **Report What Was Searched** - Document search attempts in `search_summary`
+
+#### Database Schema (New Columns Added)
+
+```sql
+-- Technical manuals array (all supporting documentation)
+ALTER TABLE global_parts ADD COLUMN technical_manual_urls text[];
+ALTER TABLE global_parts ADD COLUMN technical_manual_sharepoint_urls text[];
+
+-- Document classification (JSONB with full metadata)
+ALTER TABLE global_parts ADD COLUMN class3_documents jsonb;
+ALTER TABLE global_parts ADD COLUMN class2_documents jsonb;
+ALTER TABLE global_parts ADD COLUMN class1_documents jsonb;
+
+-- Search/research metadata
+ALTER TABLE global_parts ADD COLUMN manufacturer_website text;
+ALTER TABLE global_parts ADD COLUMN product_page_url text;
+ALTER TABLE global_parts ADD COLUMN search_summary jsonb;
+```
+
+#### Document Classification JSONB Structure
+
+```json
+{
+  "class3_documents": [
+    {
+      "type": "install_manual",
+      "title": "QSE-IO Installation Guide",
+      "url": "https://www.lutron.com/docs/qse-io-install.pdf",
+      "source": "lutron.com support portal",
+      "notes": "Found in Downloads section"
+    },
+    {
+      "type": "datasheet",
+      "title": "QSE-IO Specifications",
+      "url": "https://www.lutron.com/specs/qse-io-spec.pdf",
+      "source": "lutron.com product page",
+      "notes": null
+    }
+  ]
+}
+```
+
+#### Search Summary JSONB Structure
+
+```json
+{
+  "manufacturer_site_searched": true,
+  "support_section_found": true,
+  "total_documents_found": 7,
+  "search_notes": "Found product page at lutron.com/products/qse-io. Support section had 4 PDFs. Also found datasheet on ADI distributor site."
+}
+```
+
+#### Technical Specifications Extracted
+
+The AI also extracts these specs while searching for documents:
+
+**Rack/Mounting Info:**
+- `is_rack_mountable`, `u_height`, `needs_shelf`, `shelf_u_height`, `max_items_per_shelf`
+- `width_inches`, `depth_inches`, `height_inches`
+- `is_wireless`, `exclude_from_rack`
+
+**Power Info:**
+- `power_watts`, `power_outlets`, `is_power_device`, `power_outlets_provided`
+- `ups_va_rating`, `ups_battery_outlets`, `ups_surge_only_outlets`
+
+**Network Info:**
+- `is_network_switch`, `switch_ports`, `poe_enabled`, `poe_budget_watts`
+- `uplink_ports`, `has_network_port`
+
+#### Key Code: Model Configuration with Grounding
+
+```javascript
+// Use Gemini 2.5 Pro for thorough research with grounding
+const GEMINI_MODEL = 'gemini-2.5-pro-preview-05-06';
+
+// Configure model with Google Search grounding for real-time web research
+const model = genAI.getGenerativeModel({
+  model: GEMINI_MODEL,
+  tools: [{
+    googleSearch: {}  // Enables real-time web search
+  }]
+});
+```
+
+#### Key Code: Three-Pass Enrichment Flow
+
+```javascript
+// PASS 1: Research the part thoroughly
+const enrichmentData = await buildDocumentLibrary(model, part);
+
+// PASS 2: Verify documents (verification agent)
+const verifiedData = await verifyDocuments(model, part, enrichmentData.data);
+Object.assign(enrichmentData.data, verifiedData);
+
+// PASS 3: Download and upload to SharePoint
+const downloadedDocs = await downloadAndUploadDocuments(part, enrichmentData.data);
+if (downloadedDocs) {
+  Object.assign(enrichmentData.data, downloadedDocs);
+}
+
+// Save to database
+await getSupabase().rpc('save_parts_enrichment', {...});
+```
+
+#### Differences from V1
+
+| Aspect | V1 (gemini-2.0-flash) | V2 (gemini-2.5-pro) |
+|--------|----------------------|---------------------|
+| Model | gemini-2.0-flash | gemini-2.5-pro-preview-05-06 |
+| Grounding | None (relied on training data) | Google Search enabled |
+| Search Strategy | Single pass, basic | 3-pass: Manufacturer → Web → Community |
+| Document Classification | None | Class 1/2/3 trust levels |
+| Verification | None | Second-pass verification agent |
+| Document Fields | `install_manual_urls`, `user_guide_urls` | Added `technical_manual_urls` |
+| Metadata | Minimal | Full search_summary, classification JSONBs |
+| Instructions | Brief, generic | Detailed "Document Library Specialist" role |
+
+#### Files Created/Modified
+
+| File | Purpose |
+|------|---------|
+| `api/enrich-single-part.js` | **Complete rewrite** - Document Library Builder with 3-pass strategy |
+| `database/migrations/20260120_parts_enrichment_v2.sql` | Added technical_manual_urls, class documents, search metadata columns |
+
+#### Usage
+
+1. Navigate to Part Detail page (`/parts/:partId`)
+2. Click "Search for Data" button in AI-Powered Data Search section
+3. Wait for research to complete (may take 30-60 seconds due to thorough search)
+4. Review discovered documents and specifications
+5. Documents are automatically uploaded to SharePoint
+
+#### Environment Variables Required
+
+```
+REACT_APP_GEMINI_API_KEY=your-gemini-api-key
+# or
+GEMINI_API_KEY=your-gemini-api-key
+```
+
+#### Future Enhancements
+
+1. **Batch Processing** - Queue multiple parts for background enrichment
+2. **Re-enrichment Triggers** - Auto-refresh when documents are 6+ months old
+3. **Document Preview** - Show PDF previews in UI before downloading
+4. **Manual Override** - Allow users to promote/demote document classifications
+5. **Confidence Scoring** - Weight confidence by document class found
+
+---
+
+### Network Tab Port Connections & Equipment Edit Modal (January 2026)
+
+#### Problem Summary
+1. **Settings button not working in Network/Power tabs** - Clicking the gear icon didn't open the equipment edit modal
+2. **Port ordering incorrect** - Ports displayed out of order (e.g., 2, 3... 16, 1 instead of 1, 2, 3... 16)
+3. **Connection lines going to wrong locations** - Lines weren't properly connecting switch ports to devices
+4. **Equipment not showing on Network tab despite having HA link** - Devices with `ha_client_mac` in Front view weren't appearing in Network tab port connections
+
+#### Root Cause Analysis
+
+**Settings Button Issue:**
+- `RackBackView.jsx` called `onEquipmentEdit?.(eq)` expecting it to open a modal
+- But `onEquipmentEdit` from `RackLayoutPage.js` is `handleEquipmentEdit(equipmentId, updates)` - a data save function, not a modal opener
+- `RackFrontView.jsx` had its own `editingEquipment` state and `EquipmentEditModal` component
+- `RackBackView.jsx` was missing this state and modal
+
+**Port Connection Issue:**
+- `getPortConnections()` function in `RackBackView.jsx` builds a map of switch ports to connected devices
+- Equipment linked via `ha_client_mac` wasn't being found because the lookup logic didn't check `project_equipment.ha_client_mac`
+- The function checks multiple data sources but wasn't linking HA clients back to rack equipment
+
+#### Solution Implemented
+
+1. **Extracted `EquipmentEditModal` to shared component:**
+   - Created `/src/components/Rack/EquipmentEditModal.jsx`
+   - Both `RackFrontView.jsx` and `RackBackView.jsx` now import this shared component
+
+2. **Added `editingEquipment` state to `RackBackView.jsx`:**
+   ```javascript
+   const [editingEquipment, setEditingEquipment] = useState(null);
+   ```
+
+3. **Updated Settings button click handlers:**
+   ```javascript
+   // Changed from:
+   onClick={(e) => { e.stopPropagation(); onEquipmentEdit?.(eq); }}
+   // To:
+   onClick={(e) => { e.stopPropagation(); setEditingEquipment(eq); }}
+   ```
+
+4. **Added modal rendering at end of component:**
+   ```jsx
+   {editingEquipment && (
+     <EquipmentEditModal
+       equipment={editingEquipment}
+       projectId={projectId}
+       networkInfo={getNetworkInfo ? getNetworkInfo(editingEquipment) : null}
+       haClients={haClients}
+       haDevices={haDevices}
+       onClose={() => setEditingEquipment(null)}
+       onSave={onEquipmentEdit}
+       onRemove={onEquipmentRemove}
+       onExclude={onEquipmentExclude}
+       onExcludeGlobal={onEquipmentExcludeGlobal}
+       onMoveRoom={onMoveRoom}
+       onLinkToHA={onLinkToHA}
+     />
+   )}
+   ```
+
+5. **Fixed port ordering:**
+   ```javascript
+   const sortedPorts = [...haPortTable].sort((a, b) => a.port_idx - b.port_idx);
+   ```
+
+#### Key Code: `getPortConnections()` in RackBackView.jsx
+
+This function (around line 1350) builds the map of what's connected to each switch port:
+
+```javascript
+const getPortConnections = () => {
+  const portMap = new Map();
+  
+  // SECTION 1: Equipment linked to THIS switch (via networkInfo)
+  // Checks equipment.ha_client_mac against switch ports
+  
+  // SECTION 2: HA clients (from haClients prop)
+  // Matches client.switch_name to switch, then links to equipment via MAC:
+  const linkedEquipment = client.mac
+    ? equipment.find(e => e.ha_client_mac?.toLowerCase() === client.mac.toLowerCase())
+    : null;
+  
+  // SECTION 3: HA devices (from haDevices prop)
+  // Similar MAC-based equipment lookup
+  
+  // SECTION 4: Port table data (raw port status from UniFi)
+  // Fills in remaining ports from switch's port_table
+  
+  return portMap;
+};
+```
+
+#### Known Issue: Equipment Missing from Network Tab
+
+**Symptom:** A device (e.g., DHI-NVR) shows network link (IP/MAC) on Front tab but doesn't appear in Network tab port connections.
+
+**Likely Causes:**
+1. `client.switch_name` doesn't match the switch equipment's name/hostname
+2. `client.switch_port` is null or undefined
+3. The equipment's `ha_client_mac` doesn't match any HA client's MAC exactly (case sensitivity)
+
+**Debug Steps:**
+1. Check browser console for `[getPortConnections]` logs
+2. Verify the device's HA client data has `switch_name` and `switch_port` populated
+3. Verify `project_equipment.ha_client_mac` matches the HA client's MAC (case-insensitive)
+
+#### Files Modified
+
+| File | Changes |
+|------|---------|
+| `src/components/Rack/EquipmentEditModal.jsx` | **NEW** - Extracted shared modal component |
+| `src/components/Rack/RackFrontView.jsx` | Removed inline modal, imports shared component |
+| `src/components/Rack/RackBackView.jsx` | Added editingEquipment state, imports shared modal, updated click handlers |
+
+#### Tab Structure Clarification
+
+The Rack Layout page has **3 tabs** (not a separate "back" view):
+- **Front tab** → `RackFrontView.jsx` (physical grid layout)
+- **Power tab** → `RackBackView.jsx` with `connectionTab="power"`
+- **Network tab** → `RackBackView.jsx` with `connectionTab="network"`
+
+---
+
