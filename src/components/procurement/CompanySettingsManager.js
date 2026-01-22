@@ -11,8 +11,10 @@ import {
   AlertCircle,
   CheckCircle,
   FolderOpen,
-  HelpCircle
+  HelpCircle,
+  Palette
 } from 'lucide-react';
+import BrandColorPicker from '../ui/BrandColorPicker';
 
 /**
  * CompanySettingsManager Component
@@ -41,7 +43,10 @@ const CompanySettingsManager = () => {
     company_logo_url: null,
     company_logo_sharepoint_drive_id: null,
     company_logo_sharepoint_item_id: null,
-    company_sharepoint_root_url: ''
+    company_sharepoint_root_url: '',
+    brand_color_primary: '#8B5CF6',
+    brand_color_secondary: '#94AF32',
+    brand_color_tertiary: '#3B82F6'
   });
 
   useEffect(() => {
@@ -66,7 +71,10 @@ const CompanySettingsManager = () => {
           company_logo_url: data.company_logo_url || null,
           company_logo_sharepoint_drive_id: data.company_logo_sharepoint_drive_id || null,
           company_logo_sharepoint_item_id: data.company_logo_sharepoint_item_id || null,
-          company_sharepoint_root_url: data.company_sharepoint_root_url || ''
+          company_sharepoint_root_url: data.company_sharepoint_root_url || '',
+          brand_color_primary: data.brand_color_primary || '#8B5CF6',
+          brand_color_secondary: data.brand_color_secondary || '#94AF32',
+          brand_color_tertiary: data.brand_color_tertiary || '#3B82F6'
         });
       }
     } catch (err) {
@@ -260,6 +268,56 @@ const CompanySettingsManager = () => {
               </label>
             </div>
           )}
+        </div>
+
+        {/* Brand Colors Section */}
+        <div>
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <Palette className="w-4 h-4 text-violet-600" />
+            Brand Colors
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Choose colors for external-facing communications like customer emails and portals.
+          </p>
+
+          <div className="space-y-6 p-4 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-200 dark:border-zinc-700">
+            <BrandColorPicker
+              value={formData.brand_color_primary}
+              onChange={(color) => handleInputChange('brand_color_primary', color)}
+              label="Primary Color"
+              description="Used for headers, accent borders, and links"
+            />
+
+            <BrandColorPicker
+              value={formData.brand_color_secondary}
+              onChange={(color) => handleInputChange('brand_color_secondary', color)}
+              label="Secondary Color"
+              description="Used for action buttons and important banners"
+            />
+
+            <BrandColorPicker
+              value={formData.brand_color_tertiary}
+              onChange={(color) => handleInputChange('brand_color_tertiary', color)}
+              label="Tertiary Color"
+              description="Used for subtle accents and informational elements"
+            />
+
+            {/* Color Preview */}
+            <div className="pt-4 border-t border-gray-200 dark:border-zinc-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Preview</p>
+              <div className="flex items-center gap-3">
+                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_primary }}>
+                  <span className="text-white text-xs font-medium">Primary</span>
+                </div>
+                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_secondary }}>
+                  <span className="text-white text-xs font-medium">Secondary</span>
+                </div>
+                <div className="flex-1 p-3 rounded-lg" style={{ backgroundColor: formData.brand_color_tertiary }}>
+                  <span className="text-white text-xs font-medium">Tertiary</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Orders Contact Section */}

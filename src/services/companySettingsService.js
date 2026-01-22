@@ -47,6 +47,9 @@ class CompanySettingsService {
           company_logo_sharepoint_drive_id: settingsData.company_logo_sharepoint_drive_id,
           company_logo_sharepoint_item_id: settingsData.company_logo_sharepoint_item_id,
           company_sharepoint_root_url: settingsData.company_sharepoint_root_url,
+          brand_color_primary: settingsData.brand_color_primary || '#8B5CF6',
+          brand_color_secondary: settingsData.brand_color_secondary || '#94AF32',
+          brand_color_tertiary: settingsData.brand_color_tertiary || '#3B82F6',
           created_by: user?.id || null,
           updated_by: user?.id || null
         }])
@@ -82,6 +85,9 @@ class CompanySettingsService {
           company_logo_sharepoint_drive_id: settingsData.company_logo_sharepoint_drive_id,
           company_logo_sharepoint_item_id: settingsData.company_logo_sharepoint_item_id,
           company_sharepoint_root_url: settingsData.company_sharepoint_root_url,
+          brand_color_primary: settingsData.brand_color_primary,
+          brand_color_secondary: settingsData.brand_color_secondary,
+          brand_color_tertiary: settingsData.brand_color_tertiary,
           updated_by: user?.id || null
         })
         .eq('id', settingsId)

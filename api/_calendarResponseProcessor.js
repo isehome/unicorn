@@ -172,26 +172,38 @@ async function sendCustomerConfirmationEmail(token, systemEmail, schedule, ticke
   const startTime = schedule.scheduled_time_start?.slice(0, 5) || '00:00';
   const endTime = schedule.scheduled_time_end?.slice(0, 5) || '00:00';
 
-  // Brand colors from styleSystem.js
-  const BRAND_SUCCESS = '#94AF32';  // Olive green - primary action color
-  const BRAND_PRIMARY = '#8B5CF6';  // Violet - brand primary
-  const BRAND_DANGER = '#EF4444';   // Red - decline/cancel
-
-  // Fetch company logo from settings
+  // Fetch company settings including logo and brand colors
   let companyLogoUrl = '';
+  let brandPrimary = '#8B5CF6';    // Default: Violet - brand primary
+  let brandSecondary = '#94AF32';  // Default: Olive green - action color
+  let brandTertiary = '#3B82F6';   // Default: Blue - links/accents
+
   try {
     const { data: companySettings } = await getSupabase()
       .from('company_settings')
-      .select('company_logo_url')
+      .select('company_logo_url, brand_color_primary, brand_color_secondary, brand_color_tertiary')
       .single();
-    companyLogoUrl = companySettings?.company_logo_url || '';
+
+    if (companySettings) {
+      companyLogoUrl = companySettings.company_logo_url || '';
+      brandPrimary = companySettings.brand_color_primary || brandPrimary;
+      brandSecondary = companySettings.brand_color_secondary || brandSecondary;
+      brandTertiary = companySettings.brand_color_tertiary || brandTertiary;
+    }
   } catch (err) {
-    console.log('[CalendarProcessor] Could not fetch company logo:', err.message);
+    console.log('[CalendarProcessor] Could not fetch company settings:', err.message);
   }
 
+  // Use company brand colors (or defaults)
+  const BRAND_PRIMARY = brandPrimary;    // Headers, accent borders
+  const BRAND_SUCCESS = brandSecondary;  // Action buttons, banners
+  const BRAND_TERTIARY = brandTertiary;  // Links, subtle accents
+  const BRAND_DANGER = '#EF4444';        // Red - decline/cancel (keep standard)
+
   // Build header HTML - use logo if available, otherwise text
+  // Logo is full-width (520px, matching content width with 40px padding on each side)
   const headerHtml = companyLogoUrl
-    ? `<img src="${companyLogoUrl}" alt="Intelligent Systems" style="max-height: 80px; max-width: 300px;" />`
+    ? `<img src="${companyLogoUrl}" alt="Company Logo" style="width: 100%; max-width: 520px; height: auto; display: block;" />`
     : `<h1 style="color: #FAFAFA; margin: 0; font-size: 24px; font-weight: bold; letter-spacing: 2px;">INTELLIGENT SYSTEMS</h1>`;
 
   // Use table-based layout for maximum email client compatibility
