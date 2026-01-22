@@ -237,10 +237,11 @@ module.exports = async (req, res) => {
         // *** UPLINK/TOPOLOGY DATA - CRITICAL for port mapping ***
         // These fields come from the Python collector's format_device function
         // and tell us how this device connects to the network
-        uplink_mac: d.uplink_mac || null,              // MAC of upstream device this connects to
-        uplink_remote_port: d.uplink_remote_port || null, // Port number on the upstream device
-        uplink_device_name: d.uplink_device_name || null, // Name of upstream device
-        uplink_type: d.uplink_type || null,            // Connection type (wire, etc.)
+        // NOTE: uplink_mac may be at top level OR nested in uplink object
+        uplink_mac: d.uplink_mac || d.uplink?.uplink_mac || null,
+        uplink_remote_port: d.uplink_remote_port ?? d.uplink?.uplink_remote_port ?? null,
+        uplink_device_name: d.uplink_device_name || d.uplink?.uplink_device_name || null,
+        uplink_type: d.uplink_type || d.uplink?.type || null,
 
         // Full uplink object (has additional details)
         uplink: d.uplink || null,
