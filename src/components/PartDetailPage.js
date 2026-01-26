@@ -243,7 +243,7 @@ const PartDetailPage = () => {
     }));
   };
 
-  // AI-powered data search
+  // AI-powered data search with async polling for Manus
   const handleAiSearch = async () => {
     if (!part?.id) return;
 
@@ -251,53 +251,64 @@ const PartDetailPage = () => {
     setAiSearchResult(null);
     setAiSearchError(null);
 
-    console.log('[AI Search] Starting search for part:', part.name || part.part_number);
+    console.log('[AI Search] Starting Manus research for part:', part.name || part.part_number);
 
     try {
-      // Use Vercel API in production, proxy in development
       const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
-      const response = await fetch(`${apiBase}/api/enrich-single-part-manus`, {
+
+      // Phase 1: Start the research task
+      const startResponse = await fetch(`${apiBase}/api/enrich-single-part-manus`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id }),
       });
 
-      const result = await response.json();
-      console.log('[AI Search] Response:', result);
+      const startResult = await startResponse.json();
+      console.log('[AI Search] Start response:', startResult);
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Search failed');
+      if (!startResponse.ok) {
+        throw new Error(startResult.error || 'Failed to start research');
       }
 
-      setAiSearchResult(result);
-
-      // Update form with AI-found data
-      if (result.data) {
-        const d = result.data;
-        setFormState((prev) => ({
-          ...prev,
-          // Rack layout
-          is_rack_mountable: d.is_rack_mountable ?? prev.is_rack_mountable,
-          u_height: d.u_height ?? prev.u_height,
-          needs_shelf: d.needs_shelf ?? prev.needs_shelf,
-          // Power
-          power_watts: d.power_watts ?? prev.power_watts,
-          power_outlets: d.power_outlets ?? prev.power_outlets,
-          is_power_device: d.is_power_device ?? prev.is_power_device,
-          power_outlets_provided: d.power_outlets_provided ?? prev.power_outlets_provided,
-          ups_outlets_provided: d.ups_battery_outlets ?? prev.ups_outlets_provided,
-          // Documentation URLs
-          install_manual_urls: d.install_manual_urls?.length > 0
-            ? d.install_manual_urls
-            : prev.install_manual_urls,
-          technical_manual_urls: d.user_guide_urls?.length > 0
-            ? d.user_guide_urls
-            : prev.technical_manual_urls,
-        }));
+      // If already completed (unlikely but handle it)
+      if (startResult.status === 'completed') {
+        handleSearchComplete(startResult);
+        return;
       }
 
-      // Invalidate queries to refresh data
-      queryClient.invalidateQueries({ queryKey: queryKeys.part(part.id) });
+      // Phase 2: Poll for completion (Manus takes 1-3 minutes)
+      const maxPollTime = 5 * 60 * 1000; // 5 minutes
+      const pollInterval = 10 * 1000; // 10 seconds
+      const startTime = Date.now();
+
+      while (Date.now() - startTime < maxPollTime) {
+        console.log('[AI Search] Polling for status...');
+
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+        const pollResponse = await fetch(`${apiBase}/api/enrich-single-part-manus`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partId: part.id, checkStatus: true }),
+        });
+
+        const pollResult = await pollResponse.json();
+        console.log('[AI Search] Poll response:', pollResult);
+
+        if (pollResult.status === 'completed') {
+          handleSearchComplete(pollResult);
+          return;
+        }
+
+        if (pollResult.status === 'failed') {
+          throw new Error(pollResult.error || 'Research failed');
+        }
+
+        // Still processing - continue polling
+        console.log('[AI Search] Still processing...', pollResult.manusStatus || 'working');
+      }
+
+      throw new Error('Research timed out after 5 minutes');
 
     } catch (err) {
       console.error('[AI Search] Error:', err);
@@ -305,6 +316,38 @@ const PartDetailPage = () => {
     } finally {
       setAiSearching(false);
     }
+  };
+
+  // Handle successful search completion
+  const handleSearchComplete = (result) => {
+    setAiSearchResult(result);
+
+    if (result.data) {
+      const d = result.data;
+      setFormState((prev) => ({
+        ...prev,
+        // Rack layout
+        is_rack_mountable: d.is_rack_mountable ?? prev.is_rack_mountable,
+        u_height: d.u_height ?? prev.u_height,
+        needs_shelf: d.needs_shelf ?? prev.needs_shelf,
+        // Power
+        power_watts: d.power_watts ?? prev.power_watts,
+        power_outlets: d.power_outlets ?? prev.power_outlets,
+        is_power_device: d.is_power_device ?? prev.is_power_device,
+        power_outlets_provided: d.power_outlets_provided ?? prev.power_outlets_provided,
+        ups_outlets_provided: d.ups_battery_outlets ?? prev.ups_outlets_provided,
+        // Documentation URLs
+        install_manual_urls: d.install_manual_urls?.length > 0
+          ? d.install_manual_urls
+          : prev.install_manual_urls,
+        technical_manual_urls: d.user_guide_urls?.length > 0
+          ? d.user_guide_urls
+          : prev.technical_manual_urls,
+      }));
+    }
+
+    // Invalidate queries to refresh data
+    queryClient.invalidateQueries({ queryKey: queryKeys.part(part.id) });
   };
 
   const handleSubmit = (event) => {
