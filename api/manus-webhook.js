@@ -438,9 +438,9 @@ async function uploadManusCreatedFile(rootUrl, subPath, file, part) {
     // Convert to base64
     const base64 = Buffer.from(content, 'utf-8').toString('base64');
 
-    const uploadUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-      : 'https://unicorn-one.vercel.app/api/graph-upload';
+    // Always use production URL for internal API calls
+    // VERCEL_URL gives preview deployment URLs which require authentication
+    const uploadUrl = 'https://unicorn-one.vercel.app/api/graph-upload';
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
@@ -499,9 +499,9 @@ async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, pref
       filename = `${partNum}-${filename}`;
     }
 
-    const uploadUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-      : 'https://unicorn-one.vercel.app/api/graph-upload';
+    // Always use production URL for internal API calls
+    // VERCEL_URL gives preview deployment URLs which require authentication
+    const uploadUrl = 'https://unicorn-one.vercel.app/api/graph-upload';
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',

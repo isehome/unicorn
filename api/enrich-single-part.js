@@ -863,9 +863,9 @@ async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, pref
 
     console.log(`[DocumentLibrary] Uploading: ${subPath}/${filename}`);
 
-    const uploadUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-      : 'https://unicorn-one.vercel.app/api/graph-upload';
+    // Always use production URL for internal API calls
+    // VERCEL_URL gives preview deployment URLs which require authentication
+    const uploadUrl = 'https://unicorn-one.vercel.app/api/graph-upload';
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
@@ -971,9 +971,9 @@ async function scrapeAndUploadVerbatimContent(part, enrichmentData) {
         const markdown = createVerbatimMarkdown(verbatimContent, url, part, type);
 
         // Upload to SharePoint
-        const uploadUrl = process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-          : 'https://unicorn-one.vercel.app/api/graph-upload';
+        // Always use production URL for internal API calls
+        // VERCEL_URL gives preview deployment URLs which require authentication
+        const uploadUrl = 'https://unicorn-one.vercel.app/api/graph-upload';
 
         const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
@@ -1182,9 +1182,9 @@ ${enrichmentData.product_page_url ? `### Product Page\n- ${enrichmentData.produc
 
     // Upload to SharePoint
     const filename = `${partNumber}-AI-SUMMARY.md`;
-    const uploadUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-      : 'https://unicorn-one.vercel.app/api/graph-upload';
+    // Always use production URL for internal API calls
+    // VERCEL_URL gives preview deployment URLs which require authentication
+    const uploadUrl = 'https://unicorn-one.vercel.app/api/graph-upload';
 
     const uploadResponse = await fetch(uploadUrl, {
       method: 'POST',
