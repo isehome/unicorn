@@ -1,22 +1,20 @@
 /**
- * Single Part Enrichment API - Manus AI Version
+ * Single Part Enrichment API - Manus AI Version (Async with Webhooks)
  *
  * Uses Manus AI (real browser-based research agent) to find verified documentation
- * URLs for AV/IT equipment. Unlike LLM-based approaches (Gemini, Perplexity),
- * Manus actually browses manufacturer websites and returns real, verified URLs.
+ * URLs for AV/IT equipment.
+ *
+ * This endpoint uses an ASYNC approach:
+ * 1. Creates a Manus task
+ * 2. Saves task ID to database
+ * 3. Returns immediately with task ID
+ * 4. Manus webhook (/api/manus-webhook) processes results when complete
  *
  * Endpoint: POST /api/enrich-single-part-manus
  * Body: { partId: string }
- *
- * Uses Vercel Pro's 300-second timeout for long-running Manus tasks.
  */
 
 const { createClient } = require('@supabase/supabase-js');
-
-// Vercel Pro configuration - extend timeout to 5 minutes
-export const config = {
-  maxDuration: 300
-};
 
 // Manus API configuration
 const MANUS_API_URL = 'https://api.manus.ai/v1';
@@ -89,6 +87,31 @@ module.exports = async function handler(req, res) {
     // Build the research prompt
     const prompt = buildResearchPrompt(part);
 
+    // Get webhook URL
+    const webhookUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/manus-webhook`
+      : 'https://unicorn-one.vercel.app/api/manus-webhook';
+
+    // First, register the webhook (if not already registered)
+    console.log(`[Manus] Registering webhook: ${webhookUrl}`);
+    try {
+      await fetch(`${MANUS_API_URL}/webhooks`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'API_KEY': manusApiKey
+        },
+        body: JSON.stringify({
+          webhook: {
+            url: webhookUrl
+          }
+        })
+      });
+    } catch (webhookError) {
+      console.log('[Manus] Webhook registration (may already exist):', webhookError.message);
+    }
+
     // Create Manus task
     console.log(`[Manus] Creating research task...`);
     const taskResponse = await fetch(`${MANUS_API_URL}/tasks`, {
@@ -114,91 +137,35 @@ module.exports = async function handler(req, res) {
     const taskId = taskData.task_id || taskData.id;
     console.log(`[Manus] Task created: ${taskId}`);
 
-    // Poll for task completion (max 4.5 minutes to leave buffer)
-    const maxWaitMs = 4.5 * 60 * 1000;
-    const pollIntervalMs = 10 * 1000;
-    const startTime = Date.now();
-    let result = null;
-
-    while (Date.now() - startTime < maxWaitMs) {
-      const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-      console.log(`[Manus] Polling task ${taskId} (${elapsedSec}s elapsed)...`);
-
-      const statusResponse = await fetch(`${MANUS_API_URL}/tasks/${taskId}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'API_KEY': manusApiKey
-        }
+    // Save task to database for webhook to find later
+    const { error: insertError } = await getSupabase()
+      .from('manus_tasks')
+      .insert({
+        manus_task_id: taskId,
+        part_id: partId,
+        status: 'pending',
+        prompt: prompt,
+        created_at: new Date().toISOString()
       });
 
-      if (!statusResponse.ok) {
-        const errorText = await statusResponse.text();
-        console.error(`[Manus] Status check failed: ${statusResponse.status} - ${errorText}`);
-        await sleep(pollIntervalMs);
-        continue;
-      }
-
-      const statusData = await statusResponse.json();
-      console.log(`[Manus] Task status: ${statusData.status} (${elapsedSec}s elapsed)`);
-
-      // Status options: pending, running, completed, failed
-      if (statusData.status === 'completed') {
-        result = statusData;
-        break;
-      } else if (statusData.status === 'failed') {
-        throw new Error(`Manus task failed: ${statusData.error || statusData.incomplete_details || 'Unknown error'}`);
-      }
-      // Continue polling if status is 'pending' or 'running'
-
-      await sleep(pollIntervalMs);
+    if (insertError) {
+      console.error('[Manus] Failed to save task:', insertError);
+      // Continue anyway - the task was created in Manus
     }
 
-    if (!result) {
-      const elapsedSec = Math.round((Date.now() - startTime) / 1000);
-      throw new Error(`Manus task timed out after ${elapsedSec} seconds. Task ID: ${taskId}`);
-    }
+    console.log(`[Manus] ✓ Task ${taskId} created, will complete via webhook`);
 
-    console.log(`[Manus] Task completed, parsing results...`);
-
-    // Parse the Manus response
-    const enrichmentData = parseManusResponse(result, part);
-
-    // Download PDFs and upload to SharePoint
-    console.log(`[Manus] Downloading and uploading documents...`);
-    const uploadedDocs = await downloadAndUploadDocuments(part, enrichmentData);
-    if (uploadedDocs) {
-      Object.assign(enrichmentData, uploadedDocs);
-    }
-
-    // Save results using RPC
-    const { error: saveError } = await getSupabase()
-      .rpc('save_parts_enrichment', {
-        p_part_id: partId,
-        p_enrichment_data: enrichmentData,
-        p_confidence: enrichmentData.confidence || 0.95,
-        p_notes: `Researched via Manus AI - ${enrichmentData.search_summary?.total_documents_found || 0} documents found`
-      });
-
-    if (saveError) {
-      console.error('[Manus] Failed to save:', saveError);
-      throw saveError;
-    }
-
-    console.log(`[Manus] ✓ Research complete for ${part.part_number}`);
-
-    return res.status(200).json({
+    // Return immediately - webhook will process results
+    return res.status(202).json({
       success: true,
+      async: true,
+      message: 'Research task started. Results will be available when Manus completes (typically 5-10 minutes).',
       partId,
       partNumber: part.part_number,
       name: part.name,
       taskId,
-      documentsFound: {
-        class3: enrichmentData.class3_documents?.length || 0,
-        class2: enrichmentData.class2_documents?.length || 0,
-        class1: enrichmentData.class1_documents?.length || 0
-      },
-      data: enrichmentData
+      status: 'processing',
+      webhookUrl
     });
 
   } catch (error) {
@@ -209,12 +176,12 @@ module.exports = async function handler(req, res) {
       .from('global_parts')
       .update({
         ai_enrichment_status: 'error',
-        ai_enrichment_notes: error.message || 'Unknown error during Manus research'
+        ai_enrichment_notes: error.message || 'Unknown error starting Manus research'
       })
       .eq('id', partId);
 
     return res.status(500).json({
-      error: 'Document research failed',
+      error: 'Failed to start document research',
       details: error.message
     });
   }
@@ -253,319 +220,4 @@ Return JSON:
 }
 
 Only include URLs you verified exist. Prefer direct PDF links.`;
-}
-
-/**
- * Parse Manus response into our standard format
- *
- * Manus API returns output as an array of content objects:
- * {
- *   "output": [
- *     { "id": "...", "type": "output_text", "text": "...", "content": [...] }
- *   ]
- * }
- */
-function parseManusResponse(manusResult, part) {
-  let data = {};
-  let rawText = '';
-
-  console.log('[Manus] Parsing response, keys:', Object.keys(manusResult || {}));
-
-  try {
-    // Handle Manus output array format
-    if (Array.isArray(manusResult.output)) {
-      for (const outputItem of manusResult.output) {
-        // Look for text content
-        if (outputItem.text) {
-          rawText += outputItem.text + '\n';
-        }
-        // Look for content array within each output item
-        if (Array.isArray(outputItem.content)) {
-          for (const contentItem of outputItem.content) {
-            if (contentItem.text) {
-              rawText += contentItem.text + '\n';
-            }
-          }
-        }
-      }
-      console.log('[Manus] Extracted text length:', rawText.length);
-    } else if (typeof manusResult.output === 'string') {
-      rawText = manusResult.output;
-    } else if (typeof manusResult.output === 'object' && manusResult.output !== null) {
-      data = manusResult.output;
-    }
-
-    // Try to extract JSON from the raw text
-    if (rawText && Object.keys(data).length === 0) {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          data = JSON.parse(jsonMatch[0]);
-          console.log('[Manus] Parsed JSON from text');
-        } catch (e) {
-          console.log('[Manus] Could not parse JSON from text:', e.message);
-        }
-      }
-    }
-
-    // Check for files in the response
-    if (manusResult.files && manusResult.files.length > 0) {
-      for (const file of manusResult.files) {
-        if (file.name && file.name.endsWith('.json')) {
-          if (file.content) {
-            data = JSON.parse(file.content);
-          }
-        }
-      }
-    }
-
-    // Check result object
-    if (manusResult.result && typeof manusResult.result === 'object') {
-      data = { ...data, ...manusResult.result };
-    }
-
-  } catch (parseError) {
-    console.error('[Manus] Error parsing response:', parseError);
-  }
-
-  console.log('[Manus] Parsed data keys:', Object.keys(data));
-
-  // Handle simplified response format (documents array) or detailed format (class3_documents)
-  const documents = data.documents || [];
-  const class3Docs = data.class3_documents || [];
-  const class2Docs = data.class2_documents || [];
-  const class1Docs = data.class1_documents || [];
-
-  // Convert simplified format to class3 if needed
-  if (documents.length > 0 && class3Docs.length === 0) {
-    for (const doc of documents) {
-      class3Docs.push({
-        type: doc.type || 'unknown',
-        title: doc.title || '',
-        url: doc.url || '',
-        source: 'manufacturer',
-        notes: ''
-      });
-    }
-  }
-
-  const enrichmentData = {
-    manufacturer_website: data.manufacturer_website || null,
-    product_page_url: data.product_page_url || null,
-    support_page_url: data.support_page_url || null,
-    class3_documents: class3Docs,
-    class2_documents: class2Docs,
-    class1_documents: class1Docs,
-    install_manual_urls: [],
-    technical_manual_urls: [],
-    datasheet_url: null,
-    submittal_url: null,
-    quick_start_url: null,
-    device_type: data.specifications?.device_type || null,
-    is_rack_mountable: data.specifications?.rack_info?.is_rack_mountable || null,
-    u_height: data.specifications?.rack_info?.u_height || null,
-    needs_shelf: data.specifications?.rack_info?.needs_shelf || null,
-    width_inches: data.specifications?.rack_info?.width_inches || null,
-    depth_inches: data.specifications?.rack_info?.depth_inches || null,
-    height_inches: data.specifications?.rack_info?.height_inches || null,
-    power_watts: data.specifications?.power_info?.power_watts || null,
-    is_power_device: data.specifications?.power_info?.is_power_device || null,
-    outlets_provided: data.specifications?.power_info?.outlets_provided || null,
-    is_network_switch: data.specifications?.network_info?.is_network_switch || null,
-    total_ports: data.specifications?.network_info?.total_ports || null,
-    has_network_port: data.specifications?.network_info?.has_network_port || null,
-    search_summary: data.search_summary || {},
-    confidence: data.confidence || 0.9,
-    notes: data.notes || 'Researched via Manus AI'
-  };
-
-  // Process Class 3 documents
-  for (const doc of enrichmentData.class3_documents) {
-    if (!doc.url) continue;
-    const type = (doc.type || '').toLowerCase();
-
-    if (type === 'install_manual' || type === 'user_guide') {
-      enrichmentData.install_manual_urls.push(doc.url);
-    } else if (type === 'quick_start') {
-      enrichmentData.quick_start_url = enrichmentData.quick_start_url || doc.url;
-      enrichmentData.technical_manual_urls.push(doc.url);
-    } else if (type === 'datasheet' || type === 'technical_spec') {
-      enrichmentData.datasheet_url = enrichmentData.datasheet_url || doc.url;
-      enrichmentData.technical_manual_urls.push(doc.url);
-    } else if (type === 'submittal' || type === 'brochure') {
-      enrichmentData.submittal_url = enrichmentData.submittal_url || doc.url;
-    } else {
-      enrichmentData.technical_manual_urls.push(doc.url);
-    }
-  }
-
-  // Process Class 2 if missing Class 3
-  if (enrichmentData.install_manual_urls.length === 0) {
-    for (const doc of enrichmentData.class2_documents) {
-      if (!doc.url) continue;
-      const type = (doc.type || '').toLowerCase();
-      if (type === 'install_manual' || type === 'user_guide') {
-        enrichmentData.install_manual_urls.push(doc.url);
-      }
-    }
-  }
-
-  enrichmentData.install_manual_urls = [...new Set(enrichmentData.install_manual_urls)];
-  enrichmentData.technical_manual_urls = [...new Set(enrichmentData.technical_manual_urls)];
-
-  return enrichmentData;
-}
-
-/**
- * Download documents and upload to SharePoint
- */
-async function downloadAndUploadDocuments(part, enrichmentData) {
-  try {
-    const { data: settings, error: settingsError } = await getSupabase()
-      .from('company_settings')
-      .select('company_sharepoint_root_url')
-      .limit(1)
-      .single();
-
-    if (settingsError || !settings?.company_sharepoint_root_url) {
-      console.log('[Manus] No SharePoint URL configured, skipping document download');
-      return null;
-    }
-
-    const rootUrl = settings.company_sharepoint_root_url;
-    const manufacturer = sanitizePathSegment(part.manufacturer || 'Unknown');
-    const partNumber = sanitizePathSegment(part.part_number || part.id);
-    const manualsPath = `Parts/${manufacturer}/${partNumber}/manuals`;
-    const techDocsPath = `Parts/${manufacturer}/${partNumber}/technical`;
-
-    const uploadedUrls = {};
-
-    // Download and upload install manuals
-    if (enrichmentData.install_manual_urls?.length > 0) {
-      const uploadedManuals = [];
-      for (let i = 0; i < Math.min(enrichmentData.install_manual_urls.length, 3); i++) {
-        const url = enrichmentData.install_manual_urls[i];
-        const result = await downloadAndUploadSingleDocument(rootUrl, manualsPath, url, `install-manual-${i + 1}`, part);
-        if (result) uploadedManuals.push(result);
-      }
-      if (uploadedManuals.length > 0) {
-        uploadedUrls.install_manual_sharepoint_urls = uploadedManuals;
-        uploadedUrls.install_manual_sharepoint_url = uploadedManuals[0];
-      }
-    }
-
-    // Download and upload technical documents
-    if (enrichmentData.technical_manual_urls?.length > 0) {
-      const uploadedTechDocs = [];
-      for (let i = 0; i < Math.min(enrichmentData.technical_manual_urls.length, 5); i++) {
-        const url = enrichmentData.technical_manual_urls[i];
-        const result = await downloadAndUploadSingleDocument(rootUrl, techDocsPath, url, `tech-doc-${i + 1}`, part);
-        if (result) uploadedTechDocs.push(result);
-      }
-      if (uploadedTechDocs.length > 0) {
-        uploadedUrls.technical_manual_sharepoint_urls = uploadedTechDocs;
-      }
-    }
-
-    return Object.keys(uploadedUrls).length > 0 ? uploadedUrls : null;
-
-  } catch (error) {
-    console.error('[Manus] Document download error:', error);
-    return null;
-  }
-}
-
-/**
- * Download a single document and upload to SharePoint
- */
-async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, prefix, part) {
-  try {
-    console.log(`[Manus] Downloading: ${sourceUrl}`);
-
-    const response = await fetch(sourceUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      redirect: 'follow'
-    });
-
-    if (!response.ok) {
-      console.log(`[Manus] Failed to download ${sourceUrl}: ${response.status}`);
-      return null;
-    }
-
-    const contentType = response.headers.get('content-type') || 'application/pdf';
-
-    if (!contentType.includes('pdf') && !contentType.includes('octet-stream')) {
-      console.log(`[Manus] Not a PDF (${contentType}): ${sourceUrl}`);
-      return null;
-    }
-
-    const buffer = await response.arrayBuffer();
-
-    if (buffer.byteLength > 50 * 1024 * 1024) {
-      console.log(`[Manus] File too large: ${sourceUrl}`);
-      return null;
-    }
-
-    const base64 = Buffer.from(buffer).toString('base64');
-
-    const urlPath = new URL(sourceUrl).pathname;
-    let filename = decodeURIComponent(urlPath.split('/').pop() || `${prefix}.pdf`);
-    filename = filename.replace(/[<>:"/\\|?*]/g, '-');
-    if (!filename.toLowerCase().endsWith('.pdf')) {
-      filename = `${filename}.pdf`;
-    }
-
-    const partNum = sanitizePathSegment(part.part_number || 'unknown');
-    if (!filename.toLowerCase().includes(partNum.toLowerCase())) {
-      filename = `${partNum}-${filename}`;
-    }
-
-    console.log(`[Manus] Uploading: ${subPath}/${filename}`);
-
-    const uploadUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
-      : 'https://unicorn-one.vercel.app/api/graph-upload';
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rootUrl,
-        subPath,
-        filename,
-        fileBase64: base64,
-        contentType: 'application/pdf'
-      })
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error(`[Manus] SharePoint upload failed: ${errorText}`);
-      return null;
-    }
-
-    const uploadResult = await uploadResponse.json();
-    console.log(`[Manus] ✓ Uploaded: ${filename}`);
-
-    return uploadResult.url || uploadResult.webUrl;
-
-  } catch (error) {
-    console.error(`[Manus] Error with ${sourceUrl}:`, error.message);
-    return null;
-  }
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function sanitizePathSegment(str) {
-  if (!str) return 'unknown';
-  return str
-    .replace(/[<>:"/\\|?*]/g, '-')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .substring(0, 100);
 }
