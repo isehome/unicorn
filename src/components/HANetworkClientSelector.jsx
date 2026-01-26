@@ -188,9 +188,10 @@ const HANetworkClientSelector = ({
     return filtered;
   }, [clients, filter, searchTerm]);
 
-  // Filter devices
+  // Filter devices - show in 'all' and 'devices' filters
   const filteredDevices = useMemo(() => {
-    if (filter !== 'devices') return [];
+    // Show devices in both 'all' and 'devices' filters
+    if (filter !== 'devices' && filter !== 'all') return [];
 
     let filtered = devices;
 
@@ -643,97 +644,12 @@ const HANetworkClientSelector = ({
             <div className="flex items-center justify-center py-8">
               <RefreshCw className="w-6 h-6 animate-spin" style={{ color: palette.primary || '#6366F1' }} />
             </div>
-          ) : filter === 'devices' ? (
-            // Devices List
-            filteredDevices.length === 0 ? (
-              <div className="text-center py-8" style={styles.subtleText}>
-                <Server className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                <p>{devices.length === 0 ? 'No UniFi devices found' : 'No matching devices'}</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {filteredDevices.map((device) => (
-                  <button
-                    key={device.mac_address}
-                    onClick={() => handleSelectDevice(device)}
-                    disabled={saving}
-                    className="w-full p-3 rounded-lg border text-left transition-all hover:shadow-md"
-                    style={{
-                      ...styles.mutedCard,
-                      opacity: saving ? 0.5 : 1
-                    }}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Device type icon */}
-                      <div
-                        className="p-2 rounded-lg flex-shrink-0"
-                        style={{
-                          backgroundColor: device.category === 'gateway'
-                            ? (palette.danger ? `${palette.danger}20` : '#EF444420')
-                            : device.category === 'switch'
-                            ? (palette.info ? `${palette.info}20` : '#3B82F620')
-                            : (palette.warning ? `${palette.warning}20` : '#F59E0B20')
-                        }}
-                      >
-                        {device.category === 'gateway' ? (
-                          <Network className="w-4 h-4" style={{ color: palette.danger || '#EF4444' }} />
-                        ) : device.category === 'switch' ? (
-                          <Server className="w-4 h-4" style={{ color: palette.info || '#3B82F6' }} />
-                        ) : (
-                          <Wifi className="w-4 h-4" style={{ color: palette.warning || '#F59E0B' }} />
-                        )}
-                      </div>
-
-                      {/* Device info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium truncate" style={styles.textPrimary}>
-                            {device.name}
-                          </span>
-                          <span
-                            className="px-1.5 py-0.5 rounded text-xs font-medium"
-                            style={device.is_online ? {
-                              backgroundColor: '#22C55E20',
-                              color: '#22C55E'
-                            } : {
-                              backgroundColor: '#EF444420',
-                              color: '#EF4444'
-                            }}
-                          >
-                            {device.is_online ? 'Online' : 'Offline'}
-                          </span>
-                        </div>
-                        <div className="text-xs space-y-0.5" style={styles.subtleText}>
-                          <div className="flex gap-3">
-                            <span className="font-mono">{formatMac(device.mac_address)}</span>
-                            <span className="font-mono">{device.ip_address}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            {device.model && <span>{device.model}</span>}
-                            <span className="capitalize">{device.category?.replace('_', ' ')}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Uptime badge */}
-                      {device.uptime_formatted && (
-                        <div
-                          className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex-shrink-0"
-                          style={{
-                            backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
-                            ...styles.textSecondary
-                          }}
-                        >
-                          <Clock className="w-3 h-3 inline mr-1" />
-                          {device.uptime_formatted}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )
-          ) : filteredClients.length === 0 ? (
+          ) : (filter === 'devices' && filteredDevices.length === 0) ? (
+            <div className="text-center py-8" style={styles.subtleText}>
+              <Server className="w-10 h-10 mx-auto mb-2 opacity-40" />
+              <p>No UniFi devices found</p>
+            </div>
+          ) : (filter !== 'devices' && filteredClients.length === 0 && filteredDevices.length === 0) ? (
             <div className="text-center py-8" style={styles.subtleText}>
               <Monitor className="w-10 h-10 mx-auto mb-2 opacity-40" />
               <p>{clients.length === 0 ? 'No network clients found' : 'No matching clients'}</p>
@@ -833,6 +749,95 @@ const HANetworkClientSelector = ({
                   </div>
                 </button>
               ))}
+
+              {/* UniFi Devices Section - shown in 'all' and 'devices' filter */}
+              {filteredDevices.length > 0 && (
+                <>
+                  {/* Section header */}
+                  <div className="text-xs font-medium uppercase tracking-wide px-1 pt-4 pb-1" style={styles.subtleText}>
+                    UniFi Devices ({filteredDevices.length})
+                  </div>
+                  {filteredDevices.map((device) => (
+                    <button
+                      key={device.mac_address}
+                      onClick={() => handleSelectDevice(device)}
+                      disabled={saving}
+                      className="w-full p-3 rounded-lg border text-left transition-all hover:shadow-md"
+                      style={{
+                        ...styles.mutedCard,
+                        opacity: saving ? 0.5 : 1
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Device type icon */}
+                        <div
+                          className="p-2 rounded-lg flex-shrink-0"
+                          style={{
+                            backgroundColor: device.category === 'gateway'
+                              ? (palette.danger ? `${palette.danger}20` : '#EF444420')
+                              : device.category === 'switch'
+                              ? (palette.info ? `${palette.info}20` : '#3B82F620')
+                              : (palette.warning ? `${palette.warning}20` : '#F59E0B20')
+                          }}
+                        >
+                          {device.category === 'gateway' ? (
+                            <Network className="w-4 h-4" style={{ color: palette.danger || '#EF4444' }} />
+                          ) : device.category === 'switch' ? (
+                            <Server className="w-4 h-4" style={{ color: palette.info || '#3B82F6' }} />
+                          ) : (
+                            <Wifi className="w-4 h-4" style={{ color: palette.warning || '#F59E0B' }} />
+                          )}
+                        </div>
+
+                        {/* Device info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate" style={styles.textPrimary}>
+                              {device.name}
+                            </span>
+                            <span
+                              className="px-1.5 py-0.5 rounded text-xs font-medium"
+                              style={device.is_online ? {
+                                backgroundColor: '#22C55E20',
+                                color: '#22C55E'
+                              } : {
+                                backgroundColor: '#EF444420',
+                                color: '#EF4444'
+                              }}
+                            >
+                              {device.is_online ? 'Online' : 'Offline'}
+                            </span>
+                          </div>
+                          <div className="text-xs space-y-0.5" style={styles.subtleText}>
+                            <div className="flex gap-3">
+                              <span className="font-mono">{formatMac(device.mac_address)}</span>
+                              <span className="font-mono">{device.ip_address}</span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              {device.model && <span>{device.model}</span>}
+                              <span className="capitalize">{device.category?.replace('_', ' ')}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Uptime badge */}
+                        {device.uptime_formatted && (
+                          <div
+                            className="px-2 py-1 rounded text-xs font-medium whitespace-nowrap flex-shrink-0"
+                            style={{
+                              backgroundColor: mode === 'dark' ? '#3F3F46' : '#E5E7EB',
+                              ...styles.textSecondary
+                            }}
+                          >
+                            <Clock className="w-3 h-3 inline mr-1" />
+                            {device.uptime_formatted}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </>

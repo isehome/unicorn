@@ -433,6 +433,30 @@ const RackBackView = ({
   // State for equipment edit modal (same as RackFrontView)
   const [editingEquipment, setEditingEquipment] = useState(null);
 
+  // Touch device detection - for touch-friendly interactions
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const lastInteractionRef = useRef('mouse'); // 'mouse' or 'touch'
+
+  // Detect touch device on mount and track interaction type
+  React.useEffect(() => {
+    const checkTouch = () => {
+      setIsTouchDevice('ontouchstart' in window || navigator.maxTouchPoints > 0);
+    };
+    checkTouch();
+
+    // Track last interaction type to handle hybrid devices (touch laptops)
+    const handleTouchStart = () => { lastInteractionRef.current = 'touch'; };
+    const handleMouseMove = () => { lastInteractionRef.current = 'mouse'; };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, []);
+
   const totalU = rack?.total_u || 42;
 
   // Debug: Log gateway devices when they change
@@ -1760,6 +1784,18 @@ const RackBackView = ({
                   targetEl = switchPortRefs.current[targetPortRefKey];
                 }
               }
+
+              // Method 3: REVERSE LOOKUP - Check if TARGET device reports US as their uplink
+              // This handles Gateway->Switch connections where switch has uplink_mac=gateway
+              if (!targetEl && targetHaDevice && ourMac) {
+                const targetUplinkMac = (targetHaDevice.uplink_switch_mac || targetHaDevice.uplink_mac || '')?.toLowerCase();
+                if (targetUplinkMac === ourMac && targetHaDevice.uplink_remote_port) {
+                  // Target reports connecting to us - find their uplink port
+                  const targetPortRefKey = `${targetEquipment.id}-switch-${targetHaDevice.uplink_remote_port}`;
+                  targetEl = switchPortRefs.current[targetPortRefKey];
+                  console.log(`[calculateLineCoords] Method 3: Found target port ${targetHaDevice.uplink_remote_port} via reverse uplink lookup`);
+                }
+              }
             }
 
             // For APs and other non-port-host devices, use device-1 port
@@ -1789,20 +1825,24 @@ const RackBackView = ({
           };
         };
 
-        // Handle click to show full modal for external devices
+        // Handle click/tap to show connection info
+        // On touch: First tap shows popup (like hover), second tap opens modal
+        // On mouse: Click opens modal directly (hover already showed preview)
         const handlePortClick = (e) => {
           e.stopPropagation();
 
-          // Clear hover popup if open
+          // Determine if this is a touch interaction
+          const isTouch = lastInteractionRef.current === 'touch' || e.type === 'touchend';
+
+          // Clear hover timeout
           if (hoverTimeoutRef.current) {
             clearTimeout(hoverTimeoutRef.current);
             hoverTimeoutRef.current = null;
           }
-          setHoverPopup(null);
 
           // If port has a connection, check if it's an external device
           if (isConnected && connectedDevice) {
-            // Check if this is an external device that should show modal
+            // Check if this is an external device that should show popup/modal
             const isExternalDevice =
               connectedDevice.wireDrop ||
               connectedDevice.category === 'access_point' ||
@@ -1815,7 +1855,55 @@ const RackBackView = ({
               equipment.some(e => e.ha_client_mac?.toLowerCase() === connectedDevice.mac?.toLowerCase());
 
             if (isExternalDevice && !isPortHostInRack) {
-              // Open full modal for external device - no pinning
+              // TOUCH BEHAVIOR: First tap shows popup, tap popup to navigate
+              // If popup is already showing for this port, open the modal
+              const popupAlreadyShowing = hoverPopup?.switchId === eq.id && hoverPopup?.portNum === portNum;
+
+              if (isTouch && !popupAlreadyShowing) {
+                // First tap on touch - show popup immediately (no delay)
+                setActivePortHighlight({ switchId: eq.id, portNum });
+
+                const portEl = switchPortRefs.current[portRefKey];
+                if (portEl) {
+                  const rect = portEl.getBoundingClientRect();
+                  const container = functionalContainerRef.current;
+                  const containerRect = container?.getBoundingClientRect() || { left: 0, top: 0 };
+
+                  setHoverPopup({
+                    x: rect.left - containerRect.left + rect.width / 2,
+                    y: rect.bottom - containerRect.top + 8,
+                    wireDrop: connectedDevice.wireDrop || null,
+                    equipment: connectedDevice.equipment || null,
+                    hostname: connectedDevice.hostname || connectedDevice.name,
+                    ip: connectedDevice.ip,
+                    mac: connectedDevice.mac,
+                    portNum,
+                    switchId: eq.id,
+                    connectedDevice,
+                  });
+                }
+
+                // Also show connection line on touch
+                setHoveredConnection({
+                  switchId: eq.id,
+                  portNum,
+                  deviceId: connectedDevice.equipment?.id || null,
+                  targetEquipmentId: connectedDevice.equipment?.id || null,
+                  mac: connectedDevice.mac,
+                  category: connectedDevice.category,
+                  connectedDevice,
+                });
+
+                setTimeout(() => {
+                  const coords = calculateLineCoords();
+                  if (coords) setLineCoords(coords);
+                }, 10);
+
+                return; // Don't open modal on first tap
+              }
+
+              // MOUSE BEHAVIOR or second tap: Open full modal
+              setHoverPopup(null);
               setWireDropModal({
                 wireDrop: connectedDevice.wireDrop || null,
                 equipment: connectedDevice.equipment || null,
@@ -1829,7 +1917,7 @@ const RackBackView = ({
               return;
             }
 
-            // For in-rack connections, pin the connection line
+            // For in-rack connections, pin/unpin the connection line
             const connectionInfo = {
               switchId: eq.id,
               portNum,
@@ -1845,7 +1933,9 @@ const RackBackView = ({
               return;
             }
 
+            // Pin the connection (works same for touch and mouse)
             setPinnedConnection(connectionInfo);
+            setActivePortHighlight({ switchId: eq.id, portNum });
 
             // Calculate line coords after a short delay to ensure refs are set
             setTimeout(() => {
@@ -1895,6 +1985,18 @@ const RackBackView = ({
                 const ourSwitchMac = (ourClient?.switch_mac || ourClient?.sw_mac || '')?.toLowerCase();
                 if (ourSwitchMac === targetMac && (ourClient?.switch_port || ourClient?.sw_port)) {
                   targetPort = ourClient.switch_port || ourClient.sw_port;
+                }
+              }
+
+              // Method 3: REVERSE LOOKUP - Check if TARGET device reports US as their uplink
+              // This is for Gateway->Switch connections where the switch reports uplink_mac=gateway
+              if (!targetPort && targetHaDevice) {
+                const targetUplinkMac = (targetHaDevice.uplink_switch_mac || targetHaDevice.uplink_mac || '')?.toLowerCase();
+                if (targetUplinkMac === ourMac && targetHaDevice.uplink_remote_port) {
+                  // The target device is connected to US on their uplink_remote_port
+                  // We need to highlight THEIR port (which is the port the switch uses to connect to us)
+                  targetPort = targetHaDevice.uplink_remote_port;
+                  console.log(`[handlePortHover] Method 3: Target ${targetHaDevice.name} reports uplink to us on port ${targetPort}`);
                 }
               }
             }
@@ -1965,7 +2067,7 @@ const RackBackView = ({
                     y2: gatewayPortRect.bottom - containerRect.top,
                     sourceCardBottom: modemCardBottom,
                     destCardBottom: gatewayCardBottom,
-                    color: '#10B981', // emerald for WAN/uplink
+                    color: '#22C55E', // green for all connections
                     connectionType: 'network',
                   });
                 }
@@ -2203,14 +2305,21 @@ const RackBackView = ({
           return nameMatch;
         };
 
-        // Handle click to pin/toggle connection line
+        // Handle click/tap to pin/toggle connection line
+        // Touch-friendly: tap shows connection and pins it
         const handleDevicePortClick = (e) => {
           e.stopPropagation();
+          const isTouch = lastInteractionRef.current === 'touch';
 
           // If already pinned to this device, unpin
           if (pinnedConnection?.deviceId === eq.id) {
             setPinnedConnection(null);
             setPinnedLineCoords(null);
+            // Also clear hover state for touch
+            if (isTouch) {
+              setHoveredConnection(null);
+              setLineCoords(null);
+            }
             return;
           }
 
@@ -2218,7 +2327,11 @@ const RackBackView = ({
           if (isConnectedViaHA) {
             const switchEq = findSwitchEquipment();
             if (switchEq) {
+              // Set both pinned and hover state (hover for touch devices)
               setPinnedConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
+              if (isTouch) {
+                setHoveredConnection({ switchId: switchEq.id, portNum: switchPort, deviceId: eq.id });
+              }
 
               // Calculate line coords
               const portEl = e.currentTarget;
@@ -2242,7 +2355,7 @@ const RackBackView = ({
                     ? deviceCardEl.getBoundingClientRect().bottom - containerRect.top + 8
                     : portRect.bottom - containerRect.top + 40;
 
-                  setPinnedLineCoords({
+                  const coords = {
                     x1: switchRect.left + switchRect.width / 2 - containerRect.left,
                     y1: switchRect.bottom - containerRect.top, // Bottom of switch port
                     x2: portRect.left + portRect.width / 2 - containerRect.left,
@@ -2251,7 +2364,9 @@ const RackBackView = ({
                     destCardBottom: deviceCardBottom,
                     color: bgColorValue,
                     connectionType: 'network',
-                  });
+                  };
+                  setPinnedLineCoords(coords);
+                  if (isTouch) setLineCoords(coords);
                 }
               }
             }
@@ -2584,13 +2699,19 @@ const RackBackView = ({
       }
     };
 
-    // Handle click on container background to clear pinned connection
+    // Handle click on container background to clear pinned connection and popups
+    // This is essential for touch devices where tapping elsewhere should dismiss
     const handleContainerClick = (e) => {
       // Only clear if clicking the container itself, not a child element
       if (e.target === e.currentTarget || e.target.closest('[data-clear-pinned]')) {
         setPinnedConnection(null);
         setPinnedLineCoords(null);
         setWireDropModal(null);
+        // Also clear hover popup and connection (important for touch)
+        setHoverPopup(null);
+        setHoveredConnection(null);
+        setLineCoords(null);
+        setActivePortHighlight(null);
       }
     };
 
@@ -2852,9 +2973,9 @@ const RackBackView = ({
                 )}
               </div>
 
-              {/* Click for more hint */}
+              {/* Tap/Click for more hint */}
               <div className="mt-2 pt-2 border-t border-zinc-600 text-[10px] text-zinc-500 text-center">
-                Click for details
+                {isTouchDevice ? 'Tap for details' : 'Click for details'}
               </div>
             </div>
           </div>
@@ -3039,7 +3160,7 @@ const RackBackView = ({
                       y2: gatewayPortRect.bottom - containerRect.top,
                       sourceCardBottom: modemCardBottom,
                       destCardBottom: gatewayCardBottom,
-                      color: '#10B981', // emerald for WAN/uplink
+                      color: '#22C55E', // green for all connections
                       connectionType: 'network',
                     };
                   }
@@ -3065,15 +3186,23 @@ const RackBackView = ({
                   setLineCoords(null);
                 };
 
-                // Handle click to pin/toggle WAN connection line
+                // Handle click/tap to pin/toggle WAN connection line
+                // On touch: Tap shows connection, tap again to unpin
                 const handleWanClick = (e) => {
                   e.stopPropagation();
                   if (!isActive || !gatewayWanInfo.gateway.equipment) return;
+
+                  const isTouch = lastInteractionRef.current === 'touch';
 
                   // If already selected, unpin
                   if (isSelected) {
                     setPinnedConnection(null);
                     setPinnedLineCoords(null);
+                    // Also clear hover state for touch
+                    if (isTouch) {
+                      setHoveredConnection(null);
+                      setLineCoords(null);
+                    }
                     return;
                   }
 
@@ -3084,8 +3213,20 @@ const RackBackView = ({
                     isWanConnection: true,
                   });
 
+                  // Also show hover state on touch (since there's no hover event)
+                  if (isTouch) {
+                    setHoveredConnection({
+                      wanPortIdx: wanPort.portIdx,
+                      gatewayId: gatewayWanInfo.gateway.equipment?.id,
+                      isWanConnection: true,
+                    });
+                  }
+
                   const coords = calculateWanLineCoords(e.currentTarget);
-                  if (coords) setPinnedLineCoords(coords);
+                  if (coords) {
+                    setPinnedLineCoords(coords);
+                    if (isTouch) setLineCoords(coords);
+                  }
                 };
 
                 // Check if this modem is highlighted (hover or pinned)
@@ -3100,11 +3241,9 @@ const RackBackView = ({
                     onMouseEnter={handleWanHover}
                     onMouseLeave={handleWanLeave}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg border transition-all cursor-pointer ${
-                      isSelected || isHighlighted
-                        ? 'bg-emerald-900/30 border-emerald-500 ring-2 ring-emerald-500/50'
-                        : isActive
-                          ? 'bg-zinc-900/50 border-zinc-500 hover:border-zinc-400'
-                          : 'bg-zinc-900/30 border-zinc-700 opacity-50'
+                      isActive
+                        ? 'bg-zinc-900/50 border-zinc-600 hover:border-zinc-400'
+                        : 'bg-zinc-900/30 border-zinc-700 opacity-50'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -3124,22 +3263,16 @@ const RackBackView = ({
                         className="flex flex-col items-center gap-0.5"
                       >
                         <span
-                          className="text-[9px] font-mono transition-all duration-150"
-                          style={{
-                            color: (isSelected || isHighlighted) ? '#10B981' : '#71717a',
-                            fontWeight: (isSelected || isHighlighted) ? 'bold' : 'normal',
-                            textShadow: (isSelected || isHighlighted) ? '0 0 6px #10B981' : 'none',
-                          }}
+                          className="text-[9px] font-mono"
+                          style={{ color: '#71717a' }}
                         >
                           {wanPort.portIdx}
                         </span>
                         <div
-                          className="w-5 h-5 rounded flex items-center justify-center transition-all duration-150"
+                          className="w-5 h-5 rounded flex items-center justify-center"
                           style={{
-                            backgroundColor: isActive ? ((isSelected || isHighlighted) ? '#10B981' : '#22C55E') : '#3f3f46',
-                            border: `2px solid ${(isSelected || isHighlighted) ? '#ffffff' : (isActive ? '#10B981' : '#52525b')}`,
-                            transform: (isSelected || isHighlighted) ? 'scale(1.15)' : 'scale(1)',
-                            boxShadow: (isSelected || isHighlighted) ? '0 0 8px #10B981' : 'none',
+                            backgroundColor: isActive ? '#3B82F6' : '#3f3f46',
+                            border: `2px solid ${isActive ? '#3B82F6' : '#52525b'}`,
                           }}
                         >
                           <Cable size={10} style={{ color: isActive ? '#ffffff' : '#a1a1aa' }} />
@@ -3532,24 +3665,15 @@ const RackBackView = ({
             <div className="flex items-center gap-2">
               <div
                 className="w-5 h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: '#F59E0B', border: '2px solid #F59E0B' }}
+                style={{ backgroundColor: '#3f3f46', border: '2px solid #3f3f46' }}
               >
-                <Cable size={12} style={{ color: '#ffffff' }} />
+                <Cable size={12} style={{ color: '#F59E0B' }} />
               </div>
               <span className="text-xs text-zinc-400">Offline</span>
             </div>
 
             {/* Port Types */}
             <div className="flex items-center gap-2 ml-4">
-              <div
-                className="w-5 h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: '#3f3f46', border: '2px solid #06B6D4' }}
-              >
-                <Cable size={12} style={{ color: '#a1a1aa' }} />
-              </div>
-              <span className="text-xs text-zinc-400">Standard</span>
-            </div>
-            <div className="flex items-center gap-2">
               <div
                 className="w-5 h-5 rounded flex items-center justify-center"
                 style={{ backgroundColor: '#3f3f46', border: '2px solid #8B5CF6' }}
@@ -3561,23 +3685,13 @@ const RackBackView = ({
             <div className="flex items-center gap-2">
               <div
                 className="w-5 h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: '#3f3f46', border: '2px solid #10B981' }}
+                style={{ backgroundColor: '#3B82F6', border: '2px solid #3B82F6' }}
               >
-                <Cable size={12} style={{ color: '#a1a1aa' }} />
+                <Cable size={12} style={{ color: '#ffffff' }} />
               </div>
               <span className="text-xs text-zinc-400">Uplink</span>
             </div>
 
-            {/* Disconnected Device Port */}
-            <div className="flex items-center gap-2 ml-4">
-              <div
-                className="w-5 h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: '#3f3f46', border: '2px solid #71717a' }}
-              >
-                <Cable size={12} style={{ color: '#a1a1aa' }} />
-              </div>
-              <span className="text-xs text-zinc-400">Not Linked</span>
-            </div>
           </div>
         </div>
       )}
