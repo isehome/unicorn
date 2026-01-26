@@ -1,10 +1,26 @@
 /**
  * Manus Webhook Handler
  *
- * Receives task completion notifications from Manus API.
- * When a task completes, this endpoint processes the results and updates the part.
+ * Receives task lifecycle notifications from Manus API.
+ * Events: task_created, task_progress, task_stopped
+ *
+ * When a task_stopped event is received with stop_reason: "finish",
+ * this endpoint processes the results and updates the part.
  *
  * Endpoint: POST /api/manus-webhook
+ *
+ * Payload format (task_stopped):
+ * {
+ *   "event_type": "task_stopped",
+ *   "task_detail": {
+ *     "task_id": "...",
+ *     "task_title": "...",
+ *     "task_url": "...",
+ *     "message": "...",
+ *     "attachments": [{ "file_name": "...", "url": "...", "size_bytes": ... }],
+ *     "stop_reason": "finish" | "ask"
+ *   }
+ * }
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -40,14 +56,43 @@ module.exports = async function handler(req, res) {
   console.log('[Manus Webhook] Body:', JSON.stringify(req.body, null, 2));
 
   try {
-    const { task_id, status, output, error } = req.body;
+    const { event_type, event_id, task_detail, progress_detail } = req.body;
 
-    if (!task_id) {
-      console.error('[Manus Webhook] No task_id in webhook');
-      return res.status(400).json({ error: 'Missing task_id' });
+    // Handle different event types
+    if (event_type === 'task_created') {
+      console.log(`[Manus Webhook] Task created: ${task_detail?.task_id}`);
+      // Update task status to running
+      if (task_detail?.task_id) {
+        await getSupabase()
+          .from('manus_tasks')
+          .update({ status: 'running' })
+          .eq('manus_task_id', task_detail.task_id);
+      }
+      return res.status(200).json({ received: true, event_type });
     }
 
-    console.log(`[Manus Webhook] Task ${task_id} status: ${status}`);
+    if (event_type === 'task_progress') {
+      console.log(`[Manus Webhook] Task progress: ${progress_detail?.task_id} - ${progress_detail?.message}`);
+      return res.status(200).json({ received: true, event_type });
+    }
+
+    if (event_type !== 'task_stopped') {
+      console.log(`[Manus Webhook] Unknown event type: ${event_type}`);
+      return res.status(200).json({ received: true, event_type, note: 'Unknown event type' });
+    }
+
+    // Handle task_stopped event
+    const task_id = task_detail?.task_id;
+    const stop_reason = task_detail?.stop_reason;
+    const message = task_detail?.message;
+    const attachments = task_detail?.attachments || [];
+
+    if (!task_id) {
+      console.error('[Manus Webhook] No task_id in task_detail');
+      return res.status(400).json({ error: 'Missing task_id in task_detail' });
+    }
+
+    console.log(`[Manus Webhook] Task ${task_id} stopped, reason: ${stop_reason}`);
 
     // Find the pending task in our database
     const { data: pendingTask, error: findError } = await getSupabase()
@@ -65,9 +110,17 @@ module.exports = async function handler(req, res) {
     const partId = pendingTask.part_id;
     console.log(`[Manus Webhook] Found part: ${partId}`);
 
-    if (status === 'completed') {
-      // Parse and process the results
-      const enrichmentData = parseManusResponse({ output, ...req.body });
+    if (stop_reason === 'finish') {
+      // Task completed successfully - process the results
+      console.log(`[Manus Webhook] Processing completed task with ${attachments.length} attachments`);
+
+      // Parse and process the results from task_detail
+      const enrichmentData = parseManusResponse({
+        message,
+        attachments,
+        task_detail,
+        ...req.body
+      });
 
       // Download PDFs and upload to SharePoint
       const { data: part } = await getSupabase()
@@ -89,7 +142,7 @@ module.exports = async function handler(req, res) {
           p_part_id: partId,
           p_enrichment_data: enrichmentData,
           p_confidence: enrichmentData.confidence || 0.95,
-          p_notes: `Researched via Manus AI (webhook) - ${enrichmentData.documents?.length || 0} documents found`
+          p_notes: `Researched via Manus AI (webhook) - ${attachments.length} files attached`
         });
 
       if (saveError) {
@@ -114,29 +167,40 @@ module.exports = async function handler(req, res) {
 
       console.log(`[Manus Webhook] ✓ Task ${task_id} processed successfully`);
 
-    } else if (status === 'failed') {
-      // Update task and part status to failed
+    } else if (stop_reason === 'ask') {
+      // Task needs user input - update status to waiting
+      console.log(`[Manus Webhook] Task ${task_id} needs user input: ${message}`);
+
       await getSupabase()
         .from('manus_tasks')
         .update({
-          status: 'failed',
-          completed_at: new Date().toISOString(),
-          error: error || 'Unknown error'
+          status: 'waiting_input',
+          result: { message, task_url: task_detail?.task_url }
         })
         .eq('manus_task_id', task_id);
 
       await getSupabase()
         .from('global_parts')
         .update({
-          ai_enrichment_status: 'error',
-          ai_enrichment_notes: error || 'Manus task failed'
+          ai_enrichment_status: 'waiting',
+          ai_enrichment_notes: message || 'Manus task needs user input'
         })
         .eq('id', partId);
+    } else {
+      // Unknown stop reason - treat as error
+      console.log(`[Manus Webhook] Unknown stop_reason: ${stop_reason}`);
 
-      console.log(`[Manus Webhook] Task ${task_id} failed: ${error}`);
+      await getSupabase()
+        .from('manus_tasks')
+        .update({
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          error: `Unknown stop_reason: ${stop_reason}`
+        })
+        .eq('manus_task_id', task_id);
     }
 
-    return res.status(200).json({ received: true, task_id, status });
+    return res.status(200).json({ received: true, task_id, stop_reason });
 
   } catch (err) {
     console.error('[Manus Webhook] Error:', err);
@@ -147,65 +211,53 @@ module.exports = async function handler(req, res) {
 
 /**
  * Parse Manus response into our standard format
+ *
+ * The task_stopped payload contains:
+ * - message: Text summary from Manus
+ * - attachments: Array of { file_name, url, size_bytes }
  */
 function parseManusResponse(manusResult) {
   let data = {};
-  let rawText = '';
+  let rawText = manusResult.message || '';
   let createdFiles = [];
 
   console.log('[Manus Webhook] Parsing response, keys:', Object.keys(manusResult || {}));
 
   try {
-    // Extract text from output array
-    if (Array.isArray(manusResult.output)) {
-      for (const outputItem of manusResult.output) {
-        if (outputItem.text) {
-          rawText += outputItem.text + '\n';
-        }
-        if (Array.isArray(outputItem.content)) {
-          for (const contentItem of outputItem.content) {
-            if (contentItem.text) {
-              rawText += contentItem.text + '\n';
-            }
-            // Check for file URLs in content
-            if (contentItem.fileUrl) {
-              createdFiles.push({
-                url: contentItem.fileUrl,
-                name: contentItem.fileName || 'document',
-                type: contentItem.mimeType || 'text/markdown'
-              });
-            }
-          }
-        }
-      }
-    } else if (typeof manusResult.output === 'string') {
-      rawText = manusResult.output;
-    } else if (typeof manusResult.output === 'object' && manusResult.output !== null) {
-      data = manusResult.output;
+    // Extract files from attachments array (Manus standard format)
+    const attachments = manusResult.attachments || [];
+    for (const attachment of attachments) {
+      console.log('[Manus Webhook] Found attachment:', attachment.file_name);
+      createdFiles.push({
+        url: attachment.url,
+        name: attachment.file_name,
+        size: attachment.size_bytes,
+        type: guessFileType(attachment.file_name)
+      });
     }
 
-    // Check for files array in response (Manus attaches created files here)
+    // Also check for legacy files array format
     if (Array.isArray(manusResult.files)) {
       for (const file of manusResult.files) {
         console.log('[Manus Webhook] Found file:', file.name || file.fileName);
         createdFiles.push({
           url: file.url || file.fileUrl,
           name: file.name || file.fileName,
-          type: file.mimeType || file.type || 'text/markdown',
-          content: file.content // Some files may have inline content
+          type: file.mimeType || file.type || guessFileType(file.name || file.fileName),
+          content: file.content
         });
       }
     }
 
-    // Try to parse JSON from text
+    // Try to parse JSON from message text
     if (rawText && Object.keys(data).length === 0) {
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           data = JSON.parse(jsonMatch[0]);
-          console.log('[Manus Webhook] Parsed JSON data');
+          console.log('[Manus Webhook] Parsed JSON data from message');
         } catch (e) {
-          console.log('[Manus Webhook] Could not parse JSON from text');
+          console.log('[Manus Webhook] Could not parse JSON from message');
         }
       }
     }
@@ -231,11 +283,12 @@ function parseManusResponse(manusResult) {
     power_watts: specifications.power_watts || null,
     is_rack_mountable: specifications.is_rack_mountable || null,
     u_height: specifications.u_height || null,
-    notes: data.notes || 'Researched via Manus AI',
+    notes: rawText || data.notes || 'Researched via Manus AI',
+    manus_message: rawText,
     confidence: 0.95
   };
 
-  // Extract URLs by type from found documents
+  // Extract URLs by type from found documents in JSON
   for (const doc of documents) {
     if (!doc.url || doc.found === false) continue;
     const type = (doc.type || '').toLowerCase();
@@ -247,9 +300,45 @@ function parseManusResponse(manusResult) {
     }
   }
 
-  console.log('[Manus Webhook] Found', documents.length, 'documents,', createdFiles.length, 'created files');
+  // Also extract URLs from attachments by file type
+  for (const file of createdFiles) {
+    if (!file.url) continue;
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.pdf')) {
+      if (name.includes('manual') || name.includes('guide') || name.includes('install')) {
+        enrichmentData.install_manual_urls.push(file.url);
+      } else if (name.includes('spec') || name.includes('datasheet')) {
+        enrichmentData.technical_manual_urls.push(file.url);
+      } else {
+        // Default PDFs to technical manuals
+        enrichmentData.technical_manual_urls.push(file.url);
+      }
+    }
+  }
+
+  console.log('[Manus Webhook] Found', documents.length, 'documents,', createdFiles.length, 'attachments');
 
   return enrichmentData;
+}
+
+/**
+ * Guess file MIME type from filename
+ */
+function guessFileType(filename) {
+  if (!filename) return 'application/octet-stream';
+  const ext = filename.toLowerCase().split('.').pop();
+  const types = {
+    'pdf': 'application/pdf',
+    'md': 'text/markdown',
+    'txt': 'text/plain',
+    'json': 'application/json',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'html': 'text/html',
+    'ts': 'text/typescript',
+    'js': 'text/javascript'
+  };
+  return types[ext] || 'application/octet-stream';
 }
 
 /**
