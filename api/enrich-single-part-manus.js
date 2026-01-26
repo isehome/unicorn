@@ -121,7 +121,8 @@ module.exports = async function handler(req, res) {
     let result = null;
 
     while (Date.now() - startTime < maxWaitMs) {
-      console.log(`[Manus] Polling task ${taskId}...`);
+      const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+      console.log(`[Manus] Polling task ${taskId} (${elapsedSec}s elapsed)...`);
 
       const statusResponse = await fetch(`${MANUS_API_URL}/tasks/${taskId}`, {
         method: 'GET',
@@ -132,13 +133,14 @@ module.exports = async function handler(req, res) {
       });
 
       if (!statusResponse.ok) {
-        console.error('[Manus] Status check failed:', statusResponse.status);
+        const errorText = await statusResponse.text();
+        console.error(`[Manus] Status check failed: ${statusResponse.status} - ${errorText}`);
         await sleep(pollIntervalMs);
         continue;
       }
 
       const statusData = await statusResponse.json();
-      console.log(`[Manus] Task status: ${statusData.status}`);
+      console.log(`[Manus] Task status: ${statusData.status} (${elapsedSec}s elapsed)`);
 
       // Status options: pending, running, completed, failed
       if (statusData.status === 'completed') {
@@ -153,7 +155,8 @@ module.exports = async function handler(req, res) {
     }
 
     if (!result) {
-      throw new Error('Manus task timed out after 4.5 minutes');
+      const elapsedSec = Math.round((Date.now() - startTime) / 1000);
+      throw new Error(`Manus task timed out after ${elapsedSec} seconds. Task ID: ${taskId}`);
     }
 
     console.log(`[Manus] Task completed, parsing results...`);
