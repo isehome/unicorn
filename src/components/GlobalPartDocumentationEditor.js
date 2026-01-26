@@ -126,7 +126,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setSearchResult(null);
 
     try {
-      const response = await fetch('/api/enrich-single-part', {
+      const response = await fetch('/api/enrich-single-part-manus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id })

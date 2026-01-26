@@ -256,7 +256,7 @@ const PartDetailPage = () => {
     try {
       // Use Vercel API in production, proxy in development
       const apiBase = process.env.REACT_APP_LUCID_PROXY_URL || '';
-      const response = await fetch(`${apiBase}/api/enrich-single-part`, {
+      const response = await fetch(`${apiBase}/api/enrich-single-part-manus`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id }),
