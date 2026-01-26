@@ -87,10 +87,9 @@ module.exports = async function handler(req, res) {
     // Build the research prompt
     const prompt = buildResearchPrompt(part);
 
-    // Get webhook URL
-    const webhookUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/manus-webhook`
-      : 'https://unicorn-one.vercel.app/api/manus-webhook';
+    // Get webhook URL - always use production URL for webhooks
+    // VERCEL_URL gives preview deployment URLs which change, so we hardcode the production URL
+    const webhookUrl = 'https://unicorn-one.vercel.app/api/manus-webhook';
 
     // First, register the webhook (if not already registered)
     console.log(`[Manus] Registering webhook: ${webhookUrl}`);

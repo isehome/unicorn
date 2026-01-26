@@ -97,11 +97,9 @@ module.exports = async function handler(req, res) {
 
     console.log(`[Batch Manus] Found ${partsToProcess.length} parts to process`);
 
-    // Get webhook URL
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'https://unicorn-one.vercel.app';
-    const webhookUrl = `${baseUrl}/api/manus-webhook`;
+    // Get webhook URL - always use production URL for webhooks
+    // VERCEL_URL gives preview deployment URLs which change, so we hardcode production
+    const webhookUrl = 'https://unicorn-one.vercel.app/api/manus-webhook';
 
     // Process parts in batches to avoid overwhelming Manus
     const results = {
