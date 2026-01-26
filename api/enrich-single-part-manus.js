@@ -94,14 +94,13 @@ module.exports = async function handler(req, res) {
     const taskResponse = await fetch(`${MANUS_API_URL}/tasks`, {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'content-type': 'application/json',
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
         'API_KEY': manusApiKey
       },
       body: JSON.stringify({
         prompt: prompt,
-        taskMode: 'agent',
-        agentProfile: 'quality'
+        agentProfile: 'manus-1.6'  // Options: manus-1.6, manus-1.6-lite, manus-1.6-max
       })
     });
 
@@ -127,7 +126,7 @@ module.exports = async function handler(req, res) {
       const statusResponse = await fetch(`${MANUS_API_URL}/tasks/${taskId}`, {
         method: 'GET',
         headers: {
-          'accept': 'application/json',
+          'Accept': 'application/json',
           'API_KEY': manusApiKey
         }
       });
@@ -141,12 +140,14 @@ module.exports = async function handler(req, res) {
       const statusData = await statusResponse.json();
       console.log(`[Manus] Task status: ${statusData.status}`);
 
-      if (statusData.status === 'completed' || statusData.status === 'done') {
+      // Status options: pending, running, completed, failed
+      if (statusData.status === 'completed') {
         result = statusData;
         break;
-      } else if (statusData.status === 'failed' || statusData.status === 'error') {
-        throw new Error(`Manus task failed: ${statusData.error || 'Unknown error'}`);
+      } else if (statusData.status === 'failed') {
+        throw new Error(`Manus task failed: ${statusData.error || statusData.incomplete_details || 'Unknown error'}`);
       }
+      // Continue polling if status is 'pending' or 'running'
 
       await sleep(pollIntervalMs);
     }
@@ -362,22 +363,58 @@ Return a JSON object with verified URLs only.
 
 /**
  * Parse Manus response into our standard format
+ *
+ * Manus API returns output as an array of content objects:
+ * {
+ *   "output": [
+ *     { "id": "...", "type": "output_text", "text": "...", "content": [...] }
+ *   ]
+ * }
  */
 function parseManusResponse(manusResult, part) {
   let data = {};
+  let rawText = '';
+
+  console.log('[Manus] Parsing response, keys:', Object.keys(manusResult || {}));
 
   try {
-    if (manusResult.output) {
-      if (typeof manusResult.output === 'string') {
-        const jsonMatch = manusResult.output.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          data = JSON.parse(jsonMatch[0]);
+    // Handle Manus output array format
+    if (Array.isArray(manusResult.output)) {
+      for (const outputItem of manusResult.output) {
+        // Look for text content
+        if (outputItem.text) {
+          rawText += outputItem.text + '\n';
         }
-      } else if (typeof manusResult.output === 'object') {
-        data = manusResult.output;
+        // Look for content array within each output item
+        if (Array.isArray(outputItem.content)) {
+          for (const contentItem of outputItem.content) {
+            if (contentItem.text) {
+              rawText += contentItem.text + '\n';
+            }
+          }
+        }
+      }
+      console.log('[Manus] Extracted text length:', rawText.length);
+    } else if (typeof manusResult.output === 'string') {
+      rawText = manusResult.output;
+    } else if (typeof manusResult.output === 'object' && manusResult.output !== null) {
+      data = manusResult.output;
+    }
+
+    // Try to extract JSON from the raw text
+    if (rawText && Object.keys(data).length === 0) {
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          data = JSON.parse(jsonMatch[0]);
+          console.log('[Manus] Parsed JSON from text');
+        } catch (e) {
+          console.log('[Manus] Could not parse JSON from text:', e.message);
+        }
       }
     }
 
+    // Check for files in the response
     if (manusResult.files && manusResult.files.length > 0) {
       for (const file of manusResult.files) {
         if (file.name && file.name.endsWith('.json')) {
@@ -388,6 +425,7 @@ function parseManusResponse(manusResult, part) {
       }
     }
 
+    // Check result object
     if (manusResult.result && typeof manusResult.result === 'object') {
       data = { ...data, ...manusResult.result };
     }
@@ -395,6 +433,8 @@ function parseManusResponse(manusResult, part) {
   } catch (parseError) {
     console.error('[Manus] Error parsing response:', parseError);
   }
+
+  console.log('[Manus] Parsed data keys:', Object.keys(data));
 
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
