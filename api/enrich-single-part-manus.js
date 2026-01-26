@@ -222,146 +222,37 @@ module.exports = async function handler(req, res) {
 
 /**
  * Build the research prompt for Manus
+ * Simplified prompt for faster execution
  */
 function buildResearchPrompt(part) {
   const manufacturer = part.manufacturer || 'Unknown';
   const partNumber = part.part_number || 'Unknown';
   const productName = part.name || partNumber;
-  const model = part.model || partNumber;
-  const category = part.category || 'Unknown';
 
-  return `You are a DOCUMENT LIBRARY SPECIALIST responsible for building a comprehensive documentation archive for AV/IT equipment. Your job is to find EVERY piece of documentation available for this product.
+  return `Find PDF documentation for this product:
 
-**YOUR MISSION:**
-Build a complete document library for this part. You are responsible for finding ALL available documentation. Take your time. Be thorough. Think carefully about where documentation might be hidden.
-
-**PRODUCT TO RESEARCH:**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Manufacturer: ${manufacturer}
 Part Number: ${partNumber}
-Model: ${model}
 Product Name: ${productName}
-Category: ${category}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-**SEARCH STRATEGY - Execute in this EXACT order:**
+TASK:
+1. Go to ${manufacturer}'s official website
+2. Find the product page for ${partNumber}
+3. Download links for: User Manual, Installation Guide, Datasheet, Quick Start Guide
 
-## PASS 1: MANUFACTURER'S WEBSITE (Class 3 - Trustworthy)
-This is your PRIMARY source. Exhaust this before moving on.
-
-1. First, identify the manufacturer's official website domain
-2. Navigate directly to their website and find:
-   - Product page for this exact part number
-   - Support/Downloads section
-   - Documentation/Resources section
-   - Technical Library
-   - Product Registration pages (often have manuals)
-
-3. Search patterns to try on manufacturer site:
-   - "${partNumber}" in their search
-   - "${model}" in their search
-   - "${productName}" in their search
-   - Browse to product category and find the product
-
-4. For each product page found, look for:
-   - Downloads tab/section
-   - Resources tab/section
-   - Support tab/section
-   - Related documents section
-   - "View PDF" or document icons
-
-5. Document types to find (ALL OF THEM):
-   □ Installation Manual / Install Guide
-   □ User Manual / User Guide
-   □ Quick Start Guide
-   □ Datasheet / Spec Sheet
-   □ Technical Specifications PDF
-   □ Submittal Sheet / Cut Sheet
-   □ Product Brochure / Sales Sheet
-   □ CAD Drawings / Dimensions
-   □ Firmware/Software downloads page
-   □ FAQ / Troubleshooting guides
-   □ Warranty information
-   □ Compliance/Certification documents
-
-## PASS 2: GENERAL WEB SEARCH (Class 2 - Reliable)
-After exhausting manufacturer site, search the broader web:
-
-1. Search: "${manufacturer} ${partNumber} PDF"
-2. Search: "${manufacturer} ${partNumber} manual"
-3. Search: "${manufacturer} ${partNumber} datasheet"
-4. Search: "${manufacturer} ${partNumber} installation guide"
-5. Search: "${manufacturer} ${partNumber} specifications"
-
-Look at:
-- Distributor sites (often have spec sheets)
-- Reseller product pages
-- Industry databases
-- PDF hosting sites with legitimate copies
-
-## PASS 3: COMMUNITY SOURCES (Class 1 - Opinion/Community)
-Finally, check community resources:
-
-1. Reddit discussions about this product
-2. AVS Forum threads
-3. Professional forums
-4. YouTube video descriptions (for manual links)
-
-**RESPONSE FORMAT:**
-Return a JSON object with verified URLs only.
-
+Return JSON:
 {
-  "manufacturer_website": "<official manufacturer domain>",
-  "product_page_url": "<direct link to product page>",
-  "support_page_url": "<link to support/downloads for this product>",
-
-  "class3_documents": [
-    {
-      "type": "<install_manual|user_guide|quick_start|datasheet|submittal|technical_spec|brochure|cad|firmware|faq|warranty|compliance>",
-      "title": "<document title>",
-      "url": "<direct URL, prefer .pdf>",
-      "source": "<where you found it>",
-      "notes": "<any relevant notes>"
-    }
+  "manufacturer_website": "https://...",
+  "product_page_url": "https://...",
+  "documents": [
+    {"type": "user_manual", "title": "...", "url": "https://...pdf"},
+    {"type": "install_guide", "title": "...", "url": "https://...pdf"},
+    {"type": "datasheet", "title": "...", "url": "https://...pdf"}
   ],
-
-  "class2_documents": [...],
-  "class1_documents": [...],
-
-  "specifications": {
-    "device_type": "<rack_equipment|power_device|network_switch|shelf_device|wireless_device|accessory|other>",
-    "rack_info": {
-      "is_rack_mountable": <true/false>,
-      "u_height": <number or null>,
-      "needs_shelf": <true/false>,
-      "width_inches": <number or null>,
-      "depth_inches": <number or null>,
-      "height_inches": <number or null>
-    },
-    "power_info": {
-      "power_watts": <number or null>,
-      "is_power_device": <true/false>,
-      "outlets_provided": <number or null>
-    },
-    "network_info": {
-      "is_network_switch": <true/false>,
-      "total_ports": <number or null>,
-      "has_network_port": <true/false>
-    }
-  },
-
-  "search_summary": {
-    "manufacturer_site_searched": <true/false>,
-    "support_section_found": <true/false>,
-    "total_documents_found": <number>,
-    "search_notes": "<what you searched, what you found>"
-  },
-
-  "confidence": <0.0 to 1.0>,
-  "notes": "<summary of your research>"
+  "notes": "Brief summary"
 }
 
-**IMPORTANT:** Only return URLs you have actually verified exist by visiting them. Do not guess or construct URLs.`;
+Only include URLs you verified exist. Prefer direct PDF links.`;
 }
 
 /**
@@ -439,13 +330,32 @@ function parseManusResponse(manusResult, part) {
 
   console.log('[Manus] Parsed data keys:', Object.keys(data));
 
+  // Handle simplified response format (documents array) or detailed format (class3_documents)
+  const documents = data.documents || [];
+  const class3Docs = data.class3_documents || [];
+  const class2Docs = data.class2_documents || [];
+  const class1Docs = data.class1_documents || [];
+
+  // Convert simplified format to class3 if needed
+  if (documents.length > 0 && class3Docs.length === 0) {
+    for (const doc of documents) {
+      class3Docs.push({
+        type: doc.type || 'unknown',
+        title: doc.title || '',
+        url: doc.url || '',
+        source: 'manufacturer',
+        notes: ''
+      });
+    }
+  }
+
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
     product_page_url: data.product_page_url || null,
     support_page_url: data.support_page_url || null,
-    class3_documents: data.class3_documents || [],
-    class2_documents: data.class2_documents || [],
-    class1_documents: data.class1_documents || [],
+    class3_documents: class3Docs,
+    class2_documents: class2Docs,
+    class1_documents: class1Docs,
     install_manual_urls: [],
     technical_manual_urls: [],
     datasheet_url: null,
