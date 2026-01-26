@@ -189,35 +189,82 @@ module.exports = async function handler(req, res) {
 
 /**
  * Build the research prompt for Manus
- * Simplified prompt for faster execution
+ * Includes instructions to create markdown docs when PDFs aren't available
  */
 function buildResearchPrompt(part) {
   const manufacturer = part.manufacturer || 'Unknown';
   const partNumber = part.part_number || 'Unknown';
   const productName = part.name || partNumber;
+  const category = part.category || 'Equipment';
 
-  return `Find PDF documentation for this product:
+  return `Research documentation for this AV/IT product and create documentation files:
 
-Manufacturer: ${manufacturer}
-Part Number: ${partNumber}
-Product Name: ${productName}
+**PRODUCT:**
+- Manufacturer: ${manufacturer}
+- Part Number: ${partNumber}
+- Product Name: ${productName}
+- Category: ${category}
 
-TASK:
+**TASK 1: Find existing PDF documentation**
 1. Go to ${manufacturer}'s official website
 2. Find the product page for ${partNumber}
-3. Download links for: User Manual, Installation Guide, Datasheet, Quick Start Guide
+3. Look for downloadable PDFs: User Manual, Installation Guide, Datasheet, Quick Start Guide, Spec Sheet
 
-Return JSON:
+**TASK 2: Create markdown documentation files**
+For EACH of the following document types, create a .md file with useful information gathered from your research:
+
+1. **${partNumber}-installation-guide.md** - Installation instructions including:
+   - Physical installation steps
+   - Mounting requirements (rack mount, shelf, wall, etc.)
+   - Cable connections and wiring
+   - Network setup if applicable
+   - Initial configuration steps
+
+2. **${partNumber}-specifications.md** - Technical specifications including:
+   - Physical dimensions (width, depth, height in inches)
+   - Weight
+   - Power requirements (watts, voltage)
+   - Network ports and connectivity
+   - Environmental requirements
+   - Rack mount info (U height if applicable)
+
+3. **${partNumber}-quick-reference.md** - Quick reference card including:
+   - Common settings and configurations
+   - LED indicator meanings
+   - Reset procedures
+   - Troubleshooting tips
+   - Support contact info
+
+**RESPONSE FORMAT:**
+Return a JSON object with:
 {
   "manufacturer_website": "https://...",
   "product_page_url": "https://...",
   "documents": [
-    {"type": "user_manual", "title": "...", "url": "https://...pdf"},
-    {"type": "install_guide", "title": "...", "url": "https://...pdf"},
-    {"type": "datasheet", "title": "...", "url": "https://...pdf"}
+    {"type": "user_manual", "title": "...", "url": "https://...pdf", "found": true},
+    {"type": "install_guide", "title": "...", "url": "https://...pdf", "found": true},
+    {"type": "datasheet", "title": "...", "url": null, "found": false}
   ],
-  "notes": "Brief summary"
+  "specifications": {
+    "width_inches": null,
+    "depth_inches": null,
+    "height_inches": null,
+    "weight_lbs": null,
+    "power_watts": null,
+    "is_rack_mountable": false,
+    "u_height": null,
+    "network_ports": null
+  },
+  "created_files": [
+    {"filename": "${partNumber}-installation-guide.md", "type": "install_guide"},
+    {"filename": "${partNumber}-specifications.md", "type": "datasheet"},
+    {"filename": "${partNumber}-quick-reference.md", "type": "quick_reference"}
+  ],
+  "notes": "Summary of what was found and created"
 }
 
-Only include URLs you verified exist. Prefer direct PDF links.`;
+**IMPORTANT:**
+- Only include document URLs you verified exist
+- ALWAYS create the markdown files with researched information
+- If you can't find official PDFs, the markdown files become the primary documentation`;
 }

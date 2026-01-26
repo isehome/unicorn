@@ -151,8 +151,12 @@ module.exports = async function handler(req, res) {
 function parseManusResponse(manusResult) {
   let data = {};
   let rawText = '';
+  let createdFiles = [];
+
+  console.log('[Manus Webhook] Parsing response, keys:', Object.keys(manusResult || {}));
 
   try {
+    // Extract text from output array
     if (Array.isArray(manusResult.output)) {
       for (const outputItem of manusResult.output) {
         if (outputItem.text) {
@@ -163,6 +167,14 @@ function parseManusResponse(manusResult) {
             if (contentItem.text) {
               rawText += contentItem.text + '\n';
             }
+            // Check for file URLs in content
+            if (contentItem.fileUrl) {
+              createdFiles.push({
+                url: contentItem.fileUrl,
+                name: contentItem.fileName || 'document',
+                type: contentItem.mimeType || 'text/markdown'
+              });
+            }
           }
         }
       }
@@ -172,11 +184,26 @@ function parseManusResponse(manusResult) {
       data = manusResult.output;
     }
 
+    // Check for files array in response (Manus attaches created files here)
+    if (Array.isArray(manusResult.files)) {
+      for (const file of manusResult.files) {
+        console.log('[Manus Webhook] Found file:', file.name || file.fileName);
+        createdFiles.push({
+          url: file.url || file.fileUrl,
+          name: file.name || file.fileName,
+          type: file.mimeType || file.type || 'text/markdown',
+          content: file.content // Some files may have inline content
+        });
+      }
+    }
+
+    // Try to parse JSON from text
     if (rawText && Object.keys(data).length === 0) {
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           data = JSON.parse(jsonMatch[0]);
+          console.log('[Manus Webhook] Parsed JSON data');
         } catch (e) {
           console.log('[Manus Webhook] Could not parse JSON from text');
         }
@@ -188,19 +215,29 @@ function parseManusResponse(manusResult) {
 
   // Convert to enrichment format
   const documents = data.documents || [];
+  const specifications = data.specifications || {};
+
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
     product_page_url: data.product_page_url || null,
     documents: documents,
+    created_files: createdFiles,
     install_manual_urls: [],
     technical_manual_urls: [],
+    // Specifications
+    width_inches: specifications.width_inches || null,
+    depth_inches: specifications.depth_inches || null,
+    height_inches: specifications.height_inches || null,
+    power_watts: specifications.power_watts || null,
+    is_rack_mountable: specifications.is_rack_mountable || null,
+    u_height: specifications.u_height || null,
     notes: data.notes || 'Researched via Manus AI',
     confidence: 0.95
   };
 
-  // Extract URLs by type
+  // Extract URLs by type from found documents
   for (const doc of documents) {
-    if (!doc.url) continue;
+    if (!doc.url || doc.found === false) continue;
     const type = (doc.type || '').toLowerCase();
     if (type.includes('manual') || type.includes('guide')) {
       enrichmentData.install_manual_urls.push(doc.url);
@@ -210,11 +247,14 @@ function parseManusResponse(manusResult) {
     }
   }
 
+  console.log('[Manus Webhook] Found', documents.length, 'documents,', createdFiles.length, 'created files');
+
   return enrichmentData;
 }
 
 /**
  * Download documents and upload to SharePoint
+ * Handles both PDF downloads and Manus-created markdown files
  */
 async function downloadAndUploadDocuments(part, enrichmentData) {
   try {
@@ -235,8 +275,9 @@ async function downloadAndUploadDocuments(part, enrichmentData) {
     const docsPath = `Parts/${manufacturer}/${partNumber}/manuals`;
 
     const uploadedUrls = [];
+    const uploadedMarkdown = [];
 
-    // Download and upload documents
+    // 1. Download and upload PDF documents from URLs
     const allUrls = [
       ...(enrichmentData.install_manual_urls || []),
       ...(enrichmentData.technical_manual_urls || [])
@@ -248,13 +289,94 @@ async function downloadAndUploadDocuments(part, enrichmentData) {
       if (result) uploadedUrls.push(result);
     }
 
-    return uploadedUrls.length > 0 ? {
-      sharepoint_urls: uploadedUrls,
-      install_manual_sharepoint_url: uploadedUrls[0]
+    // 2. Upload Manus-created markdown files
+    const createdFiles = enrichmentData.created_files || [];
+    for (const file of createdFiles) {
+      if (file.url || file.content) {
+        const result = await uploadManusCreatedFile(rootUrl, docsPath, file, part);
+        if (result) uploadedMarkdown.push(result);
+      }
+    }
+
+    console.log(`[Manus Webhook] Uploaded ${uploadedUrls.length} PDFs, ${uploadedMarkdown.length} markdown files`);
+
+    const allUploaded = [...uploadedUrls, ...uploadedMarkdown];
+    return allUploaded.length > 0 ? {
+      sharepoint_urls: allUploaded,
+      install_manual_sharepoint_url: uploadedUrls[0] || uploadedMarkdown[0],
+      markdown_docs_sharepoint_urls: uploadedMarkdown
     } : null;
 
   } catch (error) {
     console.error('[Manus Webhook] Document download error:', error);
+    return null;
+  }
+}
+
+/**
+ * Upload a file created by Manus (markdown, etc.)
+ */
+async function uploadManusCreatedFile(rootUrl, subPath, file, part) {
+  try {
+    let content;
+    let filename = file.name || 'document.md';
+
+    // If file has inline content, use that
+    if (file.content) {
+      content = file.content;
+    } else if (file.url) {
+      // Download from Manus file URL
+      console.log(`[Manus Webhook] Downloading Manus file: ${file.url}`);
+      const response = await fetch(file.url);
+      if (!response.ok) {
+        console.error(`[Manus Webhook] Failed to download file: ${response.status}`);
+        return null;
+      }
+      content = await response.text();
+    } else {
+      return null;
+    }
+
+    // Ensure filename is valid
+    filename = filename.replace(/[<>:"/\\|?*]/g, '-');
+    const partNum = sanitizePathSegment(part.part_number || 'unknown');
+    if (!filename.toLowerCase().includes(partNum.toLowerCase())) {
+      filename = `${partNum}-${filename}`;
+    }
+
+    console.log(`[Manus Webhook] Uploading markdown: ${subPath}/${filename}`);
+
+    // Convert to base64
+    const base64 = Buffer.from(content, 'utf-8').toString('base64');
+
+    const uploadUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/graph-upload`
+      : 'https://unicorn-one.vercel.app/api/graph-upload';
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rootUrl,
+        subPath,
+        filename,
+        fileBase64: base64,
+        contentType: 'text/markdown'
+      })
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error(`[Manus Webhook] SharePoint upload failed: ${errorText}`);
+      return null;
+    }
+
+    const uploadResult = await uploadResponse.json();
+    console.log(`[Manus Webhook] ✓ Uploaded markdown: ${filename}`);
+    return uploadResult.url || uploadResult.webUrl;
+
+  } catch (error) {
+    console.error(`[Manus Webhook] Error uploading markdown:`, error.message);
     return null;
   }
 }

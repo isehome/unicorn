@@ -270,7 +270,14 @@ const PartDetailPage = () => {
 
       setAiSearchResult(result);
 
-      // Update form with AI-found data
+      // If async (webhook-based), show pending message and don't try to update form yet
+      if (result.async) {
+        // Task is running in background, webhook will update when complete
+        console.log('[AI Search] Task submitted, will complete via webhook. Task ID:', result.taskId);
+        return; // Don't proceed to form update - data will come via webhook
+      }
+
+      // Update form with AI-found data (synchronous response)
       if (result.data) {
         const d = result.data;
         setFormState((prev) => ({
@@ -524,6 +531,28 @@ const PartDetailPage = () => {
             </div>
           </div>
 
+          {/* Show existing processing status from part data */}
+          {part?.ai_enrichment_status === 'processing' && !aiSearchResult && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Research In Progress
+              </div>
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Manus AI is currently researching documentation for this part. Results will be saved automatically.
+              </p>
+            </div>
+          )}
+
+          {part?.ai_enrichment_status === 'completed' && !aiSearchResult && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
+                <CheckCircle className="h-4 w-4" />
+                AI research completed previously
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             <Button
               type="button"
@@ -544,8 +573,27 @@ const PartDetailPage = () => {
               )}
             </Button>
 
-            {/* Search Result */}
-            {aiSearchResult && (
+            {/* Search Result - Async/Pending */}
+            {aiSearchResult && aiSearchResult.async && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-medium mb-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Research In Progress
+                </div>
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  {aiSearchResult.message || 'Manus AI is researching documentation. This typically takes 5-10 minutes.'}
+                </p>
+                <p className="text-xs text-amber-500 dark:text-amber-500 mt-2">
+                  Task ID: {aiSearchResult.taskId}
+                </p>
+                <p className="text-xs text-amber-500 dark:text-amber-500 mt-1">
+                  Results will be saved automatically when research completes. You can leave this page.
+                </p>
+              </div>
+            )}
+
+            {/* Search Result - Completed */}
+            {aiSearchResult && !aiSearchResult.async && (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
                 <div className="flex items-center gap-2 text-green-700 dark:text-green-300 font-medium mb-2">
                   <CheckCircle className="h-4 w-4" />
