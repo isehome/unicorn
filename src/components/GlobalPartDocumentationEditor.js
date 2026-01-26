@@ -114,7 +114,7 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setSubmittalSharepointItemId('');
   };
 
-  // AI Search for data with async polling for Manus
+  // AI Search for data using Manus (Vercel Pro 5-minute timeout)
   const handleSearchForData = async () => {
     if (!part?.id) {
       setError('No part ID provided');
@@ -126,61 +126,22 @@ const GlobalPartDocumentationEditor = ({ part, onSave, onCancel }) => {
     setSearchResult(null);
 
     try {
-      // Phase 1: Start the research task
-      const startResponse = await fetch('/api/enrich-single-part-manus', {
+      const response = await fetch('/api/enrich-single-part-manus', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ partId: part.id })
       });
 
-      const startResult = await startResponse.json();
-      console.log('[AI Search] Start response:', startResult);
+      const result = await response.json();
 
-      if (!startResponse.ok) {
-        throw new Error(startResult.error || 'Failed to start research');
+      if (!response.ok) {
+        throw new Error(result.error || 'Search failed');
       }
 
-      // If already completed
-      if (startResult.status === 'completed') {
-        setSearchResult(startResult);
-        window.dispatchEvent(new CustomEvent('ai-review-completed'));
-        return;
-      }
+      setSearchResult(result);
 
-      // Phase 2: Poll for completion (Manus takes 1-3 minutes)
-      const maxPollTime = 5 * 60 * 1000; // 5 minutes
-      const pollInterval = 10 * 1000; // 10 seconds
-      const startTime = Date.now();
-
-      while (Date.now() - startTime < maxPollTime) {
-        console.log('[AI Search] Polling for status...');
-
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        const pollResponse = await fetch('/api/enrich-single-part-manus', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ partId: part.id, checkStatus: true })
-        });
-
-        const pollResult = await pollResponse.json();
-        console.log('[AI Search] Poll response:', pollResult);
-
-        if (pollResult.status === 'completed') {
-          setSearchResult(pollResult);
-          window.dispatchEvent(new CustomEvent('ai-review-completed'));
-          return;
-        }
-
-        if (pollResult.status === 'failed') {
-          throw new Error(pollResult.error || 'Research failed');
-        }
-
-        // Still processing - continue polling
-        console.log('[AI Search] Still processing...', pollResult.manusStatus || 'working');
-      }
-
-      throw new Error('Research timed out after 5 minutes');
+      // Dispatch event to refresh parts list
+      window.dispatchEvent(new CustomEvent('ai-review-completed'));
 
     } catch (err) {
       console.error('AI search failed:', err);

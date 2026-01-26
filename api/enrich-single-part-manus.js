@@ -5,20 +5,18 @@
  * URLs for AV/IT equipment. Unlike LLM-based approaches (Gemini, Perplexity),
  * Manus actually browses manufacturer websites and returns real, verified URLs.
  *
- * ARCHITECTURE: Two-phase async approach due to Vercel 10s timeout
+ * Endpoint: POST /api/enrich-single-part-manus
+ * Body: { partId: string }
  *
- * Phase 1: POST /api/enrich-single-part-manus { partId }
- *   - Creates Manus task
- *   - Stores taskId in database
- *   - Returns immediately with { status: 'processing', taskId }
- *
- * Phase 2: POST /api/enrich-single-part-manus { partId, checkStatus: true }
- *   - Checks Manus task status
- *   - If complete, parses results and saves to database
- *   - Returns { status: 'completed', data } or { status: 'processing' }
+ * Uses Vercel Pro's 300-second timeout for long-running Manus tasks.
  */
 
 const { createClient } = require('@supabase/supabase-js');
+
+// Vercel Pro configuration - extend timeout to 5 minutes
+export const config = {
+  maxDuration: 300
+};
 
 // Manus API configuration
 const MANUS_API_URL = 'https://api.manus.ai/v1';
@@ -50,7 +48,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { partId, checkStatus } = req.body;
+  const { partId } = req.body;
 
   if (!partId) {
     return res.status(400).json({ error: 'partId is required' });
@@ -65,6 +63,8 @@ module.exports = async function handler(req, res) {
     });
   }
 
+  console.log(`[Manus] Starting document research for part: ${partId}`);
+
   try {
     // Fetch the part
     const { data: part, error: fetchError } = await getSupabase()
@@ -78,239 +78,143 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: 'Part not found' });
     }
 
-    // PHASE 2: Check status of existing task
-    if (checkStatus) {
-      return await checkManusTaskStatus(req, res, part, manusApiKey);
+    console.log(`[Manus] Researching: ${part.manufacturer} ${part.part_number} - ${part.name}`);
+
+    // Mark as processing
+    await getSupabase()
+      .from('global_parts')
+      .update({ ai_enrichment_status: 'processing' })
+      .eq('id', partId);
+
+    // Build the research prompt
+    const prompt = buildResearchPrompt(part);
+
+    // Create Manus task
+    console.log(`[Manus] Creating research task...`);
+    const taskResponse = await fetch(`${MANUS_API_URL}/tasks`, {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'content-type': 'application/json',
+        'API_KEY': manusApiKey
+      },
+      body: JSON.stringify({
+        prompt: prompt,
+        taskMode: 'agent',
+        agentProfile: 'quality'
+      })
+    });
+
+    if (!taskResponse.ok) {
+      const errorText = await taskResponse.text();
+      console.error('[Manus] Failed to create task:', errorText);
+      throw new Error(`Manus API error: ${taskResponse.status} - ${errorText}`);
     }
 
-    // PHASE 1: Start new research task
-    return await startManusResearch(req, res, part, manusApiKey);
+    const taskData = await taskResponse.json();
+    const taskId = taskData.task_id || taskData.id;
+    console.log(`[Manus] Task created: ${taskId}`);
+
+    // Poll for task completion (max 4.5 minutes to leave buffer)
+    const maxWaitMs = 4.5 * 60 * 1000;
+    const pollIntervalMs = 10 * 1000;
+    const startTime = Date.now();
+    let result = null;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      console.log(`[Manus] Polling task ${taskId}...`);
+
+      const statusResponse = await fetch(`${MANUS_API_URL}/tasks/${taskId}`, {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'API_KEY': manusApiKey
+        }
+      });
+
+      if (!statusResponse.ok) {
+        console.error('[Manus] Status check failed:', statusResponse.status);
+        await sleep(pollIntervalMs);
+        continue;
+      }
+
+      const statusData = await statusResponse.json();
+      console.log(`[Manus] Task status: ${statusData.status}`);
+
+      if (statusData.status === 'completed' || statusData.status === 'done') {
+        result = statusData;
+        break;
+      } else if (statusData.status === 'failed' || statusData.status === 'error') {
+        throw new Error(`Manus task failed: ${statusData.error || 'Unknown error'}`);
+      }
+
+      await sleep(pollIntervalMs);
+    }
+
+    if (!result) {
+      throw new Error('Manus task timed out after 4.5 minutes');
+    }
+
+    console.log(`[Manus] Task completed, parsing results...`);
+
+    // Parse the Manus response
+    const enrichmentData = parseManusResponse(result, part);
+
+    // Download PDFs and upload to SharePoint
+    console.log(`[Manus] Downloading and uploading documents...`);
+    const uploadedDocs = await downloadAndUploadDocuments(part, enrichmentData);
+    if (uploadedDocs) {
+      Object.assign(enrichmentData, uploadedDocs);
+    }
+
+    // Save results using RPC
+    const { error: saveError } = await getSupabase()
+      .rpc('save_parts_enrichment', {
+        p_part_id: partId,
+        p_enrichment_data: enrichmentData,
+        p_confidence: enrichmentData.confidence || 0.95,
+        p_notes: `Researched via Manus AI - ${enrichmentData.search_summary?.total_documents_found || 0} documents found`
+      });
+
+    if (saveError) {
+      console.error('[Manus] Failed to save:', saveError);
+      throw saveError;
+    }
+
+    console.log(`[Manus] ✓ Research complete for ${part.part_number}`);
+
+    return res.status(200).json({
+      success: true,
+      partId,
+      partNumber: part.part_number,
+      name: part.name,
+      taskId,
+      documentsFound: {
+        class3: enrichmentData.class3_documents?.length || 0,
+        class2: enrichmentData.class2_documents?.length || 0,
+        class1: enrichmentData.class1_documents?.length || 0
+      },
+      data: enrichmentData
+    });
 
   } catch (error) {
     console.error('[Manus] Error:', error);
-    return res.status(500).json({
-      error: 'Document research failed',
-      details: error.message
-    });
-  }
-};
-
-/**
- * PHASE 1: Start a new Manus research task
- */
-async function startManusResearch(req, res, part, manusApiKey) {
-  console.log(`[Manus] Starting document research for: ${part.manufacturer} ${part.part_number}`);
-
-  // Check if there's already a pending task
-  if (part.ai_enrichment_status === 'processing' && part.ai_enrichment_notes?.includes('manus_task_id:')) {
-    const existingTaskId = part.ai_enrichment_notes.match(/manus_task_id:([^\s]+)/)?.[1];
-    if (existingTaskId) {
-      console.log(`[Manus] Task already in progress: ${existingTaskId}`);
-      return res.status(200).json({
-        status: 'processing',
-        taskId: existingTaskId,
-        message: 'Research already in progress. Poll with checkStatus: true'
-      });
-    }
-  }
-
-  // Build the research prompt
-  const prompt = buildResearchPrompt(part);
-
-  // Create Manus task
-  console.log(`[Manus] Creating research task...`);
-  const taskResponse = await fetch(`${MANUS_API_URL}/tasks`, {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'content-type': 'application/json',
-      'API_KEY': manusApiKey
-    },
-    body: JSON.stringify({
-      prompt: prompt,
-      taskMode: 'agent',
-      agentProfile: 'quality'
-    })
-  });
-
-  if (!taskResponse.ok) {
-    const errorText = await taskResponse.text();
-    console.error('[Manus] Failed to create task:', errorText);
 
     // Update status to error
     await getSupabase()
       .from('global_parts')
       .update({
         ai_enrichment_status: 'error',
-        ai_enrichment_notes: `Manus API error: ${taskResponse.status} - ${errorText}`
+        ai_enrichment_notes: error.message || 'Unknown error during Manus research'
       })
-      .eq('id', part.id);
+      .eq('id', partId);
 
     return res.status(500).json({
-      error: 'Failed to create Manus task',
-      details: errorText
+      error: 'Document research failed',
+      details: error.message
     });
   }
-
-  const taskData = await taskResponse.json();
-  const taskId = taskData.task_id || taskData.id;
-  console.log(`[Manus] Task created: ${taskId}`);
-
-  // Store taskId in database for later retrieval
-  await getSupabase()
-    .from('global_parts')
-    .update({
-      ai_enrichment_status: 'processing',
-      ai_enrichment_notes: `manus_task_id:${taskId} - Started ${new Date().toISOString()}`
-    })
-    .eq('id', part.id);
-
-  // Return immediately - client will poll for completion
-  return res.status(200).json({
-    status: 'processing',
-    taskId: taskId,
-    partNumber: part.part_number,
-    message: 'Research started. Poll with checkStatus: true to get results (may take 1-3 minutes).'
-  });
-}
-
-/**
- * PHASE 2: Check status of existing Manus task
- */
-async function checkManusTaskStatus(req, res, part, manusApiKey) {
-  // Extract task ID from stored notes
-  const taskIdMatch = part.ai_enrichment_notes?.match(/manus_task_id:([^\s]+)/);
-  if (!taskIdMatch) {
-    return res.status(400).json({
-      error: 'No active Manus task found for this part',
-      hint: 'Call without checkStatus to start a new research task'
-    });
-  }
-
-  const taskId = taskIdMatch[1];
-  console.log(`[Manus] Checking status of task: ${taskId}`);
-
-  // Check Manus task status
-  const statusResponse = await fetch(`${MANUS_API_URL}/tasks/${taskId}`, {
-    method: 'GET',
-    headers: {
-      'accept': 'application/json',
-      'API_KEY': manusApiKey
-    }
-  });
-
-  if (!statusResponse.ok) {
-    console.error('[Manus] Status check failed:', statusResponse.status);
-    return res.status(500).json({
-      error: 'Failed to check Manus task status',
-      taskId: taskId
-    });
-  }
-
-  const statusData = await statusResponse.json();
-  console.log(`[Manus] Task ${taskId} status: ${statusData.status}`);
-
-  // Still processing
-  if (statusData.status === 'pending' || statusData.status === 'running' || statusData.status === 'queued') {
-    return res.status(200).json({
-      status: 'processing',
-      taskId: taskId,
-      manusStatus: statusData.status,
-      message: 'Research still in progress...'
-    });
-  }
-
-  // Failed
-  if (statusData.status === 'failed' || statusData.status === 'error') {
-    await getSupabase()
-      .from('global_parts')
-      .update({
-        ai_enrichment_status: 'error',
-        ai_enrichment_notes: `Manus task failed: ${statusData.error || 'Unknown error'}`
-      })
-      .eq('id', part.id);
-
-    return res.status(500).json({
-      status: 'failed',
-      taskId: taskId,
-      error: statusData.error || 'Manus task failed'
-    });
-  }
-
-  // Completed - process results
-  if (statusData.status === 'completed' || statusData.status === 'done') {
-    console.log(`[Manus] Task completed, processing results...`);
-
-    try {
-      // Parse the Manus response
-      const enrichmentData = parseManusResponse(statusData, part);
-
-      // Download PDFs and upload to SharePoint
-      console.log(`[Manus] Downloading and uploading documents...`);
-      const uploadedDocs = await downloadAndUploadDocuments(part, enrichmentData);
-      if (uploadedDocs) {
-        Object.assign(enrichmentData, uploadedDocs);
-      }
-
-      // Save results using RPC
-      const { error: saveError } = await getSupabase()
-        .rpc('save_parts_enrichment', {
-          p_part_id: part.id,
-          p_enrichment_data: enrichmentData,
-          p_confidence: enrichmentData.confidence || 0.95,
-          p_notes: `Researched via Manus AI - ${enrichmentData.search_summary?.total_documents_found || 0} documents found`
-        });
-
-      if (saveError) {
-        console.error('[Manus] Failed to save:', saveError);
-        throw saveError;
-      }
-
-      console.log(`[Manus] ✓ Research complete for ${part.part_number}`);
-
-      return res.status(200).json({
-        status: 'completed',
-        success: true,
-        partId: part.id,
-        partNumber: part.part_number,
-        name: part.name,
-        taskId: taskId,
-        documentsFound: {
-          class3: enrichmentData.class3_documents?.length || 0,
-          class2: enrichmentData.class2_documents?.length || 0,
-          class1: enrichmentData.class1_documents?.length || 0
-        },
-        data: enrichmentData
-      });
-
-    } catch (processError) {
-      console.error('[Manus] Error processing results:', processError);
-
-      await getSupabase()
-        .from('global_parts')
-        .update({
-          ai_enrichment_status: 'error',
-          ai_enrichment_notes: `Error processing Manus results: ${processError.message}`
-        })
-        .eq('id', part.id);
-
-      return res.status(500).json({
-        status: 'failed',
-        taskId: taskId,
-        error: 'Failed to process Manus results',
-        details: processError.message
-      });
-    }
-  }
-
-  // Unknown status
-  return res.status(200).json({
-    status: 'unknown',
-    taskId: taskId,
-    manusStatus: statusData.status,
-    message: `Unknown task status: ${statusData.status}`
-  });
-}
+};
 
 /**
  * Build the research prompt for Manus
@@ -463,10 +367,8 @@ function parseManusResponse(manusResult, part) {
   let data = {};
 
   try {
-    // Check if result has a structured output
     if (manusResult.output) {
       if (typeof manusResult.output === 'string') {
-        // Try to parse JSON from the output string
         const jsonMatch = manusResult.output.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           data = JSON.parse(jsonMatch[0]);
@@ -476,7 +378,6 @@ function parseManusResponse(manusResult, part) {
       }
     }
 
-    // Check for files/attachments
     if (manusResult.files && manusResult.files.length > 0) {
       for (const file of manusResult.files) {
         if (file.name && file.name.endsWith('.json')) {
@@ -487,7 +388,6 @@ function parseManusResponse(manusResult, part) {
       }
     }
 
-    // Check for result field
     if (manusResult.result && typeof manusResult.result === 'object') {
       data = { ...data, ...manusResult.result };
     }
@@ -496,7 +396,6 @@ function parseManusResponse(manusResult, part) {
     console.error('[Manus] Error parsing response:', parseError);
   }
 
-  // Extract document URLs into our standard format
   const enrichmentData = {
     manufacturer_website: data.manufacturer_website || null,
     product_page_url: data.product_page_url || null,
@@ -527,7 +426,7 @@ function parseManusResponse(manusResult, part) {
     notes: data.notes || 'Researched via Manus AI'
   };
 
-  // Process Class 3 documents into categorized URLs
+  // Process Class 3 documents
   for (const doc of enrichmentData.class3_documents) {
     if (!doc.url) continue;
     const type = (doc.type || '').toLowerCase();
@@ -547,7 +446,7 @@ function parseManusResponse(manusResult, part) {
     }
   }
 
-  // Process Class 2 documents (only if we're missing Class 3)
+  // Process Class 2 if missing Class 3
   if (enrichmentData.install_manual_urls.length === 0) {
     for (const doc of enrichmentData.class2_documents) {
       if (!doc.url) continue;
@@ -558,7 +457,6 @@ function parseManusResponse(manusResult, part) {
     }
   }
 
-  // Deduplicate arrays
   enrichmentData.install_manual_urls = [...new Set(enrichmentData.install_manual_urls)];
   enrichmentData.technical_manual_urls = [...new Set(enrichmentData.technical_manual_urls)];
 
@@ -704,6 +602,10 @@ async function downloadAndUploadSingleDocument(rootUrl, subPath, sourceUrl, pref
     console.error(`[Manus] Error with ${sourceUrl}:`, error.message);
     return null;
   }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function sanitizePathSegment(str) {
