@@ -357,7 +357,8 @@ async function processDocumentsTwoStage(part, enrichmentData) {
     const manufacturer = sanitizePathSegment(part.manufacturer || 'Unknown');
     const partNumber = sanitizePathSegment(part.part_number || part.id);
     const storagePath = `parts/${part.id}/documents`;
-    const sharePointPath = `Parts/${manufacturer}/${partNumber}/manuals`;
+    // Path structure: {manufacturer}/{partNumber}/manuals (no "Parts/" prefix)
+    const sharePointPath = `${manufacturer}/${partNumber}/manuals`;
 
     // Track all downloaded and uploaded files
     const downloadedFiles = [];
@@ -433,7 +434,7 @@ async function processDocumentsTwoStage(part, enrichmentData) {
     console.log(`[Manus Webhook] Stage 2 complete: ${uploadedToSharePoint.length} files uploaded to SharePoint`);
 
     // Build result with both original and SharePoint URLs
-    const partsFolderUrl = `${rootUrl}/Parts/${manufacturer}/${partNumber}`;
+    const partsFolderUrl = `${rootUrl}/${manufacturer}/${partNumber}`;
 
     // Separate PDFs and markdown files
     const pdfUploads = uploadedToSharePoint.filter(f => f.contentType === 'application/pdf');
