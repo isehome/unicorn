@@ -390,10 +390,20 @@ async function downloadAndUploadDocuments(part, enrichmentData) {
     console.log(`[Manus Webhook] Uploaded ${uploadedUrls.length} PDFs, ${uploadedMarkdown.length} markdown files`);
 
     const allUploaded = [...uploadedUrls, ...uploadedMarkdown];
+
+    // Build the parts folder URL for direct SharePoint access
+    // Format: https://isehome.sharepoint.com/sites/ISHome/Shared Documents/Parts/Manufacturer/PartNumber
+    const partsFolderUrl = `${rootUrl}/Parts/${manufacturer}/${partNumber}`;
+
     return allUploaded.length > 0 ? {
-      sharepoint_urls: allUploaded,
+      // SharePoint folder URL for direct access to all part documents
+      parts_folder_sharepoint_url: partsFolderUrl,
+      // First uploaded doc becomes the install manual URL
       install_manual_sharepoint_url: uploadedUrls[0] || uploadedMarkdown[0],
-      markdown_docs_sharepoint_urls: uploadedMarkdown
+      // All markdown files as technical manual URLs (for UI display)
+      technical_manual_sharepoint_urls: uploadedMarkdown,
+      // All uploaded URLs for reference
+      sharepoint_urls: allUploaded
     } : null;
 
   } catch (error) {
