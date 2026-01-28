@@ -549,9 +549,15 @@ const syncGlobalParts = async (equipmentItems = [], projectId = null, batchId = 
 
   for (const { item, trimmedPartNumber } of uniqueParts.values()) {
     try {
+      // IMPORTANT: For global parts, we should NOT use the instance name (which includes room prefix).
+      // Use the model as the part name, which is the actual product name without room/instance suffix.
+      // The instance_name like "Living Room - Speaker 1" is for project_equipment display only.
+      // Global parts should have the clean product name like "Speaker" or "Sonos One".
+      const globalPartName = item.model || item.description || null;
+
       const { data, error } = await supabase.rpc('upsert_global_part', {
         p_part_number: trimmedPartNumber,
-        p_name: item.name || null,
+        p_name: globalPartName,
         p_description: item.description || null,
         p_manufacturer: item.manufacturer || null,
         p_model: item.model || null,
