@@ -195,10 +195,13 @@ const PartDetailPage = () => {
   };
 
   const handleAddUrl = (field) => {
-    setFormState((prev) => ({
-      ...prev,
-      [field]: [...(prev[field] || []), ''],
-    }));
+    const url = window.prompt('Enter the URL:');
+    if (url && url.trim()) {
+      setFormState((prev) => ({
+        ...prev,
+        [field]: [...(prev[field] || []), url.trim()],
+      }));
+    }
   };
 
   const handleRemoveUrl = (field, index) => {
@@ -620,37 +623,30 @@ const PartDetailPage = () => {
               </a>
             )}
 
-            {/* Original source URLs (green dot) */}
+            {/* Original source URLs (green dot) - clickable links */}
             <div className="space-y-2 mt-2">
-              {(formState.install_manual_urls || []).map((url, index) => (
+              {(formState.install_manual_urls || []).filter(url => url).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={(event) => handleUrlArrayChange('install_manual_urls', index, event.target.value)}
-                    className={styles.input + ' flex-1'}
-                    placeholder="https://manufacturer.com/manual.pdf"
-                  />
-                  {url && (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
-                      title="Open link"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveUrl('install_manual_urls', index)}
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors group"
                   >
-                    Remove
-                  </Button>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="flex-1 text-sm text-emerald-700 dark:text-emerald-300 truncate">
+                      {url.split('/').pop() || url}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-emerald-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveUrl('install_manual_urls', index)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -703,37 +699,30 @@ const PartDetailPage = () => {
               </a>
             ))}
 
-            {/* Original source URLs (green dot) */}
+            {/* Original source URLs (green dot) - clickable links */}
             <div className="space-y-2 mt-2">
-              {(formState.technical_manual_urls || []).map((url, index) => (
+              {(formState.technical_manual_urls || []).filter(url => url).map((url, index) => (
                 <div key={index} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                  <input
-                    type="url"
-                    value={url}
-                    onChange={(event) => handleUrlArrayChange('technical_manual_urls', index, event.target.value)}
-                    className={styles.input + ' flex-1'}
-                    placeholder="https://manufacturer.com/specs.pdf"
-                  />
-                  {url && (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
-                      title="Open link"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveUrl('technical_manual_urls', index)}
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 flex-1 px-3 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors group"
                   >
-                    Remove
-                  </Button>
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="flex-1 text-sm text-emerald-700 dark:text-emerald-300 truncate">
+                      {url.split('/').pop() || url}
+                    </span>
+                    <ExternalLink className="h-3.5 w-3.5 text-emerald-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-300 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveUrl('technical_manual_urls', index)}
+                    className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
+                    title="Remove"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>
