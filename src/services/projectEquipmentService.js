@@ -547,31 +547,77 @@ const syncGlobalParts = async (equipmentItems = [], projectId = null, batchId = 
 
   const partIdMap = new Map();
 
+  // Batch lookup: check which parts already exist in global_parts
+  const partNumbers = Array.from(uniqueParts.values()).map(({ trimmedPartNumber }) => trimmedPartNumber);
+
+  const { data: existingParts, error: lookupError } = await supabase
+    .from('global_parts')
+    .select('id, part_number')
+    .in('part_number', partNumbers);
+
+  if (lookupError) {
+    console.error('Failed to lookup existing global parts:', lookupError);
+  }
+
+  // Map existing parts by part_number for quick lookup
+  const existingPartsMap = new Map();
+  (existingParts || []).forEach((part) => {
+    existingPartsMap.set(part.part_number.toLowerCase(), part.id);
+  });
+
   for (const { item, trimmedPartNumber } of uniqueParts.values()) {
     try {
-      // IMPORTANT: For global parts, we should NOT use the instance name (which includes room prefix).
-      // Use the model as the part name, which is the actual product name without room/instance suffix.
-      // The instance_name like "Living Room - Speaker 1" is for project_equipment display only.
-      // Global parts should have the clean product name like "Speaker" or "Sonos One".
-      const globalPartName = item.model || item.description || null;
+      const partNumberKey = trimmedPartNumber.toLowerCase();
 
-      const { data, error } = await supabase.rpc('upsert_global_part', {
-        p_part_number: trimmedPartNumber,
-        p_name: globalPartName,
-        p_description: item.description || null,
-        p_manufacturer: item.manufacturer || null,
-        p_model: item.model || null,
-        p_category: item.equipment_type || null,
-        p_unit: item.unit_of_measure || null
-      });
-
-      if (error) {
-        console.error('Failed to upsert global part:', trimmedPartNumber, error);
+      // CRITICAL: If global part already exists, just use its ID - DO NOT UPDATE IT
+      // Global parts should ONLY be edited via the Global Parts detail page by a user.
+      // Auto-sync should never overwrite existing global part data.
+      if (existingPartsMap.has(partNumberKey)) {
+        const existingId = existingPartsMap.get(partNumberKey);
+        partIdMap.set(trimmedPartNumber, existingId);
+        console.log(`[syncGlobalParts] Part "${trimmedPartNumber}" already exists (ID: ${existingId}), skipping update`);
         continue;
       }
 
-      if (data) {
-        partIdMap.set(trimmedPartNumber, data);
+      // Part doesn't exist - create it with basic info from the import
+      // Use model as the part name (not instance name which has room prefix)
+      const globalPartName = item.model || item.description || null;
+
+      const { data: newPart, error: insertError } = await supabase
+        .from('global_parts')
+        .insert({
+          part_number: trimmedPartNumber,
+          name: globalPartName,
+          description: item.description || null,
+          manufacturer: item.manufacturer || null,
+          model: item.model || null,
+          category: item.equipment_type || null,
+          unit_of_measure: item.unit_of_measure || 'ea'
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        // Could be a race condition - another process created it
+        if (insertError.code === '23505') { // unique_violation
+          console.log(`[syncGlobalParts] Part "${trimmedPartNumber}" was created by another process, fetching ID`);
+          const { data: raceConditionPart } = await supabase
+            .from('global_parts')
+            .select('id')
+            .eq('part_number', trimmedPartNumber)
+            .single();
+          if (raceConditionPart) {
+            partIdMap.set(trimmedPartNumber, raceConditionPart.id);
+          }
+        } else {
+          console.error('Failed to create global part:', trimmedPartNumber, insertError);
+        }
+        continue;
+      }
+
+      if (newPart) {
+        partIdMap.set(trimmedPartNumber, newPart.id);
+        console.log(`[syncGlobalParts] Created new global part "${trimmedPartNumber}" (ID: ${newPart.id})`);
       }
     } catch (rpcError) {
       console.error('Failed to sync global part:', trimmedPartNumber, rpcError);

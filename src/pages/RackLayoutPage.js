@@ -425,22 +425,15 @@ const RackLayoutPage = () => {
   }, [loadData, equipment, selectedRack]);
 
   // Handle U-height submit from prompt
+  // NOTE: This only updates project_equipment, NOT global_parts.
+  // Global parts should only be edited via the Global Parts detail page.
   const handleUHeightSubmit = useCallback(async (uHeight) => {
     if (!uHeightPrompt || !selectedRack) return;
 
     try {
-      const { equipmentId, positionU, shelfId, globalPartId } = uHeightPrompt;
+      const { equipmentId, positionU, shelfId } = uHeightPrompt;
 
-      // Update global_parts with the u_height for future use
-      if (globalPartId) {
-        const { supabase } = await import('../lib/supabase');
-        await supabase
-          .from('global_parts')
-          .update({ u_height: uHeight, is_rack_mountable: true })
-          .eq('id', globalPartId);
-      }
-
-      // Update equipment position
+      // Update equipment position (project_equipment only, not global_parts)
       await projectEquipmentService.updateEquipment(equipmentId, {
         rack_id: selectedRack.id,
         rack_position_u: positionU,
@@ -541,91 +534,33 @@ const RackLayoutPage = () => {
   }, [projectId, loadData]);
 
   // Handle editing equipment properties (e.g., U-height, shelf requirements)
+  // NOTE: This only updates project_equipment, NOT global_parts.
+  // Global parts should only be edited via the Global Parts detail page.
   const handleEquipmentEdit = useCallback(async (equipmentId, updates) => {
     try {
-      const eq = equipment.find(e => e.id === equipmentId);
-
-      // Update global_parts with the u_height using RPC function (bypasses RLS)
-      if (updates.uHeight && eq?.global_part_id) {
-        const { supabase } = await import('../lib/supabase');
-        const { data, error } = await supabase.rpc('update_part_rack_info', {
-          p_part_id: eq.global_part_id,
-          p_u_height: updates.uHeight,
-          p_is_rack_mountable: true,
-        });
-
-        if (error) {
-          console.error('[handleEquipmentEdit] Failed to update global_parts via RPC:', error);
-          throw error;
-        }
-        console.log('[handleEquipmentEdit] Updated global_part via RPC:', data);
-      }
-
-      // Update shelf requirements on project_equipment AND global_parts
+      // Update shelf requirements on project_equipment only
       if (updates.needsShelf !== undefined) {
-        console.log('[handleEquipmentEdit] Saving shelf requirements:', {
+        console.log('[handleEquipmentEdit] Saving shelf requirements to project_equipment:', {
           equipmentId,
           needs_shelf: updates.needsShelf,
           shelf_u_height: updates.shelfUHeight || null,
           max_items_per_shelf: updates.maxItemsPerShelf || 1,
         });
 
-        // Update the individual equipment
+        // Update the individual equipment (project_equipment only)
         const result = await projectEquipmentService.updateEquipment(equipmentId, {
           needs_shelf: updates.needsShelf,
           shelf_u_height: updates.shelfUHeight || null,
           max_items_per_shelf: updates.maxItemsPerShelf || 1,
         });
         console.log('[handleEquipmentEdit] Shelf update result:', result);
-
-        // Also save to global_parts as default for this part type (using RPC to bypass RLS)
-        if (eq?.global_part_id) {
-          const { supabase } = await import('../lib/supabase');
-          const { data: rpcData, error } = await supabase.rpc('update_global_part', {
-            p_part_id: eq.global_part_id,
-            p_needs_shelf: updates.needsShelf,
-            p_shelf_u_height: updates.shelfUHeight || null,
-            p_max_items_per_shelf: updates.maxItemsPerShelf || 1,
-          });
-
-          if (error) {
-            console.error('[handleEquipmentEdit] Failed to save shelf settings to global_parts:', error);
-          } else {
-            console.log('[handleEquipmentEdit] Shelf settings saved to global_parts for part:', eq.global_part_id, rpcData);
-          }
-        }
-      }
-
-      // Update power settings on global_parts
-      if (updates.powerSettings && eq?.global_part_id) {
-        const { supabase } = await import('../lib/supabase');
-        console.log('[handleEquipmentEdit] Saving power settings:', updates.powerSettings);
-
-        const { error } = await supabase
-          .from('global_parts')
-          .update({
-            is_power_device: updates.powerSettings.is_power_device,
-            power_outlets_provided: updates.powerSettings.power_outlets_provided,
-            power_output_watts: updates.powerSettings.power_output_watts,
-            ups_va_rating: updates.powerSettings.ups_va_rating,
-            ups_runtime_minutes: updates.powerSettings.ups_runtime_minutes,
-            power_watts: updates.powerSettings.power_watts,
-            power_outlets: updates.powerSettings.power_outlets,
-          })
-          .eq('id', eq.global_part_id);
-
-        if (error) {
-          console.error('[handleEquipmentEdit] Failed to update power settings:', error);
-          throw error;
-        }
-        console.log('[handleEquipmentEdit] Power settings saved successfully');
       }
 
       await loadData();
     } catch (err) {
       console.error('Failed to update equipment:', err);
     }
-  }, [equipment, loadData]);
+  }, [loadData]);
 
   // Handle moving equipment to a different room
   const handleMoveRoom = useCallback(async (equipmentId, newRoomId) => {
@@ -658,8 +593,10 @@ const RackLayoutPage = () => {
     }
   }, [loadData]);
 
-  // Handle excluding ALL equipment of this part type from rack layout (global)
-  const handleEquipmentExcludeGlobal = useCallback(async (equipmentId, globalPartId) => {
+  // Handle excluding ALL equipment of this part type from rack layout (project-scoped)
+  // NOTE: This only updates project_equipment within this project, NOT global_parts.
+  // Global parts should only be edited via the Global Parts detail page.
+  const handleEquipmentExcludeGlobal = useCallback(async (equipmentId) => {
     try {
       const { supabase } = await import('../lib/supabase');
 
@@ -668,16 +605,7 @@ const RackLayoutPage = () => {
       const partNumber = eq?.part_number;
       const model = eq?.model;
 
-      // Update the global_part so ALL equipment of this type is excluded
-      if (globalPartId) {
-        await supabase
-          .from('global_parts')
-          .update({ exclude_from_rack: true })
-          .eq('id', globalPartId);
-      }
-
-      // Also update ALL project_equipment with the same part_number in this project
-      // This handles cases where equipment isn't linked to a global_part
+      // Update ALL project_equipment with the same part_number in this project
       if (partNumber) {
         await supabase
           .from('project_equipment')
@@ -700,7 +628,7 @@ const RackLayoutPage = () => {
 
       await loadData();
     } catch (err) {
-      console.error('Failed to exclude equipment globally:', err);
+      console.error('Failed to exclude equipment:', err);
     }
   }, [loadData, equipment, projectId]);
 

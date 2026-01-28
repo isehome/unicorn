@@ -188,10 +188,11 @@ const EquipmentEditModal = memo(({
   const handleExcludeGlobal = async () => {
     setSaving(true);
     try {
-      await onExcludeGlobal(equipment.id, equipment.global_part_id);
+      // Only pass equipment ID - we no longer update global_parts from here
+      await onExcludeGlobal(equipment.id);
       onClose();
     } catch (err) {
-      console.error('Failed to exclude globally:', err);
+      console.error('Failed to exclude:', err);
     } finally {
       setSaving(false);
     }
